@@ -1,0 +1,25 @@
+[package]
+name = "tn-mlir"
+version = "0.1.0"
+edition = "2021"
+authors = ["Tensor Network Team"]
+description = "Distributed Tensor Network Library with MLIR Compilation"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+melior = { version = "0.25", optional = true }
+anyhow = "1.0"
+
+[build-dependencies]
+# cc = "1.0"  # Commented out until MLIR integration
+
+[features]
+default = []
+mlir = ["melior"]
+
+[dev-dependencies]
+approx = "0.5"
+
+[lib]
+name = "tn_mlir"
+path = "src/lib.rs"
