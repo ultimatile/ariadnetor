@@ -29,3 +29,33 @@ void TNDialect::initialize() {
   // #include "tn-compute/Dialect/IR/TNTypes.cpp.inc"
   //     >();
 }
+
+//===----------------------------------------------------------------------===//
+// Attribute/Type Parsing and Printing
+//===----------------------------------------------------------------------===//
+
+// Parse an attribute
+// Since we don't have custom attributes yet, delegate to default parser
+Attribute TNDialect::parseAttribute(DialectAsmParser &parser,
+                                     Type type) const {
+  return Attribute();  // Return null - no custom attributes defined
+}
+
+// Print an attribute
+// Since we don't have custom attributes yet, this should not be called
+void TNDialect::printAttribute(Attribute attr,
+                                DialectAsmPrinter &printer) const {
+  llvm_unreachable("no custom attributes in TN dialect");
+}
+
+// Parse a type
+// Since we don't have custom types yet, delegate to default parser
+Type TNDialect::parseType(DialectAsmParser &parser) const {
+  return Type();  // Return null - no custom types defined
+}
+
+// Print a type
+// Since we don't have custom types yet, this should not be called
+void TNDialect::printType(Type type, DialectAsmPrinter &printer) const {
+  llvm_unreachable("no custom types in TN dialect");
+}
