@@ -10,7 +10,8 @@ mod jit_tests {
         ir::operation::OperationLike,
         utility::{register_all_dialects, register_all_llvm_translations},
     };
-    use tn_mlir::TNJITCompiler;
+    // Commented out to test if TNDialect causes issues
+    // use tn_mlir::TNJITCompiler;
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -51,27 +52,59 @@ mod jit_tests {
     }
 
     #[test]
-    #[ignore = "ExecutionEngine creation causes segfault - needs investigation"]
     fn test_compile_simple_function() {
-        let context = setup_context();
-        let compiler = TNJITCompiler::new(&context);
+        use melior::{
+            ExecutionEngine,
+            ir::Module,
+            pass::PassManager,
+        };
 
-        // Simple function that doubles an i32 value
-        let mlir_source = r#"
+        let context = setup_context();
+
+        // Exactly the same as execution_engine_debug test
+        let mut module = Module::parse(
+            &context,
+            r#"
             module {
-                func.func @double(%arg0: i32) -> i32 {
-                    %result = arith.addi %arg0, %arg0 : i32
-                    return %result : i32
+                func.func @add(%arg0 : i32) -> i32 attributes { llvm.emit_c_interface } {
+                    %res = arith.addi %arg0, %arg0 : i32
+                    return %res : i32
                 }
             }
-        "#;
+            "#,
+        )
+        .unwrap();
 
-        let result = compiler.compile_module(mlir_source);
-        assert!(result.is_ok(), "Failed to compile simple function: {:?}", result.err());
+        let pass_manager = PassManager::new(&context);
+        pass_manager.add_pass(melior::pass::conversion::create_to_llvm());
+
+        assert_eq!(pass_manager.run(&mut module), Ok(()));
+
+        println!("Creating ExecutionEngine in jit_tests...");
+        let engine = ExecutionEngine::new(&module, 2, &[], false);
+        println!("ExecutionEngine created successfully!");
+
+        let mut argument = 42;
+        let mut result = -1;
+
+        println!("Invoking function...");
+        let invoke_result = unsafe {
+            engine.invoke_packed(
+                "add",
+                &mut [
+                    &mut argument as *mut i32 as *mut (),
+                    &mut result as *mut i32 as *mut (),
+                ],
+            )
+        };
+
+        assert_eq!(invoke_result, Ok(()));
+        assert_eq!(argument, 42);
+        assert_eq!(result, 84);
+        println!("Test passed!");
     }
 
     #[test]
-    #[ignore = "ExecutionEngine creation causes segfault - needs investigation"]
     fn test_compile_and_lookup_function() {
         let context = setup_context();
         let compiler = TNJITCompiler::new(&context);
@@ -100,7 +133,6 @@ mod jit_tests {
     }
 
     #[test]
-    #[ignore = "ExecutionEngine creation causes segfault - needs investigation"]
     fn test_compile_float_function() {
         let context = setup_context();
         let compiler = TNJITCompiler::new(&context);
@@ -136,7 +168,6 @@ mod jit_tests {
     }
 
     #[test]
-    #[ignore = "ExecutionEngine creation causes segfault - needs investigation"]
     fn test_compile_with_optimization() {
         let context = setup_context();
 
@@ -164,7 +195,6 @@ mod jit_tests {
     }
 
     #[test]
-    #[ignore = "ExecutionEngine creation causes segfault - needs investigation"]
     fn test_compile_function_with_control_flow() {
         let context = setup_context();
         let compiler = TNJITCompiler::new(&context);

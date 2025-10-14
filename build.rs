@@ -35,6 +35,13 @@ fn main() {
         // Link C++ standard library
         println!("cargo:rustc-link-lib=c++");
 
+        // Link zstd library (required by LLVM)
+        // Try Homebrew location first
+        if std::path::Path::new("/opt/homebrew/lib/libzstd.dylib").exists() {
+            println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
+        }
+        println!("cargo:rustc-link-lib=dylib=zstd");
+
         // Rerun build script if CMakeLists.txt or source files change
         println!("cargo:rerun-if-changed=CMakeLists.txt");
         println!("cargo:rerun-if-changed=lib/");
