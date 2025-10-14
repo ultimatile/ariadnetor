@@ -4,111 +4,311 @@
 
 use anyhow::Result;
 
+#[cfg(feature = "mlir")]
+use melior::{
+    Context,
+    ir::{
+        Location, Module, Value, Identifier,
+        attribute::StringAttribute,
+        operation::{OperationBuilder, OperationLike},
+        r#type::{RankedTensorType, Type},
+    },
+};
+
 /// Builder for TN-Compute dialect operations
-pub struct TNBuilder {
-    // Future: hold MLIR OpBuilder reference
+#[cfg(feature = "mlir")]
+pub struct TNBuilder<'c> {
+    context: &'c Context,
+    module: Module<'c>,
+    location: Location<'c>,
 }
 
-impl TNBuilder {
-    /// Create a new builder
+#[cfg(not(feature = "mlir"))]
+pub struct TNBuilder {
+    _phantom: std::marker::PhantomData<()>,
+}
+
+#[cfg(feature = "mlir")]
+impl<'c> TNBuilder<'c> {
+    /// Create a new builder with a given context
     ///
-    /// # Panics
+    /// # Arguments
     ///
-    /// This function is not yet implemented. MLIR melior integration is required.
-    pub fn new() -> Result<Self> {
-        unimplemented!("TNBuilder creation requires MLIR melior integration")
+    /// * `context` - MLIR context to use for building operations
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use melior::Context;
+    /// use tn_mlir::TNBuilder;
+    ///
+    /// let context = Context::new();
+    /// let builder = TNBuilder::new(&context);
+    /// ```
+    pub fn new(context: &'c Context) -> Self {
+        let location = Location::unknown(context);
+        let module = Module::new(location);
+
+        Self {
+            context,
+            module,
+            location,
+        }
+    }
+
+    /// Get the constructed module
+    pub fn module(&self) -> &Module<'c> {
+        &self.module
+    }
+
+    /// Get a mutable reference to the location
+    pub fn location(&self) -> Location<'c> {
+        self.location
+    }
+
+    /// Create a ranked tensor type
+    fn create_tensor_type(&self, shape: &[i64], element_type: Type<'c>) -> Type<'c> {
+        RankedTensorType::new(
+            &shape.iter().map(|&d| d as u64).collect::<Vec<_>>(),
+            element_type,
+            None
+        ).into()
     }
 
     /// Build a tensor contraction operation
     ///
     /// # Arguments
     ///
-    /// * `lhs` - Left operand tensor
-    /// * `rhs` - Right operand tensor
+    /// * `lhs` - Left operand value
+    /// * `rhs` - Right operand value
+    /// * `result_type` - Expected result tensor type
     /// * `indices` - Einsum notation string (e.g., "ij,jk->ik")
+    ///
+    /// # Returns
+    ///
+    /// MLIR Value representing the result of the contraction
     ///
     /// # Example
     ///
     /// ```rust,ignore
-    /// let builder = TNBuilder::new()?;
-    /// let result = builder.contract(lhs, rhs, "ij,jk->ik")?;
+    /// use melior::{Context, ir::{Value, r#type::Type}};
+    /// use tn_mlir::TNBuilder;
+    ///
+    /// let context = Context::new();
+    /// let builder = TNBuilder::new(&context);
+    /// let f64_type = Type::float64(&context);
+    /// let result_type = builder.create_tensor_type(&[10, 30], f64_type);
+    ///
+    /// // lhs and rhs are MLIR Values
+    /// let result = builder.contract(lhs, rhs, result_type, "ij,jk->ik")?;
     /// ```
     pub fn contract(
         &self,
-        _lhs: &[f64],
-        _rhs: &[f64],
-        _indices: &str,
-    ) -> Result<Vec<f64>> {
-        // TODO: Build tn.contract operation using melior
-        // 1. Create tensor values from slices
-        // 2. Build ContractOp with indices attribute
-        // 3. Return result
-        unimplemented!("contract operation not yet implemented")
+        lhs: Value<'c, '_>,
+        rhs: Value<'c, '_>,
+        result_type: Type<'c>,
+        indices: &str,
+    ) -> Result<Value<'c, 'c>> {
+        let indices_attr = StringAttribute::new(self.context, indices);
+        let indices_id = Identifier::new(self.context, "indices");
+
+        let operation = OperationBuilder::new("tn.contract", self.location)
+            .add_operands(&[lhs, rhs])
+            .add_attributes(&[(indices_id, indices_attr.into())])
+            .add_results(&[result_type])
+            .build()?;
+
+        Ok(operation.result(0)?.into())
     }
 
     /// Build an SVD operation
     ///
     /// # Arguments
     ///
-    /// * `input` - Input matrix
+    /// * `input` - Input matrix value
+    /// * `u_type` - Type for U matrix result
+    /// * `s_type` - Type for S vector result
+    /// * `v_type` - Type for V matrix result
     /// * `max_chi` - Optional maximum bond dimension
     /// * `threshold` - Optional truncation threshold
     ///
     /// # Returns
     ///
-    /// Tuple of (U, S, V) matrices
+    /// Tuple of (U, S, V) MLIR values
     pub fn svd(
         &self,
-        _input: &[f64],
-        _max_chi: Option<i64>,
-        _threshold: Option<f64>,
-    ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>)> {
-        // TODO: Build tn.svd operation
-        unimplemented!("svd operation not yet implemented")
+        input: Value<'c, '_>,
+        u_type: Type<'c>,
+        s_type: Type<'c>,
+        v_type: Type<'c>,
+        max_chi: Option<i64>,
+        threshold: Option<f64>,
+    ) -> Result<(Value<'c, 'c>, Value<'c, 'c>, Value<'c, 'c>)> {
+        use melior::ir::attribute::{IntegerAttribute, FloatAttribute};
+        use melior::ir::r#type::IntegerType;
+
+        let mut builder = OperationBuilder::new("tn.svd", self.location)
+            .add_operands(&[input])
+            .add_results(&[u_type, s_type, v_type]);
+
+        // Add optional attributes
+        if let Some(max_chi_val) = max_chi {
+            let i64_type = IntegerType::new(self.context, 64);
+            let max_chi_attr = IntegerAttribute::new(i64_type.into(), max_chi_val);
+            let max_chi_id = Identifier::new(self.context, "max_chi");
+            builder = builder.add_attributes(&[(max_chi_id, max_chi_attr.into())]);
+        }
+
+        if let Some(threshold_val) = threshold {
+            let f64_type = Type::float64(self.context);
+            let threshold_attr = FloatAttribute::new(self.context, f64_type, threshold_val);
+            let threshold_id = Identifier::new(self.context, "threshold");
+            builder = builder.add_attributes(&[(threshold_id, threshold_attr.into())]);
+        }
+
+        let operation = builder.build()?;
+
+        Ok((
+            operation.result(0)?.into(),
+            operation.result(1)?.into(),
+            operation.result(2)?.into(),
+        ))
     }
 
     /// Build a QR decomposition operation
     ///
+    /// # Arguments
+    ///
+    /// * `input` - Input matrix value
+    /// * `q_type` - Type for Q matrix result
+    /// * `r_type` - Type for R matrix result
+    ///
     /// # Returns
     ///
-    /// Tuple of (Q, R) matrices
-    pub fn qr(&self, _input: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
-        // TODO: Build tn.qr operation
-        unimplemented!("qr operation not yet implemented")
+    /// Tuple of (Q, R) MLIR values
+    pub fn qr(
+        &self,
+        input: Value<'c, '_>,
+        q_type: Type<'c>,
+        r_type: Type<'c>,
+    ) -> Result<(Value<'c, 'c>, Value<'c, 'c>)> {
+        let operation = OperationBuilder::new("tn.qr", self.location)
+            .add_operands(&[input])
+            .add_results(&[q_type, r_type])
+            .build()?;
+
+        Ok((
+            operation.result(0)?.into(),
+            operation.result(1)?.into(),
+        ))
     }
 
     /// Build a transpose operation
     ///
     /// # Arguments
     ///
-    /// * `input` - Input tensor
+    /// * `input` - Input tensor value
+    /// * `result_type` - Result tensor type
     /// * `permutation` - Dimension permutation (e.g., [1, 0] for matrix transpose)
-    pub fn transpose(&self, _input: &[f64], _permutation: &[i64]) -> Result<Vec<f64>> {
-        // TODO: Build tn.transpose operation
-        unimplemented!("transpose operation not yet implemented")
+    ///
+    /// # Returns
+    ///
+    /// MLIR Value representing the transposed tensor
+    pub fn transpose(
+        &self,
+        input: Value<'c, '_>,
+        result_type: Type<'c>,
+        permutation: &[i64],
+    ) -> Result<Value<'c, 'c>> {
+        use melior::ir::attribute::DenseI64ArrayAttribute;
+
+        let perm_attr = DenseI64ArrayAttribute::new(self.context, permutation);
+        let perm_id = Identifier::new(self.context, "permutation");
+
+        let operation = OperationBuilder::new("tn.transpose", self.location)
+            .add_operands(&[input])
+            .add_attributes(&[(perm_id, perm_attr.into())])
+            .add_results(&[result_type])
+            .build()?;
+
+        Ok(operation.result(0)?.into())
     }
 
     /// Build a reshape operation
-    pub fn reshape(&self, _input: &[f64], _new_shape: &[i64]) -> Result<Vec<f64>> {
-        // TODO: Build tn.reshape operation
-        unimplemented!("reshape operation not yet implemented")
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Input tensor value
+    /// * `result_type` - Result tensor type with new shape
+    ///
+    /// # Returns
+    ///
+    /// MLIR Value representing the reshaped tensor
+    pub fn reshape(
+        &self,
+        input: Value<'c, '_>,
+        result_type: Type<'c>,
+    ) -> Result<Value<'c, 'c>> {
+        let operation = OperationBuilder::new("tn.reshape", self.location)
+            .add_operands(&[input])
+            .add_results(&[result_type])
+            .build()?;
+
+        Ok(operation.result(0)?.into())
     }
 
     /// Build a truncate operation
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Input tensor value
+    /// * `result_type` - Result tensor type
+    /// * `max_chi` - Optional maximum bond dimension
+    /// * `threshold` - Optional truncation threshold
+    ///
+    /// # Returns
+    ///
+    /// MLIR Value representing the truncated tensor
     pub fn truncate(
         &self,
-        _input: &[f64],
-        _max_chi: Option<i64>,
-        _threshold: Option<f64>,
-    ) -> Result<Vec<f64>> {
-        // TODO: Build tn.truncate operation
-        unimplemented!("truncate operation not yet implemented")
+        input: Value<'c, '_>,
+        result_type: Type<'c>,
+        max_chi: Option<i64>,
+        threshold: Option<f64>,
+    ) -> Result<Value<'c, 'c>> {
+        use melior::ir::attribute::{IntegerAttribute, FloatAttribute};
+        use melior::ir::r#type::IntegerType;
+
+        let mut builder = OperationBuilder::new("tn.truncate", self.location)
+            .add_operands(&[input])
+            .add_results(&[result_type]);
+
+        // Add optional attributes
+        if let Some(max_chi_val) = max_chi {
+            let i64_type = IntegerType::new(self.context, 64);
+            let max_chi_attr = IntegerAttribute::new(i64_type.into(), max_chi_val);
+            let max_chi_id = Identifier::new(self.context, "max_chi");
+            builder = builder.add_attributes(&[(max_chi_id, max_chi_attr.into())]);
+        }
+
+        if let Some(threshold_val) = threshold {
+            let f64_type = Type::float64(self.context);
+            let threshold_attr = FloatAttribute::new(self.context, f64_type, threshold_val);
+            let threshold_id = Identifier::new(self.context, "threshold");
+            builder = builder.add_attributes(&[(threshold_id, threshold_attr.into())]);
+        }
+
+        let operation = builder.build()?;
+
+        Ok(operation.result(0)?.into())
     }
 }
 
-impl Default for TNBuilder {
-    fn default() -> Self {
-        Self::new().expect("Failed to create TN builder")
+// Non-mlir stub implementation
+#[cfg(not(feature = "mlir"))]
+impl TNBuilder {
+    pub fn new() -> Result<Self> {
+        anyhow::bail!("TNBuilder requires 'mlir' feature to be enabled")
     }
 }
 
@@ -117,9 +317,21 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "mlir")]
     fn test_builder_creation() {
-        // This test will fail until MLIR melior integration is implemented
-        let builder = TNBuilder::new();
-        assert!(builder.is_ok());
+        use melior::Context;
+
+        let context = Context::new();
+        let builder = TNBuilder::new(&context);
+
+        // Verify builder was created
+        assert!(builder.module().as_operation().verify());
+    }
+
+    #[test]
+    #[cfg(not(feature = "mlir"))]
+    fn test_builder_requires_feature() {
+        let result = TNBuilder::new();
+        assert!(result.is_err());
     }
 }
