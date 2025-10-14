@@ -33,12 +33,9 @@ def TN_Scalar : AnyTypeOf<[TN_Float, TN_Int], "scalar">;
 // Tensor Type Constraints
 //===----------------------------------------------------------------------===//
 
-// Ranked tensor with TN scalar elements
-def TN_RankedTensor : RankedTensorOf<[TN_Scalar]>;
-
-// Tensor type alias (for now, wraps MLIR's builtin RankedTensorType)
+// Ranked tensor with TN scalar elements (primary tensor type)
 // Future: define custom TN_TensorType with sparse/distributed metadata
-def TN_Tensor : TN_RankedTensor;
+def TN_Tensor : RankedTensorOf<[TN_Scalar]>;
 
 // Float-only tensors (for operations like SVD)
 def TN_FloatTensor : RankedTensorOf<[TN_Float]>;

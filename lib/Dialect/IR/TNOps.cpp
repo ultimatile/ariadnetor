@@ -50,9 +50,9 @@ static bool parseEinsumNotation(StringRef notation,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ContractOp::verify() {
-  auto lhsType = getLhs().getType().cast<RankedTensorType>();
-  auto rhsType = getRhs().getType().cast<RankedTensorType>();
-  auto resultType = getResult().getType().cast<RankedTensorType>();
+  auto lhsType = mlir::cast<RankedTensorType>(getLhs().getType());
+  auto rhsType = mlir::cast<RankedTensorType>(getRhs().getType());
+  auto resultType = mlir::cast<RankedTensorType>(getResult().getType());
 
   StringRef notation = getIndices();
   SmallVector<char> lhsIndices, rhsIndices, outIndices;
@@ -93,7 +93,7 @@ LogicalResult ContractOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult SVDOp::verify() {
-  auto inputType = getInput().getType().cast<RankedTensorType>();
+  auto inputType = mlir::cast<RankedTensorType>(getInput().getType());
 
   // Input must be 2D (matrix)
   if (inputType.getRank() != 2) {
@@ -110,15 +110,16 @@ LogicalResult SVDOp::verify() {
 
   // Verify threshold if present
   if (auto threshold = getThreshold()) {
-    if (threshold.value() < 0.0) {
+    double thresholdVal = threshold.value().convertToDouble();
+    if (thresholdVal < 0.0) {
       return emitOpError("threshold must be non-negative, got ")
-             << threshold.value();
+             << thresholdVal;
     }
   }
 
-  auto uType = getU().getType().cast<RankedTensorType>();
-  auto sType = getS().getType().cast<RankedTensorType>();
-  auto vType = getV().getType().cast<RankedTensorType>();
+  auto uType = mlir::cast<RankedTensorType>(getU().getType());
+  auto sType = mlir::cast<RankedTensorType>(getS().getType());
+  auto vType = mlir::cast<RankedTensorType>(getV().getType());
 
   // U and V must be 2D
   if (uType.getRank() != 2) {
@@ -143,7 +144,7 @@ LogicalResult SVDOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult QROp::verify() {
-  auto inputType = getInput().getType().cast<RankedTensorType>();
+  auto inputType = mlir::cast<RankedTensorType>(getInput().getType());
 
   // Input must be 2D (matrix)
   if (inputType.getRank() != 2) {
@@ -151,8 +152,8 @@ LogicalResult QROp::verify() {
            << inputType.getRank();
   }
 
-  auto qType = getQ().getType().cast<RankedTensorType>();
-  auto rType = getR().getType().cast<RankedTensorType>();
+  auto qType = mlir::cast<RankedTensorType>(getQ().getType());
+  auto rType = mlir::cast<RankedTensorType>(getR().getType());
 
   // Q and R must be 2D
   if (qType.getRank() != 2) {
@@ -171,8 +172,8 @@ LogicalResult QROp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TransposeOp::verify() {
-  auto inputType = getInput().getType().cast<RankedTensorType>();
-  auto resultType = getResult().getType().cast<RankedTensorType>();
+  auto inputType = mlir::cast<RankedTensorType>(getInput().getType());
+  auto resultType = mlir::cast<RankedTensorType>(getResult().getType());
 
   auto permutation = getPermutation();
   int64_t rank = inputType.getRank();
@@ -187,7 +188,7 @@ LogicalResult TransposeOp::verify() {
   // Verify permutation is a valid permutation [0, rank)
   SmallVector<bool> seen(rank, false);
   for (auto idx : permutation) {
-    int64_t i = idx.cast<IntegerAttr>().getInt();
+    int64_t i = mlir::cast<IntegerAttr>(idx).getInt();
     if (i < 0 || i >= rank) {
       return emitOpError("permutation index ") << i << " out of range [0, "
                                                 << rank << ")";
@@ -211,8 +212,8 @@ LogicalResult TransposeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReshapeOp::verify() {
-  auto inputType = getInput().getType().cast<RankedTensorType>();
-  auto resultType = getResult().getType().cast<RankedTensorType>();
+  auto inputType = mlir::cast<RankedTensorType>(getInput().getType());
+  auto resultType = mlir::cast<RankedTensorType>(getResult().getType());
 
   // Calculate total elements in input (if static)
   int64_t inputElements = 1;
@@ -258,7 +259,7 @@ LogicalResult ReshapeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TruncateOp::verify() {
-  auto inputType = getInput().getType().cast<RankedTensorType>();
+  auto inputType = mlir::cast<RankedTensorType>(getInput().getType());
 
   // Input must be 2D for truncation (typically operates on matrices)
   if (inputType.getRank() != 2) {
@@ -280,9 +281,10 @@ LogicalResult TruncateOp::verify() {
 
   // Verify threshold if present
   if (auto threshold = getThreshold()) {
-    if (threshold.value() < 0.0) {
+    double thresholdVal = threshold.value().convertToDouble();
+    if (thresholdVal < 0.0) {
       return emitOpError("threshold must be non-negative, got ")
-             << threshold.value();
+             << thresholdVal;
     }
   }
 

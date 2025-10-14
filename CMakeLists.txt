@@ -33,10 +33,10 @@ add_definitions(${LLVM_DEFINITIONS})
 set(LLVM_TARGET_DEFINITIONS include/tn-compute/Dialect/IR/TNOps.td)
 mlir_tablegen(include/tn-compute/Dialect/IR/TNOps.h.inc -gen-op-decls)
 mlir_tablegen(include/tn-compute/Dialect/IR/TNOps.cpp.inc -gen-op-defs)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNDialect.h.inc -gen-dialect-decls)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNDialect.cpp.inc -gen-dialect-defs)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNTypes.h.inc -gen-typedef-decls)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNTypes.cpp.inc -gen-typedef-defs)
+mlir_tablegen(include/tn-compute/Dialect/IR/TNDialect.h.inc -gen-dialect-decls -dialect=tn)
+mlir_tablegen(include/tn-compute/Dialect/IR/TNDialect.cpp.inc -gen-dialect-defs -dialect=tn)
+# Note: No typedef generation needed - we use MLIR builtin types with constraints
+# Future: Add when TN_TensorType is defined with TypeDef
 add_public_tablegen_target(TNOpsIncGen)
 
 # Add TN Dialect library

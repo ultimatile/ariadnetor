@@ -7,6 +7,7 @@
 #ifndef TN_COMPUTE_DIALECT_IR_TNDIALECT_H
 #define TN_COMPUTE_DIALECT_IR_TNDIALECT_H
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
@@ -16,9 +17,8 @@
 // Include generated dialect declarations
 #include "tn-compute/Dialect/IR/TNDialect.h.inc"
 
-// Include generated type declarations
-#define GET_TYPEDEF_CLASSES
-#include "tn-compute/Dialect/IR/TNTypes.h.inc"
+// Note: No custom type definitions yet - we use MLIR builtin types with constraints
+// Future: Include TNTypes.h.inc when TN_TensorType is defined
 
 // Include generated operation declarations
 #define GET_OP_CLASSES

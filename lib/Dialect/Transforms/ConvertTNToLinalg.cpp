@@ -35,13 +35,13 @@ struct ContractOpToMatMulPattern : public OpRewritePattern<ContractOp> {
       // This is matrix multiplication, convert to linalg.matmul
       auto lhs = op.getLhs();
       auto rhs = op.getRhs();
-      auto resultType = op.getResult().getType();
+      auto resultType = mlir::cast<RankedTensorType>(op.getResult().getType());
 
       // Create empty output tensor
       auto loc = op.getLoc();
       auto emptyOp = rewriter.create<tensor::EmptyOp>(
-          loc, resultType.cast<RankedTensorType>().getShape(),
-          resultType.cast<RankedTensorType>().getElementType());
+          loc, resultType.getShape(),
+          resultType.getElementType());
 
       // Create linalg.matmul
       auto matmulOp = rewriter.create<linalg::MatmulOp>(
@@ -71,8 +71,8 @@ struct TransposeOpToLinalgPattern : public OpRewritePattern<TransposeOp> {
   LogicalResult matchAndRewrite(TransposeOp op,
                                  PatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
-    auto inputType = op.getInput().getType().cast<RankedTensorType>();
-    auto resultType = op.getResult().getType().cast<RankedTensorType>();
+    auto inputType = mlir::cast<RankedTensorType>(op.getInput().getType());
+    auto resultType = mlir::cast<RankedTensorType>(op.getResult().getType());
 
     // Create empty output tensor
     auto emptyOp = rewriter.create<tensor::EmptyOp>(
@@ -82,13 +82,13 @@ struct TransposeOpToLinalgPattern : public OpRewritePattern<TransposeOp> {
     auto permutation = op.getPermutation();
     SmallVector<int64_t> permVec;
     for (auto attr : permutation) {
-      permVec.push_back(attr.cast<IntegerAttr>().getInt());
+      permVec.push_back(mlir::cast<IntegerAttr>(attr).getInt());
     }
 
     auto transposeOp = rewriter.create<linalg::TransposeOp>(
         loc, op.getInput(), emptyOp.getResult(), permVec);
 
-    rewriter.replaceOp(op, transposeOp.getResult(0));
+    rewriter.replaceOp(op, transposeOp.getResult());
     return success();
   }
 };
@@ -150,9 +150,9 @@ struct SVDOpToRuntimeCallPattern : public OpRewritePattern<SVDOp> {
     operands.push_back(rewriter.create<arith::ConstantIntOp>(loc, maxChi, 64));
 
     // Add threshold parameter (0.0 means no threshold)
-    auto threshold = op.getThreshold().value_or(0.0);
+    APFloat threshold = op.getThreshold().value_or(APFloat(0.0));
     operands.push_back(
-        rewriter.create<arith::ConstantFloatOp>(loc, APFloat(threshold),
+        rewriter.create<arith::ConstantFloatOp>(loc, threshold,
                                                  Float64Type::get(context)));
 
     auto callOp =
