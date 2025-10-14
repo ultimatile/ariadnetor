@@ -29,6 +29,9 @@ include_directories(${PROJECT_BINARY_DIR}/include)
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
+# Create output directory for TableGen
+file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/include/tn-compute/Dialect/IR)
+
 # TableGen for TN Dialect
 set(LLVM_TARGET_DEFINITIONS include/tn-compute/Dialect/IR/TNOps.td)
 mlir_tablegen(include/tn-compute/Dialect/IR/TNOps.h.inc -gen-op-decls)
@@ -71,8 +74,20 @@ add_mlir_dialect_library(MLIRTNTransforms
   MLIRPass
 )
 
+# Add TN CAPI library
+add_mlir_public_c_api_library(MLIRTNCAPI
+  lib/CAPI/TNDialect.cpp
+
+  ADDITIONAL_HEADER_DIRS
+  ${PROJECT_SOURCE_DIR}/include/tn-compute
+
+  LINK_LIBS PUBLIC
+  MLIRTNDialect
+  MLIRCAPIIR
+)
+
 # Installation
-install(TARGETS MLIRTNDialect MLIRTNTransforms
+install(TARGETS MLIRTNDialect MLIRTNTransforms MLIRTNCAPI
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
 

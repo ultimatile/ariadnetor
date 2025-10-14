@@ -27,6 +27,9 @@ pub mod builder;
 pub mod jit;
 pub mod tensor;
 
+#[cfg(feature = "mlir")]
+pub mod ffi;
+
 pub use dialect::TNDialect;
 pub use builder::TNBuilder;
 pub use jit::TNJITCompiler;

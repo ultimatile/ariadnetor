@@ -4,28 +4,44 @@
 
 use anyhow::Result;
 
+#[cfg(feature = "mlir")]
+use crate::ffi;
+
 /// TN-Compute Dialect wrapper
 pub struct TNDialect {
-    // Future: hold reference to MLIR context and dialect handle
+    #[cfg(feature = "mlir")]
+    handle: ffi::MlirDialectHandle,
 }
 
 impl TNDialect {
     /// Create a new TN dialect instance
     ///
-    /// # Panics
+    /// Returns a handle to the TN dialect that can be used for registration.
     ///
-    /// This function is not yet implemented. MLIR C++ integration is required.
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use tn_mlir::TNDialect;
+    ///
+    /// let dialect = TNDialect::new()?;
+    /// // Use with melior context registration
+    /// ```
     pub fn new() -> Result<Self> {
-        unimplemented!("TNDialect creation requires MLIR C++ integration")
+        #[cfg(feature = "mlir")]
+        {
+            let handle = unsafe { ffi::mlirGetDialectHandle__tn__() };
+            Ok(Self { handle })
+        }
+
+        #[cfg(not(feature = "mlir"))]
+        {
+            anyhow::bail!("TNDialect requires 'mlir' feature to be enabled")
+        }
     }
 
-    /// Register the dialect with an MLIR context
-    ///
-    /// # Panics
-    ///
-    /// This function is not yet implemented. MLIR C++ integration is required.
-    pub fn register(&self) -> Result<()> {
-        unimplemented!("Dialect registration requires MLIR C++ integration")
+    #[cfg(feature = "mlir")]
+    pub fn handle(&self) -> &ffi::MlirDialectHandle {
+        &self.handle
     }
 }
 
@@ -40,9 +56,17 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "mlir")]
     fn test_dialect_creation() {
-        // This test will fail until MLIR integration is implemented
+        // This test will pass when mlir feature is enabled
         let dialect = TNDialect::new();
         assert!(dialect.is_ok());
+    }
+
+    #[test]
+    #[cfg(not(feature = "mlir"))]
+    fn test_dialect_requires_feature() {
+        let dialect = TNDialect::new();
+        assert!(dialect.is_err());
     }
 }

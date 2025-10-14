@@ -11,7 +11,7 @@ melior = { version = "0.25", optional = true }
 anyhow = "1.0"
 
 [build-dependencies]
-# cc = "1.0"  # Commented out until MLIR integration
+cmake = "0.1"
 
 [features]
 default = []
