@@ -18,8 +18,9 @@ fn main() {
             .define("CMAKE_BUILD_TYPE", "Release")
             .build();
 
-        // Link the generated libraries
-        println!("cargo:rustc-link-search=native={}/lib", dst.display());
+        // Link the generated libraries (using static libraries after removing CAPI auto-registration)
+        let lib_dir = format!("{}/lib", dst.display());
+        println!("cargo:rustc-link-search=native={}", lib_dir);
         println!("cargo:rustc-link-lib=static=MLIRTNCAPI");
         println!("cargo:rustc-link-lib=static=MLIRTNDialect");
         println!("cargo:rustc-link-lib=static=MLIRTNTransforms");
@@ -32,6 +33,9 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=MLIR");
         println!("cargo:rustc-link-lib=dylib=LLVM");
 
+        // Add RPATH for LLVM libraries
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", llvm_lib_dir);
+
         // Link C++ standard library
         println!("cargo:rustc-link-lib=c++");
 
@@ -39,6 +43,7 @@ fn main() {
         // Try Homebrew location first
         if std::path::Path::new("/opt/homebrew/lib/libzstd.dylib").exists() {
             println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
+            println!("cargo:rustc-link-arg=-Wl,-rpath,/opt/homebrew/lib");
         }
         println!("cargo:rustc-link-lib=dylib=zstd");
 

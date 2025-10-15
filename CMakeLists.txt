@@ -43,6 +43,7 @@ mlir_tablegen(include/tn-compute/Dialect/IR/TNDialect.cpp.inc -gen-dialect-defs 
 add_public_tablegen_target(TNOpsIncGen)
 
 # Add TN Dialect library
+# Using static library (CAPI auto-registration macro removed to avoid init conflicts)
 add_mlir_dialect_library(MLIRTNDialect
   lib/Dialect/IR/TNDialect.cpp
   lib/Dialect/IR/TNOps.cpp
@@ -75,7 +76,7 @@ add_mlir_dialect_library(MLIRTNTransforms
 )
 
 # Add TN CAPI library
-add_mlir_public_c_api_library(MLIRTNCAPI
+add_mlir_dialect_library(MLIRTNCAPI
   lib/CAPI/TNDialect.cpp
 
   ADDITIONAL_HEADER_DIRS

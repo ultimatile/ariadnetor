@@ -8,7 +8,8 @@ pub struct MlirDialectHandle {
     ptr: *mut c_void,
 }
 
-#[link(name = "MLIRTNCAPI", kind = "static")]
+// NOTE: Removed static linking to avoid global initialization conflicts with ExecutionEngine
+// Linking is now handled by build.rs with dynamic linking
 extern "C" {
     /// Returns a handle to the TN dialect for registration
     pub fn mlirGetDialectHandle__tn__() -> MlirDialectHandle;
