@@ -1,9 +1,9 @@
-use std::env;
-
 fn main() {
     // Only build C++ components when mlir feature is enabled
     #[cfg(feature = "mlir")]
     {
+        use std::env;
+
         let llvm_dir = env::var("MLIR_SYS_200_PREFIX")
             .or_else(|_| env::var("LLVM_DIR"))
             .expect("MLIR_SYS_200_PREFIX or LLVM_DIR must be set");

@@ -3,6 +3,8 @@
 //! Provides JIT compilation of tensor network operations with dynamic shape support.
 
 use anyhow::Result;
+
+#[cfg(feature = "mlir")]
 use crate::tensor::Tensor;
 
 #[cfg(feature = "mlir")]
