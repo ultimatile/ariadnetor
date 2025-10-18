@@ -25,15 +25,16 @@ fn main() {
         println!("cargo:rustc-link-lib=static=MLIRTNDialect");
         println!("cargo:rustc-link-lib=static=MLIRTNTransforms");
 
-        // Link MLIR and LLVM libraries
+        // Link MLIR library (LLVM is transitively linked via MLIR)
         let llvm_lib_dir = format!("{}/lib", llvm_dir);
         println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
 
-        // Link against MLIR and LLVM shared libraries
+        // Link against MLIR shared library only
+        // NOTE: Do NOT explicitly link libLLVM.dylib as it causes symbol conflicts
+        // and initialization order issues. MLIR already depends on LLVM internally.
         println!("cargo:rustc-link-lib=dylib=MLIR");
-        println!("cargo:rustc-link-lib=dylib=LLVM");
 
-        // Add RPATH for LLVM libraries
+        // Add RPATH for MLIR/LLVM libraries
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", llvm_lib_dir);
 
         // Link C++ standard library
