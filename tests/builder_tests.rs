@@ -15,7 +15,7 @@ mod builder_tests {
         },
         utility::register_all_dialects,
     };
-    use tn_mlir::{TNBuilder, TNDialect};
+    use tn_mlir::{TNBuilder, TNDialect, EinsumExpr};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -204,5 +204,129 @@ mod builder_tests {
         // Build truncate operation with parameters
         let result2 = builder.truncate(input2, result_type, Some(50), Some(1e-8));
         assert!(result2.is_ok(), "Truncate operation with params build failed: {:?}", result2.err());
+    }
+
+    #[test]
+    fn test_build_contract_from_einsum_matrix_multiply() {
+        let context = setup_context();
+        let builder = TNBuilder::new(&context);
+        let location = builder.location();
+
+        // Parse einsum expression for matrix multiplication
+        let expr = EinsumExpr::parse("ij,jk->ik")
+            .expect("Failed to parse einsum expression");
+
+        // Create a test block with two tensor arguments (10x20 and 20x30)
+        let block = create_test_block(&context, &[&[10, 20], &[20, 30]], location);
+
+        let lhs = block.argument(0).expect("Failed to get arg 0").into();
+        let rhs = block.argument(1).expect("Failed to get arg 1").into();
+
+        let f64_type = Type::float64(&context);
+
+        // Build contract operation from einsum expression
+        let result = builder.build_contract_from_einsum(
+            &expr,
+            lhs,
+            rhs,
+            &[10, 20],
+            &[20, 30],
+            f64_type
+        );
+
+        assert!(result.is_ok(), "Contract from einsum build failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_build_contract_from_einsum_higher_dimensional() {
+        let context = setup_context();
+        let builder = TNBuilder::new(&context);
+        let location = builder.location();
+
+        // Parse einsum expression for higher-dimensional contraction
+        let expr = EinsumExpr::parse("ijk,jkl->il")
+            .expect("Failed to parse einsum expression");
+
+        // Create a test block with two 3D tensor arguments
+        let block = create_test_block(&context, &[&[5, 10, 15], &[10, 15, 20]], location);
+
+        let lhs = block.argument(0).expect("Failed to get arg 0").into();
+        let rhs = block.argument(1).expect("Failed to get arg 1").into();
+
+        let f64_type = Type::float64(&context);
+
+        // Build contract operation
+        let result = builder.build_contract_from_einsum(
+            &expr,
+            lhs,
+            rhs,
+            &[5, 10, 15],
+            &[10, 15, 20],
+            f64_type
+        );
+
+        assert!(result.is_ok(), "Higher-dimensional contract from einsum build failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_build_contract_from_einsum_dimension_mismatch() {
+        let context = setup_context();
+        let builder = TNBuilder::new(&context);
+        let location = builder.location();
+
+        // Parse einsum expression
+        let expr = EinsumExpr::parse("ij,jk->ik")
+            .expect("Failed to parse einsum expression");
+
+        // Create a test block with mismatched dimensions
+        let block = create_test_block(&context, &[&[10, 20], &[25, 30]], location);
+
+        let lhs = block.argument(0).expect("Failed to get arg 0").into();
+        let rhs = block.argument(1).expect("Failed to get arg 1").into();
+
+        let f64_type = Type::float64(&context);
+
+        // This should fail due to dimension mismatch (20 != 25 for contracted index 'j')
+        let result = builder.build_contract_from_einsum(
+            &expr,
+            lhs,
+            rhs,
+            &[10, 20],
+            &[25, 30],
+            f64_type
+        );
+
+        assert!(result.is_err(), "Expected error for dimension mismatch, but got success");
+    }
+
+    #[test]
+    fn test_build_contract_from_einsum_batch_matmul() {
+        let context = setup_context();
+        let builder = TNBuilder::new(&context);
+        let location = builder.location();
+
+        // Parse einsum expression for batch matrix multiplication
+        let expr = EinsumExpr::parse("bij,bjk->bik")
+            .expect("Failed to parse einsum expression");
+
+        // Create a test block with two 3D tensor arguments (batch=32, matrices 10x20 and 20x30)
+        let block = create_test_block(&context, &[&[32, 10, 20], &[32, 20, 30]], location);
+
+        let lhs = block.argument(0).expect("Failed to get arg 0").into();
+        let rhs = block.argument(1).expect("Failed to get arg 1").into();
+
+        let f64_type = Type::float64(&context);
+
+        // Build batch contract operation
+        let result = builder.build_contract_from_einsum(
+            &expr,
+            lhs,
+            rhs,
+            &[32, 10, 20],
+            &[32, 20, 30],
+            f64_type
+        );
+
+        assert!(result.is_ok(), "Batch matmul from einsum build failed: {:?}", result.err());
     }
 }

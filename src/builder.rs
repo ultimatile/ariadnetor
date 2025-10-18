@@ -5,6 +5,9 @@
 use anyhow::Result;
 
 #[cfg(feature = "mlir")]
+use crate::einsum::EinsumExpr;
+
+#[cfg(feature = "mlir")]
 use melior::{
     Context,
     ir::{
@@ -119,6 +122,78 @@ impl<'c> TNBuilder<'c> {
             .build()?;
 
         Ok(operation.result(0)?.into())
+    }
+
+    /// Build a tensor contraction from parsed einsum expression
+    ///
+    /// This is a high-level API that automatically infers output shape
+    /// from the einsum expression and input tensor shapes.
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - Parsed einsum expression (e.g., from `EinsumExpr::parse("ij,jk->ik")`)
+    /// * `lhs` - Left operand value
+    /// * `rhs` - Right operand value
+    /// * `lhs_shape` - Shape of left operand tensor
+    /// * `rhs_shape` - Shape of right operand tensor
+    /// * `element_type` - Element type for the result tensor (e.g., f64)
+    ///
+    /// # Returns
+    ///
+    /// MLIR Value representing the result of the contraction
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Shape inference fails (incompatible dimensions)
+    /// - Output shape cannot be computed
+    /// - MLIR operation building fails
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use melior::{Context, ir::{Value, Type}};
+    /// use tn_mlir::{TNBuilder, EinsumExpr};
+    ///
+    /// let context = Context::new();
+    /// let builder = TNBuilder::new(&context);
+    /// let expr = EinsumExpr::parse("ij,jk->ik").unwrap();
+    /// let f64_type = Type::float64(&context);
+    ///
+    /// // lhs and rhs are MLIR Values with shapes [10, 20] and [20, 30]
+    /// let result = builder.build_contract_from_einsum(
+    ///     &expr,
+    ///     lhs,
+    ///     rhs,
+    ///     &[10, 20],
+    ///     &[20, 30],
+    ///     f64_type
+    /// )?;
+    /// // result has shape [10, 30]
+    /// ```
+    pub fn build_contract_from_einsum(
+        &self,
+        expr: &EinsumExpr,
+        lhs: Value<'c, '_>,
+        rhs: Value<'c, '_>,
+        lhs_shape: &[i64],
+        rhs_shape: &[i64],
+        element_type: Type<'c>,
+    ) -> Result<Value<'c, 'c>> {
+        // Infer output shape from einsum expression
+        let output_shape = expr.infer_output_shape(lhs_shape, rhs_shape)?;
+
+        // Create result tensor type
+        let result_type = self.create_tensor_type(&output_shape, element_type);
+
+        // Build einsum notation string
+        let lhs_indices: String = expr.lhs_indices().iter().collect();
+        let rhs_indices: String = expr.rhs_indices().iter().collect();
+        let out_indices: String = expr.out_indices().iter().collect();
+        let indices = format!("{},{}->{}", lhs_indices, rhs_indices, out_indices);
+
+        // Use the low-level contract method
+        self.contract(lhs, rhs, result_type, &indices)
     }
 
     /// Build an SVD operation
