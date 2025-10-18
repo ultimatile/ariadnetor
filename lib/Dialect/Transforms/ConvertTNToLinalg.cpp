@@ -28,20 +28,17 @@ struct ContractOpToMatMulPattern : public OpRewritePattern<ContractOp> {
 
   LogicalResult matchAndRewrite(ContractOp op,
                                  PatternRewriter &rewriter) const override {
-    // Check if this is a simple matrix multiplication "ij,jk->ik"
     StringRef indices = op.getIndices();
+    auto loc = op.getLoc();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
+    auto resultType = mlir::cast<RankedTensorType>(op.getResult().getType());
 
+    // Pattern 1: Simple matrix multiplication "ij,jk->ik"
     if (indices == "ij,jk->ik") {
-      // This is matrix multiplication, convert to linalg.matmul
-      auto lhs = op.getLhs();
-      auto rhs = op.getRhs();
-      auto resultType = mlir::cast<RankedTensorType>(op.getResult().getType());
-
       // Create empty output tensor
-      auto loc = op.getLoc();
       auto emptyOp = rewriter.create<tensor::EmptyOp>(
-          loc, resultType.getShape(),
-          resultType.getElementType());
+          loc, resultType.getShape(), resultType.getElementType());
 
       // Create linalg.matmul
       auto matmulOp = rewriter.create<linalg::MatmulOp>(
@@ -51,10 +48,42 @@ struct ContractOpToMatMulPattern : public OpRewritePattern<ContractOp> {
       return success();
     }
 
-    // TODO: Handle other einsum patterns
-    // - Batched matmul: "bij,bjk->bik"
+    // Pattern 2: Batched matrix multiplication "bij,bjk->bik"
+    if (indices == "bij,bjk->bik") {
+      // Create empty output tensor
+      auto emptyOp = rewriter.create<tensor::EmptyOp>(
+          loc, resultType.getShape(), resultType.getElementType());
+
+      // Create linalg.batch_matmul
+      auto batchMatmulOp = rewriter.create<linalg::BatchMatmulOp>(
+          loc, ValueRange{lhs, rhs}, ValueRange{emptyOp.getResult()});
+
+      rewriter.replaceOp(op, batchMatmulOp.getResult(0));
+      return success();
+    }
+
+    // Pattern 3: Element-wise multiplication "ij,ij->ij"
+    if (indices == "ij,ij->ij") {
+      // Create empty output tensor
+      auto emptyOp = rewriter.create<tensor::EmptyOp>(
+          loc, resultType.getShape(), resultType.getElementType());
+
+      // Use linalg.map for element-wise multiplication
+      auto mapOp = rewriter.create<linalg::MapOp>(
+          loc, ValueRange{lhs, rhs}, emptyOp.getResult(),
+          [&](OpBuilder &b, Location loc, ValueRange args) {
+            Value result = b.create<arith::MulFOp>(loc, args[0], args[1]);
+            b.create<linalg::YieldOp>(loc, result);
+          });
+
+      rewriter.replaceOp(op, mapOp.getResult()[0]);
+      return success();
+    }
+
+    // TODO: Handle other einsum patterns via linalg.generic
     // - Tensor dot: "ijk,ijk->"
     // - Outer product: "i,j->ij"
+    // - Higher-dimensional contractions: "ijk,jkl->il"
     // - General contractions via linalg.generic
 
     return failure();
