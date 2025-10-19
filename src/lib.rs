@@ -26,6 +26,7 @@ pub mod dialect;
 pub mod builder;
 pub mod einsum;
 pub mod jit;
+pub mod memref;
 pub mod tensor;
 
 #[cfg(feature = "mlir")]
@@ -35,6 +36,7 @@ pub use dialect::TNDialect;
 pub use builder::TNBuilder;
 pub use einsum::EinsumExpr;
 pub use jit::TNJITCompiler;
+pub use memref::MemRefDescriptor;
 pub use tensor::Tensor;
 
 use anyhow::Result;
