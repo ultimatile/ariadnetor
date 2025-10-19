@@ -174,6 +174,29 @@ impl Tensor {
         tensor.fill(value);
         tensor
     }
+
+    /// Get pointer to the underlying data for FFI
+    ///
+    /// Returns a pointer that can be passed to JIT-compiled functions.
+    /// The pointer remains valid as long as the Tensor is not moved or dropped.
+    pub fn as_ptr(&self) -> *const f64 {
+        self.data.as_ptr()
+    }
+
+    /// Get mutable pointer to the underlying data for FFI
+    ///
+    /// Returns a mutable pointer for writing results from JIT-compiled functions.
+    /// The pointer remains valid as long as the Tensor is not moved or dropped.
+    pub fn as_mut_ptr(&mut self) -> *mut f64 {
+        self.data.as_mut_ptr()
+    }
+
+    /// Get shape as i64 slice for MLIR compatibility
+    ///
+    /// MLIR uses i64 for tensor dimensions, so we need conversion from usize.
+    pub fn shape_i64(&self) -> Vec<i64> {
+        self.shape.iter().map(|&s| s as i64).collect()
+    }
 }
 
 impl fmt::Debug for Tensor {
