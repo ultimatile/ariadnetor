@@ -447,109 +447,146 @@ impl<'c> TNJITCompiler<'c> {
     ) -> Result<()> {
         use crate::memref::MemRefDescriptor;
 
+        // Macro to generate rank-specific execution code
+        macro_rules! execute_rank_combination {
+            ($lhs_rank:expr, $rhs_rank:expr, $out_rank:expr) => {{
+                let lhs_desc = MemRefDescriptor::<$lhs_rank>::from_tensor_mut(lhs);
+                let rhs_desc = MemRefDescriptor::<$rhs_rank>::from_tensor_mut(rhs);
+                let mut out_desc = MemRefDescriptor::<$out_rank>::from_tensor_mut(result);
+
+                type FnType = unsafe extern "C" fn(
+                    *const MemRefDescriptor<$lhs_rank>,
+                    *const MemRefDescriptor<$rhs_rank>,
+                    *mut MemRefDescriptor<$out_rank>
+                );
+
+                unsafe {
+                    let f: FnType = std::mem::transmute(func_ptr);
+                    f(&lhs_desc, &rhs_desc, &mut out_desc);
+                }
+            }};
+        }
+
         // Match on all rank combinations we support
         match (lhs_rank, rhs_rank, out_rank) {
-            (1, 1, 1) => {
-                let lhs_desc = MemRefDescriptor::<1>::from_tensor_mut(lhs);
-                let rhs_desc = MemRefDescriptor::<1>::from_tensor_mut(rhs);
-                let mut out_desc = MemRefDescriptor::<1>::from_tensor_mut(result);
+            // Same rank cases (1D-10D)
+            (1, 1, 1) => execute_rank_combination!(1, 1, 1),
+            (2, 2, 2) => execute_rank_combination!(2, 2, 2),
+            (3, 3, 3) => execute_rank_combination!(3, 3, 3),
+            (4, 4, 4) => execute_rank_combination!(4, 4, 4),
+            (5, 5, 5) => execute_rank_combination!(5, 5, 5),
+            (6, 6, 6) => execute_rank_combination!(6, 6, 6),
+            (7, 7, 7) => execute_rank_combination!(7, 7, 7),
+            (8, 8, 8) => execute_rank_combination!(8, 8, 8),
+            (9, 9, 9) => execute_rank_combination!(9, 9, 9),
+            (10, 10, 10) => execute_rank_combination!(10, 10, 10),
 
-                type Fn1D = unsafe extern "C" fn(
-                    *const MemRefDescriptor<1>,
-                    *const MemRefDescriptor<1>,
-                    *mut MemRefDescriptor<1>
-                );
+            // Mixed rank: output lower than inputs (common contractions)
+            (2, 2, 1) => execute_rank_combination!(2, 2, 1),
+            (3, 3, 1) => execute_rank_combination!(3, 3, 1),
+            (3, 3, 2) => execute_rank_combination!(3, 3, 2),
+            (4, 4, 1) => execute_rank_combination!(4, 4, 1),
+            (4, 4, 2) => execute_rank_combination!(4, 4, 2),
+            (4, 4, 3) => execute_rank_combination!(4, 4, 3),
+            (5, 5, 1) => execute_rank_combination!(5, 5, 1),
+            (5, 5, 2) => execute_rank_combination!(5, 5, 2),
+            (5, 5, 3) => execute_rank_combination!(5, 5, 3),
+            (5, 5, 4) => execute_rank_combination!(5, 5, 4),
+            (6, 6, 1) => execute_rank_combination!(6, 6, 1),
+            (6, 6, 2) => execute_rank_combination!(6, 6, 2),
+            (6, 6, 3) => execute_rank_combination!(6, 6, 3),
+            (6, 6, 4) => execute_rank_combination!(6, 6, 4),
+            (6, 6, 5) => execute_rank_combination!(6, 6, 5),
+            (7, 7, 1) => execute_rank_combination!(7, 7, 1),
+            (7, 7, 2) => execute_rank_combination!(7, 7, 2),
+            (7, 7, 3) => execute_rank_combination!(7, 7, 3),
+            (7, 7, 4) => execute_rank_combination!(7, 7, 4),
+            (7, 7, 5) => execute_rank_combination!(7, 7, 5),
+            (7, 7, 6) => execute_rank_combination!(7, 7, 6),
+            (8, 8, 1) => execute_rank_combination!(8, 8, 1),
+            (8, 8, 2) => execute_rank_combination!(8, 8, 2),
+            (8, 8, 3) => execute_rank_combination!(8, 8, 3),
+            (8, 8, 4) => execute_rank_combination!(8, 8, 4),
+            (8, 8, 5) => execute_rank_combination!(8, 8, 5),
+            (8, 8, 6) => execute_rank_combination!(8, 8, 6),
+            (8, 8, 7) => execute_rank_combination!(8, 8, 7),
+            (9, 9, 1) => execute_rank_combination!(9, 9, 1),
+            (9, 9, 2) => execute_rank_combination!(9, 9, 2),
+            (9, 9, 3) => execute_rank_combination!(9, 9, 3),
+            (9, 9, 4) => execute_rank_combination!(9, 9, 4),
+            (9, 9, 5) => execute_rank_combination!(9, 9, 5),
+            (9, 9, 6) => execute_rank_combination!(9, 9, 6),
+            (9, 9, 7) => execute_rank_combination!(9, 9, 7),
+            (9, 9, 8) => execute_rank_combination!(9, 9, 8),
+            (10, 10, 1) => execute_rank_combination!(10, 10, 1),
+            (10, 10, 2) => execute_rank_combination!(10, 10, 2),
+            (10, 10, 3) => execute_rank_combination!(10, 10, 3),
+            (10, 10, 4) => execute_rank_combination!(10, 10, 4),
+            (10, 10, 5) => execute_rank_combination!(10, 10, 5),
+            (10, 10, 6) => execute_rank_combination!(10, 10, 6),
+            (10, 10, 7) => execute_rank_combination!(10, 10, 7),
+            (10, 10, 8) => execute_rank_combination!(10, 10, 8),
+            (10, 10, 9) => execute_rank_combination!(10, 10, 9),
 
-                unsafe {
-                    let f: Fn1D = std::mem::transmute(func_ptr);
-                    f(&lhs_desc, &rhs_desc, &mut out_desc);
-                }
-            }
-            (2, 2, 2) => {
-                let lhs_desc = MemRefDescriptor::<2>::from_tensor_mut(lhs);
-                let rhs_desc = MemRefDescriptor::<2>::from_tensor_mut(rhs);
-                let mut out_desc = MemRefDescriptor::<2>::from_tensor_mut(result);
+            // Mixed rank: different input ranks (3D x 4D -> 5D, etc.)
+            (2, 3, 3) => execute_rank_combination!(2, 3, 3),
+            (2, 3, 4) => execute_rank_combination!(2, 3, 4),
+            (2, 4, 4) => execute_rank_combination!(2, 4, 4),
+            (2, 4, 5) => execute_rank_combination!(2, 4, 5),
+            (2, 5, 5) => execute_rank_combination!(2, 5, 5),
+            (2, 5, 6) => execute_rank_combination!(2, 5, 6),
+            (3, 2, 3) => execute_rank_combination!(3, 2, 3),
+            (3, 2, 4) => execute_rank_combination!(3, 2, 4),
+            (3, 4, 4) => execute_rank_combination!(3, 4, 4),
+            (3, 4, 5) => execute_rank_combination!(3, 4, 5),
+            (3, 4, 6) => execute_rank_combination!(3, 4, 6),
+            (3, 5, 5) => execute_rank_combination!(3, 5, 5),
+            (3, 5, 6) => execute_rank_combination!(3, 5, 6),
+            (3, 5, 7) => execute_rank_combination!(3, 5, 7),
+            (4, 2, 4) => execute_rank_combination!(4, 2, 4),
+            (4, 2, 5) => execute_rank_combination!(4, 2, 5),
+            (4, 3, 4) => execute_rank_combination!(4, 3, 4),
+            (4, 3, 5) => execute_rank_combination!(4, 3, 5),
+            (4, 3, 6) => execute_rank_combination!(4, 3, 6),
+            (4, 5, 5) => execute_rank_combination!(4, 5, 5),
+            (4, 5, 6) => execute_rank_combination!(4, 5, 6),
+            (4, 5, 7) => execute_rank_combination!(4, 5, 7),
+            (4, 5, 8) => execute_rank_combination!(4, 5, 8),
+            (5, 2, 5) => execute_rank_combination!(5, 2, 5),
+            (5, 2, 6) => execute_rank_combination!(5, 2, 6),
+            (5, 3, 5) => execute_rank_combination!(5, 3, 5),
+            (5, 3, 6) => execute_rank_combination!(5, 3, 6),
+            (5, 3, 7) => execute_rank_combination!(5, 3, 7),
+            (5, 4, 5) => execute_rank_combination!(5, 4, 5),
+            (5, 4, 6) => execute_rank_combination!(5, 4, 6),
+            (5, 4, 7) => execute_rank_combination!(5, 4, 7),
+            (5, 4, 8) => execute_rank_combination!(5, 4, 8),
+            (5, 6, 6) => execute_rank_combination!(5, 6, 6),
+            (5, 6, 7) => execute_rank_combination!(5, 6, 7),
+            (5, 6, 8) => execute_rank_combination!(5, 6, 8),
+            (5, 6, 9) => execute_rank_combination!(5, 6, 9),
+            (6, 2, 6) => execute_rank_combination!(6, 2, 6),
+            (6, 2, 7) => execute_rank_combination!(6, 2, 7),
+            (6, 3, 6) => execute_rank_combination!(6, 3, 6),
+            (6, 3, 7) => execute_rank_combination!(6, 3, 7),
+            (6, 3, 8) => execute_rank_combination!(6, 3, 8),
+            (6, 4, 6) => execute_rank_combination!(6, 4, 6),
+            (6, 4, 7) => execute_rank_combination!(6, 4, 7),
+            (6, 4, 8) => execute_rank_combination!(6, 4, 8),
+            (6, 4, 9) => execute_rank_combination!(6, 4, 9),
+            (6, 5, 6) => execute_rank_combination!(6, 5, 6),
+            (6, 5, 7) => execute_rank_combination!(6, 5, 7),
+            (6, 5, 8) => execute_rank_combination!(6, 5, 8),
+            (6, 5, 9) => execute_rank_combination!(6, 5, 9),
+            (6, 5, 10) => execute_rank_combination!(6, 5, 10),
 
-                type Fn2D = unsafe extern "C" fn(
-                    *const MemRefDescriptor<2>,
-                    *const MemRefDescriptor<2>,
-                    *mut MemRefDescriptor<2>
-                );
-
-                unsafe {
-                    let f: Fn2D = std::mem::transmute(func_ptr);
-                    f(&lhs_desc, &rhs_desc, &mut out_desc);
-                }
-            }
-            (3, 3, 3) => {
-                let lhs_desc = MemRefDescriptor::<3>::from_tensor_mut(lhs);
-                let rhs_desc = MemRefDescriptor::<3>::from_tensor_mut(rhs);
-                let mut out_desc = MemRefDescriptor::<3>::from_tensor_mut(result);
-
-                type Fn3D = unsafe extern "C" fn(
-                    *const MemRefDescriptor<3>,
-                    *const MemRefDescriptor<3>,
-                    *mut MemRefDescriptor<3>
-                );
-
-                unsafe {
-                    let f: Fn3D = std::mem::transmute(func_ptr);
-                    f(&lhs_desc, &rhs_desc, &mut out_desc);
-                }
-            }
-            (4, 4, 4) => {
-                let lhs_desc = MemRefDescriptor::<4>::from_tensor_mut(lhs);
-                let rhs_desc = MemRefDescriptor::<4>::from_tensor_mut(rhs);
-                let mut out_desc = MemRefDescriptor::<4>::from_tensor_mut(result);
-
-                type Fn4D = unsafe extern "C" fn(
-                    *const MemRefDescriptor<4>,
-                    *const MemRefDescriptor<4>,
-                    *mut MemRefDescriptor<4>
-                );
-
-                unsafe {
-                    let f: Fn4D = std::mem::transmute(func_ptr);
-                    f(&lhs_desc, &rhs_desc, &mut out_desc);
-                }
-            }
-            // Mixed rank cases (common in contractions)
-            (2, 2, 1) => {
-                let lhs_desc = MemRefDescriptor::<2>::from_tensor_mut(lhs);
-                let rhs_desc = MemRefDescriptor::<2>::from_tensor_mut(rhs);
-                let mut out_desc = MemRefDescriptor::<1>::from_tensor_mut(result);
-
-                type FnMixed = unsafe extern "C" fn(
-                    *const MemRefDescriptor<2>,
-                    *const MemRefDescriptor<2>,
-                    *mut MemRefDescriptor<1>
-                );
-
-                unsafe {
-                    let f: FnMixed = std::mem::transmute(func_ptr);
-                    f(&lhs_desc, &rhs_desc, &mut out_desc);
-                }
-            }
-            (3, 3, 2) => {
-                let lhs_desc = MemRefDescriptor::<3>::from_tensor_mut(lhs);
-                let rhs_desc = MemRefDescriptor::<3>::from_tensor_mut(rhs);
-                let mut out_desc = MemRefDescriptor::<2>::from_tensor_mut(result);
-
-                type FnMixed = unsafe extern "C" fn(
-                    *const MemRefDescriptor<3>,
-                    *const MemRefDescriptor<3>,
-                    *mut MemRefDescriptor<2>
-                );
-
-                unsafe {
-                    let f: FnMixed = std::mem::transmute(func_ptr);
-                    f(&lhs_desc, &rhs_desc, &mut out_desc);
-                }
-            }
             _ => {
                 anyhow::bail!(
                     "Unsupported tensor rank combination: lhs={}, rhs={}, output={}. \
-                     Currently supported: (1,1,1), (2,2,2), (3,3,3), (4,4,4), (2,2,1), (3,3,2)",
+                     This rank combination has not been implemented yet. \
+                     Supported patterns: same ranks (1-10), contractions reducing rank up to 10D, \
+                     and many mixed-rank operations. If you encounter this error, the specific \
+                     combination can be added - the underlying infrastructure supports arbitrary ranks.",
                     lhs_rank, rhs_rank, out_rank
                 );
             }

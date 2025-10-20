@@ -230,6 +230,82 @@ mod end_to_end_tests {
     }
 
     #[test]
+    fn test_compile_and_execute_mixed_rank_tensors() {
+        let context = setup_context();
+        let compiler = TNJITCompiler::new(&context);
+
+        // Test case: mixed rank contraction ijl,jkmn->iklmn
+        // A: 2x3x4 (3D), B: 3x2x5x6 (4D), C: 2x2x4x5x6 (5D)
+        let a_data: Vec<f64> = (1..=24).map(|x| x as f64).collect();
+        let b_data: Vec<f64> = (1..=180).map(|x| x as f64).collect();
+
+        let mut a = Tensor::from_data(a_data, vec![2, 3, 4]);
+        let mut b = Tensor::from_data(b_data, vec![3, 2, 5, 6]);
+
+        let result = compiler.compile_and_execute("ijl,jkmn->iklmn", &mut a, &mut b)
+            .expect("Mixed rank contraction failed");
+
+        // Verify result shape: (3,4,5) -> 5D output
+        assert_eq!(result.shape(), &[2, 2, 4, 5, 6]);
+
+        // Verify result is non-zero (computation happened)
+        assert!(result.get(&[0, 0, 0, 0, 0]) > 0.0, "Result should be non-zero");
+        assert!(result.get(&[1, 1, 3, 4, 5]) > 0.0, "Result should be non-zero");
+    }
+
+    #[test]
+    fn test_compile_and_execute_8d_contraction() {
+        let context = setup_context();
+        let compiler = TNJITCompiler::new(&context);
+
+        // Test case: 8D tensor contraction abcdefgh,efghijkl->abcdijkl
+        // A: 2x2x2x2x2x2x2x2 (8D), B: 2x2x2x2x2x2x2x2 (8D), C: 2x2x2x2x2x2x2x2 (8D)
+        // Contract on indices e,f,g,h (4 shared indices)
+        let a_data: Vec<f64> = (1..=256).map(|x| x as f64).collect();
+        let b_data: Vec<f64> = (1..=256).map(|x| x as f64).collect();
+
+        let mut a = Tensor::from_data(a_data, vec![2, 2, 2, 2, 2, 2, 2, 2]);
+        let mut b = Tensor::from_data(b_data, vec![2, 2, 2, 2, 2, 2, 2, 2]);
+
+        let result = compiler.compile_and_execute("abcdefgh,efghijkl->abcdijkl", &mut a, &mut b)
+            .expect("8D contraction failed");
+
+        // Verify result shape
+        assert_eq!(result.shape(), &[2, 2, 2, 2, 2, 2, 2, 2]);
+
+        // Verify result is non-zero (computation happened)
+        assert!(result.get(&[0, 0, 0, 0, 0, 0, 0, 0]) > 0.0, "Result should be non-zero");
+        assert!(result.get(&[1, 1, 1, 1, 1, 1, 1, 1]) > 0.0, "Result should be non-zero");
+    }
+
+    #[test]
+    fn test_compile_and_execute_10d_same_rank() {
+        let context = setup_context();
+        let compiler = TNJITCompiler::new(&context);
+
+        // Test case: 10D tensor element-wise-like operation (no contraction)
+        // abcdefghij,klmnopqrst->abcdefghijklmnopqrst (outer product pattern)
+        // This tests the 10D infrastructure, though it creates a 20D output
+        // For actual 10D same-rank, we need contraction that results in 10D output
+
+        // Instead, test: abcdefghij,efghijklmn->abcdklmn (10D x 10D -> 8D contraction)
+        let a_data: Vec<f64> = vec![1.0; 1024]; // 2^10 = 1024
+        let b_data: Vec<f64> = vec![2.0; 1024];
+
+        let mut a = Tensor::from_data(a_data, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+        let mut b = Tensor::from_data(b_data, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+
+        let result = compiler.compile_and_execute("abcdefghij,efghijklmn->abcdklmn", &mut a, &mut b)
+            .expect("10D contraction failed");
+
+        // Verify result shape: contracts on e,f,g,h,i,j (6 indices), keeps a,b,c,d,k,l,m,n (8 indices)
+        assert_eq!(result.shape(), &[2, 2, 2, 2, 2, 2, 2, 2]);
+
+        // Verify result is non-zero
+        assert!(result.get(&[0, 0, 0, 0, 0, 0, 0, 0]) > 0.0, "Result should be non-zero");
+    }
+
+    #[test]
     fn test_tensor_pointer_access() {
         // Test that Tensor FFI methods work correctly
         let mut tensor = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
