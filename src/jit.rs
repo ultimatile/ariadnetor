@@ -62,13 +62,13 @@ impl<'c> TNJITCompiler<'c> {
         self.optimization_level
     }
 
-    /// Apply lowering passes to convert TN operations to executable code
+    /// Apply lowering passes to convert SCF/MemRef operations to executable LLVM IR
     ///
-    /// Pipeline: TN → LinAlg → LLVM IR
+    /// Pipeline: SCF → CF → LLVM IR
     ///
     /// # Arguments
     ///
-    /// * `module` - Module containing TN operations
+    /// * `module` - Module containing SCF and MemRef operations
     ///
     /// # Returns
     ///
@@ -76,17 +76,15 @@ impl<'c> TNJITCompiler<'c> {
     fn apply_lowering_passes(&self, module: &mut Module) -> Result<()> {
         let pass_manager = PassManager::new(self.context);
 
-        // TODO: Add TN → LinAlg conversion pass when implemented
-        // For now, we assume the module already contains LinAlg or lower-level IR
+        // Convert SCF (Structured Control Flow) to Control Flow
+        pass_manager.add_pass(pass::conversion::create_scf_to_control_flow());
 
-        // Convert LinAlg to Standard dialect
-        // pass_manager.add_pass(pass::conversion::create_linalg_to_standard());
-
-        // Convert Standard/Arith to LLVM
+        // Convert to LLVM dialect
         pass_manager.add_pass(pass::conversion::create_arith_to_llvm());
+        pass_manager.add_pass(pass::conversion::create_control_flow_to_llvm());
         pass_manager.add_pass(pass::conversion::create_func_to_llvm());
         pass_manager.add_pass(pass::conversion::create_index_to_llvm());
-        pass_manager.add_pass(pass::conversion::create_to_llvm());
+        pass_manager.add_pass(pass::conversion::create_finalize_mem_ref_to_llvm());
         pass_manager.add_pass(pass::conversion::create_reconcile_unrealized_casts());
 
         pass_manager
@@ -162,6 +160,8 @@ impl<'c> TNJITCompiler<'c> {
     /// parsing einsum notation, generating IR, JIT compiling, and executing
     /// with real tensor data.
     ///
+    /// Currently supports: matrix multiplication (ij,jk->ik)
+    ///
     /// # Arguments
     ///
     /// * `einsum_expr` - Einsum notation (e.g., "ij,jk->ik")
@@ -199,18 +199,11 @@ impl<'c> TNJITCompiler<'c> {
     pub fn compile_and_execute(
         &self,
         einsum_expr: &str,
-        lhs: &Tensor,
-        rhs: &Tensor,
+        lhs: &mut Tensor,
+        rhs: &mut Tensor,
     ) -> Result<Tensor> {
         use crate::einsum::EinsumExpr;
-        use melior::ir::{
-            Module, Location, Block, BlockLike, RegionLike,
-            r#type::{Type, RankedTensorType, FunctionType},
-            operation::OperationBuilder,
-            attribute::StringAttribute,
-            Identifier,
-        };
-        use melior::ir::attribute::TypeAttribute;
+        use melior::ir::Module;
 
         // Step 1: Parse einsum expression
         let expr = EinsumExpr::parse(einsum_expr)?;
@@ -220,113 +213,113 @@ impl<'c> TNJITCompiler<'c> {
         let rhs_shape = rhs.shape_i64();
         let output_shape = expr.infer_output_shape(&lhs_shape, &rhs_shape)?;
 
-        // Step 3: Build module with wrapper function
-        let location = Location::unknown(self.context);
-        let module = Module::new(location);
-
-        let f64_type = Type::float64(self.context);
-        let lhs_type = RankedTensorType::new(
-            &lhs_shape.iter().map(|&s| s as u64).collect::<Vec<_>>(),
-            f64_type,
-            None
-        );
-        let rhs_type = RankedTensorType::new(
-            &rhs_shape.iter().map(|&s| s as u64).collect::<Vec<_>>(),
-            f64_type,
-            None
-        );
-        let result_type = RankedTensorType::new(
-            &output_shape.iter().map(|&s| s as u64).collect::<Vec<_>>(),
-            f64_type,
-            None
-        );
-
-        // Create function type
-        let func_type = FunctionType::new(
-            self.context,
-            &[lhs_type.into(), rhs_type.into()],
-            &[result_type.into()]
-        );
-
-        // Build function
-        let func_name = StringAttribute::new(self.context, "main");
-        let func_name_id = Identifier::new(self.context, "sym_name");
-        let func_type_attr = TypeAttribute::new(func_type.into());
-        let func_type_id = Identifier::new(self.context, "function_type");
-
-        // Allow unregistered dialects (TODO: properly register TN dialect)
-        unsafe {
-            mlir_sys::mlirContextSetAllowUnregisteredDialects(self.context.to_raw(), true);
+        // Step 3: Verify this is matrix multiplication (currently the only supported pattern)
+        if !expr.is_matrix_multiply() {
+            anyhow::bail!(
+                "Only matrix multiplication (ij,jk->ik) is currently supported, got: {}",
+                einsum_expr
+            );
         }
 
-        let region = {
-            let region = melior::ir::Region::new();
-            let block = Block::new(&[
-                (lhs_type.into(), location),
-                (rhs_type.into(), location),
-            ]);
+        // Step 4: Build module with matrix multiplication loops
+        // Generate explicit loops instead of linalg.matmul since linalg lowering passes
+        // aren't available in melior yet
+        let m = lhs_shape[0];
+        let k = lhs_shape[1];
+        let n = rhs_shape[1];
 
-            let lhs_val = block.argument(0)?.into();
-            let rhs_val = block.argument(1)?.into();
+        let mlir_source = format!(
+            r#"
+            module {{
+                func.func @matmul(%arg0: memref<{}x{}xf64>, %arg1: memref<{}x{}xf64>, %arg2: memref<{}x{}xf64>) attributes {{llvm.emit_c_interface}} {{
+                    %c0 = arith.constant 0 : index
+                    %c1 = arith.constant 1 : index
+                    %c_m = arith.constant {} : index
+                    %c_k = arith.constant {} : index
+                    %c_n = arith.constant {} : index
+                    %zero = arith.constant 0.0 : f64
 
-            // Build TN contract operation directly (not using TNBuilder's module)
-            let lhs_indices: String = expr.lhs_indices().iter().collect();
-            let rhs_indices: String = expr.rhs_indices().iter().collect();
-            let out_indices: String = expr.out_indices().iter().collect();
-            let indices_str = format!("{},{}->{}", lhs_indices, rhs_indices, out_indices);
+                    // Initialize output to zero
+                    scf.for %i = %c0 to %c_m step %c1 {{
+                        scf.for %j = %c0 to %c_n step %c1 {{
+                            memref.store %zero, %arg2[%i, %j] : memref<{}x{}xf64>
+                        }}
+                    }}
 
-            let indices_attr = StringAttribute::new(self.context, &indices_str);
-            let indices_id = Identifier::new(self.context, "indices");
+                    // Compute C[i,j] = sum_k A[i,k] * B[k,j]
+                    scf.for %i = %c0 to %c_m step %c1 {{
+                        scf.for %j = %c0 to %c_n step %c1 {{
+                            scf.for %k_idx = %c0 to %c_k step %c1 {{
+                                %a = memref.load %arg0[%i, %k_idx] : memref<{}x{}xf64>
+                                %b = memref.load %arg1[%k_idx, %j] : memref<{}x{}xf64>
+                                %c_old = memref.load %arg2[%i, %j] : memref<{}x{}xf64>
+                                %prod = arith.mulf %a, %b : f64
+                                %c_new = arith.addf %c_old, %prod : f64
+                                memref.store %c_new, %arg2[%i, %j] : memref<{}x{}xf64>
+                            }}
+                        }}
+                    }}
 
-            let contract_op = OperationBuilder::new("tn.contract", location)
-                .add_operands(&[lhs_val, rhs_val])
-                .add_attributes(&[(indices_id, indices_attr.into())])
-                .add_results(&[result_type.into()])
-                .build()?;
+                    return
+                }}
+            }}
+            "#,
+            m, k, k, n, m, n,
+            m, k, n,
+            m, n,
+            m, k, k, n, m, n, m, n
+        );
 
-            // IMPORTANT: Append operation to block FIRST, then get result
-            let contract_ref = block.append_operation(contract_op);
-            let result = contract_ref.result(0)?.into();
+        let mut module = Module::parse(self.context, &mlir_source)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse LinAlg module"))?;
 
-            // Add return
-            let return_op = OperationBuilder::new("func.return", location)
-                .add_operands(&[result])
-                .build()?;
-
-            block.append_operation(return_op);
-            region.append_block(block);
-            region
-        };
-
-        let func_op = OperationBuilder::new("func.func", location)
-            .add_attributes(&[
-                (func_name_id, func_name.into()),
-                (func_type_id, func_type_attr.into()),
-            ])
-            .add_regions([region])
-            .build()?;
-
-        module.body().append_operation(func_op);
-
-        // Verify module
+        // Verify module before lowering
         if !module.as_operation().verify() {
-            anyhow::bail!("Generated module failed verification");
+            anyhow::bail!("Generated module failed verification before lowering");
         }
 
-        // Step 4: Apply lowering passes
-        // Note: Lowering to LLVM is skipped for now due to stability issues
-        // The TN IR generation is complete and verified
+        // Step 5: Apply lowering passes to LLVM
+        self.apply_lowering_passes(&mut module)?;
 
-        // For now, return a placeholder indicating the pipeline is incomplete
-        let output_size: usize = output_shape.iter().map(|&s| s as usize).product();
-        let _result_tensor = Tensor::new(output_shape.iter().map(|&s| s as usize).collect());
+        // Verify module after lowering
+        if !module.as_operation().verify() {
+            anyhow::bail!("Module verification failed after lowering");
+        }
 
-        anyhow::bail!(
-            "JIT execution with tensor data not yet fully implemented. \
-             Module generation successful. Expected output shape: {:?}, size: {}. \
-             ExecutionEngine invocation with MemRef descriptors requires additional FFI work.",
-            output_shape, output_size
-        )
+        // Step 6: Create execution engine
+        let engine = self.create_execution_engine(&module);
+
+        // Step 7: Execute with MemRef descriptors
+        use crate::memref::MemRefDescriptor;
+
+        // Create input MemRef descriptors (2D matrices)
+        let lhs_desc = MemRefDescriptor::<2>::from_tensor_mut(lhs);
+        let rhs_desc = MemRefDescriptor::<2>::from_tensor_mut(rhs);
+
+        // Create output tensor and descriptor (2D matrix)
+        let mut result_tensor = Tensor::new(output_shape.iter().map(|&s| s as usize).collect());
+        let mut result_desc = MemRefDescriptor::<2>::from_tensor_mut(&mut result_tensor);
+
+        // Look up the C interface wrapper function
+        let wrapper_name = "_mlir_ciface_matmul";
+        let func_ptr = engine.lookup(wrapper_name);
+
+        // Call the function using direct function pointer
+        // Function signature: (input1, input2, output) -> ()
+        type MatmulFn = unsafe extern "C" fn(
+            *const MemRefDescriptor<2>,
+            *const MemRefDescriptor<2>,
+            *mut MemRefDescriptor<2>
+        );
+
+        unsafe {
+            let matmul_fn: MatmulFn = std::mem::transmute(func_ptr);
+            matmul_fn(&lhs_desc, &rhs_desc, &mut result_desc);
+        }
+
+        // Step 8: Return result
+        // The result_tensor is modified in place through the MemRefDescriptor
+        Ok(result_tensor)
     }
 }
 
