@@ -150,6 +150,8 @@ mod end_to_end_tests {
         let compiler = TNJITCompiler::new(&context);
 
         // Create batched tensors (batch=2, 2x3 and 3x2 matrices)
+        // Batch 0: [[1,2,3], [4,5,6]] @ [[1,2], [3,4], [5,6]]
+        // Batch 1: [[7,8,9], [10,11,12]] @ [[7,8], [9,10], [11,12]]
         let mut a = Tensor::from_data(
             vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
             vec![2, 2, 3]
@@ -159,16 +161,72 @@ mod end_to_end_tests {
             vec![2, 3, 2]
         );
 
-        let result = compiler.compile_and_execute("bij,bjk->bik", &mut a, &mut b);
+        let result = compiler.compile_and_execute("bij,bjk->bik", &mut a, &mut b)
+            .expect("Batch matrix multiplication failed");
 
-        // This is not matrix multiplication (has batch dimension), so should fail
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("matrix multiplication") || err_msg.contains("ij,jk->ik"),
-            "Expected error about only supporting matrix multiplication, got: {}",
-            err_msg
-        );
+        // Verify result shape
+        assert_eq!(result.shape(), &[2, 2, 2]);
+
+        // Verify numerical correctness for batch 0
+        // C[0,0,0] = 1*1 + 2*3 + 3*5 = 1 + 6 + 15 = 22
+        assert_eq!(result.get(&[0, 0, 0]), 22.0, "Batch 0, C[0,0] mismatch");
+
+        // C[0,0,1] = 1*2 + 2*4 + 3*6 = 2 + 8 + 18 = 28
+        assert_eq!(result.get(&[0, 0, 1]), 28.0, "Batch 0, C[0,1] mismatch");
+
+        // C[0,1,0] = 4*1 + 5*3 + 6*5 = 4 + 15 + 30 = 49
+        assert_eq!(result.get(&[0, 1, 0]), 49.0, "Batch 0, C[1,0] mismatch");
+
+        // C[0,1,1] = 4*2 + 5*4 + 6*6 = 8 + 20 + 36 = 64
+        assert_eq!(result.get(&[0, 1, 1]), 64.0, "Batch 0, C[1,1] mismatch");
+    }
+
+    #[test]
+    fn test_compile_and_execute_higher_dimensional_contraction() {
+        let context = setup_context();
+        let compiler = TNJITCompiler::new(&context);
+
+        // Test case: 3D tensor contraction ijk,jkl->il
+        // A: 2x3x4, B: 3x4x5, C: 2x5
+        // Create simple test data
+        let a_data: Vec<f64> = (1..=24).map(|x| x as f64).collect();
+        let b_data: Vec<f64> = (1..=60).map(|x| x as f64).collect();
+
+        let mut a = Tensor::from_data(a_data, vec![2, 3, 4]);
+        let mut b = Tensor::from_data(b_data, vec![3, 4, 5]);
+
+        let result = compiler.compile_and_execute("ijk,jkl->il", &mut a, &mut b)
+            .expect("Higher dimensional contraction failed");
+
+        // Verify result shape
+        assert_eq!(result.shape(), &[2, 5]);
+
+        // Verify result is non-zero (actual computation happened)
+        assert!(result.get(&[0, 0]) > 0.0, "Result should be non-zero");
+        assert!(result.get(&[1, 4]) > 0.0, "Result should be non-zero");
+    }
+
+    #[test]
+    fn test_compile_and_execute_4d_contraction() {
+        let context = setup_context();
+        let compiler = TNJITCompiler::new(&context);
+
+        // Test case: 4D tensor contraction abcd,cdef->abef
+        // A: 2x2x2x2, B: 2x2x2x2, C: 2x2x2x2
+        let a_data: Vec<f64> = (1..=16).map(|x| x as f64).collect();
+        let b_data: Vec<f64> = (1..=16).map(|x| x as f64).collect();
+
+        let mut a = Tensor::from_data(a_data, vec![2, 2, 2, 2]);
+        let mut b = Tensor::from_data(b_data, vec![2, 2, 2, 2]);
+
+        let result = compiler.compile_and_execute("abcd,cdef->abef", &mut a, &mut b)
+            .expect("4D contraction failed");
+
+        // Verify result shape
+        assert_eq!(result.shape(), &[2, 2, 2, 2]);
+
+        // Verify result is non-zero
+        assert!(result.get(&[0, 0, 0, 0]) > 0.0, "Result should be non-zero");
     }
 
     #[test]

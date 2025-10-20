@@ -3,6 +3,7 @@
 //! Provides JIT compilation of tensor network operations with dynamic shape support.
 
 use anyhow::Result;
+use std::collections::HashMap;
 
 #[cfg(feature = "mlir")]
 use crate::tensor::Tensor;
@@ -60,6 +61,179 @@ impl<'c> TNJITCompiler<'c> {
     /// Get the current optimization level
     pub fn optimization_level(&self) -> usize {
         self.optimization_level
+    }
+
+    /// Generate MLIR IR for arbitrary einsum contraction patterns
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - Parsed einsum expression
+    /// * `lhs_shape` - Shape of left-hand side tensor
+    /// * `rhs_shape` - Shape of right-hand side tensor
+    /// * `output_shape` - Shape of output tensor
+    ///
+    /// # Returns
+    ///
+    /// MLIR module source code as a string
+    fn generate_einsum_mlir(
+        &self,
+        expr: &crate::einsum::EinsumExpr,
+        lhs_shape: &[i64],
+        rhs_shape: &[i64],
+        output_shape: &[i64],
+    ) -> Result<String> {
+        use std::collections::HashMap;
+
+        // Build index -> dimension mapping
+        let mut index_dims: HashMap<char, i64> = HashMap::new();
+
+        for (idx, &dim) in expr.lhs_indices().iter().zip(lhs_shape.iter()) {
+            index_dims.insert(*idx, dim);
+        }
+
+        for (idx, &dim) in expr.rhs_indices().iter().zip(rhs_shape.iter()) {
+            if let Some(&existing_dim) = index_dims.get(idx) {
+                if existing_dim != dim {
+                    anyhow::bail!(
+                        "Dimension mismatch for index '{}': {} vs {}",
+                        idx, existing_dim, dim
+                    );
+                }
+            } else {
+                index_dims.insert(*idx, dim);
+            }
+        }
+
+        // Identify output and contracted indices
+        let output_indices = expr.out_indices();
+        let contracted_indices = expr.contracted_indices();
+
+        // Generate memref type strings
+        let lhs_type = self.generate_memref_type(lhs_shape);
+        let rhs_type = self.generate_memref_type(rhs_shape);
+        let output_type = self.generate_memref_type(output_shape);
+
+        // Generate constant declarations for loop bounds
+        let mut constants = String::from("    %c0 = arith.constant 0 : index\n");
+        constants.push_str("    %c1 = arith.constant 1 : index\n");
+        for (idx, &dim) in &index_dims {
+            constants.push_str(&format!("    %c_{} = arith.constant {} : index\n", idx, dim));
+        }
+        constants.push_str("    %zero = arith.constant 0.0 : f64\n");
+
+        // Generate initialization loops
+        let init_loops = self.generate_nested_loops(
+            output_indices,
+            &index_dims,
+            &format!("memref.store %zero, %arg2[{}] : {}",
+                self.generate_index_list(output_indices),
+                output_type)
+        );
+
+        // Generate computation loops
+        let lhs_access = self.generate_index_list(expr.lhs_indices());
+        let rhs_access = self.generate_index_list(expr.rhs_indices());
+        let out_access = self.generate_index_list(output_indices);
+
+        let compute_body = format!(
+            "      %lhs_val = memref.load %arg0[{}] : {}\n\
+             %rhs_val = memref.load %arg1[{}] : {}\n\
+             %out_old = memref.load %arg2[{}] : {}\n\
+             %prod = arith.mulf %lhs_val, %rhs_val : f64\n\
+             %out_new = arith.addf %out_old, %prod : f64\n\
+             memref.store %out_new, %arg2[{}] : {}",
+            lhs_access, lhs_type,
+            rhs_access, rhs_type,
+            out_access, output_type,
+            out_access, output_type
+        );
+
+        // Combine output and contracted indices for full loop nest
+        let mut all_loop_indices = output_indices.to_vec();
+        all_loop_indices.extend(&contracted_indices);
+
+        let compute_loops = self.generate_nested_loops(
+            &all_loop_indices,
+            &index_dims,
+            &compute_body
+        );
+
+        // Assemble the complete module
+        let mlir_source = format!(
+            r#"
+            module {{
+                func.func @einsum_contract(%arg0: {}, %arg1: {}, %arg2: {}) attributes {{llvm.emit_c_interface}} {{
+{}
+                    // Initialize output to zero
+{}
+                    // Compute tensor contraction
+{}
+                    return
+                }}
+            }}
+            "#,
+            lhs_type, rhs_type, output_type,
+            constants,
+            init_loops,
+            compute_loops
+        );
+
+        Ok(mlir_source)
+    }
+
+    /// Generate memref type string from shape
+    fn generate_memref_type(&self, shape: &[i64]) -> String {
+        let dims = shape.iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("x");
+        format!("memref<{}xf64>", dims)
+    }
+
+    /// Generate index access list for memref
+    fn generate_index_list(&self, indices: &[char]) -> String {
+        indices.iter()
+            .map(|idx| format!("%{}", idx))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Generate nested SCF for loops
+    fn generate_nested_loops(
+        &self,
+        indices: &[char],
+        _index_dims: &HashMap<char, i64>,
+        body: &str,
+    ) -> String {
+        if indices.is_empty() {
+            return format!("    {}\n", body);
+        }
+
+        let mut result = String::new();
+        let indent = "    ";
+
+        // Generate nested loops
+        for (depth, &idx) in indices.iter().enumerate() {
+            let loop_indent = indent.repeat(depth + 1);
+            result.push_str(&format!(
+                "{}scf.for %{} = %c0 to %c_{} step %c1 {{\n",
+                loop_indent, idx, idx
+            ));
+        }
+
+        // Add body with proper indentation
+        let body_indent = indent.repeat(indices.len() + 1);
+        for line in body.lines() {
+            result.push_str(&format!("{}{}\n", body_indent, line.trim()));
+        }
+
+        // Close loops
+        for depth in (0..indices.len()).rev() {
+            let loop_indent = indent.repeat(depth + 1);
+            result.push_str(&format!("{}}}\n", loop_indent));
+        }
+
+        result
     }
 
     /// Apply lowering passes to convert SCF/MemRef operations to executable LLVM IR
@@ -213,62 +387,8 @@ impl<'c> TNJITCompiler<'c> {
         let rhs_shape = rhs.shape_i64();
         let output_shape = expr.infer_output_shape(&lhs_shape, &rhs_shape)?;
 
-        // Step 3: Verify this is matrix multiplication (currently the only supported pattern)
-        if !expr.is_matrix_multiply() {
-            anyhow::bail!(
-                "Only matrix multiplication (ij,jk->ik) is currently supported, got: {}",
-                einsum_expr
-            );
-        }
-
-        // Step 4: Build module with matrix multiplication loops
-        // Generate explicit loops instead of linalg.matmul since linalg lowering passes
-        // aren't available in melior yet
-        let m = lhs_shape[0];
-        let k = lhs_shape[1];
-        let n = rhs_shape[1];
-
-        let mlir_source = format!(
-            r#"
-            module {{
-                func.func @matmul(%arg0: memref<{}x{}xf64>, %arg1: memref<{}x{}xf64>, %arg2: memref<{}x{}xf64>) attributes {{llvm.emit_c_interface}} {{
-                    %c0 = arith.constant 0 : index
-                    %c1 = arith.constant 1 : index
-                    %c_m = arith.constant {} : index
-                    %c_k = arith.constant {} : index
-                    %c_n = arith.constant {} : index
-                    %zero = arith.constant 0.0 : f64
-
-                    // Initialize output to zero
-                    scf.for %i = %c0 to %c_m step %c1 {{
-                        scf.for %j = %c0 to %c_n step %c1 {{
-                            memref.store %zero, %arg2[%i, %j] : memref<{}x{}xf64>
-                        }}
-                    }}
-
-                    // Compute C[i,j] = sum_k A[i,k] * B[k,j]
-                    scf.for %i = %c0 to %c_m step %c1 {{
-                        scf.for %j = %c0 to %c_n step %c1 {{
-                            scf.for %k_idx = %c0 to %c_k step %c1 {{
-                                %a = memref.load %arg0[%i, %k_idx] : memref<{}x{}xf64>
-                                %b = memref.load %arg1[%k_idx, %j] : memref<{}x{}xf64>
-                                %c_old = memref.load %arg2[%i, %j] : memref<{}x{}xf64>
-                                %prod = arith.mulf %a, %b : f64
-                                %c_new = arith.addf %c_old, %prod : f64
-                                memref.store %c_new, %arg2[%i, %j] : memref<{}x{}xf64>
-                            }}
-                        }}
-                    }}
-
-                    return
-                }}
-            }}
-            "#,
-            m, k, k, n, m, n,
-            m, k, n,
-            m, n,
-            m, k, k, n, m, n, m, n
-        );
+        // Step 3: Build module with general einsum contraction loops
+        let mlir_source = self.generate_einsum_mlir(&expr, &lhs_shape, &rhs_shape, &output_shape)?;
 
         let mut module = Module::parse(self.context, &mlir_source)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse LinAlg module"))?;
@@ -290,36 +410,152 @@ impl<'c> TNJITCompiler<'c> {
         let engine = self.create_execution_engine(&module);
 
         // Step 7: Execute with MemRef descriptors
-        use crate::memref::MemRefDescriptor;
-
-        // Create input MemRef descriptors (2D matrices)
-        let lhs_desc = MemRefDescriptor::<2>::from_tensor_mut(lhs);
-        let rhs_desc = MemRefDescriptor::<2>::from_tensor_mut(rhs);
-
-        // Create output tensor and descriptor (2D matrix)
         let mut result_tensor = Tensor::new(output_shape.iter().map(|&s| s as usize).collect());
-        let mut result_desc = MemRefDescriptor::<2>::from_tensor_mut(&mut result_tensor);
 
         // Look up the C interface wrapper function
-        let wrapper_name = "_mlir_ciface_matmul";
+        let wrapper_name = "_mlir_ciface_einsum_contract";
         let func_ptr = engine.lookup(wrapper_name);
 
-        // Call the function using direct function pointer
-        // Function signature: (input1, input2, output) -> ()
-        type MatmulFn = unsafe extern "C" fn(
-            *const MemRefDescriptor<2>,
-            *const MemRefDescriptor<2>,
-            *mut MemRefDescriptor<2>
-        );
+        // Call function with appropriate rank-specific descriptors
+        let lhs_rank = lhs_shape.len();
+        let rhs_rank = rhs_shape.len();
+        let out_rank = output_shape.len();
 
-        unsafe {
-            let matmul_fn: MatmulFn = std::mem::transmute(func_ptr);
-            matmul_fn(&lhs_desc, &rhs_desc, &mut result_desc);
+        // Dispatch based on tensor ranks
+        self.execute_with_memref(
+            func_ptr,
+            lhs, rhs, &mut result_tensor,
+            lhs_rank, rhs_rank, out_rank
+        )?;
+
+        Ok(result_tensor)
+    }
+
+    /// Execute JIT-compiled function with MemRef descriptors
+    ///
+    /// Dispatches to rank-specific implementations based on tensor ranks
+    #[allow(clippy::too_many_arguments)]
+    fn execute_with_memref(
+        &self,
+        func_ptr: *mut (),
+        lhs: &mut Tensor,
+        rhs: &mut Tensor,
+        result: &mut Tensor,
+        lhs_rank: usize,
+        rhs_rank: usize,
+        out_rank: usize,
+    ) -> Result<()> {
+        use crate::memref::MemRefDescriptor;
+
+        // Match on all rank combinations we support
+        match (lhs_rank, rhs_rank, out_rank) {
+            (1, 1, 1) => {
+                let lhs_desc = MemRefDescriptor::<1>::from_tensor_mut(lhs);
+                let rhs_desc = MemRefDescriptor::<1>::from_tensor_mut(rhs);
+                let mut out_desc = MemRefDescriptor::<1>::from_tensor_mut(result);
+
+                type Fn1D = unsafe extern "C" fn(
+                    *const MemRefDescriptor<1>,
+                    *const MemRefDescriptor<1>,
+                    *mut MemRefDescriptor<1>
+                );
+
+                unsafe {
+                    let f: Fn1D = std::mem::transmute(func_ptr);
+                    f(&lhs_desc, &rhs_desc, &mut out_desc);
+                }
+            }
+            (2, 2, 2) => {
+                let lhs_desc = MemRefDescriptor::<2>::from_tensor_mut(lhs);
+                let rhs_desc = MemRefDescriptor::<2>::from_tensor_mut(rhs);
+                let mut out_desc = MemRefDescriptor::<2>::from_tensor_mut(result);
+
+                type Fn2D = unsafe extern "C" fn(
+                    *const MemRefDescriptor<2>,
+                    *const MemRefDescriptor<2>,
+                    *mut MemRefDescriptor<2>
+                );
+
+                unsafe {
+                    let f: Fn2D = std::mem::transmute(func_ptr);
+                    f(&lhs_desc, &rhs_desc, &mut out_desc);
+                }
+            }
+            (3, 3, 3) => {
+                let lhs_desc = MemRefDescriptor::<3>::from_tensor_mut(lhs);
+                let rhs_desc = MemRefDescriptor::<3>::from_tensor_mut(rhs);
+                let mut out_desc = MemRefDescriptor::<3>::from_tensor_mut(result);
+
+                type Fn3D = unsafe extern "C" fn(
+                    *const MemRefDescriptor<3>,
+                    *const MemRefDescriptor<3>,
+                    *mut MemRefDescriptor<3>
+                );
+
+                unsafe {
+                    let f: Fn3D = std::mem::transmute(func_ptr);
+                    f(&lhs_desc, &rhs_desc, &mut out_desc);
+                }
+            }
+            (4, 4, 4) => {
+                let lhs_desc = MemRefDescriptor::<4>::from_tensor_mut(lhs);
+                let rhs_desc = MemRefDescriptor::<4>::from_tensor_mut(rhs);
+                let mut out_desc = MemRefDescriptor::<4>::from_tensor_mut(result);
+
+                type Fn4D = unsafe extern "C" fn(
+                    *const MemRefDescriptor<4>,
+                    *const MemRefDescriptor<4>,
+                    *mut MemRefDescriptor<4>
+                );
+
+                unsafe {
+                    let f: Fn4D = std::mem::transmute(func_ptr);
+                    f(&lhs_desc, &rhs_desc, &mut out_desc);
+                }
+            }
+            // Mixed rank cases (common in contractions)
+            (2, 2, 1) => {
+                let lhs_desc = MemRefDescriptor::<2>::from_tensor_mut(lhs);
+                let rhs_desc = MemRefDescriptor::<2>::from_tensor_mut(rhs);
+                let mut out_desc = MemRefDescriptor::<1>::from_tensor_mut(result);
+
+                type FnMixed = unsafe extern "C" fn(
+                    *const MemRefDescriptor<2>,
+                    *const MemRefDescriptor<2>,
+                    *mut MemRefDescriptor<1>
+                );
+
+                unsafe {
+                    let f: FnMixed = std::mem::transmute(func_ptr);
+                    f(&lhs_desc, &rhs_desc, &mut out_desc);
+                }
+            }
+            (3, 3, 2) => {
+                let lhs_desc = MemRefDescriptor::<3>::from_tensor_mut(lhs);
+                let rhs_desc = MemRefDescriptor::<3>::from_tensor_mut(rhs);
+                let mut out_desc = MemRefDescriptor::<2>::from_tensor_mut(result);
+
+                type FnMixed = unsafe extern "C" fn(
+                    *const MemRefDescriptor<3>,
+                    *const MemRefDescriptor<3>,
+                    *mut MemRefDescriptor<2>
+                );
+
+                unsafe {
+                    let f: FnMixed = std::mem::transmute(func_ptr);
+                    f(&lhs_desc, &rhs_desc, &mut out_desc);
+                }
+            }
+            _ => {
+                anyhow::bail!(
+                    "Unsupported tensor rank combination: lhs={}, rhs={}, output={}. \
+                     Currently supported: (1,1,1), (2,2,2), (3,3,3), (4,4,4), (2,2,1), (3,3,2)",
+                    lhs_rank, rhs_rank, out_rank
+                );
+            }
         }
 
-        // Step 8: Return result
-        // The result_tensor is modified in place through the MemRefDescriptor
-        Ok(result_tensor)
+        Ok(())
     }
 }
 
