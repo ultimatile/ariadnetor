@@ -13,12 +13,12 @@ melior = "0.25"
 mlir-sys = "0.5"
 
 # Linear algebra
-faer = "0.19"
+faer = "0.23"
 hptt = { path = "../hptt-rs" }
 
 # Utilities
 anyhow = "1.0"
-lru = "0.12"
+lru = "0.16"
 
 # Build
 cmake = "0.1"
