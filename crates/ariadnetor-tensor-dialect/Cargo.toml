@@ -1,0 +1,22 @@
+[package]
+name = "ariadnetor-tensor-dialect"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MLIR Tensor Dialect for Ariadnetor"
+
+[dependencies]
+melior = { workspace = true, optional = true }
+mlir-sys = { workspace = true, optional = true }
+anyhow = { workspace = true }
+
+[build-dependencies]
+cmake = { workspace = true }
+
+[features]
+default = []
+mlir = ["melior", "mlir-sys"]
+
+[lib]
+name = "ariadnetor_tensor_dialect"
+path = "src/lib.rs"

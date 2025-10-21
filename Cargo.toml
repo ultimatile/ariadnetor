@@ -1,26 +1,27 @@
-[package]
-name = "tn-mlir"
+[workspace]
+members = ["crates/ariadnetor-tensor-dialect", "crates/ariadnetor"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
-edition = "2021"
-authors = ["Tensor Network Team"]
-description = "Distributed Tensor Network Library with MLIR Compilation"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 
-[dependencies]
-melior = { version = "0.25", optional = true }
-mlir-sys = { version = "0.5", optional = true }
-anyhow = "1.0"
+[workspace.dependencies]
+# MLIR
+melior = "0.25"
+mlir-sys = "0.5"
 
-[build-dependencies]
+# Linear algebra
+faer = "0.19"
+hptt = { path = "../hptt-rs" }
+
+# Utilities
+anyhow = "1.0"
+lru = "0.12"
+
+# Build
 cmake = "0.1"
 
-[features]
-default = []
-mlir = ["melior", "mlir-sys"]
-
-[dev-dependencies]
+# Dev dependencies
 approx = "0.5"
-
-[lib]
-name = "tn_mlir"
-path = "src/lib.rs"
