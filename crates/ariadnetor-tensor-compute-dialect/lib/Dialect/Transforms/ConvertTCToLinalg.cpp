@@ -1,11 +1,11 @@
-//===- ConvertTNToLinalg.cpp - Convert TN to LinAlg ------------*- C++ -*-===//
+//===- ConvertTCToLinalg.cpp - Convert TC to LinAlg ------------*- C++ -*-===//
 //
-// Tensor Network Compute Dialect - Conversion to LinAlg
+// Tensor Compute Dialect - Conversion to LinAlg
 //
 //===----------------------------------------------------------------------===//
 
-#include "tn-compute/Dialect/IR/TNDialect.h"
-#include "tn-compute/Dialect/Transforms/Passes.h"
+#include "tensor-compute/Dialect/IR/TCDialect.h"
+#include "tensor-compute/Dialect/Transforms/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -15,10 +15,10 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
-using namespace mlir::tn;
+using namespace mlir::tc;
 
 //===----------------------------------------------------------------------===//
-// Pattern: TN Contract to LinAlg MatMul
+// Pattern: TC Contract to LinAlg MatMul
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -138,7 +138,7 @@ struct SVDOpToRuntimeCallPattern : public OpRewritePattern<SVDOp> {
     auto context = rewriter.getContext();
 
     // Declare runtime function signature:
-    // func @tn_runtime_svd(tensor<?x?xf64>, i64, f64)
+    // func @tc_runtime_svd(tensor<?x?xf64>, i64, f64)
     //     -> (tensor<?x?xf64>, tensor<?xf64>, tensor<?x?xf64>)
 
     auto module = op->getParentOfType<ModuleOp>();
@@ -146,8 +146,8 @@ struct SVDOpToRuntimeCallPattern : public OpRewritePattern<SVDOp> {
 
     // Check if function already declared
     FlatSymbolRefAttr funcRef;
-    if (auto func = symbolTable.lookup<func::FuncOp>("tn_runtime_svd")) {
-      funcRef = SymbolRefAttr::get(context, "tn_runtime_svd");
+    if (auto func = symbolTable.lookup<func::FuncOp>("tc_runtime_svd")) {
+      funcRef = SymbolRefAttr::get(context, "tc_runtime_svd");
     } else {
       // Declare the function
       auto f64Type = Float64Type::get(context);
@@ -164,10 +164,10 @@ struct SVDOpToRuntimeCallPattern : public OpRewritePattern<SVDOp> {
           {uType, sType, vType}          // U, S, V
       );
 
-      auto funcOp = func::FuncOp::create(loc, "tn_runtime_svd", funcType);
+      auto funcOp = func::FuncOp::create(loc, "tc_runtime_svd", funcType);
       funcOp.setPrivate();
       symbolTable.insert(funcOp);
-      funcRef = SymbolRefAttr::get(context, "tn_runtime_svd");
+      funcRef = SymbolRefAttr::get(context, "tc_runtime_svd");
     }
 
     // Create function call
@@ -207,11 +207,11 @@ struct QROpToRuntimeCallPattern : public OpRewritePattern<QROp> {
     auto module = op->getParentOfType<ModuleOp>();
     auto symbolTable = SymbolTable(module);
 
-    // Declare runtime function: func @tn_runtime_qr(tensor<?x?xf64>)
+    // Declare runtime function: func @tc_runtime_qr(tensor<?x?xf64>)
     //                                -> (tensor<?x?xf64>, tensor<?x?xf64>)
     FlatSymbolRefAttr funcRef;
-    if (auto func = symbolTable.lookup<func::FuncOp>("tn_runtime_qr")) {
-      funcRef = SymbolRefAttr::get(context, "tn_runtime_qr");
+    if (auto func = symbolTable.lookup<func::FuncOp>("tc_runtime_qr")) {
+      funcRef = SymbolRefAttr::get(context, "tc_runtime_qr");
     } else {
       auto inputType = op.getInput().getType();
       auto qType = op.getQ().getType();
@@ -220,10 +220,10 @@ struct QROpToRuntimeCallPattern : public OpRewritePattern<QROp> {
       auto funcType =
           FunctionType::get(context, {inputType}, {qType, rType});
 
-      auto funcOp = func::FuncOp::create(loc, "tn_runtime_qr", funcType);
+      auto funcOp = func::FuncOp::create(loc, "tc_runtime_qr", funcType);
       funcOp.setPrivate();
       symbolTable.insert(funcOp);
-      funcRef = SymbolRefAttr::get(context, "tn_runtime_qr");
+      funcRef = SymbolRefAttr::get(context, "tc_runtime_qr");
     }
 
     auto callOp = rewriter.create<func::CallOp>(loc, funcRef,
@@ -239,19 +239,19 @@ struct QROpToRuntimeCallPattern : public OpRewritePattern<QROp> {
 // ConvertTNToLinalg Pass
 //===----------------------------------------------------------------------===//
 
-struct ConvertTNToLinalgPass
-    : public PassWrapper<ConvertTNToLinalgPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTNToLinalgPass)
+struct ConvertTCToLinalgPass
+    : public PassWrapper<ConvertTCToLinalgPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTCToLinalgPass)
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect, tensor::TensorDialect,
                     arith::ArithDialect, func::FuncDialect>();
   }
 
-  StringRef getArgument() const final { return "convert-tn-to-linalg"; }
+  StringRef getArgument() const final { return "convert-tc-to-linalg"; }
 
   StringRef getDescription() const final {
-    return "Convert TN dialect operations to LinAlg dialect";
+    return "Convert TC dialect operations to LinAlg dialect";
   }
 
   void runOnOperation() override {
@@ -265,7 +265,7 @@ struct ConvertTNToLinalgPass
     ConversionTarget target(*context);
     target.addLegalDialect<linalg::LinalgDialect, tensor::TensorDialect,
                            arith::ArithDialect, func::FuncDialect>();
-    target.addIllegalDialect<TNDialect>();
+    target.addIllegalDialect<TCDialect>();
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
@@ -279,10 +279,10 @@ struct ConvertTNToLinalgPass
 // Pass Registration
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<Pass> mlir::tn::createConvertTNToLinalgPass() {
-  return std::make_unique<ConvertTNToLinalgPass>();
+std::unique_ptr<Pass> mlir::tc::createConvertTCToLinalgPass() {
+  return std::make_unique<ConvertTCToLinalgPass>();
 }
 
-void mlir::tn::registerTNPasses() {
-  PassRegistration<ConvertTNToLinalgPass>();
+void mlir::tc::registerTCPasses() {
+  PassRegistration<ConvertTCToLinalgPass>();
 }

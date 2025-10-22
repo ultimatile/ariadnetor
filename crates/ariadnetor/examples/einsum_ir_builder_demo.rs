@@ -1,6 +1,6 @@
 //! Demonstration of IR generation from Einsum expressions
 //!
-//! This example shows how to use the TNBuilder with parsed einsum expressions
+//! This example shows how to use the TCBuilder with parsed einsum expressions
 //! to automatically generate TN-Compute dialect IR.
 //!
 //! Run with:
@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
         },
         utility::register_all_dialects,
     };
-    use tn_mlir::{TNBuilder, TNDialect, EinsumExpr};
+    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     println!("=== Einsum IR Builder Demo ===\n");
 
@@ -30,10 +30,10 @@ fn main() -> anyhow::Result<()> {
     context.load_all_available_dialects();
 
     // Load TN dialect
-    let _tn_dialect = TNDialect::new()?;
+    let _tn_dialect = TCDialect::new()?;
 
     // Create builder
-    let builder = TNBuilder::new(&context);
+    let builder = TCBuilder::new(&context);
     let location = builder.location();
 
     println!("1. Matrix Multiplication: ij,jk->ik\n");

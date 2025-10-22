@@ -6,7 +6,7 @@
 //! # Examples
 //!
 //! ```rust,ignore
-//! use tn_mlir::einsum::EinsumExpr;
+//! use arnet::einsum::EinsumExpr;
 //!
 //! // Matrix multiplication: C[i,k] = A[i,j] * B[j,k]
 //! let expr = EinsumExpr::parse("ij,jk->ik").unwrap();

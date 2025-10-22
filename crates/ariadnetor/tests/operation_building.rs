@@ -15,7 +15,7 @@ mod operation_tests {
         },
         utility::register_all_dialects,
     };
-    use tn_mlir::dialect::TNDialect;
+    use arnet::dialect::TCDialect;
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -26,7 +26,7 @@ mod operation_tests {
         context.load_all_available_dialects();
 
         // Try to load TN dialect
-        let _tn_dialect = TNDialect::new().expect("Failed to create TN dialect");
+        let _tn_dialect = TCDialect::new().expect("Failed to create TN dialect");
 
         context
     }

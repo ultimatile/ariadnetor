@@ -10,7 +10,7 @@ mod jit_tests {
         ir::operation::OperationLike,
         utility::{register_all_dialects, register_all_llvm_translations},
     };
-    use tn_mlir::TNJITCompiler;
+    use arnet::TNJITCompiler;
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();

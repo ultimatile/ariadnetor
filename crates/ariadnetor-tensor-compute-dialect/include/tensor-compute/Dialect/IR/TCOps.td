@@ -1,14 +1,14 @@
-//===- TNOps.td - Tensor Network Dialect Operations -------*- tablegen -*-===//
+//===- TCOps.td - Tensor Compute Dialect Operations -------*- tablegen -*-===//
 //
-// Tensor Network Compute Dialect - Operation definitions
+// Tensor Compute Dialect - Operation definitions
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TN_OPS
-#define TN_OPS
+#ifndef TC_OPS
+#define TC_OPS
 
-include "tn-compute/Dialect/IR/TNBase.td"
-include "tn-compute/Dialect/IR/TNTypes.td"
+include "tensor-compute/Dialect/IR/TCBase.td"
+include "tensor-compute/Dialect/IR/TCTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
@@ -16,7 +16,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 // Tensor Contraction Operations
 //===----------------------------------------------------------------------===//
 
-def TN_ContractOp : TN_Op<"contract", [Pure]> {
+def TC_ContractOp : TC_Op<"contract", [Pure]> {
   let summary = "Tensor contraction operation (einsum)";
 
   let description = [{
@@ -34,19 +34,19 @@ def TN_ContractOp : TN_Op<"contract", [Pure]> {
 
     Example:
     ```mlir
-    %C = tn.contract %A, %B {
+    %C = tc.contract %A, %B {
         indices = "ij,jk->ik"
     } : tensor<?x?xf64>, tensor<?x?xf64> -> tensor<?x?xf64>
     ```
   }];
 
   let arguments = (ins
-    TN_Tensor:$lhs,
-    TN_Tensor:$rhs,
+    TC_Tensor:$lhs,
+    TC_Tensor:$rhs,
     StrAttr:$indices
   );
 
-  let results = (outs TN_Tensor:$result);
+  let results = (outs TC_Tensor:$result);
 
   let assemblyFormat = [{
     $lhs `,` $rhs
@@ -61,7 +61,7 @@ def TN_ContractOp : TN_Op<"contract", [Pure]> {
 // Matrix Decomposition Operations
 //===----------------------------------------------------------------------===//
 
-def TN_SVDOp : TN_Op<"svd", []> {
+def TC_SVDOp : TC_Op<"svd", []> {
   let summary = "Singular Value Decomposition";
 
   let description = [{
@@ -86,7 +86,7 @@ def TN_SVDOp : TN_Op<"svd", []> {
 
     Example:
     ```mlir
-    %U, %S, %V = tn.svd %A {
+    %U, %S, %V = tc.svd %A {
         max_chi = 100,
         threshold = 1.0e-10
     } : tensor<?x?xf64> -> (tensor<?x?xf64>, tensor<?xf64>, tensor<?x?xf64>)
@@ -94,15 +94,15 @@ def TN_SVDOp : TN_Op<"svd", []> {
   }];
 
   let arguments = (ins
-    TN_FloatTensor:$input,
+    TC_FloatTensor:$input,
     OptionalAttr<I64Attr>:$max_chi,
     OptionalAttr<F64Attr>:$threshold
   );
 
   let results = (outs
-    TN_FloatTensor:$U,
-    TN_Vector:$S,
-    TN_FloatTensor:$V
+    TC_FloatTensor:$U,
+    TC_Vector:$S,
+    TC_FloatTensor:$V
   );
 
   let assemblyFormat = [{
@@ -112,7 +112,7 @@ def TN_SVDOp : TN_Op<"svd", []> {
   let hasVerifier = 1;
 }
 
-def TN_QROp : TN_Op<"qr", []> {
+def TC_QROp : TC_Op<"qr", []> {
   let summary = "QR decomposition";
 
   let description = [{
@@ -131,15 +131,15 @@ def TN_QROp : TN_Op<"qr", []> {
 
     Example:
     ```mlir
-    %Q, %R = tn.qr %A : tensor<?x?xf64> -> (tensor<?x?xf64>, tensor<?x?xf64>)
+    %Q, %R = tc.qr %A : tensor<?x?xf64> -> (tensor<?x?xf64>, tensor<?x?xf64>)
     ```
   }];
 
-  let arguments = (ins TN_FloatTensor:$input);
+  let arguments = (ins TC_FloatTensor:$input);
 
   let results = (outs
-    TN_FloatTensor:$Q,
-    TN_FloatTensor:$R
+    TC_FloatTensor:$Q,
+    TC_FloatTensor:$R
   );
 
   let assemblyFormat = [{
@@ -153,7 +153,7 @@ def TN_QROp : TN_Op<"qr", []> {
 // Tensor Manipulation Operations
 //===----------------------------------------------------------------------===//
 
-def TN_TransposeOp : TN_Op<"transpose", [Pure]> {
+def TC_TransposeOp : TC_Op<"transpose", [Pure]> {
   let summary = "Tensor transpose operation";
 
   let description = [{
@@ -165,23 +165,23 @@ def TN_TransposeOp : TN_Op<"transpose", [Pure]> {
     Example:
     ```mlir
     // Transpose a matrix
-    %transposed = tn.transpose %A {
+    %transposed = tc.transpose %A {
         permutation = [1, 0]
     } : tensor<?x?xf64> -> tensor<?x?xf64>
 
     // Permute a 4D tensor
-    %permuted = tn.transpose %T {
+    %permuted = tc.transpose %T {
         permutation = [0, 2, 1, 3]
     } : tensor<?x?x?x?xf64> -> tensor<?x?x?x?xf64>
     ```
   }];
 
   let arguments = (ins
-    TN_Tensor:$input,
+    TC_Tensor:$input,
     I64ArrayAttr:$permutation
   );
 
-  let results = (outs TN_Tensor:$result);
+  let results = (outs TC_Tensor:$result);
 
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
@@ -190,7 +190,7 @@ def TN_TransposeOp : TN_Op<"transpose", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TN_ReshapeOp : TN_Op<"reshape", [Pure]> {
+def TC_ReshapeOp : TC_Op<"reshape", [Pure]> {
   let summary = "Tensor reshape operation";
 
   let description = [{
@@ -202,23 +202,23 @@ def TN_ReshapeOp : TN_Op<"reshape", [Pure]> {
     Example:
     ```mlir
     // Flatten to vector
-    %flat = tn.reshape %A {
+    %flat = tc.reshape %A {
         new_shape = [1000]
     } : tensor<10x100xf64> -> tensor<1000xf64>
 
     // Reshape to matrix
-    %mat = tn.reshape %v {
+    %mat = tc.reshape %v {
         new_shape = [100, 10]
     } : tensor<1000xf64> -> tensor<100x10xf64>
     ```
   }];
 
   let arguments = (ins
-    TN_Tensor:$input,
+    TC_Tensor:$input,
     I64ArrayAttr:$new_shape
   );
 
-  let results = (outs TN_Tensor:$result);
+  let results = (outs TC_Tensor:$result);
 
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
@@ -227,7 +227,7 @@ def TN_ReshapeOp : TN_Op<"reshape", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TN_TruncateOp : TN_Op<"truncate", []> {
+def TC_TruncateOp : TC_Op<"truncate", []> {
   let summary = "Bond dimension truncation";
 
   let description = [{
@@ -244,7 +244,7 @@ def TN_TruncateOp : TN_Op<"truncate", []> {
 
     Example:
     ```mlir
-    %truncated = tn.truncate %tensor {
+    %truncated = tc.truncate %tensor {
         max_chi = 50,
         threshold = 1.0e-8
     } : tensor<?x?xf64> -> tensor<?x?xf64>
@@ -252,12 +252,12 @@ def TN_TruncateOp : TN_Op<"truncate", []> {
   }];
 
   let arguments = (ins
-    TN_FloatTensor:$input,
+    TC_FloatTensor:$input,
     OptionalAttr<I64Attr>:$max_chi,
     OptionalAttr<F64Attr>:$threshold
   );
 
-  let results = (outs TN_FloatTensor:$result);
+  let results = (outs TC_FloatTensor:$result);
 
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
@@ -272,7 +272,7 @@ def TN_TruncateOp : TN_Op<"truncate", []> {
 
 // TODO: Implement batch operations for efficient parallel execution
 //
-// def TN_BatchContractOp : TN_Op<"batch_contract", [Pure]> {
+// def TC_BatchContractOp : TC_Op<"batch_contract", [Pure]> {
 //   let summary = "Batch tensor contraction";
 //   let description = [{
 //     Performs multiple tensor contractions in parallel.
@@ -281,4 +281,4 @@ def TN_TruncateOp : TN_Op<"truncate", []> {
 //   // ...
 // }
 
-#endif // TN_OPS
+#endif // TC_OPS

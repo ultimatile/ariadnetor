@@ -27,5 +27,5 @@ pub mod runtime;
 pub use einsum::EinsumExpr;
 pub use tensor::Tensor;
 
-// Re-export from ariadnetor-tensor-dialect
-pub use ariadnetor_tensor_dialect::{TNDialect, TNBuilder, MemRefDescriptor};
+// Re-export from ariadnetor-tensor-compute-dialect
+pub use ariadnetor_tensor_compute_dialect::{TCDialect, TCBuilder, MemRefDescriptor};

@@ -1,9 +1,9 @@
 [package]
-name = "ariadnetor-tensor-dialect"
+name = "ariadnetor-tensor-compute-dialect"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "MLIR Tensor Dialect for Ariadnetor"
+description = "MLIR Tensor Compute Dialect for Ariadnetor"
 
 [dependencies]
 melior = { workspace = true, optional = true }
@@ -18,5 +18,5 @@ default = []
 mlir = ["melior", "mlir-sys"]
 
 [lib]
-name = "ariadnetor_tensor_dialect"
+name = "ariadnetor_tensor_compute_dialect"
 path = "src/lib.rs"

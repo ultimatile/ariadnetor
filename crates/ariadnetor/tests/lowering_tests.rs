@@ -14,7 +14,7 @@ mod lowering_tests {
         },
         utility::register_all_dialects,
     };
-    use tn_mlir::{TNBuilder, TNDialect, EinsumExpr};
+    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -25,7 +25,7 @@ mod lowering_tests {
         context.load_all_available_dialects();
 
         // Load TN dialect
-        let _tn_dialect = TNDialect::new().expect("Failed to create TN dialect");
+        let _tn_dialect = TCDialect::new().expect("Failed to create TN dialect");
 
         context
     }
@@ -52,7 +52,7 @@ mod lowering_tests {
     #[test]
     fn test_lower_matrix_multiply() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Parse einsum for matrix multiplication
@@ -86,7 +86,7 @@ mod lowering_tests {
     #[test]
     fn test_lower_batch_matmul() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Parse einsum for batch matrix multiplication
@@ -117,7 +117,7 @@ mod lowering_tests {
     #[test]
     fn test_lower_element_wise() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Parse einsum for element-wise multiplication
@@ -148,7 +148,7 @@ mod lowering_tests {
     #[test]
     fn test_lower_transpose() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Create test block with tensor argument
@@ -169,7 +169,7 @@ mod lowering_tests {
     #[test]
     fn test_ir_generation_multiple_ops() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Test that we can generate IR for multiple operations

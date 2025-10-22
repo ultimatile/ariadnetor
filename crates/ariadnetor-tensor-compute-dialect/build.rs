@@ -21,9 +21,9 @@ fn main() {
         // Link the generated libraries (using static libraries after removing CAPI auto-registration)
         let lib_dir = format!("{}/lib", dst.display());
         println!("cargo:rustc-link-search=native={}", lib_dir);
-        println!("cargo:rustc-link-lib=static=MLIRTNCAPI");
-        println!("cargo:rustc-link-lib=static=MLIRTNDialect");
-        println!("cargo:rustc-link-lib=static=MLIRTNTransforms");
+        println!("cargo:rustc-link-lib=static=MLIRTCCAPI");
+        println!("cargo:rustc-link-lib=static=MLIRTCDialect");
+        println!("cargo:rustc-link-lib=static=MLIRTCTransforms");
 
         // Link MLIR library (LLVM is transitively linked via MLIR)
         let llvm_lib_dir = format!("{}/lib", llvm_dir);

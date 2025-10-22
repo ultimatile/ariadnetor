@@ -11,12 +11,12 @@ mod melior_tests {
         ir::{Location, Module, operation::OperationLike},
         utility::register_all_dialects,
     };
-    use tn_mlir::dialect::TNDialect;
+    use arnet::dialect::TCDialect;
 
     /// Test that the TN dialect can be created
     #[test]
     fn test_dialect_creation() {
-        let dialect = TNDialect::new();
+        let dialect = TCDialect::new();
         assert!(dialect.is_ok(), "Failed to create TN dialect");
     }
 
@@ -30,7 +30,7 @@ mod melior_tests {
         register_all_dialects(&registry);
 
         // Create TN dialect
-        let _tn_dialect = TNDialect::new()
+        let _tn_dialect = TCDialect::new()
             .expect("Failed to create TN dialect");
 
         // Register TN dialect
@@ -59,7 +59,7 @@ mod melior_tests {
         context.load_all_available_dialects();
 
         // Try to load TN dialect explicitly
-        let _tn_dialect = TNDialect::new()
+        let _tn_dialect = TCDialect::new()
             .expect("Failed to create TN dialect");
 
         // Create a location for error reporting
@@ -86,7 +86,7 @@ mod melior_tests {
         context.load_all_available_dialects();
 
         // Try to create TN dialect
-        let _tn_dialect = TNDialect::new()
+        let _tn_dialect = TCDialect::new()
             .expect("Failed to create TN dialect");
 
         // Create a simple TN operation as a string
@@ -119,12 +119,12 @@ mod melior_tests {
 /// Basic sanity tests that don't require the mlir feature
 #[cfg(not(feature = "mlir"))]
 mod basic_tests {
-    use tn_mlir::dialect::TNDialect;
+    use arnet::dialect::TCDialect;
 
     #[test]
     fn test_dialect_requires_feature() {
-        let result = TNDialect::new();
+        let result = TCDialect::new();
         assert!(result.is_err(),
-                "TNDialect should fail without mlir feature");
+                "TCDialect should fail without mlir feature");
     }
 }

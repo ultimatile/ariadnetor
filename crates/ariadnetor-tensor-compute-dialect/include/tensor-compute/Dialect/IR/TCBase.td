@@ -1,11 +1,11 @@
-//===- TNBase.td - Tensor Network Dialect Base ------------*- tablegen -*-===//
+//===- TCBase.td - Tensor Compute Dialect Base ------------*- tablegen -*-===//
 //
-// Tensor Network Compute Dialect - Base definitions
+// Tensor Compute Dialect - Base definitions
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TN_BASE
-#define TN_BASE
+#ifndef TC_BASE
+#define TC_BASE
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -14,17 +14,17 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
 //===----------------------------------------------------------------------===//
-// TN Dialect Definition
+// TC Dialect Definition
 //===----------------------------------------------------------------------===//
 
-def TN_Dialect : Dialect {
-  let name = "tn";
-  let cppNamespace = "::mlir::tn";
+def TC_Dialect : Dialect {
+  let name = "tc";
+  let cppNamespace = "::mlir::tc";
 
-  let summary = "Tensor Network Compute Dialect";
+  let summary = "Tensor Compute Dialect";
   let description = [{
-    The Tensor Network Compute (TN) dialect provides high-level tensor network
-    operations for distributed tensor network computations. It focuses on:
+    The Tensor Compute (TC) dialect provides high-level tensor computation
+    operations. It focuses on:
 
     - Tensor contractions (einsum notation)
     - Singular Value Decomposition (SVD) with truncation
@@ -32,7 +32,6 @@ def TN_Dialect : Dialect {
     - Tensor manipulations (transpose, reshape, truncate)
     - Support for dynamic tensor dimensions
     - Sparse/dense tensor representations
-    - Future: distributed tensor layouts
 
     The dialect is designed to lower to LinAlg dialect for further optimization
     and code generation.
@@ -44,11 +43,11 @@ def TN_Dialect : Dialect {
 }
 
 //===----------------------------------------------------------------------===//
-// TN Operation Base Class
+// TC Operation Base Class
 //===----------------------------------------------------------------------===//
 
-// Base class for all TN dialect operations
-class TN_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TN_Dialect, mnemonic, traits>;
+// Base class for all TC dialect operations
+class TC_Op<string mnemonic, list<Trait> traits = []> :
+    Op<TC_Dialect, mnemonic, traits>;
 
-#endif // TN_BASE
+#endif // TC_BASE

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(tn-compute-dialect LANGUAGES CXX C)
+project(tensor-compute-dialect LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -30,29 +30,29 @@ link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
 # Create output directory for TableGen
-file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/include/tn-compute/Dialect/IR)
+file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/include/tensor-compute/Dialect/IR)
 
-# TableGen for TN Dialect
-set(LLVM_TARGET_DEFINITIONS include/tn-compute/Dialect/IR/TNOps.td)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNOps.h.inc -gen-op-decls)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNOps.cpp.inc -gen-op-defs)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNDialect.h.inc -gen-dialect-decls -dialect=tn)
-mlir_tablegen(include/tn-compute/Dialect/IR/TNDialect.cpp.inc -gen-dialect-defs -dialect=tn)
+# TableGen for TC Dialect
+set(LLVM_TARGET_DEFINITIONS include/tensor-compute/Dialect/IR/TCOps.td)
+mlir_tablegen(include/tensor-compute/Dialect/IR/TCOps.h.inc -gen-op-decls)
+mlir_tablegen(include/tensor-compute/Dialect/IR/TCOps.cpp.inc -gen-op-defs)
+mlir_tablegen(include/tensor-compute/Dialect/IR/TCDialect.h.inc -gen-dialect-decls -dialect=tc)
+mlir_tablegen(include/tensor-compute/Dialect/IR/TCDialect.cpp.inc -gen-dialect-defs -dialect=tc)
 # Note: No typedef generation needed - we use MLIR builtin types with constraints
-# Future: Add when TN_TensorType is defined with TypeDef
-add_public_tablegen_target(TNOpsIncGen)
+# Future: Add when TC_TensorType is defined with TypeDef
+add_public_tablegen_target(TCOpsIncGen)
 
-# Add TN Dialect library
+# Add TCDialect library
 # Using static library (CAPI auto-registration macro removed to avoid init conflicts)
-add_mlir_dialect_library(MLIRTNDialect
-  lib/Dialect/IR/TNDialect.cpp
-  lib/Dialect/IR/TNOps.cpp
+add_mlir_dialect_library(MLIRTCDialect
+  lib/Dialect/IR/TCDialect.cpp
+  lib/Dialect/IR/TCOps.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${PROJECT_SOURCE_DIR}/include/tn-compute
+  ${PROJECT_SOURCE_DIR}/include/tensor-compute
 
   DEPENDS
-  TNOpsIncGen
+  TCOpsIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR
@@ -61,34 +61,34 @@ add_mlir_dialect_library(MLIRTNDialect
   MLIRInferTypeOpInterface
 )
 
-# Add TN Transforms library
-add_mlir_dialect_library(MLIRTNTransforms
-  lib/Dialect/Transforms/ConvertTNToLinalg.cpp
+# Add TCTransforms library
+add_mlir_dialect_library(MLIRTCTransforms
+  lib/Dialect/Transforms/ConvertTCToLinalg.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${PROJECT_SOURCE_DIR}/include/tn-compute
+  ${PROJECT_SOURCE_DIR}/include/tensor-compute
 
   LINK_LIBS PUBLIC
-  MLIRTNDialect
+  MLIRTCDialect
   MLIRLinalgDialect
   MLIRTransforms
   MLIRPass
 )
 
-# Add TN CAPI library
-add_mlir_dialect_library(MLIRTNCAPI
-  lib/CAPI/TNDialect.cpp
+# Add TCCAPI library
+add_mlir_dialect_library(MLIRTCCAPI
+  lib/CAPI/TCDialect.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${PROJECT_SOURCE_DIR}/include/tn-compute
+  ${PROJECT_SOURCE_DIR}/include/tensor-compute
 
   LINK_LIBS PUBLIC
-  MLIRTNDialect
+  MLIRTCDialect
   MLIRCAPIIR
 )
 
 # Installation
-install(TARGETS MLIRTNDialect MLIRTNTransforms MLIRTNCAPI
+install(TARGETS MLIRTCDialect MLIRTCTransforms MLIRTCCAPI
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
 

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/ariadnetor-tensor-dialect", "crates/ariadnetor"]
+members = ["crates/ariadnetor-tensor-compute-dialect", "crates/ariadnetor"]
 resolver = "2"
 
 [workspace.package]

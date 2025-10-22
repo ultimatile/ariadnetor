@@ -3,7 +3,7 @@
 //! These tests verify the EinsumExpr API from a user perspective,
 //! testing the public interface as it would be used in real code.
 
-use tn_mlir::EinsumExpr;
+use arnet::EinsumExpr;
 
 #[test]
 fn test_matrix_multiplication_end_to_end() {

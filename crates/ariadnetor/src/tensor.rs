@@ -25,7 +25,7 @@ impl Tensor {
     /// # Example
     ///
     /// ```
-    /// use tn_mlir::Tensor;
+    /// use arnet::Tensor;
     ///
     /// let tensor = Tensor::new(vec![10, 20]);
     /// assert_eq!(tensor.shape(), &[10, 20]);

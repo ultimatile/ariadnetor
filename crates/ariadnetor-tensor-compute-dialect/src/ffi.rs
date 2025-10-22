@@ -1,4 +1,4 @@
-//! FFI bindings to TN-Compute Dialect C API
+//! FFI bindings to Tensor Compute Dialect C API
 
 use std::ffi::c_void;
 
@@ -10,7 +10,7 @@ pub struct MlirDialectHandle {
 
 // NOTE: Removed static linking to avoid global initialization conflicts with ExecutionEngine
 // Linking is now handled by build.rs with dynamic linking
-extern "C" {
-    /// Returns a handle to the TN dialect for registration
-    pub fn mlirGetDialectHandle__tn__() -> MlirDialectHandle;
+unsafe extern "C" {
+    /// Returns a handle to the TC dialect for registration
+    pub fn mlirGetDialectHandle__tc__() -> MlirDialectHandle;
 }

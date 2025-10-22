@@ -6,7 +6,7 @@ license.workspace = true
 description = "MLIR-based Distributed Tensor Network Framework"
 
 [dependencies]
-ariadnetor-tensor-dialect = { path = "../ariadnetor-tensor-dialect" }
+ariadnetor-tensor-compute-dialect = { path = "../ariadnetor-tensor-compute-dialect" }
 anyhow = { workspace = true }
 faer = { workspace = true }
 lru = { workspace = true }

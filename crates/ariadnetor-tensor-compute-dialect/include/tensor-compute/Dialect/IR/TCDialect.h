@@ -1,11 +1,11 @@
-//===- TNDialect.h - Tensor Network Dialect --------------------*- C++ -*-===//
+//===- TCDialect.h - Tensor Compute Dialect --------------------*- C++ -*-===//
 //
-// Tensor Network Compute Dialect
+// Tensor Compute Dialect
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TN_COMPUTE_DIALECT_IR_TNDIALECT_H
-#define TN_COMPUTE_DIALECT_IR_TNDIALECT_H
+#ifndef TENSOR_COMPUTE_DIALECT_IR_TCDIALECT_H
+#define TENSOR_COMPUTE_DIALECT_IR_TCDIALECT_H
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Dialect.h"
@@ -15,13 +15,13 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 // Include generated dialect declarations
-#include "tn-compute/Dialect/IR/TNDialect.h.inc"
+#include "tensor-compute/Dialect/IR/TCDialect.h.inc"
 
 // Note: No custom type definitions yet - we use MLIR builtin types with constraints
-// Future: Include TNTypes.h.inc when TN_TensorType is defined
+// Future: Include TCTypes.h.inc when TC_TensorType is defined
 
 // Include generated operation declarations
 #define GET_OP_CLASSES
-#include "tn-compute/Dialect/IR/TNOps.h.inc"
+#include "tensor-compute/Dialect/IR/TCOps.h.inc"
 
-#endif // TN_COMPUTE_DIALECT_IR_TNDIALECT_H
+#endif // TENSOR_COMPUTE_DIALECT_IR_TCDIALECT_H

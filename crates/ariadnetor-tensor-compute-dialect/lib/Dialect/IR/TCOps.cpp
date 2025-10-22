@@ -1,10 +1,10 @@
-//===- TNOps.cpp - Tensor Network Operations -------------------*- C++ -*-===//
+//===- TCOps.cpp - Tensor Compute Operations -------------------*- C++ -*-===//
 //
-// Tensor Network Compute Dialect - Operation implementations
+// Tensor Compute Dialect - Operation implementations
 //
 //===----------------------------------------------------------------------===//
 
-#include "tn-compute/Dialect/IR/TNDialect.h"
+#include "tensor-compute/Dialect/IR/TCDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -13,7 +13,7 @@
 #include <regex>
 
 using namespace mlir;
-using namespace mlir::tn;
+using namespace mlir::tc;
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -39,11 +39,11 @@ static bool parseEinsumNotation(StringRef notation,
 }
 
 //===----------------------------------------------------------------------===//
-// TN Dialect Operations
+// TC Dialect Operations
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "tn-compute/Dialect/IR/TNOps.cpp.inc"
+#include "tensor-compute/Dialect/IR/TCOps.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // ContractOp Verification

@@ -1,22 +1,22 @@
-//===- TNTypes.td - Tensor Network Dialect Types ----------*- tablegen -*-===//
+//===- TCTypes.td - Tensor Compute Dialect Types ----------*- tablegen -*-===//
 //
-// Tensor Network Compute Dialect - Type definitions
+// Tensor Compute Dialect - Type definitions
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TN_TYPES
-#define TN_TYPES
+#ifndef TC_TYPES
+#define TC_TYPES
 
-include "tn-compute/Dialect/IR/TNBase.td"
+include "tensor-compute/Dialect/IR/TCBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypes.td"
 
 //===----------------------------------------------------------------------===//
-// TN Type Definitions
+// TC Type Definitions
 //===----------------------------------------------------------------------===//
 
-class TN_Type<string name, string typeMnemonic, list<Trait> traits = []>
-    : TypeDef<TN_Dialect, name, traits> {
+class TC_Type<string name, string typeMnemonic, list<Trait> traits = []>
+    : TypeDef<TC_Dialect, name, traits> {
   let mnemonic = typeMnemonic;
 }
 
@@ -25,35 +25,35 @@ class TN_Type<string name, string typeMnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 // Supported scalar element types
-def TN_Float : AnyTypeOf<[F16, F32, F64, BF16], "floating-point">;
-def TN_Int : AnyTypeOf<[I8, I16, I32, I64], "integer">;
-def TN_Scalar : AnyTypeOf<[TN_Float, TN_Int], "scalar">;
+def TC_Float : AnyTypeOf<[F16, F32, F64, BF16], "floating-point">;
+def TC_Int : AnyTypeOf<[I8, I16, I32, I64], "integer">;
+def TC_Scalar : AnyTypeOf<[TC_Float, TC_Int], "scalar">;
 
 //===----------------------------------------------------------------------===//
 // Tensor Type Constraints
 //===----------------------------------------------------------------------===//
 
-// Ranked tensor with TN scalar elements (primary tensor type)
-// Future: define custom TN_TensorType with sparse/distributed metadata
-def TN_Tensor : RankedTensorOf<[TN_Scalar]>;
+// Ranked tensor with TC scalar elements (primary tensor type)
+// Future: define custom TC_TensorType with sparse/distributed metadata
+def TC_Tensor : RankedTensorOf<[TC_Scalar]>;
 
 // Float-only tensors (for operations like SVD)
-def TN_FloatTensor : RankedTensorOf<[TN_Float]>;
+def TC_FloatTensor : RankedTensorOf<[TC_Float]>;
 
 // Specific dimension constraints
-def TN_Vector : 1DTensorOf<[TN_Scalar]>;     // 1D tensor (vector)
-def TN_Matrix : 2DTensorOf<[TN_Scalar]>;     // 2D tensor (matrix)
+def TC_Vector : 1DTensorOf<[TC_Scalar]>;     // 1D tensor (vector)
+def TC_Matrix : 2DTensorOf<[TC_Scalar]>;     // 2D tensor (matrix)
 
 //===----------------------------------------------------------------------===//
 // Future: Custom Tensor Type with Metadata
 //===----------------------------------------------------------------------===//
 
-// TODO: Define custom TN_TensorType with:
+// TODO: Define custom TC_TensorType with:
 // - Sparse encoding (COO, CSR, etc.)
 // - Distribution strategy (Block, Cyclic, etc.)
 //
-// def TN_TensorType : TN_Type<"Tensor", "tensor"> {
-//   let summary = "Tensor Network tensor type";
+// def TC_TensorType : TC_Type<"Tensor", "tensor"> {
+//   let summary = "Tensor Compute tensor type";
 //   let description = [{
 //     A ranked tensor type with optional sparse encoding and
 //     distribution metadata for distributed execution.
@@ -67,4 +67,4 @@ def TN_Matrix : 2DTensorOf<[TN_Scalar]>;     // 2D tensor (matrix)
 //   );
 // }
 
-#endif // TN_TYPES
+#endif // TC_TYPES

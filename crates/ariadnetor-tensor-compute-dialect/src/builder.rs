@@ -1,11 +1,8 @@
-//! Operation builders for TN-Compute dialect
+//! Operation builders for Tensor Compute dialect
 //!
-//! Provides high-level Rust API for constructing TN dialect operations.
+//! Provides high-level Rust API for constructing TC dialect operations.
 
 use anyhow::Result;
-
-#[cfg(feature = "mlir")]
-use crate::einsum::EinsumExpr;
 
 #[cfg(feature = "mlir")]
 use melior::{
@@ -18,21 +15,21 @@ use melior::{
     },
 };
 
-/// Builder for TN-Compute dialect operations
+/// Builder for Tensor Compute dialect operations
 #[cfg(feature = "mlir")]
-pub struct TNBuilder<'c> {
+pub struct TCBuilder<'c> {
     context: &'c Context,
     module: Module<'c>,
     location: Location<'c>,
 }
 
 #[cfg(not(feature = "mlir"))]
-pub struct TNBuilder {
+pub struct TCBuilder {
     _phantom: std::marker::PhantomData<()>,
 }
 
 #[cfg(feature = "mlir")]
-impl<'c> TNBuilder<'c> {
+impl<'c> TCBuilder<'c> {
     /// Create a new builder with a given context
     ///
     /// # Arguments
@@ -43,10 +40,10 @@ impl<'c> TNBuilder<'c> {
     ///
     /// ```rust,ignore
     /// use melior::Context;
-    /// use tn_mlir::TNBuilder;
+    /// use tc_mlir::TCBuilder;
     ///
     /// let context = Context::new();
-    /// let builder = TNBuilder::new(&context);
+    /// let builder = TCBuilder::new(&context);
     /// ```
     pub fn new(context: &'c Context) -> Self {
         let location = Location::unknown(context);
@@ -95,10 +92,10 @@ impl<'c> TNBuilder<'c> {
     ///
     /// ```rust,ignore
     /// use melior::{Context, ir::{Value, r#type::Type}};
-    /// use tn_mlir::TNBuilder;
+    /// use tc_mlir::TCBuilder;
     ///
     /// let context = Context::new();
-    /// let builder = TNBuilder::new(&context);
+    /// let builder = TCBuilder::new(&context);
     /// let f64_type = Type::float64(&context);
     /// let result_type = builder.create_tensor_type(&[10, 30], f64_type);
     ///
@@ -124,77 +121,9 @@ impl<'c> TNBuilder<'c> {
         Ok(operation.result(0)?.into())
     }
 
-    /// Build a tensor contraction from parsed einsum expression
-    ///
-    /// This is a high-level API that automatically infers output shape
-    /// from the einsum expression and input tensor shapes.
-    ///
-    /// # Arguments
-    ///
-    /// * `expr` - Parsed einsum expression (e.g., from `EinsumExpr::parse("ij,jk->ik")`)
-    /// * `lhs` - Left operand value
-    /// * `rhs` - Right operand value
-    /// * `lhs_shape` - Shape of left operand tensor
-    /// * `rhs_shape` - Shape of right operand tensor
-    /// * `element_type` - Element type for the result tensor (e.g., f64)
-    ///
-    /// # Returns
-    ///
-    /// MLIR Value representing the result of the contraction
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - Shape inference fails (incompatible dimensions)
-    /// - Output shape cannot be computed
-    /// - MLIR operation building fails
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use melior::{Context, ir::{Value, Type}};
-    /// use tn_mlir::{TNBuilder, EinsumExpr};
-    ///
-    /// let context = Context::new();
-    /// let builder = TNBuilder::new(&context);
-    /// let expr = EinsumExpr::parse("ij,jk->ik").unwrap();
-    /// let f64_type = Type::float64(&context);
-    ///
-    /// // lhs and rhs are MLIR Values with shapes [10, 20] and [20, 30]
-    /// let result = builder.build_contract_from_einsum(
-    ///     &expr,
-    ///     lhs,
-    ///     rhs,
-    ///     &[10, 20],
-    ///     &[20, 30],
-    ///     f64_type
-    /// )?;
-    /// // result has shape [10, 30]
-    /// ```
-    pub fn build_contract_from_einsum(
-        &self,
-        expr: &EinsumExpr,
-        lhs: Value<'c, '_>,
-        rhs: Value<'c, '_>,
-        lhs_shape: &[i64],
-        rhs_shape: &[i64],
-        element_type: Type<'c>,
-    ) -> Result<Value<'c, 'c>> {
-        // Infer output shape from einsum expression
-        let output_shape = expr.infer_output_shape(lhs_shape, rhs_shape)?;
-
-        // Create result tensor type
-        let result_type = self.create_tensor_type(&output_shape, element_type);
-
-        // Build einsum notation string
-        let lhs_indices: String = expr.lhs_indices().iter().collect();
-        let rhs_indices: String = expr.rhs_indices().iter().collect();
-        let out_indices: String = expr.out_indices().iter().collect();
-        let indices = format!("{},{}->{}", lhs_indices, rhs_indices, out_indices);
-
-        // Use the low-level contract method
-        self.contract(lhs, rhs, result_type, &indices)
-    }
+    // NOTE: build_contract_from_einsum() has been moved to the main ariadnetor crate
+    // to avoid circular dependency. This crate (dialect) should not depend on
+    // EinsumExpr which is defined in the main crate (DSL layer).
 
     /// Build an SVD operation
     ///
@@ -381,9 +310,9 @@ impl<'c> TNBuilder<'c> {
 
 // Non-mlir stub implementation
 #[cfg(not(feature = "mlir"))]
-impl TNBuilder {
+impl TCBuilder {
     pub fn new() -> Result<Self> {
-        anyhow::bail!("TNBuilder requires 'mlir' feature to be enabled")
+        anyhow::bail!("TCBuilder requires 'mlir' feature to be enabled")
     }
 }
 
@@ -397,7 +326,7 @@ mod tests {
         use melior::Context;
 
         let context = Context::new();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
 
         // Verify builder was created
         assert!(builder.module().as_operation().verify());
@@ -406,7 +335,7 @@ mod tests {
     #[test]
     #[cfg(not(feature = "mlir"))]
     fn test_builder_requires_feature() {
-        let result = TNBuilder::new();
+        let result = TCBuilder::new();
         assert!(result.is_err());
     }
 }

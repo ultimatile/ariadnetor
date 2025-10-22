@@ -13,7 +13,7 @@ fn test_memref_read_write() {
         utility::{register_all_dialects, register_all_llvm_translations},
         Context, ExecutionEngine,
     };
-    use tn_mlir::{MemRefDescriptor, Tensor};
+    use arnet::{MemRefDescriptor, Tensor};
 
     let registry = DialectRegistry::new();
     register_all_dialects(&registry);

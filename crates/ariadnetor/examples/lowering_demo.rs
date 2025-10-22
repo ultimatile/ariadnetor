@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
         },
         utility::register_all_dialects,
     };
-    use tn_mlir::{TNBuilder, TNDialect, EinsumExpr};
+    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     println!("=== TN → LinAlg Lowering Demo ===\n");
 
@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
     context.load_all_available_dialects();
 
     // Load TN dialect
-    let _tn_dialect = TNDialect::new()?;
+    let _tn_dialect = TCDialect::new()?;
 
     println!("1. Generating TN IR for Matrix Multiplication\n");
 
@@ -64,7 +64,7 @@ fn main() -> anyhow::Result<()> {
             ]);
 
             // Build TN contract operation
-            let builder = TNBuilder::new(&context);
+            let builder = TCBuilder::new(&context);
             let expr = EinsumExpr::parse("ij,jk->ik")?;
 
             let lhs = block.argument(0)?.into();

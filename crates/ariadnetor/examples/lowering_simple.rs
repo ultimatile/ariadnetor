@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
 
     println!("=== Usage ===\n");
     println!("To use the lowering pass:");
-    println!("  1. Generate TN IR using TNBuilder API");
+    println!("  1. Generate TN IR using TCBuilder API");
     println!("  2. Save to .mlir file");
     println!("  3. Run: mlir-opt --convert-tn-to-linalg input.mlir");
     println!("  4. Further lower to LLVM: mlir-opt --convert-linalg-to-loops --convert-scf-to-cf --convert-to-llvm");

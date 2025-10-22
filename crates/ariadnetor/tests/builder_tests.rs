@@ -1,6 +1,6 @@
-//! Integration tests for TNBuilder API
+//! Integration tests for TCBuilder API
 //!
-//! These tests verify that the TNBuilder can construct TN dialect operations correctly.
+//! These tests verify that the TCBuilder can construct TN dialect operations correctly.
 
 #[cfg(feature = "mlir")]
 mod builder_tests {
@@ -15,7 +15,7 @@ mod builder_tests {
         },
         utility::register_all_dialects,
     };
-    use tn_mlir::{TNBuilder, TNDialect, EinsumExpr};
+    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -26,7 +26,7 @@ mod builder_tests {
         context.load_all_available_dialects();
 
         // Load TN dialect
-        let _tn_dialect = TNDialect::new().expect("Failed to create TN dialect");
+        let _tn_dialect = TCDialect::new().expect("Failed to create TN dialect");
 
         context
     }
@@ -53,7 +53,7 @@ mod builder_tests {
     #[test]
     fn test_builder_creation() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
 
         // Verify module was created
         assert!(builder.module().as_operation().verify());
@@ -62,7 +62,7 @@ mod builder_tests {
     #[test]
     fn test_contract_operation() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Create a test block with two tensor arguments (10x20 and 20x30)
@@ -84,7 +84,7 @@ mod builder_tests {
     #[test]
     fn test_svd_operation() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Create a test block with one tensor argument (100x200)
@@ -120,7 +120,7 @@ mod builder_tests {
     #[test]
     fn test_qr_operation() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Create a test block with one tensor argument (100x50)
@@ -142,7 +142,7 @@ mod builder_tests {
     #[test]
     fn test_transpose_operation() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Create a test block with one tensor argument (10x20)
@@ -163,7 +163,7 @@ mod builder_tests {
     #[test]
     fn test_reshape_operation() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Create a test block with one tensor argument (100x20)
@@ -184,7 +184,7 @@ mod builder_tests {
     #[test]
     fn test_truncate_operation() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Create a test block with two tensor arguments (100x200 each)
@@ -209,7 +209,7 @@ mod builder_tests {
     #[test]
     fn test_build_contract_from_einsum_matrix_multiply() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Parse einsum expression for matrix multiplication
@@ -240,7 +240,7 @@ mod builder_tests {
     #[test]
     fn test_build_contract_from_einsum_higher_dimensional() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Parse einsum expression for higher-dimensional contraction
@@ -271,7 +271,7 @@ mod builder_tests {
     #[test]
     fn test_build_contract_from_einsum_dimension_mismatch() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Parse einsum expression
@@ -302,7 +302,7 @@ mod builder_tests {
     #[test]
     fn test_build_contract_from_einsum_batch_matmul() {
         let context = setup_context();
-        let builder = TNBuilder::new(&context);
+        let builder = TCBuilder::new(&context);
         let location = builder.location();
 
         // Parse einsum expression for batch matrix multiplication

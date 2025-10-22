@@ -6,7 +6,7 @@
 //! Run with:
 //!   cargo run --example einsum_parser_demo
 
-use tn_mlir::EinsumExpr;
+use arnet::EinsumExpr;
 
 fn main() {
     println!("=== Einsum Parser Demo ===\n");

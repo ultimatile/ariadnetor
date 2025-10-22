@@ -9,7 +9,7 @@ mod end_to_end_tests {
         dialect::DialectRegistry,
         utility::register_all_dialects,
     };
-    use tn_mlir::{TNJITCompiler, TNDialect, Tensor};
+    use arnet::{TNJITCompiler, TCDialect, Tensor};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -20,7 +20,7 @@ mod end_to_end_tests {
         context.load_all_available_dialects();
 
         // Load TN dialect
-        let _tn_dialect = TNDialect::new().expect("Failed to create TN dialect");
+        let _tn_dialect = TCDialect::new().expect("Failed to create TN dialect");
 
         context
     }

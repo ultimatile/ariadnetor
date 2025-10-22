@@ -14,8 +14,8 @@ pub mod memref;
 #[cfg(feature = "mlir")]
 pub mod ffi;
 
-pub use dialect::TNDialect;
-pub use builder::TNBuilder;
+pub use dialect::TCDialect;
+pub use builder::TCBuilder;
 pub use memref::MemRefDescriptor;
 
 use anyhow::Result;

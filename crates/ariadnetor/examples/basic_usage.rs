@@ -5,9 +5,9 @@
 //! - Building operations
 //! - JIT compilation (when implemented)
 
-use tn_mlir::Tensor;
-// Note: TNBuilder and TNJITCompiler are not yet implemented
-// use tn_mlir::{TNBuilder, TNJITCompiler};
+use arnet::Tensor;
+// Note: TCBuilder and TNJITCompiler are not yet implemented
+// use arnet::{TCBuilder, TNJITCompiler};
 
 fn main() {
     println!("TN-MLIR Basic Usage Example");
@@ -32,15 +32,15 @@ fn main() {
 
     // Example 3: Builder API (not yet implemented)
     println!("\n3. Building operations (NOT YET IMPLEMENTED)");
-    println!("  TNBuilder requires MLIR melior integration");
+    println!("  TCBuilder requires MLIR melior integration");
     println!("  Once implemented, operations will include:");
     println!("    - contract: tensor contractions (einsum)");
     println!("    - svd: singular value decomposition");
     println!("    - qr: QR decomposition");
     println!("    - transpose, reshape, truncate");
-    // Note: TNBuilder::new() will panic until MLIR integration is complete
+    // Note: TCBuilder::new() will panic until MLIR integration is complete
     // Future:
-    // let builder = TNBuilder::new()?;
+    // let builder = TCBuilder::new()?;
     // let result = builder.contract(&a.data(), &b.data(), "ij,jk->ik")?;
 
     // Example 4: JIT compilation (not yet implemented)

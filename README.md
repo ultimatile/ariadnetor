@@ -15,12 +15,12 @@ MLIR-based Distributed Tensor Network Framework written in Rust.
 
 This is a workspace containing multiple crates:
 
-### `ariadnetor-tensor-dialect`
+### `ariadnetor-tensor-compute-dialect`
 
-MLIR Tensor Dialect for tensor operations.
+MLIR Tensor Compute Dialect for tensor operations.
 
 - Dialect definition (C++/TableGen)
-- Lowering passes (TN → LinAlg)
+- Lowering passes (TC → LinAlg)
 - IR Builder (Rust)
 - MemRef descriptors for FFI
 

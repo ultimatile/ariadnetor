@@ -14,7 +14,7 @@ mod execution_engine_memref_tests {
         utility::{register_all_dialects, register_all_llvm_translations},
         Context, ExecutionEngine,
     };
-    use tn_mlir::{MemRefDescriptor, Tensor};
+    use arnet::{MemRefDescriptor, Tensor};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
