@@ -73,7 +73,31 @@ let c = einsum("ij,jk->ik", vec![&a, &b]);
 
 ## Building
 
+### Using cargo-make (Recommended)
+
+Install cargo-make:
 ```bash
+cargo install cargo-make
+```
+
+Build the project:
+```bash
+cargo make build          # Build entire workspace
+cargo make build-mlir     # Build with MLIR features
+cargo make test           # Run unit tests
+cargo make test-mlir      # Run MLIR feature tests
+```
+
+See `Makefile.toml` for all available tasks.
+
+### Manual build
+
+```bash
+# Set environment variables
+export MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20
+export PATH="/opt/homebrew/opt/llvm@20/bin:$PATH"
+
+# Build
 cargo build --workspace
 ```
 
