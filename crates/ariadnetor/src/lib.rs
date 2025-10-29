@@ -21,10 +21,12 @@
 //! ```
 
 pub mod einsum;
+pub mod expr;
 pub mod tensor;
 pub mod runtime;
 
 pub use einsum::EinsumExpr;
+pub use expr::ExpressionComputeGraph;
 pub use tensor::Tensor;
 
 // Re-export from ariadnetor-tensor-compute-dialect
