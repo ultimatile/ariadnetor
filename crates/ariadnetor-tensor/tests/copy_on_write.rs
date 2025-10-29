@@ -48,7 +48,7 @@ fn test_copy_on_write_dense_tensor() {
 
 #[test]
 fn test_fill_triggers_cow() {
-    let tensor1 = DenseTensor::ones(vec![5, 5]);
+    let tensor1 = DenseTensor::<f64>::ones(vec![5, 5]);
     let mut tensor2 = tensor1.clone();
 
     // Fill should trigger CoW

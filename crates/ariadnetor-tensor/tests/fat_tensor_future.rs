@@ -8,7 +8,7 @@ use arnet_tensor::{RawTensor, FatTensor, Index, IndexSet};
 #[test]
 fn test_fat_tensor_creation() {
     // TODO: Implement Index::new()
-    let raw = RawTensor::zeros(vec![10, 20]);
+    let raw = RawTensor::<f64>::zeros(vec![10, 20]);
     let indices = IndexSet {
         indices: vec![Index::new("i"), Index::new("j")],
         rowrank: 1,
@@ -22,14 +22,14 @@ fn test_fat_tensor_creation() {
 #[test]
 fn test_fat_tensor_contraction() {
     // TODO: Implement Index matching for contraction
-    let raw_a = RawTensor::zeros(vec![10, 20]);
+    let raw_a = RawTensor::<f64>::zeros(vec![10, 20]);
     let indices_a = IndexSet {
         indices: vec![Index::new("i"), Index::new("j")],
         rowrank: 1,
     };
     let _tensor_a = FatTensor::new(raw_a, indices_a);
 
-    let raw_b = RawTensor::ones(vec![20, 30]);
+    let raw_b = RawTensor::<f64>::ones(vec![20, 30]);
     let indices_b = IndexSet {
         indices: vec![Index::new("j"), Index::new("k")],
         rowrank: 1,
@@ -44,7 +44,7 @@ fn test_fat_tensor_contraction() {
 #[test]
 fn test_fat_tensor_permutation() {
     // TODO: Implement permutation
-    let raw = RawTensor::zeros(vec![10, 20, 30]);
+    let raw = RawTensor::<f64>::zeros(vec![10, 20, 30]);
     let indices = IndexSet {
         indices: vec![Index::new("i"), Index::new("j"), Index::new("k")],
         rowrank: 2,
@@ -58,7 +58,7 @@ fn test_fat_tensor_permutation() {
 #[test]
 fn test_fat_tensor_trace() {
     // TODO: Implement trace
-    let raw = RawTensor::zeros(vec![10, 10, 20]);
+    let raw = RawTensor::<f64>::zeros(vec![10, 10, 20]);
     let indices = IndexSet {
         indices: vec![Index::new("i"), Index::new("i'"), Index::new("j")],
         rowrank: 2,

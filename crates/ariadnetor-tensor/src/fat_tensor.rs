@@ -6,15 +6,19 @@ use crate::index::IndexSet;
 /// Fat tensor: RawTensor + Index metadata
 ///
 /// This is the main tensor type for tensor network computations.
+///
+/// # Type Parameters
+///
+/// * `T` - Element type (default: f64). See [`DenseTensor`](crate::DenseTensor) for details.
 #[derive(Debug, Clone)]
-pub struct FatTensor {
-    pub tensor: RawTensor,
+pub struct FatTensor<T = f64> {
+    pub tensor: RawTensor<T>,
     pub indices: IndexSet,
 }
 
-impl FatTensor {
+impl<T> FatTensor<T> {
     /// Create a new FatTensor
-    pub fn new(tensor: RawTensor, indices: IndexSet) -> Self {
+    pub fn new(tensor: RawTensor<T>, indices: IndexSet) -> Self {
         // TODO: Validate that tensor rank matches number of indices
         Self { tensor, indices }
     }

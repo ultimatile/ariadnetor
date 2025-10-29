@@ -4,6 +4,7 @@
 
 use crate::dense::DenseTensor;
 use std::fmt;
+use num_traits::{Zero, One};
 
 /// Raw tensor storage format (low-level, no metadata)
 ///
@@ -13,38 +14,18 @@ use std::fmt;
 /// - **BlockSparse**: Block-wise storage with symmetry sectors
 ///
 #[derive(Clone)]
-pub enum RawTensor {
+pub enum RawTensor<T = f64> {
     /// Dense tensor with contiguous storage
-    Dense(DenseTensor),
+    Dense(DenseTensor<T>),
 
     // TODO: Phase 1+ - Sparse tensor support
-    // Sparse(SparseTensor),
+    // Sparse(SparseTensor<T>),
     //
     // TODO: Phase 2+ - Block-sparse tensor support
-    // BlockSparse(BlockSparseVariant),
+    // BlockSparse(BlockSparseVariant<T>),
 }
 
-impl RawTensor {
-    /// Create a dense tensor filled with zeros
-    pub fn zeros(shape: Vec<usize>) -> Self {
-        Self::Dense(DenseTensor::zeros(shape))
-    }
-
-    /// Create a dense tensor filled with ones
-    pub fn ones(shape: Vec<usize>) -> Self {
-        Self::Dense(DenseTensor::ones(shape))
-    }
-
-    /// Create a dense tensor filled with a constant value
-    pub fn constant(shape: Vec<usize>, value: f64) -> Self {
-        Self::Dense(DenseTensor::constant(shape, value))
-    }
-
-    /// Create a dense tensor from existing data
-    pub fn from_data(data: Vec<f64>, shape: Vec<usize>) -> Self {
-        Self::Dense(DenseTensor::from_data(data, shape))
-    }
-
+impl<T> RawTensor<T> {
     /// Get the shape of the tensor
     pub fn shape(&self) -> &[usize] {
         match self {
@@ -73,59 +54,6 @@ impl RawTensor {
         }
     }
 
-    /// Get a reference to the underlying data (only for Dense)
-    ///
-    /// Returns None for non-dense storage formats
-    pub fn data(&self) -> Option<&[f64]> {
-        match self {
-            Self::Dense(t) => Some(t.data()),
-        }
-    }
-
-    /// Get a mutable reference to the underlying data (only for Dense)
-    ///
-    /// Returns None for non-dense storage formats
-    pub fn data_mut(&mut self) -> Option<&mut [f64]> {
-        match self {
-            Self::Dense(t) => Some(t.data_mut()),
-        }
-    }
-
-    /// Get element at given indices
-    pub fn get(&self, indices: &[usize]) -> f64 {
-        match self {
-            Self::Dense(t) => t.get(indices),
-        }
-    }
-
-    /// Set element at given indices
-    pub fn set(&mut self, indices: &[usize], value: f64) {
-        match self {
-            Self::Dense(t) => t.set(indices, value),
-        }
-    }
-
-    /// Fill tensor with a constant value
-    pub fn fill(&mut self, value: f64) {
-        match self {
-            Self::Dense(t) => t.fill(value),
-        }
-    }
-
-    /// Get pointer to the underlying data for FFI (only for Dense)
-    pub fn as_ptr(&self) -> Option<*const f64> {
-        match self {
-            Self::Dense(t) => Some(t.as_ptr()),
-        }
-    }
-
-    /// Get mutable pointer to the underlying data for FFI (only for Dense)
-    pub fn as_mut_ptr(&mut self) -> Option<*mut f64> {
-        match self {
-            Self::Dense(t) => Some(t.as_mut_ptr()),
-        }
-    }
-
     /// Get shape as i64 slice for MLIR compatibility
     pub fn shape_i64(&self) -> Vec<i64> {
         match self {
@@ -134,7 +62,91 @@ impl RawTensor {
     }
 }
 
-impl fmt::Debug for RawTensor {
+impl<T> RawTensor<T>
+where
+    T: Clone,
+{
+    /// Create a dense tensor filled with zeros
+    pub fn zeros(shape: Vec<usize>) -> Self
+    where
+        T: Zero,
+    {
+        Self::Dense(DenseTensor::zeros(shape))
+    }
+
+    /// Create a dense tensor filled with ones
+    pub fn ones(shape: Vec<usize>) -> Self
+    where
+        T: One + Zero,
+    {
+        Self::Dense(DenseTensor::ones(shape))
+    }
+
+    /// Create a dense tensor filled with a constant value
+    pub fn constant(shape: Vec<usize>, value: T) -> Self {
+        Self::Dense(DenseTensor::constant(shape, value))
+    }
+
+    /// Create a dense tensor from existing data
+    pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
+        Self::Dense(DenseTensor::from_data(data, shape))
+    }
+
+    /// Get a reference to the underlying data (only for Dense)
+    ///
+    /// Returns None for non-dense storage formats
+    pub fn data(&self) -> Option<&[T]> {
+        match self {
+            Self::Dense(t) => Some(t.data()),
+        }
+    }
+
+    /// Get a mutable reference to the underlying data (only for Dense)
+    ///
+    /// Returns None for non-dense storage formats
+    pub fn data_mut(&mut self) -> Option<&mut [T]> {
+        match self {
+            Self::Dense(t) => Some(t.data_mut()),
+        }
+    }
+
+    /// Get element at given indices
+    pub fn get(&self, indices: &[usize]) -> T {
+        match self {
+            Self::Dense(t) => t.get(indices),
+        }
+    }
+
+    /// Set element at given indices
+    pub fn set(&mut self, indices: &[usize], value: T) {
+        match self {
+            Self::Dense(t) => t.set(indices, value),
+        }
+    }
+
+    /// Fill tensor with a constant value
+    pub fn fill(&mut self, value: T) {
+        match self {
+            Self::Dense(t) => t.fill(value),
+        }
+    }
+
+    /// Get pointer to the underlying data for FFI (only for Dense)
+    pub fn as_ptr(&self) -> Option<*const T> {
+        match self {
+            Self::Dense(t) => Some(t.as_ptr()),
+        }
+    }
+
+    /// Get mutable pointer to the underlying data for FFI (only for Dense)
+    pub fn as_mut_ptr(&mut self) -> Option<*mut T> {
+        match self {
+            Self::Dense(t) => Some(t.as_mut_ptr()),
+        }
+    }
+}
+
+impl<T> fmt::Debug for RawTensor<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Dense(t) => write!(f, "RawTensor::Dense({:?})", t),
@@ -142,7 +154,7 @@ impl fmt::Debug for RawTensor {
     }
 }
 
-impl fmt::Display for RawTensor {
+impl<T> fmt::Display for RawTensor<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Dense(t) => write!(f, "RawTensor::Dense({})", t),
@@ -156,14 +168,14 @@ mod tests {
 
     #[test]
     fn test_raw_tensor_zeros() {
-        let tensor = RawTensor::zeros(vec![3, 4]);
+        let tensor = RawTensor::<f64>::zeros(vec![3, 4]);
         assert_eq!(tensor.shape(), &[3, 4]);
         assert_eq!(tensor.len(), 12);
     }
 
     #[test]
     fn test_raw_tensor_ones() {
-        let tensor = RawTensor::ones(vec![2, 3]);
+        let tensor = RawTensor::<f64>::ones(vec![2, 3]);
         if let Some(data) = tensor.data() {
             for &val in data {
                 assert_eq!(val, 1.0);
@@ -174,14 +186,14 @@ mod tests {
     #[test]
     fn test_raw_tensor_from_data() {
         let data = vec![1.0, 2.0, 3.0, 4.0];
-        let tensor = RawTensor::from_data(data.clone(), vec![2, 2]);
+        let tensor = RawTensor::<f64>::from_data(data.clone(), vec![2, 2]);
         assert_eq!(tensor.shape(), &[2, 2]);
         assert_eq!(tensor.data().unwrap(), &data[..]);
     }
 
     #[test]
     fn test_raw_tensor_indexing() {
-        let mut tensor = RawTensor::zeros(vec![3, 4]);
+        let mut tensor = RawTensor::<f64>::zeros(vec![3, 4]);
         tensor.set(&[1, 2], 42.0);
         assert_eq!(tensor.get(&[1, 2]), 42.0);
     }

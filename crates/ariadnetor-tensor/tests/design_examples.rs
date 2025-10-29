@@ -8,8 +8,8 @@ use arnet_tensor::{DenseTensor, RawTensor};
 fn test_design_doc_example_dense_tensor() {
     // From two_layer_tensor_architecture.md Section 5
     // Low-level API usage (メタデータ不要な場合)
-    let raw_a = RawTensor::Dense(DenseTensor::zeros(vec![10, 20]));
-    let raw_b = RawTensor::Dense(DenseTensor::ones(vec![20, 30]));
+    let raw_a = RawTensor::Dense(DenseTensor::<f64>::zeros(vec![10, 20]));
+    let raw_b = RawTensor::Dense(DenseTensor::<f64>::ones(vec![20, 30]));
 
     assert_eq!(raw_a.shape(), &[10, 20]);
     assert_eq!(raw_b.shape(), &[20, 30]);
@@ -23,7 +23,7 @@ fn test_design_doc_example_dense_tensor() {
 fn test_design_doc_arc_cow() {
     // From tensor_storage_design.md Section 2.1
     // Arc + Copy-on-Write example
-    let mut tensor = DenseTensor::zeros(vec![10, 20]);
+    let mut tensor = DenseTensor::<f64>::zeros(vec![10, 20]);
     let cloned = tensor.clone(); // O(1) - only increments reference count
 
     // Modification triggers CoW
@@ -76,13 +76,13 @@ fn test_design_doc_row_major_layout() {
 #[test]
 fn test_design_doc_constructors() {
     // Various constructor methods from design doc
-    let zeros = DenseTensor::zeros(vec![3, 4]);
+    let zeros = DenseTensor::<f64>::zeros(vec![3, 4]);
     assert_eq!(zeros.len(), 12);
     for &val in zeros.data() {
         assert_eq!(val, 0.0);
     }
 
-    let ones = DenseTensor::ones(vec![2, 3]);
+    let ones = DenseTensor::<f64>::ones(vec![2, 3]);
     assert_eq!(ones.len(), 6);
     for &val in ones.data() {
         assert_eq!(val, 1.0);
@@ -99,7 +99,7 @@ fn test_design_doc_constructors() {
 fn test_design_doc_phase_0_vec_usage() {
     // From tensor_storage_design.md Phase 0
     // Current implementation uses Vec everywhere
-    let tensor = DenseTensor::zeros(vec![10, 20, 30, 40]);
+    let tensor = DenseTensor::<f64>::zeros(vec![10, 20, 30, 40]);
 
     // Shape is stored as Vec (not SmallVec in Phase 0)
     assert_eq!(tensor.rank(), 4);

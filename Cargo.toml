@@ -24,6 +24,10 @@ hptt = { path = "../hptt-rs" }
 anyhow = "1.0"
 lru = "0.16"
 
+# Numeric types
+num-complex = "0.4"
+num-traits = "0.2"
+
 # Build
 cmake = "0.1"
 

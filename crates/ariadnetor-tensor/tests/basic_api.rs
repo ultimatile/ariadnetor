@@ -7,11 +7,11 @@ use arnet_tensor::{DenseTensor, RawTensor};
 #[test]
 fn test_raw_tensor_creation() {
     // Create tensors using RawTensor constructors
-    let zeros = RawTensor::zeros(vec![10, 20]);
+    let zeros = RawTensor::<f64>::zeros(vec![10, 20]);
     assert_eq!(zeros.shape(), &[10, 20]);
     assert_eq!(zeros.len(), 200);
 
-    let ones = RawTensor::ones(vec![5, 5]);
+    let ones = RawTensor::<f64>::ones(vec![5, 5]);
     assert_eq!(ones.shape(), &[5, 5]);
     if let Some(data) = ones.data() {
         assert_eq!(data[0], 1.0);
@@ -27,11 +27,11 @@ fn test_raw_tensor_creation() {
 #[test]
 fn test_dense_tensor_creation() {
     // Create tensors using DenseTensor directly
-    let zeros = DenseTensor::zeros(vec![3, 4]);
+    let zeros = DenseTensor::<f64>::zeros(vec![3, 4]);
     assert_eq!(zeros.shape(), &[3, 4]);
     assert_eq!(zeros.len(), 12);
 
-    let ones = DenseTensor::ones(vec![2, 3]);
+    let ones = DenseTensor::<f64>::ones(vec![2, 3]);
     assert_eq!(ones.data()[0], 1.0);
 
     let constant = DenseTensor::constant(vec![2, 2], 3.14);
@@ -41,7 +41,7 @@ fn test_dense_tensor_creation() {
 
 #[test]
 fn test_tensor_indexing() {
-    let mut tensor = RawTensor::zeros(vec![3, 4]);
+    let mut tensor = RawTensor::<f64>::zeros(vec![3, 4]);
 
     // Set values
     tensor.set(&[0, 0], 1.0);
@@ -56,7 +56,7 @@ fn test_tensor_indexing() {
 
 #[test]
 fn test_tensor_fill() {
-    let mut tensor = RawTensor::zeros(vec![10, 10]);
+    let mut tensor = RawTensor::<f64>::zeros(vec![10, 10]);
     tensor.fill(2.718);
 
     if let Some(data) = tensor.data() {
