@@ -231,6 +231,98 @@ where
         Arc::make_mut(&mut self.data).as_mut_ptr()
     }
 
+    /// Permute tensor axes (naive implementation)
+    ///
+    /// Reorders the axes of the tensor according to the given permutation.
+    /// This is the fallback implementation that works for all types and devices.
+    ///
+    /// # Arguments
+    ///
+    /// * `perm` - Permutation of axes (e.g., `[1, 0]` transposes a 2D tensor)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the permutation is invalid (wrong length or duplicate indices)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    /// let transposed = tensor.permute(&[1, 0]); // Transpose
+    /// ```
+    pub fn permute(&self, perm: &[usize]) -> Self
+    where
+        T: Zero,
+    {
+        self.validate_permutation(perm);
+
+        let new_shape: Vec<usize> = perm.iter().map(|&i| self.shape[i]).collect();
+        let new_strides = Self::compute_strides(&new_shape);
+        let total_elements = self.len();
+
+        let mut result_data = vec![T::zero(); total_elements];
+
+        // Iterate over all elements and reorder
+        for old_idx in 0..total_elements {
+            let old_coords = self.linear_to_coords(old_idx);
+            let new_coords: Vec<usize> = perm.iter().map(|&i| old_coords[i]).collect();
+            let new_idx = Self::coords_to_linear(&new_coords, &new_strides);
+
+            result_data[new_idx] = self.data[old_idx].clone();
+        }
+
+        Self {
+            data: Arc::new(result_data),
+            shape: new_shape,
+            strides: new_strides,
+        }
+    }
+
+    /// Validate permutation
+    fn validate_permutation(&self, perm: &[usize]) {
+        assert_eq!(
+            perm.len(),
+            self.rank(),
+            "Permutation length {} doesn't match tensor rank {}",
+            perm.len(),
+            self.rank()
+        );
+
+        let mut seen = vec![false; self.rank()];
+        for &i in perm {
+            assert!(
+                i < self.rank(),
+                "Permutation index {} out of range [0, {})",
+                i,
+                self.rank()
+            );
+            assert!(!seen[i], "Duplicate index {} in permutation", i);
+            seen[i] = true;
+        }
+    }
+
+    /// Convert linear index to multi-dimensional coordinates
+    fn linear_to_coords(&self, idx: usize) -> Vec<usize> {
+        let mut coords = vec![0; self.rank()];
+        let mut remaining = idx;
+
+        for i in 0..self.rank() {
+            coords[i] = remaining / self.strides[i];
+            remaining %= self.strides[i];
+        }
+
+        coords
+    }
+
+    /// Convert multi-dimensional coordinates to linear index
+    fn coords_to_linear(coords: &[usize], strides: &[usize]) -> usize {
+        coords
+            .iter()
+            .zip(strides.iter())
+            .map(|(&c, &s)| c * s)
+            .sum()
+    }
+
     /// Compute strides for row-major layout
     fn compute_strides(shape: &[usize]) -> Vec<usize> {
         let mut strides = vec![1; shape.len()];
@@ -409,5 +501,110 @@ mod tests {
 
         let tensor_c32 = DenseTensor::<Complex<f32>>::zeros(vec![10]);
         let _ptr_c32: *const Complex<f32> = tensor_c32.as_ptr();
+    }
+
+    // Permute tests
+    #[test]
+    fn test_permute_2d_transpose() {
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+        );
+
+        // Transpose: [2, 3] -> [3, 2]
+        let result = tensor.permute(&[1, 0]);
+
+        assert_eq!(result.shape(), &[3, 2]);
+        assert_eq!(result.get(&[0, 0]), 1.0);
+        assert_eq!(result.get(&[1, 0]), 2.0);
+        assert_eq!(result.get(&[2, 0]), 3.0);
+        assert_eq!(result.get(&[0, 1]), 4.0);
+        assert_eq!(result.get(&[1, 1]), 5.0);
+        assert_eq!(result.get(&[2, 1]), 6.0);
+    }
+
+    #[test]
+    fn test_permute_3d() {
+        let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
+        let tensor = DenseTensor::<f64>::from_data(data, vec![2, 3, 4]);
+
+        // Permute: [2, 3, 4] -> [4, 2, 3]
+        let result = tensor.permute(&[2, 0, 1]);
+
+        assert_eq!(result.shape(), &[4, 2, 3]);
+        assert_eq!(result.len(), 24);
+
+        // Verify a few elements
+        assert_eq!(result.get(&[0, 0, 0]), tensor.get(&[0, 0, 0]));
+        assert_eq!(result.get(&[1, 0, 0]), tensor.get(&[0, 0, 1]));
+        assert_eq!(result.get(&[2, 0, 0]), tensor.get(&[0, 0, 2]));
+    }
+
+    #[test]
+    fn test_permute_identity() {
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2, 2],
+        );
+
+        // Identity permutation
+        let result = tensor.permute(&[0, 1]);
+
+        assert_eq!(result.shape(), tensor.shape());
+        assert_eq!(result.data(), tensor.data());
+    }
+
+    #[test]
+    fn test_permute_complex() {
+        use num_complex::Complex;
+
+        let data: Vec<Complex<f64>> = vec![
+            Complex::new(1.0, 2.0),
+            Complex::new(3.0, 4.0),
+            Complex::new(5.0, 6.0),
+            Complex::new(7.0, 8.0),
+        ];
+        let tensor = DenseTensor::from_data(data, vec![2, 2]);
+
+        let result = tensor.permute(&[1, 0]);
+        assert_eq!(result.shape(), &[2, 2]);
+        assert_eq!(result.get(&[0, 0]), Complex::new(1.0, 2.0));
+        assert_eq!(result.get(&[1, 0]), Complex::new(3.0, 4.0));
+        assert_eq!(result.get(&[0, 1]), Complex::new(5.0, 6.0));
+        assert_eq!(result.get(&[1, 1]), Complex::new(7.0, 8.0));
+    }
+
+    #[test]
+    fn test_permute_f32() {
+        let tensor = DenseTensor::<f32>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2, 2],
+        );
+
+        let result = tensor.permute(&[1, 0]);
+        assert_eq!(result.shape(), &[2, 2]);
+        assert_eq!(result.get(&[0, 0]), 1.0f32);
+        assert_eq!(result.get(&[1, 0]), 2.0f32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Permutation length 3 doesn't match tensor rank 2")]
+    fn test_permute_invalid_length() {
+        let tensor = DenseTensor::<f64>::zeros(vec![2, 3]);
+        tensor.permute(&[0, 1, 2]); // Wrong length
+    }
+
+    #[test]
+    #[should_panic(expected = "Permutation index 2 out of range")]
+    fn test_permute_invalid_index() {
+        let tensor = DenseTensor::<f64>::zeros(vec![2, 3]);
+        tensor.permute(&[0, 2]); // Index 2 out of range
+    }
+
+    #[test]
+    #[should_panic(expected = "Duplicate index 1 in permutation")]
+    fn test_permute_duplicate_index() {
+        let tensor = DenseTensor::<f64>::zeros(vec![2, 3]);
+        tensor.permute(&[1, 1]); // Duplicate index
     }
 }
