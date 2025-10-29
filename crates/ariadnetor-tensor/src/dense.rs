@@ -255,7 +255,7 @@ where
     where
         T: Clone + Zero + 'static,
     {
-        // Use HPTT for f64/f32 when available
+        // Use HPTT for f64/f32/Complex when available
         #[cfg(feature = "hptt")]
         {
             use std::any::TypeId;
@@ -274,6 +274,22 @@ where
                 let self_f32: &DenseTensor<f32> = unsafe { std::mem::transmute(self) };
                 let result_f32 = self_f32.permute_hptt(perm);
                 return unsafe { std::mem::transmute(result_f32) };
+            }
+
+            if type_id == TypeId::of::<num_complex::Complex<f64>>() {
+                // Safety: We just checked that T is Complex<f64>
+                let self_c64: &DenseTensor<num_complex::Complex<f64>> =
+                    unsafe { std::mem::transmute(self) };
+                let result_c64 = self_c64.permute_hptt(perm);
+                return unsafe { std::mem::transmute(result_c64) };
+            }
+
+            if type_id == TypeId::of::<num_complex::Complex<f32>>() {
+                // Safety: We just checked that T is Complex<f32>
+                let self_c32: &DenseTensor<num_complex::Complex<f32>> =
+                    unsafe { std::mem::transmute(self) };
+                let result_c32 = self_c32.permute_hptt(perm);
+                return unsafe { std::mem::transmute(result_c32) };
             }
         }
 
@@ -448,6 +464,54 @@ impl DenseTensor<f32> {
             1,
         )
         .expect("HPTT transpose_f32 failed");
+
+        Self::from_data(output, new_shape)
+    }
+}
+
+#[cfg(feature = "hptt")]
+impl DenseTensor<num_complex::Complex<f64>> {
+    /// Permute tensor using HPTT (high-performance implementation for Complex<f64>)
+    pub fn permute_hptt(&self, perm: &[usize]) -> Self {
+        self.validate_permutation(perm);
+
+        let new_shape: Vec<usize> = perm.iter().map(|&i| self.shape[i]).collect();
+        let mut output = vec![num_complex::Complex::new(0.0, 0.0); self.len()];
+
+        hptt::transpose_c64(
+            perm,
+            num_complex::Complex::new(1.0, 0.0), // alpha
+            self.data(),
+            &self.shape,
+            num_complex::Complex::new(0.0, 0.0), // beta (overwrite)
+            &mut output,
+            1,
+        )
+        .expect("HPTT transpose_c64 failed");
+
+        Self::from_data(output, new_shape)
+    }
+}
+
+#[cfg(feature = "hptt")]
+impl DenseTensor<num_complex::Complex<f32>> {
+    /// Permute tensor using HPTT (high-performance implementation for Complex<f32>)
+    pub fn permute_hptt(&self, perm: &[usize]) -> Self {
+        self.validate_permutation(perm);
+
+        let new_shape: Vec<usize> = perm.iter().map(|&i| self.shape[i]).collect();
+        let mut output = vec![num_complex::Complex::new(0.0, 0.0); self.len()];
+
+        hptt::transpose_c32(
+            perm,
+            num_complex::Complex::new(1.0, 0.0), // alpha
+            self.data(),
+            &self.shape,
+            num_complex::Complex::new(0.0, 0.0), // beta (overwrite)
+            &mut output,
+            1,
+        )
+        .expect("HPTT transpose_c32 failed");
 
         Self::from_data(output, new_shape)
     }
@@ -646,26 +710,6 @@ mod tests {
     }
 
     #[test]
-    fn test_permute_complex() {
-        use num_complex::Complex;
-
-        let data: Vec<Complex<f64>> = vec![
-            Complex::new(1.0, 2.0),
-            Complex::new(3.0, 4.0),
-            Complex::new(5.0, 6.0),
-            Complex::new(7.0, 8.0),
-        ];
-        let tensor = DenseTensor::from_data(data, vec![2, 2]);
-
-        let result = tensor.permute(&[1, 0]);
-        assert_eq!(result.shape(), &[2, 2]);
-        assert_eq!(result.get(&[0, 0]), Complex::new(1.0, 2.0));
-        assert_eq!(result.get(&[1, 0]), Complex::new(3.0, 4.0));
-        assert_eq!(result.get(&[0, 1]), Complex::new(5.0, 6.0));
-        assert_eq!(result.get(&[1, 1]), Complex::new(7.0, 8.0));
-    }
-
-    #[test]
     fn test_permute_f32() {
         let tensor = DenseTensor::<f32>::from_data(
             vec![1.0, 2.0, 3.0, 4.0],
@@ -771,7 +815,7 @@ mod tests {
     }
 
     #[test]
-    fn test_permute_complex_uses_naive() {
+    fn test_permute_complex_basic() {
         use num_complex::Complex;
 
         let data: Vec<Complex<f64>> = (0..4)
@@ -779,7 +823,7 @@ mod tests {
             .collect();
         let tensor = DenseTensor::from_data(data, vec![2, 2]);
 
-        // permute() should use naive for Complex (HPTT doesn't support it yet)
+        // permute() should work for Complex (uses HPTT when available, naive otherwise)
         let result = tensor.permute(&[1, 0]);
         let result_naive = tensor.permute_naive(&[1, 0]);
 
@@ -802,5 +846,83 @@ mod tests {
         // Verify a few random elements
         assert_eq!(result.get(&[0, 0, 0]), tensor.get(&[0, 0, 0]));
         assert_eq!(result.get(&[5, 3, 7]), tensor.get(&[3, 7, 5]));
+    }
+
+    #[cfg(feature = "hptt")]
+    #[test]
+    fn test_hptt_vs_naive_c64() {
+        use num_complex::Complex;
+
+        // Test Complex<f64> HPTT vs naive implementation
+        let data: Vec<Complex<f64>> = (0..24)
+            .map(|i| Complex::new(i as f64, (i + 1) as f64))
+            .collect();
+        let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+
+        let result_hptt = tensor.permute_hptt(&[2, 0, 1]);
+        let result_naive = tensor.permute_naive(&[2, 0, 1]);
+
+        assert_eq!(result_hptt.shape(), result_naive.shape());
+        assert_eq!(result_hptt.data(), result_naive.data());
+    }
+
+    #[cfg(feature = "hptt")]
+    #[test]
+    fn test_hptt_vs_naive_c32() {
+        use num_complex::Complex;
+
+        // Test Complex<f32> HPTT vs naive implementation
+        let data: Vec<Complex<f32>> = (0..24)
+            .map(|i| Complex::new(i as f32, (i + 1) as f32))
+            .collect();
+        let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+
+        let result_hptt = tensor.permute_hptt(&[2, 0, 1]);
+        let result_naive = tensor.permute_naive(&[2, 0, 1]);
+
+        assert_eq!(result_hptt.shape(), result_naive.shape());
+        assert_eq!(result_hptt.data(), result_naive.data());
+    }
+
+    #[cfg(feature = "hptt")]
+    #[test]
+    fn test_permute_auto_selects_hptt_c64() {
+        use num_complex::Complex;
+
+        // Verify that permute() automatically selects HPTT for Complex<f64>
+        let data: Vec<Complex<f64>> = vec![
+            Complex::new(1.0, 2.0),
+            Complex::new(3.0, 4.0),
+            Complex::new(5.0, 6.0),
+            Complex::new(7.0, 8.0),
+        ];
+        let tensor = DenseTensor::from_data(data, vec![2, 2]);
+
+        let result = tensor.permute(&[1, 0]);
+        let result_naive = tensor.permute_naive(&[1, 0]);
+
+        assert_eq!(result.shape(), result_naive.shape());
+        assert_eq!(result.data(), result_naive.data());
+    }
+
+    #[cfg(feature = "hptt")]
+    #[test]
+    fn test_permute_auto_selects_hptt_c32() {
+        use num_complex::Complex;
+
+        // Verify that permute() automatically selects HPTT for Complex<f32>
+        let data: Vec<Complex<f32>> = vec![
+            Complex::new(1.0, 2.0),
+            Complex::new(3.0, 4.0),
+            Complex::new(5.0, 6.0),
+            Complex::new(7.0, 8.0),
+        ];
+        let tensor = DenseTensor::from_data(data, vec![2, 2]);
+
+        let result = tensor.permute(&[1, 0]);
+        let result_naive = tensor.permute_naive(&[1, 0]);
+
+        assert_eq!(result.shape(), result_naive.shape());
+        assert_eq!(result.data(), result_naive.data());
     }
 }
