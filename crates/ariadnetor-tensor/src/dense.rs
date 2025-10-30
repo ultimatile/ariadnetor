@@ -2,9 +2,9 @@
 //!
 //! Provides a dense tensor with row-major layout and Arc-based shared ownership.
 
+use num_traits::{One, Zero};
 use std::fmt;
 use std::sync::Arc;
-use num_traits::{Zero, One};
 
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
 ///
@@ -393,17 +393,14 @@ where
             self.shape.len()
         );
 
-        indices
-            .iter()
-            .zip(&self.shape)
-            .for_each(|(&idx, &dim)| {
-                assert!(
-                    idx < dim,
-                    "Index {} out of bounds for dimension {}",
-                    idx,
-                    dim
-                )
-            });
+        indices.iter().zip(&self.shape).for_each(|(&idx, &dim)| {
+            assert!(
+                idx < dim,
+                "Index {} out of bounds for dimension {}",
+                idx,
+                dim
+            )
+        });
 
         indices
             .iter()
@@ -451,11 +448,10 @@ where
     where
         T: Clone + Zero + One + std::ops::AddAssign + std::ops::Mul<Output = T> + 'static,
     {
-        use crate::einsum::{EinsumExpr, ContractionPlan};
+        use crate::einsum::{ContractionPlan, EinsumExpr};
 
         // Parse einsum notation
-        let expr = EinsumExpr::parse(notation)
-            .expect("Failed to parse einsum notation");
+        let expr = EinsumExpr::parse(notation).expect("Failed to parse einsum notation");
 
         // Validate shapes
         assert_eq!(
@@ -497,25 +493,40 @@ where
         // RHS: [contracted..., free_rhs...]
         // Output: [free_lhs..., free_rhs...]
 
-        let m: usize = plan.free_lhs.iter()
+        let m: usize = plan
+            .free_lhs
+            .iter()
             .map(|&idx| {
-                let pos = expr.lhs_indices.iter().position(|&x| x == idx)
+                let pos = expr
+                    .lhs_indices
+                    .iter()
+                    .position(|&x| x == idx)
                     .expect("Free index not found in LHS");
                 self.shape[pos]
             })
             .product();
 
-        let n: usize = plan.free_rhs.iter()
+        let n: usize = plan
+            .free_rhs
+            .iter()
             .map(|&idx| {
-                let pos = expr.rhs_indices.iter().position(|&x| x == idx)
+                let pos = expr
+                    .rhs_indices
+                    .iter()
+                    .position(|&x| x == idx)
                     .expect("Free index not found in RHS");
                 rhs.shape[pos]
             })
             .product();
 
-        let k: usize = plan.contracted.iter()
+        let k: usize = plan
+            .contracted
+            .iter()
             .map(|&idx| {
-                let pos = expr.lhs_indices.iter().position(|&x| x == idx)
+                let pos = expr
+                    .lhs_indices
+                    .iter()
+                    .position(|&x| x == idx)
                     .expect("Contracted index not found in LHS");
                 self.shape[pos]
             })
@@ -527,7 +538,17 @@ where
         let k = if k == 0 { 1 } else { k };
 
         // Call type-specific GEMM implementation
-        self.gemm_dispatch(&lhs_permuted, &rhs_permuted, m, n, k, &plan, &expr, self.shape(), rhs.shape())
+        self.gemm_dispatch(
+            &lhs_permuted,
+            &rhs_permuted,
+            m,
+            n,
+            k,
+            &plan,
+            &expr,
+            self.shape(),
+            rhs.shape(),
+        )
     }
 
     /// Dispatch GEMM to type-specific implementation
@@ -556,7 +577,8 @@ where
             let lhs_f64: &DenseTensor<f64> = unsafe { std::mem::transmute(lhs) };
             let rhs_f64: &DenseTensor<f64> = unsafe { std::mem::transmute(rhs) };
             let result_f64 = lhs_f64.gemm_f64(rhs_f64, m, n, k);
-            let reshaped = Self::reshape_output(&result_f64, lhs_orig_shape, rhs_orig_shape, plan, expr);
+            let reshaped =
+                Self::reshape_output(&result_f64, lhs_orig_shape, rhs_orig_shape, plan, expr);
             return unsafe { std::mem::transmute(reshaped) };
         }
 
@@ -565,7 +587,8 @@ where
             let lhs_f32: &DenseTensor<f32> = unsafe { std::mem::transmute(lhs) };
             let rhs_f32: &DenseTensor<f32> = unsafe { std::mem::transmute(rhs) };
             let result_f32 = lhs_f32.gemm_f32(rhs_f32, m, n, k);
-            let reshaped = Self::reshape_output(&result_f32, lhs_orig_shape, rhs_orig_shape, plan, expr);
+            let reshaped =
+                Self::reshape_output(&result_f32, lhs_orig_shape, rhs_orig_shape, plan, expr);
             return unsafe { std::mem::transmute(reshaped) };
         }
 
@@ -589,14 +612,20 @@ where
 
         // Add free_lhs dimensions in output order
         for &idx in &plan.free_lhs {
-            let pos = expr.lhs_indices.iter().position(|&x| x == idx)
+            let pos = expr
+                .lhs_indices
+                .iter()
+                .position(|&x| x == idx)
                 .expect("Free LHS index not found");
             output_shape.push(lhs_shape[pos]);
         }
 
         // Add free_rhs dimensions in output order
         for &idx in &plan.free_rhs {
-            let pos = expr.rhs_indices.iter().position(|&x| x == idx)
+            let pos = expr
+                .rhs_indices
+                .iter()
+                .position(|&x| x == idx)
                 .expect("Free RHS index not found");
             output_shape.push(rhs_shape[pos]);
         }
@@ -629,12 +658,12 @@ impl DenseTensor<f64> {
 
         hptt::transpose_f64(
             perm,
-            1.0,           // alpha
+            1.0, // alpha
             self.data(),
             &self.shape,
-            0.0,           // beta (overwrite)
+            0.0, // beta (overwrite)
             &mut output,
-            1,             // num_threads (TODO: make configurable)
+            1, // num_threads (TODO: make configurable)
         )
         .expect("HPTT transpose_f64 failed");
 
@@ -648,7 +677,7 @@ impl DenseTensor<f64> {
     /// - B is k × n
     /// - C is m × n
     pub(crate) fn gemm_f64(&self, rhs: &Self, m: usize, n: usize, k: usize) -> Self {
-        use faer::{MatRef, Mat};
+        use faer::{Mat, MatRef};
 
         // Create faer matrix views from row-major data
         let lhs_view = MatRef::from_row_major_slice(self.data(), m, k);
@@ -658,7 +687,7 @@ impl DenseTensor<f64> {
         let output: Mat<f64> = &lhs_view * &rhs_view;
 
         // Convert back to row-major for DenseTensor
-        let result_data: Vec<f64> = (0..m*n)
+        let result_data: Vec<f64> = (0..m * n)
             .map(|i| {
                 let row = i / n;
                 let col = i % n;
@@ -679,30 +708,22 @@ impl DenseTensor<f32> {
         let new_shape: Vec<usize> = perm.iter().map(|&i| self.shape[i]).collect();
         let mut output = vec![0.0f32; self.len()];
 
-        hptt::transpose_f32(
-            perm,
-            1.0,
-            self.data(),
-            &self.shape,
-            0.0,
-            &mut output,
-            1,
-        )
-        .expect("HPTT transpose_f32 failed");
+        hptt::transpose_f32(perm, 1.0, self.data(), &self.shape, 0.0, &mut output, 1)
+            .expect("HPTT transpose_f32 failed");
 
         Self::from_data(output, new_shape)
     }
 
     /// GEMM operation for f32 tensors using faer
     pub(crate) fn gemm_f32(&self, rhs: &Self, m: usize, n: usize, k: usize) -> Self {
-        use faer::{MatRef, Mat};
+        use faer::{Mat, MatRef};
 
         let lhs_view = MatRef::from_row_major_slice(self.data(), m, k);
         let rhs_view = MatRef::from_row_major_slice(rhs.data(), k, n);
 
         let output: Mat<f32> = &lhs_view * &rhs_view;
 
-        let result_data: Vec<f32> = (0..m*n)
+        let result_data: Vec<f32> = (0..m * n)
             .map(|i| {
                 let row = i / n;
                 let col = i % n;
@@ -906,10 +927,7 @@ mod tests {
     // Permute tests
     #[test]
     fn test_permute_2d_transpose() {
-        let tensor = DenseTensor::<f64>::from_data(
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            vec![2, 3],
-        );
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
         // Transpose: [2, 3] -> [3, 2]
         let result = tensor.permute(&[1, 0]);
@@ -942,10 +960,7 @@ mod tests {
 
     #[test]
     fn test_permute_identity() {
-        let tensor = DenseTensor::<f64>::from_data(
-            vec![1.0, 2.0, 3.0, 4.0],
-            vec![2, 2],
-        );
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
         // Identity permutation
         let result = tensor.permute(&[0, 1]);
@@ -956,10 +971,7 @@ mod tests {
 
     #[test]
     fn test_permute_f32() {
-        let tensor = DenseTensor::<f32>::from_data(
-            vec![1.0, 2.0, 3.0, 4.0],
-            vec![2, 2],
-        );
+        let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
         let result = tensor.permute(&[1, 0]);
         assert_eq!(result.shape(), &[2, 2]);
@@ -1030,10 +1042,8 @@ mod tests {
     #[cfg(feature = "hptt")]
     #[test]
     fn test_permute_auto_selects_hptt_f64() {
-        let tensor = DenseTensor::<f64>::from_data(
-            (0..24).map(|i| i as f64).collect(),
-            vec![2, 3, 4],
-        );
+        let tensor =
+            DenseTensor::<f64>::from_data((0..24).map(|i| i as f64).collect(), vec![2, 3, 4]);
 
         // permute() should automatically use HPTT for f64
         let result = tensor.permute(&[2, 0, 1]);
@@ -1046,10 +1056,8 @@ mod tests {
     #[cfg(feature = "hptt")]
     #[test]
     fn test_permute_auto_selects_hptt_f32() {
-        let tensor = DenseTensor::<f32>::from_data(
-            (0..24).map(|i| i as f32).collect(),
-            vec![2, 3, 4],
-        );
+        let tensor =
+            DenseTensor::<f32>::from_data((0..24).map(|i| i as f32).collect(), vec![2, 3, 4]);
 
         // permute() should automatically use HPTT for f32
         let result = tensor.permute(&[2, 0, 1]);
@@ -1174,14 +1182,8 @@ mod tests {
     #[test]
     fn test_contract_matmul() {
         // Test matrix multiplication: C[i,j] = A[i,k] * B[k,j]
-        let a = DenseTensor::from_data(
-            vec![1.0, 2.0, 3.0, 4.0],
-            vec![2, 2],
-        );
-        let b = DenseTensor::from_data(
-            vec![5.0, 6.0, 7.0, 8.0],
-            vec![2, 2],
-        );
+        let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
         let c = a.contract_naive(&b, "ik,kj->ij");
 
@@ -1217,14 +1219,8 @@ mod tests {
     #[test]
     fn test_contract_f32() {
         // Test that contract works with f32
-        let a = DenseTensor::from_data(
-            vec![1.0f32, 2.0, 3.0, 4.0],
-            vec![2, 2],
-        );
-        let b = DenseTensor::from_data(
-            vec![5.0f32, 6.0, 7.0, 8.0],
-            vec![2, 2],
-        );
+        let a = DenseTensor::from_data(vec![1.0f32, 2.0, 3.0, 4.0], vec![2, 2]);
+        let b = DenseTensor::from_data(vec![5.0f32, 6.0, 7.0, 8.0], vec![2, 2]);
 
         let c = a.contract_naive(&b, "ik,kj->ij");
 

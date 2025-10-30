@@ -4,12 +4,8 @@
 
 #[cfg(feature = "mlir")]
 mod end_to_end_tests {
-    use melior::{
-        Context,
-        dialect::DialectRegistry,
-        utility::register_all_dialects,
-    };
-    use arnet::{TNJITCompiler, TCDialect, Tensor};
+    use arnet::{TCDialect, TNJITCompiler, Tensor};
+    use melior::{Context, dialect::DialectRegistry, utility::register_all_dialects};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -38,7 +34,11 @@ mod end_to_end_tests {
         let result = compiler.compile_and_execute("ij,jk->ik", &mut a, &mut b);
 
         // We expect success now that the implementation is complete
-        assert!(result.is_ok(), "Compilation and execution failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Compilation and execution failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -52,7 +52,8 @@ mod end_to_end_tests {
         let mut a = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
         let mut b = Tensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
-        let result = compiler.compile_and_execute("ij,jk->ik", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("ij,jk->ik", &mut a, &mut b)
             .expect("Compilation and execution failed");
 
         // Verify result shape
@@ -84,7 +85,8 @@ mod end_to_end_tests {
         let mut a = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
         let mut b = Tensor::from_data(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![3, 2]);
 
-        let result = compiler.compile_and_execute("ij,jk->ik", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("ij,jk->ik", &mut a, &mut b)
             .expect("Compilation and execution failed");
 
         // Verify result shape
@@ -153,15 +155,20 @@ mod end_to_end_tests {
         // Batch 0: [[1,2,3], [4,5,6]] @ [[1,2], [3,4], [5,6]]
         // Batch 1: [[7,8,9], [10,11,12]] @ [[7,8], [9,10], [11,12]]
         let mut a = Tensor::from_data(
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
-            vec![2, 2, 3]
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            vec![2, 2, 3],
         );
         let mut b = Tensor::from_data(
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
-            vec![2, 3, 2]
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            vec![2, 3, 2],
         );
 
-        let result = compiler.compile_and_execute("bij,bjk->bik", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("bij,bjk->bik", &mut a, &mut b)
             .expect("Batch matrix multiplication failed");
 
         // Verify result shape
@@ -195,7 +202,8 @@ mod end_to_end_tests {
         let mut a = Tensor::from_data(a_data, vec![2, 3, 4]);
         let mut b = Tensor::from_data(b_data, vec![3, 4, 5]);
 
-        let result = compiler.compile_and_execute("ijk,jkl->il", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("ijk,jkl->il", &mut a, &mut b)
             .expect("Higher dimensional contraction failed");
 
         // Verify result shape
@@ -219,7 +227,8 @@ mod end_to_end_tests {
         let mut a = Tensor::from_data(a_data, vec![2, 2, 2, 2]);
         let mut b = Tensor::from_data(b_data, vec![2, 2, 2, 2]);
 
-        let result = compiler.compile_and_execute("abcd,cdef->abef", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("abcd,cdef->abef", &mut a, &mut b)
             .expect("4D contraction failed");
 
         // Verify result shape
@@ -242,15 +251,22 @@ mod end_to_end_tests {
         let mut a = Tensor::from_data(a_data, vec![2, 3, 4]);
         let mut b = Tensor::from_data(b_data, vec![3, 2, 5, 6]);
 
-        let result = compiler.compile_and_execute("ijl,jkmn->iklmn", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("ijl,jkmn->iklmn", &mut a, &mut b)
             .expect("Mixed rank contraction failed");
 
         // Verify result shape: (3,4,5) -> 5D output
         assert_eq!(result.shape(), &[2, 2, 4, 5, 6]);
 
         // Verify result is non-zero (computation happened)
-        assert!(result.get(&[0, 0, 0, 0, 0]) > 0.0, "Result should be non-zero");
-        assert!(result.get(&[1, 1, 3, 4, 5]) > 0.0, "Result should be non-zero");
+        assert!(
+            result.get(&[0, 0, 0, 0, 0]) > 0.0,
+            "Result should be non-zero"
+        );
+        assert!(
+            result.get(&[1, 1, 3, 4, 5]) > 0.0,
+            "Result should be non-zero"
+        );
     }
 
     #[test]
@@ -267,15 +283,22 @@ mod end_to_end_tests {
         let mut a = Tensor::from_data(a_data, vec![2, 2, 2, 2, 2, 2, 2, 2]);
         let mut b = Tensor::from_data(b_data, vec![2, 2, 2, 2, 2, 2, 2, 2]);
 
-        let result = compiler.compile_and_execute("abcdefgh,efghijkl->abcdijkl", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("abcdefgh,efghijkl->abcdijkl", &mut a, &mut b)
             .expect("8D contraction failed");
 
         // Verify result shape
         assert_eq!(result.shape(), &[2, 2, 2, 2, 2, 2, 2, 2]);
 
         // Verify result is non-zero (computation happened)
-        assert!(result.get(&[0, 0, 0, 0, 0, 0, 0, 0]) > 0.0, "Result should be non-zero");
-        assert!(result.get(&[1, 1, 1, 1, 1, 1, 1, 1]) > 0.0, "Result should be non-zero");
+        assert!(
+            result.get(&[0, 0, 0, 0, 0, 0, 0, 0]) > 0.0,
+            "Result should be non-zero"
+        );
+        assert!(
+            result.get(&[1, 1, 1, 1, 1, 1, 1, 1]) > 0.0,
+            "Result should be non-zero"
+        );
     }
 
     #[test]
@@ -295,14 +318,18 @@ mod end_to_end_tests {
         let mut a = Tensor::from_data(a_data, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
         let mut b = Tensor::from_data(b_data, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
 
-        let result = compiler.compile_and_execute("abcdefghij,efghijklmn->abcdklmn", &mut a, &mut b)
+        let result = compiler
+            .compile_and_execute("abcdefghij,efghijklmn->abcdklmn", &mut a, &mut b)
             .expect("10D contraction failed");
 
         // Verify result shape: contracts on e,f,g,h,i,j (6 indices), keeps a,b,c,d,k,l,m,n (8 indices)
         assert_eq!(result.shape(), &[2, 2, 2, 2, 2, 2, 2, 2]);
 
         // Verify result is non-zero
-        assert!(result.get(&[0, 0, 0, 0, 0, 0, 0, 0]) > 0.0, "Result should be non-zero");
+        assert!(
+            result.get(&[0, 0, 0, 0, 0, 0, 0, 0]) > 0.0,
+            "Result should be non-zero"
+        );
     }
 
     #[test]

@@ -44,13 +44,11 @@ mod jit_tests {
         let context = setup_context();
 
         // Test setting optimization level
-        let compiler = TNJITCompiler::new(&context)
-            .with_optimization_level(3);
+        let compiler = TNJITCompiler::new(&context).with_optimization_level(3);
         assert_eq!(compiler.optimization_level(), 3);
 
         // Test clamping to max level 3
-        let compiler_clamped = TNJITCompiler::new(&context)
-            .with_optimization_level(10);
+        let compiler_clamped = TNJITCompiler::new(&context).with_optimization_level(10);
         assert_eq!(compiler_clamped.optimization_level(), 3);
     }
 
@@ -70,7 +68,11 @@ mod jit_tests {
         "#;
 
         let result = compiler.compile_module(mlir_source);
-        assert!(result.is_ok(), "Failed to compile simple function: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to compile simple function: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -88,7 +90,8 @@ mod jit_tests {
             }
         "#;
 
-        let engine = compiler.compile_module(mlir_source)
+        let engine = compiler
+            .compile_module(mlir_source)
             .expect("Failed to compile module");
 
         // Lookup the function (returns raw pointer)
@@ -117,7 +120,11 @@ mod jit_tests {
         "#;
 
         let result = compiler.compile_module(mlir_source);
-        assert!(result.is_ok(), "Failed to compile float function: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to compile float function: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -142,8 +149,7 @@ mod jit_tests {
 
         // Test with different optimization levels
         for opt_level in 0..=3 {
-            let compiler = TNJITCompiler::new(&context)
-                .with_optimization_level(opt_level);
+            let compiler = TNJITCompiler::new(&context).with_optimization_level(opt_level);
 
             let mlir_source = r#"
                 module {
@@ -180,7 +186,11 @@ mod jit_tests {
         "#;
 
         let result = compiler.compile_module(mlir_source);
-        assert!(result.is_ok(), "Failed to compile function with control flow: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to compile function with control flow: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -247,8 +257,7 @@ mod jit_tests {
             }
         "#;
 
-        let mut module = Module::parse(&context, mlir_source)
-            .expect("Failed to parse module");
+        let mut module = Module::parse(&context, mlir_source).expect("Failed to parse module");
 
         // Create pass manager and apply lowering passes
         let pass_manager = PassManager::new(&context);
@@ -263,7 +272,10 @@ mod jit_tests {
         assert!(result.is_ok(), "Failed to run lowering passes");
 
         // Verify the lowered module
-        assert!(module.as_operation().verify(), "Module verification failed after lowering");
+        assert!(
+            module.as_operation().verify(),
+            "Module verification failed after lowering"
+        );
     }
 
     #[test]
@@ -283,8 +295,7 @@ mod jit_tests {
             }
         "#;
 
-        let mut module = Module::parse(&context, mlir_source)
-            .expect("Failed to parse module");
+        let mut module = Module::parse(&context, mlir_source).expect("Failed to parse module");
 
         // Apply optimization and lowering passes
         let pass_manager = PassManager::new(&context);

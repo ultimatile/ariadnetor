@@ -4,18 +4,17 @@
 
 #[cfg(feature = "mlir")]
 mod builder_tests {
+    use arnet::{EinsumExpr, TCBuilder, TCDialect};
     use melior::{
         Context,
         dialect::DialectRegistry,
         ir::{
-            Block, BlockLike,
-            Location,
+            Block, BlockLike, Location,
             operation::OperationLike,
             r#type::{RankedTensorType, Type},
         },
         utility::register_all_dialects,
     };
-    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -78,7 +77,11 @@ mod builder_tests {
         // Build contract operation
         let result = builder.contract(lhs, rhs, result_type, "ij,jk->ik");
 
-        assert!(result.is_ok(), "Contract operation build failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Contract operation build failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -102,19 +105,20 @@ mod builder_tests {
         // Build SVD operation without optional parameters
         let result = builder.svd(input, u_type, s_type, v_type, None, None);
 
-        assert!(result.is_ok(), "SVD operation build failed: {:?}", result.err());
-
-        // Test with optional parameters
-        let result_with_params = builder.svd(
-            input2,
-            u_type,
-            s_type,
-            v_type,
-            Some(50),
-            Some(1e-10),
+        assert!(
+            result.is_ok(),
+            "SVD operation build failed: {:?}",
+            result.err()
         );
 
-        assert!(result_with_params.is_ok(), "SVD operation with params build failed: {:?}", result_with_params.err());
+        // Test with optional parameters
+        let result_with_params = builder.svd(input2, u_type, s_type, v_type, Some(50), Some(1e-10));
+
+        assert!(
+            result_with_params.is_ok(),
+            "SVD operation with params build failed: {:?}",
+            result_with_params.err()
+        );
     }
 
     #[test]
@@ -136,7 +140,11 @@ mod builder_tests {
         // Build QR operation
         let result = builder.qr(input, q_type, r_type);
 
-        assert!(result.is_ok(), "QR operation build failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "QR operation build failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -157,7 +165,11 @@ mod builder_tests {
         // Build transpose operation
         let result = builder.transpose(input, result_type, &[1, 0]);
 
-        assert!(result.is_ok(), "Transpose operation build failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Transpose operation build failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -178,7 +190,11 @@ mod builder_tests {
         // Build reshape operation
         let result = builder.reshape(input, result_type);
 
-        assert!(result.is_ok(), "Reshape operation build failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Reshape operation build failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -199,11 +215,19 @@ mod builder_tests {
 
         // Build truncate operation without parameters
         let result1 = builder.truncate(input, result_type, None, None);
-        assert!(result1.is_ok(), "Truncate operation build failed: {:?}", result1.err());
+        assert!(
+            result1.is_ok(),
+            "Truncate operation build failed: {:?}",
+            result1.err()
+        );
 
         // Build truncate operation with parameters
         let result2 = builder.truncate(input2, result_type, Some(50), Some(1e-8));
-        assert!(result2.is_ok(), "Truncate operation with params build failed: {:?}", result2.err());
+        assert!(
+            result2.is_ok(),
+            "Truncate operation with params build failed: {:?}",
+            result2.err()
+        );
     }
 
     #[test]
@@ -213,8 +237,7 @@ mod builder_tests {
         let location = builder.location();
 
         // Parse einsum expression for matrix multiplication
-        let expr = EinsumExpr::parse("ij,jk->ik")
-            .expect("Failed to parse einsum expression");
+        let expr = EinsumExpr::parse("ij,jk->ik").expect("Failed to parse einsum expression");
 
         // Create a test block with two tensor arguments (10x20 and 20x30)
         let block = create_test_block(&context, &[&[10, 20], &[20, 30]], location);
@@ -225,16 +248,14 @@ mod builder_tests {
         let f64_type = Type::float64(&context);
 
         // Build contract operation from einsum expression
-        let result = builder.build_contract_from_einsum(
-            &expr,
-            lhs,
-            rhs,
-            &[10, 20],
-            &[20, 30],
-            f64_type
-        );
+        let result =
+            builder.build_contract_from_einsum(&expr, lhs, rhs, &[10, 20], &[20, 30], f64_type);
 
-        assert!(result.is_ok(), "Contract from einsum build failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Contract from einsum build failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -244,8 +265,7 @@ mod builder_tests {
         let location = builder.location();
 
         // Parse einsum expression for higher-dimensional contraction
-        let expr = EinsumExpr::parse("ijk,jkl->il")
-            .expect("Failed to parse einsum expression");
+        let expr = EinsumExpr::parse("ijk,jkl->il").expect("Failed to parse einsum expression");
 
         // Create a test block with two 3D tensor arguments
         let block = create_test_block(&context, &[&[5, 10, 15], &[10, 15, 20]], location);
@@ -262,10 +282,14 @@ mod builder_tests {
             rhs,
             &[5, 10, 15],
             &[10, 15, 20],
-            f64_type
+            f64_type,
         );
 
-        assert!(result.is_ok(), "Higher-dimensional contract from einsum build failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Higher-dimensional contract from einsum build failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -275,8 +299,7 @@ mod builder_tests {
         let location = builder.location();
 
         // Parse einsum expression
-        let expr = EinsumExpr::parse("ij,jk->ik")
-            .expect("Failed to parse einsum expression");
+        let expr = EinsumExpr::parse("ij,jk->ik").expect("Failed to parse einsum expression");
 
         // Create a test block with mismatched dimensions
         let block = create_test_block(&context, &[&[10, 20], &[25, 30]], location);
@@ -287,16 +310,13 @@ mod builder_tests {
         let f64_type = Type::float64(&context);
 
         // This should fail due to dimension mismatch (20 != 25 for contracted index 'j')
-        let result = builder.build_contract_from_einsum(
-            &expr,
-            lhs,
-            rhs,
-            &[10, 20],
-            &[25, 30],
-            f64_type
-        );
+        let result =
+            builder.build_contract_from_einsum(&expr, lhs, rhs, &[10, 20], &[25, 30], f64_type);
 
-        assert!(result.is_err(), "Expected error for dimension mismatch, but got success");
+        assert!(
+            result.is_err(),
+            "Expected error for dimension mismatch, but got success"
+        );
     }
 
     #[test]
@@ -306,8 +326,7 @@ mod builder_tests {
         let location = builder.location();
 
         // Parse einsum expression for batch matrix multiplication
-        let expr = EinsumExpr::parse("bij,bjk->bik")
-            .expect("Failed to parse einsum expression");
+        let expr = EinsumExpr::parse("bij,bjk->bik").expect("Failed to parse einsum expression");
 
         // Create a test block with two 3D tensor arguments (batch=32, matrices 10x20 and 20x30)
         let block = create_test_block(&context, &[&[32, 10, 20], &[32, 20, 30]], location);
@@ -324,9 +343,13 @@ mod builder_tests {
             rhs,
             &[32, 10, 20],
             &[32, 20, 30],
-            f64_type
+            f64_type,
         );
 
-        assert!(result.is_ok(), "Batch matmul from einsum build failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Batch matmul from einsum build failed: {:?}",
+            result.err()
+        );
     }
 }

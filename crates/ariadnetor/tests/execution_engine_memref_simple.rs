@@ -6,14 +6,14 @@
 #[cfg(feature = "mlir")]
 #[test]
 fn test_memref_read_write() {
+    use arnet::{MemRefDescriptor, Tensor};
     use melior::{
+        Context, ExecutionEngine,
         dialect::DialectRegistry,
-        ir::{operation::OperationLike, Module},
+        ir::{Module, operation::OperationLike},
         pass::PassManager,
         utility::{register_all_dialects, register_all_llvm_translations},
-        Context, ExecutionEngine,
     };
-    use arnet::{MemRefDescriptor, Tensor};
 
     let registry = DialectRegistry::new();
     register_all_dialects(&registry);

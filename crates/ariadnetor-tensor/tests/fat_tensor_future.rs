@@ -3,7 +3,7 @@
 //! These tests demonstrate the intended API and will fail until implementation is complete.
 //! This is expected behavior (Red-First TDD).
 
-use arnet_tensor::{RawTensor, FatTensor, Index, IndexSet};
+use arnet_tensor::{FatTensor, Index, IndexSet, RawTensor};
 
 #[test]
 fn test_fat_tensor_creation() {
@@ -72,7 +72,7 @@ fn test_fat_tensor_trace() {
 #[test]
 fn test_index_prime_levels() {
     // TODO: Implement Index prime level
-    let _idx1 = Index::new("i");  // prime_level = 0
+    let _idx1 = Index::new("i"); // prime_level = 0
     // let idx2 = idx1.prime();       // prime_level = 1
     // let idx3 = idx2.prime();       // prime_level = 2
 

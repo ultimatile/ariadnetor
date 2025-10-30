@@ -21,7 +21,7 @@
 //! let expr = EinsumExpr::parse("ij->ji").unwrap();
 //! ```
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use std::collections::{HashMap, HashSet};
 
 /// Represents a parsed Einstein summation expression
@@ -91,12 +91,11 @@ impl EinsumExpr {
         let out_str = output.trim();
 
         // Parse indices
-        let lhs_indices = Self::parse_indices(lhs_str)
-            .context("Failed to parse left-hand side indices")?;
-        let rhs_indices = Self::parse_indices(rhs_str)
-            .context("Failed to parse right-hand side indices")?;
-        let out_indices = Self::parse_indices(out_str)
-            .context("Failed to parse output indices")?;
+        let lhs_indices =
+            Self::parse_indices(lhs_str).context("Failed to parse left-hand side indices")?;
+        let rhs_indices =
+            Self::parse_indices(rhs_str).context("Failed to parse right-hand side indices")?;
+        let out_indices = Self::parse_indices(out_str).context("Failed to parse output indices")?;
 
         // Create expression
         let expr = Self {
@@ -149,10 +148,7 @@ impl EinsumExpr {
         // Check that all output indices appear in inputs
         for &idx in &self.out_indices {
             if !input_indices.contains(&idx) {
-                bail!(
-                    "Output index '{}' does not appear in any input tensor",
-                    idx
-                );
+                bail!("Output index '{}' does not appear in any input tensor", idx);
             }
         }
 
@@ -172,7 +168,9 @@ impl EinsumExpr {
             if !in_lhs || !in_rhs {
                 bail!(
                     "Contracted index '{}' must appear in both input tensors, found: lhs={}, rhs={}",
-                    idx, in_lhs, in_rhs
+                    idx,
+                    in_lhs,
+                    in_rhs
                 );
             }
         }
@@ -250,9 +248,9 @@ impl EinsumExpr {
         // Build output shape
         let mut output_shape = Vec::new();
         for &idx in &self.out_indices {
-            let dim = index_dims.get(&idx).ok_or_else(|| {
-                anyhow!("Output index '{}' not found in input tensors", idx)
-            })?;
+            let dim = index_dims
+                .get(&idx)
+                .ok_or_else(|| anyhow!("Output index '{}' not found in input tensors", idx))?;
             output_shape.push(*dim);
         }
 
@@ -377,7 +375,12 @@ mod tests {
     fn test_invalid_format_one_input() {
         let result = EinsumExpr::parse("ij->ik");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("two input tensors"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("two input tensors")
+        );
     }
 
     #[test]
@@ -388,8 +391,8 @@ mod tests {
         // Error message should indicate parsing failure
         assert!(
             err_msg.contains("lowercase")
-            || err_msg.contains("Invalid")
-            || err_msg.contains("Failed to parse")
+                || err_msg.contains("Invalid")
+                || err_msg.contains("Failed to parse")
         );
     }
 
@@ -412,13 +415,20 @@ mod tests {
         let expr = EinsumExpr::parse("ij,jk->ik").unwrap();
         let result = expr.infer_output_shape(&[10, 20], &[25, 30]);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Dimension mismatch"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Dimension mismatch")
+        );
     }
 
     #[test]
     fn test_infer_shape_higher_dimensional() {
         let expr = EinsumExpr::parse("ijk,jkl->il").unwrap();
-        let output = expr.infer_output_shape(&[5, 10, 15], &[10, 15, 20]).unwrap();
+        let output = expr
+            .infer_output_shape(&[5, 10, 15], &[10, 15, 20])
+            .unwrap();
         assert_eq!(output, vec![5, 20]);
     }
 

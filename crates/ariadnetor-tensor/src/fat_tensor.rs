@@ -1,7 +1,7 @@
 //! Fat tensor with metadata (storage + indices)
 
-use crate::raw_tensor::RawTensor;
 use crate::index::IndexSet;
+use crate::raw_tensor::RawTensor;
 
 /// Fat tensor: RawTensor + Index metadata
 ///

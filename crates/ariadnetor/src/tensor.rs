@@ -10,7 +10,7 @@
 //!
 //! For backward compatibility, existing code uses `DenseTensor` directly.
 
-pub use arnet_tensor::{DenseTensor, RawTensor, FatTensor, Index, IndexSet};
+pub use arnet_tensor::{DenseTensor, FatTensor, Index, IndexSet, RawTensor};
 
 // Temporary backward compatibility: Old code expects bare `Tensor` = DenseTensor
 // TODO: Migrate to RawTensor/FatTensor distinction

@@ -7,15 +7,15 @@
 //! - IR Builder for tensor operations
 //! - MemRef descriptor utilities
 
-pub mod dialect;
 pub mod builder;
+pub mod dialect;
 pub mod memref;
 
 #[cfg(feature = "mlir")]
 pub mod ffi;
 
-pub use dialect::TCDialect;
 pub use builder::TCBuilder;
+pub use dialect::TCDialect;
 pub use memref::MemRefDescriptor;
 
 use anyhow::Result;

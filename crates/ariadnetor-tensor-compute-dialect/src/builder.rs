@@ -8,7 +8,7 @@ use anyhow::Result;
 use melior::{
     Context,
     ir::{
-        Location, Module, Value, Identifier,
+        Identifier, Location, Module, Value,
         attribute::StringAttribute,
         operation::{OperationBuilder, OperationLike},
         r#type::{RankedTensorType, Type},
@@ -71,8 +71,9 @@ impl<'c> TCBuilder<'c> {
         RankedTensorType::new(
             &shape.iter().map(|&d| d as u64).collect::<Vec<_>>(),
             element_type,
-            None
-        ).into()
+            None,
+        )
+        .into()
     }
 
     /// Build a tensor contraction operation
@@ -148,7 +149,7 @@ impl<'c> TCBuilder<'c> {
         max_chi: Option<i64>,
         threshold: Option<f64>,
     ) -> Result<(Value<'c, 'c>, Value<'c, 'c>, Value<'c, 'c>)> {
-        use melior::ir::attribute::{IntegerAttribute, FloatAttribute};
+        use melior::ir::attribute::{FloatAttribute, IntegerAttribute};
         use melior::ir::r#type::IntegerType;
 
         let mut builder = OperationBuilder::new("tn.svd", self.location)
@@ -201,10 +202,7 @@ impl<'c> TCBuilder<'c> {
             .add_results(&[q_type, r_type])
             .build()?;
 
-        Ok((
-            operation.result(0)?.into(),
-            operation.result(1)?.into(),
-        ))
+        Ok((operation.result(0)?.into(), operation.result(1)?.into()))
     }
 
     /// Build a transpose operation
@@ -248,11 +246,7 @@ impl<'c> TCBuilder<'c> {
     /// # Returns
     ///
     /// MLIR Value representing the reshaped tensor
-    pub fn reshape(
-        &self,
-        input: Value<'c, '_>,
-        result_type: Type<'c>,
-    ) -> Result<Value<'c, 'c>> {
+    pub fn reshape(&self, input: Value<'c, '_>, result_type: Type<'c>) -> Result<Value<'c, 'c>> {
         let operation = OperationBuilder::new("tn.reshape", self.location)
             .add_operands(&[input])
             .add_results(&[result_type])
@@ -280,7 +274,7 @@ impl<'c> TCBuilder<'c> {
         max_chi: Option<i64>,
         threshold: Option<f64>,
     ) -> Result<Value<'c, 'c>> {
-        use melior::ir::attribute::{IntegerAttribute, FloatAttribute};
+        use melior::ir::attribute::{FloatAttribute, IntegerAttribute};
         use melior::ir::r#type::IntegerType;
 
         let mut builder = OperationBuilder::new("tn.truncate", self.location)

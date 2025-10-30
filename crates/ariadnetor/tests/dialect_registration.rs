@@ -5,13 +5,13 @@
 
 #[cfg(feature = "mlir")]
 mod melior_tests {
+    use arnet::dialect::TCDialect;
     use melior::{
         Context,
         dialect::DialectRegistry,
         ir::{Location, Module, operation::OperationLike},
         utility::register_all_dialects,
     };
-    use arnet::dialect::TCDialect;
 
     /// Test that the TN dialect can be created
     #[test]
@@ -30,8 +30,7 @@ mod melior_tests {
         register_all_dialects(&registry);
 
         // Create TN dialect
-        let _tn_dialect = TCDialect::new()
-            .expect("Failed to create TN dialect");
+        let _tn_dialect = TCDialect::new().expect("Failed to create TN dialect");
 
         // Register TN dialect
         // Note: This requires the dialect handle to be properly exposed
@@ -59,8 +58,7 @@ mod melior_tests {
         context.load_all_available_dialects();
 
         // Try to load TN dialect explicitly
-        let _tn_dialect = TCDialect::new()
-            .expect("Failed to create TN dialect");
+        let _tn_dialect = TCDialect::new().expect("Failed to create TN dialect");
 
         // Create a location for error reporting
         let location = Location::unknown(&context);
@@ -69,8 +67,10 @@ mod melior_tests {
         let module = Module::new(location);
 
         // Verify module was created successfully
-        assert!(module.as_operation().verify(),
-                "Module creation/verification failed");
+        assert!(
+            module.as_operation().verify(),
+            "Module creation/verification failed"
+        );
     }
 
     /// Test parsing TN dialect IR from string
@@ -86,8 +86,7 @@ mod melior_tests {
         context.load_all_available_dialects();
 
         // Try to create TN dialect
-        let _tn_dialect = TCDialect::new()
-            .expect("Failed to create TN dialect");
+        let _tn_dialect = TCDialect::new().expect("Failed to create TN dialect");
 
         // Create a simple TN operation as a string
         let tn_ir = r#"
@@ -107,8 +106,10 @@ mod melior_tests {
 
         if let Some(module) = result {
             // Verify the module
-            assert!(module.as_operation().verify(),
-                    "Parsed module verification failed");
+            assert!(
+                module.as_operation().verify(),
+                "Parsed module verification failed"
+            );
         } else {
             // For now, we expect this to fail until full registration is complete
             println!("Module parsing failed (expected until full registration)");
@@ -124,7 +125,9 @@ mod basic_tests {
     #[test]
     fn test_dialect_requires_feature() {
         let result = TCDialect::new();
-        assert!(result.is_err(),
-                "TCDialect should fail without mlir feature");
+        assert!(
+            result.is_err(),
+            "TCDialect should fail without mlir feature"
+        );
     }
 }

@@ -4,18 +4,18 @@
 
 #[cfg(feature = "mlir")]
 mod operation_tests {
+    use arnet::dialect::TCDialect;
     use melior::{
         Context,
         dialect::DialectRegistry,
         ir::{
-            attribute::{StringAttribute, IntegerAttribute},
-            r#type::{RankedTensorType, IntegerType},
             Location, Module,
+            attribute::{IntegerAttribute, StringAttribute},
             operation::OperationLike,
+            r#type::{IntegerType, RankedTensorType},
         },
         utility::register_all_dialects,
     };
-    use arnet::dialect::TCDialect;
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -41,8 +41,7 @@ mod operation_tests {
         let module = Module::new(location);
 
         // Verify the module structure
-        assert!(module.as_operation().verify(),
-                "Module verification failed");
+        assert!(module.as_operation().verify(), "Module verification failed");
     }
 
     /// Test building SVD operation structure
@@ -78,10 +77,7 @@ mod operation_tests {
 
         // Max chi (bond dimension) integer attribute
         let i64_type = IntegerType::new(&context, 64);
-        let _max_chi_attr = IntegerAttribute::new(
-            i64_type.into(),
-            100
-        );
+        let _max_chi_attr = IntegerAttribute::new(i64_type.into(), 100);
 
         // Verify attributes were created
         assert!(indices_attr.to_string().contains("ij,jk->ik"));
@@ -113,7 +109,8 @@ mod operation_tests {
         let f64_type = melior::ir::r#type::Type::float64(&context);
 
         // Fully dynamic tensor: tensor<?x?xf64>
-        let _dynamic_tensor = RankedTensorType::new(&[i64::MAX as u64, i64::MAX as u64], f64_type, None);
+        let _dynamic_tensor =
+            RankedTensorType::new(&[i64::MAX as u64, i64::MAX as u64], f64_type, None);
 
         // Partially dynamic: tensor<10x?xf64>
         let _partial_dynamic = RankedTensorType::new(&[10, i64::MAX as u64], f64_type, None);

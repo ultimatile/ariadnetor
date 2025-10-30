@@ -7,14 +7,14 @@
 
 #[cfg(feature = "mlir")]
 mod execution_engine_memref_tests {
+    use arnet::{MemRefDescriptor, Tensor};
     use melior::{
+        Context, ExecutionEngine,
         dialect::DialectRegistry,
-        ir::{operation::OperationLike, Location, Module},
+        ir::{Location, Module, operation::OperationLike},
         pass::PassManager,
         utility::{register_all_dialects, register_all_llvm_translations},
-        Context, ExecutionEngine,
     };
-    use arnet::{MemRefDescriptor, Tensor};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();

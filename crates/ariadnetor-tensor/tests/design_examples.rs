@@ -37,10 +37,7 @@ fn test_design_doc_arc_cow() {
 fn test_design_doc_dense_storage() {
     // From two_layer_tensor_architecture.md Section 2.1
     // DenseTensor basic usage
-    let tensor = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3]
-    );
+    let tensor = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     assert_eq!(tensor.shape(), &[2, 3]);
     assert_eq!(tensor.get(&[0, 0]), 1.0);
@@ -58,10 +55,7 @@ fn test_design_doc_row_major_layout() {
     // [[a, b, c],
     //  [d, e, f]]
     // → [a, b, c, d, e, f]
-    let tensor = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3]
-    );
+    let tensor = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     // Verify row-major ordering
     let data = tensor.data();

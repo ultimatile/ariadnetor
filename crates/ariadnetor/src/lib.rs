@@ -22,12 +22,12 @@
 
 pub mod einsum;
 pub mod expr;
-pub mod tensor;
 pub mod runtime;
+pub mod tensor;
 
 pub use einsum::EinsumExpr;
 pub use expr::ExpressionComputeGraph;
 pub use tensor::Tensor;
 
 // Re-export from ariadnetor-tensor-compute-dialect
-pub use ariadnetor_tensor_compute_dialect::{TCDialect, TCBuilder, MemRefDescriptor};
+pub use ariadnetor_tensor_compute_dialect::{MemRefDescriptor, TCBuilder, TCDialect};

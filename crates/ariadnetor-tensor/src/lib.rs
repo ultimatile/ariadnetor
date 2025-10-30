@@ -20,16 +20,16 @@
 //! - `TensorC32`, `DenseTensorC32`: `Complex<f32>` (complex single)
 
 pub mod dense;
-pub mod raw_tensor;
+pub mod einsum;
 pub mod fat_tensor;
 pub mod index;
+pub mod raw_tensor;
 pub mod sector;
-pub mod einsum;
 
 pub use dense::DenseTensor;
-pub use raw_tensor::RawTensor;
 pub use fat_tensor::FatTensor;
 pub use index::{Index, IndexSet};
+pub use raw_tensor::RawTensor;
 
 // Re-export num_complex for user convenience
 pub use num_complex::Complex;

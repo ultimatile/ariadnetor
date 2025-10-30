@@ -47,7 +47,9 @@ fn main() -> anyhow::Result<()> {
     println!("  1. Generate TN IR using TCBuilder API");
     println!("  2. Save to .mlir file");
     println!("  3. Run: mlir-opt --convert-tn-to-linalg input.mlir");
-    println!("  4. Further lower to LLVM: mlir-opt --convert-linalg-to-loops --convert-scf-to-cf --convert-to-llvm");
+    println!(
+        "  4. Further lower to LLVM: mlir-opt --convert-linalg-to-loops --convert-scf-to-cf --convert-to-llvm"
+    );
     println!();
 
     println!("=== Test Results ===\n");
@@ -68,6 +70,8 @@ fn main() -> anyhow::Result<()> {
 #[cfg(not(feature = "mlir"))]
 fn main() {
     eprintln!("This example requires the 'mlir' feature to be enabled.");
-    eprintln!("Run with: MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20 cargo run --features mlir --example lowering_simple");
+    eprintln!(
+        "Run with: MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20 cargo run --features mlir --example lowering_simple"
+    );
     std::process::exit(1);
 }

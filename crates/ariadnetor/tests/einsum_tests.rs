@@ -24,15 +24,16 @@ fn test_matrix_multiplication_end_to_end() {
     assert!(expr.is_matrix_multiply());
 
     // Verify shape inference
-    let output_shape = expr.infer_output_shape(&[10, 20], &[20, 30])
+    let output_shape = expr
+        .infer_output_shape(&[10, 20], &[20, 30])
         .expect("Failed to infer output shape");
     assert_eq!(output_shape, vec![10, 30]);
 }
 
 #[test]
 fn test_higher_dimensional_contraction() {
-    let expr = EinsumExpr::parse("ijk,jkl->il")
-        .expect("Failed to parse higher dimensional contraction");
+    let expr =
+        EinsumExpr::parse("ijk,jkl->il").expect("Failed to parse higher dimensional contraction");
 
     assert_eq!(expr.lhs_indices(), &['i', 'j', 'k']);
     assert_eq!(expr.rhs_indices(), &['j', 'k', 'l']);
@@ -48,15 +49,15 @@ fn test_higher_dimensional_contraction() {
     assert!(!expr.is_matrix_multiply());
 
     // Shape inference with 3D tensors
-    let output_shape = expr.infer_output_shape(&[5, 10, 15], &[10, 15, 20])
+    let output_shape = expr
+        .infer_output_shape(&[5, 10, 15], &[10, 15, 20])
         .expect("Failed to infer output shape");
     assert_eq!(output_shape, vec![5, 20]);
 }
 
 #[test]
 fn test_element_wise_multiplication() {
-    let expr = EinsumExpr::parse("ij,ij->ij")
-        .expect("Failed to parse element-wise multiplication");
+    let expr = EinsumExpr::parse("ij,ij->ij").expect("Failed to parse element-wise multiplication");
 
     assert_eq!(expr.lhs_indices(), &['i', 'j']);
     assert_eq!(expr.rhs_indices(), &['i', 'j']);
@@ -70,7 +71,8 @@ fn test_element_wise_multiplication() {
     assert!(!expr.is_matrix_multiply());
 
     // Output shape matches input shapes
-    let output_shape = expr.infer_output_shape(&[10, 20], &[10, 20])
+    let output_shape = expr
+        .infer_output_shape(&[10, 20], &[10, 20])
         .expect("Failed to infer output shape");
     assert_eq!(output_shape, vec![10, 20]);
 }
@@ -78,8 +80,8 @@ fn test_element_wise_multiplication() {
 #[test]
 fn test_batch_matrix_multiplication() {
     // Batch matrix multiply: batch dimension preserved, inner dims contracted
-    let expr = EinsumExpr::parse("bij,bjk->bik")
-        .expect("Failed to parse batch matrix multiplication");
+    let expr =
+        EinsumExpr::parse("bij,bjk->bik").expect("Failed to parse batch matrix multiplication");
 
     assert_eq!(expr.lhs_indices(), &['b', 'i', 'j']);
     assert_eq!(expr.rhs_indices(), &['b', 'j', 'k']);
@@ -90,7 +92,8 @@ fn test_batch_matrix_multiplication() {
     assert_eq!(contracted, vec!['j']);
 
     // Shape inference with batch dimension
-    let output_shape = expr.infer_output_shape(&[32, 10, 20], &[32, 20, 30])
+    let output_shape = expr
+        .infer_output_shape(&[32, 10, 20], &[32, 20, 30])
         .expect("Failed to infer output shape");
     assert_eq!(output_shape, vec![32, 10, 30]);
 }
@@ -98,8 +101,7 @@ fn test_batch_matrix_multiplication() {
 #[test]
 fn test_tensor_outer_product() {
     // Outer product: no contracted indices
-    let expr = EinsumExpr::parse("ij,kl->ijkl")
-        .expect("Failed to parse outer product");
+    let expr = EinsumExpr::parse("ij,kl->ijkl").expect("Failed to parse outer product");
 
     assert_eq!(expr.lhs_indices(), &['i', 'j']);
     assert_eq!(expr.rhs_indices(), &['k', 'l']);
@@ -110,7 +112,8 @@ fn test_tensor_outer_product() {
     assert_eq!(contracted.len(), 0);
 
     // Shape inference: output has all dimensions
-    let output_shape = expr.infer_output_shape(&[10, 20], &[30, 40])
+    let output_shape = expr
+        .infer_output_shape(&[10, 20], &[30, 40])
         .expect("Failed to infer output shape");
     assert_eq!(output_shape, vec![10, 20, 30, 40]);
 }
@@ -118,8 +121,7 @@ fn test_tensor_outer_product() {
 #[test]
 fn test_partial_trace() {
     // Partial trace: contract one pair of indices in first tensor
-    let expr = EinsumExpr::parse("iij,jk->ik")
-        .expect("Failed to parse partial trace");
+    let expr = EinsumExpr::parse("iij,jk->ik").expect("Failed to parse partial trace");
 
     assert_eq!(expr.lhs_indices(), &['i', 'i', 'j']);
     assert_eq!(expr.rhs_indices(), &['j', 'k']);
@@ -130,7 +132,8 @@ fn test_partial_trace() {
     assert_eq!(contracted, vec!['j']);
 
     // Shape inference: repeated index must have same dimension
-    let output_shape = expr.infer_output_shape(&[10, 10, 20], &[20, 30])
+    let output_shape = expr
+        .infer_output_shape(&[10, 10, 20], &[20, 30])
         .expect("Failed to infer output shape");
     assert_eq!(output_shape, vec![10, 30]);
 }
@@ -158,9 +161,9 @@ fn test_error_invalid_character_uppercase() {
     let err = result.unwrap_err();
     let err_msg = err.to_string();
     assert!(
-        err_msg.contains("lowercase") ||
-        err_msg.contains("Invalid") ||
-        err_msg.contains("Failed to parse")
+        err_msg.contains("lowercase")
+            || err_msg.contains("Invalid")
+            || err_msg.contains("Failed to parse")
     );
 }
 
@@ -171,9 +174,9 @@ fn test_error_invalid_character_number() {
     let err = result.unwrap_err();
     let err_msg = err.to_string();
     assert!(
-        err_msg.contains("lowercase") ||
-        err_msg.contains("Invalid") ||
-        err_msg.contains("Failed to parse")
+        err_msg.contains("lowercase")
+            || err_msg.contains("Invalid")
+            || err_msg.contains("Failed to parse")
     );
 }
 
@@ -187,8 +190,7 @@ fn test_error_output_index_not_in_input() {
 
 #[test]
 fn test_error_dimension_mismatch_contracted() {
-    let expr = EinsumExpr::parse("ij,jk->ik")
-        .expect("Failed to parse");
+    let expr = EinsumExpr::parse("ij,jk->ik").expect("Failed to parse");
 
     // 'j' dimension mismatch: 20 vs 25
     let result = expr.infer_output_shape(&[10, 20], &[25, 30]);
@@ -199,8 +201,7 @@ fn test_error_dimension_mismatch_contracted() {
 
 #[test]
 fn test_error_dimension_mismatch_repeated() {
-    let expr = EinsumExpr::parse("iij,jk->ik")
-        .expect("Failed to parse");
+    let expr = EinsumExpr::parse("iij,jk->ik").expect("Failed to parse");
 
     // 'i' appears twice in LHS but with different dimensions
     let result = expr.infer_output_shape(&[10, 15, 20], &[20, 30]);
@@ -211,8 +212,7 @@ fn test_error_dimension_mismatch_repeated() {
 
 #[test]
 fn test_error_shape_rank_mismatch() {
-    let expr = EinsumExpr::parse("ij,jk->ik")
-        .expect("Failed to parse");
+    let expr = EinsumExpr::parse("ij,jk->ik").expect("Failed to parse");
 
     // Shape has wrong rank (3 instead of 2)
     let result = expr.infer_output_shape(&[10, 20, 30], &[20, 30]);
@@ -239,8 +239,7 @@ fn test_whitespace_handling() {
 #[test]
 fn test_complex_multidimensional_contraction() {
     // Test a complex case: 4D tensor contraction
-    let expr = EinsumExpr::parse("abcd,cdef->abef")
-        .expect("Failed to parse complex contraction");
+    let expr = EinsumExpr::parse("abcd,cdef->abef").expect("Failed to parse complex contraction");
 
     assert_eq!(expr.lhs_indices(), &['a', 'b', 'c', 'd']);
     assert_eq!(expr.rhs_indices(), &['c', 'd', 'e', 'f']);
@@ -253,7 +252,8 @@ fn test_complex_multidimensional_contraction() {
     assert!(contracted.contains(&'d'));
 
     // Shape inference
-    let output_shape = expr.infer_output_shape(&[2, 3, 4, 5], &[4, 5, 6, 7])
+    let output_shape = expr
+        .infer_output_shape(&[2, 3, 4, 5], &[4, 5, 6, 7])
         .expect("Failed to infer output shape");
     assert_eq!(output_shape, vec![2, 3, 6, 7]);
 }

@@ -75,10 +75,7 @@ enum ExprNode {
     },
 
     /// Element-wise scaling: out = scalar × input
-    Scale {
-        input: Box<ExprNode>,
-        factor: f64,
-    },
+    Scale { input: Box<ExprNode>, factor: f64 },
 
     /// Element-wise addition: out = lhs + rhs
     Add {
@@ -359,7 +356,8 @@ mod tests {
                 ExpressionComputeGraph::from_tensor(c),
             ],
             vec![1.0, 2.0, 3.0],
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = expr.evaluate().unwrap();
 

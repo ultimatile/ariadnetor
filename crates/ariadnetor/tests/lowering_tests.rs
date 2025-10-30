@@ -4,6 +4,7 @@
 
 #[cfg(feature = "mlir")]
 mod lowering_tests {
+    use arnet::{EinsumExpr, TCBuilder, TCDialect};
     use melior::{
         Context,
         dialect::DialectRegistry,
@@ -14,7 +15,6 @@ mod lowering_tests {
         },
         utility::register_all_dialects,
     };
-    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     fn setup_context() -> Context {
         let registry = DialectRegistry::new();
@@ -56,8 +56,7 @@ mod lowering_tests {
         let location = builder.location();
 
         // Parse einsum for matrix multiplication
-        let expr = EinsumExpr::parse("ij,jk->ik")
-            .expect("Failed to parse einsum");
+        let expr = EinsumExpr::parse("ij,jk->ik").expect("Failed to parse einsum");
 
         // Create test block with tensor arguments
         let block = create_test_block(&context, &[&[10, 20], &[20, 30]], location);
@@ -67,20 +66,17 @@ mod lowering_tests {
         let f64_type = Type::float64(&context);
 
         // Build TN contract operation
-        let _result = builder.build_contract_from_einsum(
-            &expr,
-            lhs,
-            rhs,
-            &[10, 20],
-            &[20, 30],
-            f64_type
-        ).expect("Failed to build contract");
+        let _result = builder
+            .build_contract_from_einsum(&expr, lhs, rhs, &[10, 20], &[20, 30], f64_type)
+            .expect("Failed to build contract");
 
         // Verify module
         // Note: We verify that TN IR generation is correct. The actual lowering
         // to LinAlg happens in C++ and is tested separately via lit tests.
-        assert!(builder.module().as_operation().verify(),
-                "Generated TN IR is invalid");
+        assert!(
+            builder.module().as_operation().verify(),
+            "Generated TN IR is invalid"
+        );
     }
 
     #[test]
@@ -90,8 +86,7 @@ mod lowering_tests {
         let location = builder.location();
 
         // Parse einsum for batch matrix multiplication
-        let expr = EinsumExpr::parse("bij,bjk->bik")
-            .expect("Failed to parse einsum");
+        let expr = EinsumExpr::parse("bij,bjk->bik").expect("Failed to parse einsum");
 
         // Create test block with 3D tensor arguments
         let block = create_test_block(&context, &[&[32, 10, 20], &[32, 20, 30]], location);
@@ -101,14 +96,9 @@ mod lowering_tests {
         let f64_type = Type::float64(&context);
 
         // Build TN contract operation
-        let _result = builder.build_contract_from_einsum(
-            &expr,
-            lhs,
-            rhs,
-            &[32, 10, 20],
-            &[32, 20, 30],
-            f64_type
-        ).expect("Failed to build contract");
+        let _result = builder
+            .build_contract_from_einsum(&expr, lhs, rhs, &[32, 10, 20], &[32, 20, 30], f64_type)
+            .expect("Failed to build contract");
 
         // Verify module
         assert!(builder.module().as_operation().verify());
@@ -121,8 +111,7 @@ mod lowering_tests {
         let location = builder.location();
 
         // Parse einsum for element-wise multiplication
-        let expr = EinsumExpr::parse("ij,ij->ij")
-            .expect("Failed to parse einsum");
+        let expr = EinsumExpr::parse("ij,ij->ij").expect("Failed to parse einsum");
 
         // Create test block with matching tensor shapes
         let block = create_test_block(&context, &[&[10, 20], &[10, 20]], location);
@@ -132,14 +121,9 @@ mod lowering_tests {
         let f64_type = Type::float64(&context);
 
         // Build TN contract operation
-        let _result = builder.build_contract_from_einsum(
-            &expr,
-            lhs,
-            rhs,
-            &[10, 20],
-            &[10, 20],
-            f64_type
-        ).expect("Failed to build contract");
+        let _result = builder
+            .build_contract_from_einsum(&expr, lhs, rhs, &[10, 20], &[10, 20], f64_type)
+            .expect("Failed to build contract");
 
         // Verify module
         assert!(builder.module().as_operation().verify());
@@ -159,7 +143,8 @@ mod lowering_tests {
 
         // Build transpose operation
         let result_type = RankedTensorType::new(&[20, 10], f64_type, None).into();
-        let _result = builder.transpose(input, result_type, &[1, 0])
+        let _result = builder
+            .transpose(input, result_type, &[1, 0])
             .expect("Failed to build transpose");
 
         // Verify module
@@ -181,9 +166,9 @@ mod lowering_tests {
         let rhs1 = block1.argument(1).unwrap().into();
         let f64_type = Type::float64(&context);
 
-        let _result1 = builder.build_contract_from_einsum(
-            &expr1, lhs1, rhs1, &[5, 10], &[10, 15], f64_type
-        ).unwrap();
+        let _result1 = builder
+            .build_contract_from_einsum(&expr1, lhs1, rhs1, &[5, 10], &[10, 15], f64_type)
+            .unwrap();
 
         // Batch matmul
         let expr2 = EinsumExpr::parse("bij,bjk->bik").unwrap();
@@ -191,9 +176,9 @@ mod lowering_tests {
         let lhs2 = block2.argument(0).unwrap().into();
         let rhs2 = block2.argument(1).unwrap().into();
 
-        let _result2 = builder.build_contract_from_einsum(
-            &expr2, lhs2, rhs2, &[8, 5, 10], &[8, 10, 15], f64_type
-        ).unwrap();
+        let _result2 = builder
+            .build_contract_from_einsum(&expr2, lhs2, rhs2, &[8, 5, 10], &[8, 10, 15], f64_type)
+            .unwrap();
 
         // Verify module contains all operations
         assert!(builder.module().as_operation().verify());

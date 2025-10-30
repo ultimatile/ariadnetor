@@ -9,17 +9,16 @@
 
 #[cfg(feature = "mlir")]
 fn main() -> anyhow::Result<()> {
+    use arnet::{EinsumExpr, TCBuilder, TCDialect};
     use melior::{
         Context,
         dialect::DialectRegistry,
         ir::{
-            Block, BlockLike, Location, RegionLike,
+            Block, BlockLike, Location, Module, RegionLike,
             r#type::{RankedTensorType, Type},
-            Module,
         },
         utility::register_all_dialects,
     };
-    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     println!("=== TN → LinAlg Lowering Demo ===\n");
 
@@ -51,17 +50,14 @@ fn main() -> anyhow::Result<()> {
     };
 
     let func_op = {
-        use melior::ir::{operation::OperationBuilder, attribute::StringAttribute, Identifier};
+        use melior::ir::{Identifier, attribute::StringAttribute, operation::OperationBuilder};
 
         let func_name = StringAttribute::new(&context, "test_matmul");
         let func_name_id = Identifier::new(&context, "sym_name");
 
         let region = {
             let region = melior::ir::Region::new();
-            let block = Block::new(&[
-                (lhs_type.into(), location),
-                (rhs_type.into(), location),
-            ]);
+            let block = Block::new(&[(lhs_type.into(), location), (rhs_type.into(), location)]);
 
             // Build TN contract operation
             let builder = TCBuilder::new(&context);
@@ -76,7 +72,7 @@ fn main() -> anyhow::Result<()> {
                 rhs,
                 &[10, 20],
                 &[20, 30],
-                f64_type
+                f64_type,
             )?;
 
             // Add return
@@ -121,6 +117,8 @@ fn main() -> anyhow::Result<()> {
 #[cfg(not(feature = "mlir"))]
 fn main() {
     eprintln!("This example requires the 'mlir' feature to be enabled.");
-    eprintln!("Run with: MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20 cargo run --features mlir --example lowering_demo");
+    eprintln!(
+        "Run with: MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20 cargo run --features mlir --example lowering_demo"
+    );
     std::process::exit(1);
 }

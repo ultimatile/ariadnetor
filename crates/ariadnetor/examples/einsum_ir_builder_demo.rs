@@ -8,6 +8,7 @@
 
 #[cfg(feature = "mlir")]
 fn main() -> anyhow::Result<()> {
+    use arnet::{EinsumExpr, TCBuilder, TCDialect};
     use melior::{
         Context,
         dialect::DialectRegistry,
@@ -17,7 +18,6 @@ fn main() -> anyhow::Result<()> {
         },
         utility::register_all_dialects,
     };
-    use arnet::{TCBuilder, TCDialect, EinsumExpr};
 
     println!("=== Einsum IR Builder Demo ===\n");
 
@@ -51,23 +51,14 @@ fn main() -> anyhow::Result<()> {
     let lhs_type = RankedTensorType::new(&[10, 20], f64_type, None);
     let rhs_type = RankedTensorType::new(&[20, 30], f64_type, None);
 
-    let block = Block::new(&[
-        (lhs_type.into(), location),
-        (rhs_type.into(), location),
-    ]);
+    let block = Block::new(&[(lhs_type.into(), location), (rhs_type.into(), location)]);
 
     let lhs = block.argument(0)?.into();
     let rhs = block.argument(1)?.into();
 
     // Build IR from einsum expression
-    let _result = builder.build_contract_from_einsum(
-        &expr,
-        lhs,
-        rhs,
-        &[10, 20],
-        &[20, 30],
-        f64_type
-    )?;
+    let _result =
+        builder.build_contract_from_einsum(&expr, lhs, rhs, &[10, 20], &[20, 30], f64_type)?;
 
     println!("   ✓ Generated tn.contract operation");
     println!("   Input shapes: [10, 20] x [20, 30]");
@@ -86,10 +77,7 @@ fn main() -> anyhow::Result<()> {
     let lhs_type2 = RankedTensorType::new(&[5, 10, 15], f64_type, None);
     let rhs_type2 = RankedTensorType::new(&[10, 15, 20], f64_type, None);
 
-    let block2 = Block::new(&[
-        (lhs_type2.into(), location),
-        (rhs_type2.into(), location),
-    ]);
+    let block2 = Block::new(&[(lhs_type2.into(), location), (rhs_type2.into(), location)]);
 
     let lhs2 = block2.argument(0)?.into();
     let rhs2 = block2.argument(1)?.into();
@@ -100,7 +88,7 @@ fn main() -> anyhow::Result<()> {
         rhs2,
         &[5, 10, 15],
         &[10, 15, 20],
-        f64_type
+        f64_type,
     )?;
 
     println!("   ✓ Generated tn.contract operation");
@@ -120,10 +108,7 @@ fn main() -> anyhow::Result<()> {
     let lhs_type3 = RankedTensorType::new(&[32, 10, 20], f64_type, None);
     let rhs_type3 = RankedTensorType::new(&[32, 20, 30], f64_type, None);
 
-    let block3 = Block::new(&[
-        (lhs_type3.into(), location),
-        (rhs_type3.into(), location),
-    ]);
+    let block3 = Block::new(&[(lhs_type3.into(), location), (rhs_type3.into(), location)]);
 
     let lhs3 = block3.argument(0)?.into();
     let rhs3 = block3.argument(1)?.into();
@@ -134,7 +119,7 @@ fn main() -> anyhow::Result<()> {
         rhs3,
         &[32, 10, 20],
         &[32, 20, 30],
-        f64_type
+        f64_type,
     )?;
 
     println!("   ✓ Generated tn.contract operation");
@@ -150,10 +135,7 @@ fn main() -> anyhow::Result<()> {
     let lhs_type4 = RankedTensorType::new(&[10, 20], f64_type, None);
     let rhs_type4 = RankedTensorType::new(&[25, 30], f64_type, None);
 
-    let block4 = Block::new(&[
-        (lhs_type4.into(), location),
-        (rhs_type4.into(), location),
-    ]);
+    let block4 = Block::new(&[(lhs_type4.into(), location), (rhs_type4.into(), location)]);
 
     let lhs4 = block4.argument(0)?.into();
     let rhs4 = block4.argument(1)?.into();
@@ -163,8 +145,8 @@ fn main() -> anyhow::Result<()> {
         lhs4,
         rhs4,
         &[10, 20],
-        &[25, 30],  // Mismatched: 20 != 25
-        f64_type
+        &[25, 30], // Mismatched: 20 != 25
+        f64_type,
     ) {
         Ok(_) => println!("   ✗ Unexpected success!"),
         Err(e) => println!("   ✓ Caught error: {}", e),
@@ -183,6 +165,8 @@ fn main() -> anyhow::Result<()> {
 #[cfg(not(feature = "mlir"))]
 fn main() {
     eprintln!("This example requires the 'mlir' feature to be enabled.");
-    eprintln!("Run with: MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20 cargo run --features mlir --example einsum_ir_builder_demo");
+    eprintln!(
+        "Run with: MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20 cargo run --features mlir --example einsum_ir_builder_demo"
+    );
     std::process::exit(1);
 }

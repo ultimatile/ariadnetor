@@ -3,8 +3,8 @@
 //! RawTensor represents the storage layer without metadata (labels, indices, etc.).
 
 use crate::dense::DenseTensor;
+use num_traits::{One, Zero};
 use std::fmt;
-use num_traits::{Zero, One};
 
 /// Raw tensor storage format (low-level, no metadata)
 ///
@@ -17,7 +17,6 @@ use num_traits::{Zero, One};
 pub enum RawTensor<T = f64> {
     /// Dense tensor with contiguous storage
     Dense(DenseTensor<T>),
-
     // TODO: Phase 1+ - Sparse tensor support
     // Sparse(SparseTensor<T>),
     //

@@ -69,7 +69,10 @@ impl EinsumExpr {
     /// - Invalid characters (must be ASCII alphabetic)
     pub fn parse(notation: &str) -> Result<Self, String> {
         // Remove whitespace
-        let notation = notation.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        let notation = notation
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>();
 
         // Split by "->"
         let parts: Vec<&str> = notation.split("->").collect();
@@ -91,7 +94,10 @@ impl EinsumExpr {
             }
             2 => {
                 // Binary operation (e.g., "ijk,jkl->il")
-                (Self::parse_indices(inputs[0])?, Self::parse_indices(inputs[1])?)
+                (
+                    Self::parse_indices(inputs[0])?,
+                    Self::parse_indices(inputs[1])?,
+                )
             }
             _ => {
                 return Err(format!(

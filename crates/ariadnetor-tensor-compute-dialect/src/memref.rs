@@ -44,11 +44,7 @@ impl<const N: usize> MemRefDescriptor<N> {
     /// - `data_ptr` points to valid memory of sufficient size
     /// - `sizes` and `strides` correctly describe the memory layout
     /// - The pointer remains valid for the lifetime of this descriptor
-    pub unsafe fn from_raw_parts(
-        data_ptr: *mut f64,
-        sizes: [i64; N],
-        strides: [i64; N],
-    ) -> Self {
+    pub unsafe fn from_raw_parts(data_ptr: *mut f64, sizes: [i64; N], strides: [i64; N]) -> Self {
         Self {
             allocated: data_ptr,
             aligned: data_ptr,

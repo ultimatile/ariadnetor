@@ -6,8 +6,7 @@
 #[test]
 fn test_minimal_execution_engine() {
     use melior::{
-        Context,
-        ExecutionEngine,
+        Context, ExecutionEngine,
         dialect::DialectRegistry,
         ir::Module,
         pass::PassManager,
