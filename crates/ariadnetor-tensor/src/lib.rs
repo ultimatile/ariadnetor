@@ -24,6 +24,7 @@ pub mod raw_tensor;
 pub mod fat_tensor;
 pub mod index;
 pub mod sector;
+pub mod einsum;
 
 pub use dense::DenseTensor;
 pub use raw_tensor::RawTensor;

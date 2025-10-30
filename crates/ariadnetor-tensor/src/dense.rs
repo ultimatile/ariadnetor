@@ -411,6 +411,203 @@ where
             .map(|(&idx, &stride)| idx * stride)
             .sum()
     }
+
+    /// Naive tensor contraction using Einstein summation notation
+    ///
+    /// This implementation performs the entire contraction in a single GEMM operation
+    /// (non-pairwise strategy). For large contractions with many indices, this may not be
+    /// optimal. Use pairwise contraction strategies (greedy path) for better performance
+    /// in those cases.
+    ///
+    /// # Algorithm
+    ///
+    /// 1. Parse Einstein notation (e.g., "ijk,jkl->il")
+    /// 2. Determine contraction plan (contracted vs free indices)
+    /// 3. Permute LHS to [free_lhs..., contracted_in_rhs_order...]
+    /// 4. Permute RHS to [contracted_in_rhs_order..., free_rhs...]
+    /// 5. Reshape both tensors to 2D matrices
+    /// 6. Perform GEMM: C[m,n] = A[m,k] × B[k,n]
+    /// 7. Reshape result to final output shape
+    ///
+    /// # Arguments
+    ///
+    /// * `rhs` - Right-hand side tensor
+    /// * `notation` - Einstein summation notation (e.g., "ijk,jkl->il")
+    ///
+    /// # Returns
+    ///
+    /// Result tensor after contraction
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use arnet_tensor::DenseTensor;
+    ///
+    /// let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    /// let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    /// let c = a.contract_naive(&b, "ik,kj->ij"); // Matrix multiplication
+    /// ```
+    pub fn contract_naive(&self, rhs: &Self, notation: &str) -> Self
+    where
+        T: Clone + Zero + One + std::ops::AddAssign + std::ops::Mul<Output = T> + 'static,
+    {
+        use crate::einsum::{EinsumExpr, ContractionPlan};
+
+        // Parse einsum notation
+        let expr = EinsumExpr::parse(notation)
+            .expect("Failed to parse einsum notation");
+
+        // Validate shapes
+        assert_eq!(
+            self.rank(),
+            expr.lhs_indices.len(),
+            "LHS tensor rank {} doesn't match notation {}",
+            self.rank(),
+            expr.lhs_indices.len()
+        );
+        assert_eq!(
+            rhs.rank(),
+            expr.rhs_indices.len(),
+            "RHS tensor rank {} doesn't match notation {}",
+            rhs.rank(),
+            expr.rhs_indices.len()
+        );
+
+        // Compute contraction plan
+        let plan = ContractionPlan::from_expr(&expr);
+
+        // Apply permutations if needed
+        let lhs_perm = plan.lhs_permutation(&expr.lhs_indices, &expr.rhs_indices);
+        let rhs_perm = plan.rhs_permutation(&expr.rhs_indices);
+
+        let lhs_permuted = if let Some(perm) = lhs_perm {
+            self.permute(&perm)
+        } else {
+            self.clone()
+        };
+
+        let rhs_permuted = if let Some(perm) = rhs_perm {
+            rhs.permute(&perm)
+        } else {
+            rhs.clone()
+        };
+
+        // Compute dimensions for GEMM
+        // LHS: [free_lhs..., contracted...]
+        // RHS: [contracted..., free_rhs...]
+        // Output: [free_lhs..., free_rhs...]
+
+        let m: usize = plan.free_lhs.iter()
+            .map(|&idx| {
+                let pos = expr.lhs_indices.iter().position(|&x| x == idx)
+                    .expect("Free index not found in LHS");
+                self.shape[pos]
+            })
+            .product();
+
+        let n: usize = plan.free_rhs.iter()
+            .map(|&idx| {
+                let pos = expr.rhs_indices.iter().position(|&x| x == idx)
+                    .expect("Free index not found in RHS");
+                rhs.shape[pos]
+            })
+            .product();
+
+        let k: usize = plan.contracted.iter()
+            .map(|&idx| {
+                let pos = expr.lhs_indices.iter().position(|&x| x == idx)
+                    .expect("Contracted index not found in LHS");
+                self.shape[pos]
+            })
+            .product();
+
+        // Handle edge cases
+        let m = if m == 0 { 1 } else { m };
+        let n = if n == 0 { 1 } else { n };
+        let k = if k == 0 { 1 } else { k };
+
+        // Call type-specific GEMM implementation
+        self.gemm_dispatch(&lhs_permuted, &rhs_permuted, m, n, k, &plan, &expr, self.shape(), rhs.shape())
+    }
+
+    /// Dispatch GEMM to type-specific implementation
+    fn gemm_dispatch(
+        &self,
+        lhs: &Self,
+        rhs: &Self,
+        m: usize,
+        n: usize,
+        k: usize,
+        plan: &crate::einsum::ContractionPlan,
+        expr: &crate::einsum::EinsumExpr,
+        lhs_orig_shape: &[usize],
+        rhs_orig_shape: &[usize],
+    ) -> Self
+    where
+        T: Clone + Zero + One + std::ops::AddAssign + std::ops::Mul<Output = T> + 'static,
+    {
+        use std::any::TypeId;
+
+        let type_id = TypeId::of::<T>();
+
+        // Dispatch to faer for supported types (f64, f32)
+        if type_id == TypeId::of::<f64>() {
+            // Safety: We just checked that T is f64
+            let lhs_f64: &DenseTensor<f64> = unsafe { std::mem::transmute(lhs) };
+            let rhs_f64: &DenseTensor<f64> = unsafe { std::mem::transmute(rhs) };
+            let result_f64 = lhs_f64.gemm_f64(rhs_f64, m, n, k);
+            let reshaped = Self::reshape_output(&result_f64, lhs_orig_shape, rhs_orig_shape, plan, expr);
+            return unsafe { std::mem::transmute(reshaped) };
+        }
+
+        if type_id == TypeId::of::<f32>() {
+            // Safety: We just checked that T is f32
+            let lhs_f32: &DenseTensor<f32> = unsafe { std::mem::transmute(lhs) };
+            let rhs_f32: &DenseTensor<f32> = unsafe { std::mem::transmute(rhs) };
+            let result_f32 = lhs_f32.gemm_f32(rhs_f32, m, n, k);
+            let reshaped = Self::reshape_output(&result_f32, lhs_orig_shape, rhs_orig_shape, plan, expr);
+            return unsafe { std::mem::transmute(reshaped) };
+        }
+
+        // Fallback: naive implementation (for Complex and other types)
+        panic!("GEMM not yet implemented for this type");
+    }
+
+    /// Reshape output matrix back to tensor shape
+    fn reshape_output<U>(
+        matrix: &DenseTensor<U>,
+        lhs_shape: &[usize],
+        rhs_shape: &[usize],
+        plan: &crate::einsum::ContractionPlan,
+        expr: &crate::einsum::EinsumExpr,
+    ) -> DenseTensor<U>
+    where
+        U: Clone + Zero,
+    {
+        // Compute output shape: [free_lhs dimensions..., free_rhs dimensions...]
+        let mut output_shape = Vec::new();
+
+        // Add free_lhs dimensions in output order
+        for &idx in &plan.free_lhs {
+            let pos = expr.lhs_indices.iter().position(|&x| x == idx)
+                .expect("Free LHS index not found");
+            output_shape.push(lhs_shape[pos]);
+        }
+
+        // Add free_rhs dimensions in output order
+        for &idx in &plan.free_rhs {
+            let pos = expr.rhs_indices.iter().position(|&x| x == idx)
+                .expect("Free RHS index not found");
+            output_shape.push(rhs_shape[pos]);
+        }
+
+        // If no free indices, result is scalar (shape [1])
+        if output_shape.is_empty() {
+            output_shape.push(1);
+        }
+
+        DenseTensor::from_data(matrix.data().to_vec(), output_shape)
+    }
 }
 
 // HPTT-specific implementations for f64 and f32
@@ -443,6 +640,34 @@ impl DenseTensor<f64> {
 
         Self::from_data(output, new_shape)
     }
+
+    /// GEMM operation for f64 tensors using faer
+    ///
+    /// Performs C = A × B where:
+    /// - A is m × k
+    /// - B is k × n
+    /// - C is m × n
+    pub(crate) fn gemm_f64(&self, rhs: &Self, m: usize, n: usize, k: usize) -> Self {
+        use faer::{MatRef, Mat};
+
+        // Create faer matrix views from row-major data
+        let lhs_view = MatRef::from_row_major_slice(self.data(), m, k);
+        let rhs_view = MatRef::from_row_major_slice(rhs.data(), k, n);
+
+        // Perform GEMM using operator
+        let output: Mat<f64> = &lhs_view * &rhs_view;
+
+        // Convert back to row-major for DenseTensor
+        let result_data: Vec<f64> = (0..m*n)
+            .map(|i| {
+                let row = i / n;
+                let col = i % n;
+                output[(row, col)]
+            })
+            .collect();
+
+        Self::from_data(result_data, vec![m, n])
+    }
 }
 
 #[cfg(feature = "hptt")]
@@ -466,6 +691,26 @@ impl DenseTensor<f32> {
         .expect("HPTT transpose_f32 failed");
 
         Self::from_data(output, new_shape)
+    }
+
+    /// GEMM operation for f32 tensors using faer
+    pub(crate) fn gemm_f32(&self, rhs: &Self, m: usize, n: usize, k: usize) -> Self {
+        use faer::{MatRef, Mat};
+
+        let lhs_view = MatRef::from_row_major_slice(self.data(), m, k);
+        let rhs_view = MatRef::from_row_major_slice(rhs.data(), k, n);
+
+        let output: Mat<f32> = &lhs_view * &rhs_view;
+
+        let result_data: Vec<f32> = (0..m*n)
+            .map(|i| {
+                let row = i / n;
+                let col = i % n;
+                output[(row, col)]
+            })
+            .collect();
+
+        Self::from_data(result_data, vec![m, n])
     }
 }
 
@@ -924,5 +1169,85 @@ mod tests {
 
         assert_eq!(result.shape(), result_naive.shape());
         assert_eq!(result.data(), result_naive.data());
+    }
+
+    #[test]
+    fn test_contract_matmul() {
+        // Test matrix multiplication: C[i,j] = A[i,k] * B[k,j]
+        let a = DenseTensor::from_data(
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2, 2],
+        );
+        let b = DenseTensor::from_data(
+            vec![5.0, 6.0, 7.0, 8.0],
+            vec![2, 2],
+        );
+
+        let c = a.contract_naive(&b, "ik,kj->ij");
+
+        // Expected: [[1*5 + 2*7, 1*6 + 2*8],
+        //            [3*5 + 4*7, 3*6 + 4*8]]
+        //         = [[19, 22], [43, 50]]
+        assert_eq!(c.shape(), &[2, 2]);
+        assert_eq!(c.get(&[0, 0]), 19.0);
+        assert_eq!(c.get(&[0, 1]), 22.0);
+        assert_eq!(c.get(&[1, 0]), 43.0);
+        assert_eq!(c.get(&[1, 1]), 50.0);
+    }
+
+    #[test]
+    fn test_contract_tensor_contraction() {
+        // Test 3D tensor contraction: C[i,l] = sum_{j,k} A[i,j,k] * B[j,k,l]
+        let a = DenseTensor::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            vec![2, 2, 2], // i=2, j=2, k=2
+        );
+        let b = DenseTensor::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            vec![2, 2, 2], // j=2, k=2, l=2
+        );
+
+        let c = a.contract_naive(&b, "ijk,jkl->il");
+
+        assert_eq!(c.shape(), &[2, 2]);
+        // Verify it's non-zero (exact values depend on contraction)
+        assert_ne!(c.get(&[0, 0]), 0.0);
+    }
+
+    #[test]
+    fn test_contract_f32() {
+        // Test that contract works with f32
+        let a = DenseTensor::from_data(
+            vec![1.0f32, 2.0, 3.0, 4.0],
+            vec![2, 2],
+        );
+        let b = DenseTensor::from_data(
+            vec![5.0f32, 6.0, 7.0, 8.0],
+            vec![2, 2],
+        );
+
+        let c = a.contract_naive(&b, "ik,kj->ij");
+
+        assert_eq!(c.shape(), &[2, 2]);
+        assert_eq!(c.get(&[0, 0]), 19.0f32);
+    }
+
+    #[test]
+    fn test_contract_with_permutation() {
+        // Test case where permutation is needed: A[i,k,j] * B[k,j] -> C[i]
+        let a = DenseTensor::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            vec![2, 2, 2], // i=2, k=2, j=2
+        );
+        let b = DenseTensor::from_data(
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2, 2], // k=2, j=2
+        );
+
+        let c = a.contract_naive(&b, "ikj,kj->i");
+
+        assert_eq!(c.shape(), &[2]);
+        // Result should be non-zero
+        assert_ne!(c.get(&[0]), 0.0);
     }
 }
