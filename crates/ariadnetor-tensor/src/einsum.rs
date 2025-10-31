@@ -173,15 +173,24 @@ impl ContractionPlan {
         let rhs_set: HashSet<u8> = expr.rhs_indices.iter().copied().collect();
         let out_set: HashSet<u8> = expr.out_indices.iter().copied().collect();
 
-        // Contracted indices: in both inputs, not in output
-        let mut contracted: Vec<u8> = lhs_set
-            .intersection(&rhs_set)
-            .filter(|idx| !out_set.contains(idx))
+        // CRITICAL: Contracted indices must preserve LHS order
+        // Using HashSet::intersection() produces nondeterministic ordering
+        // which can silently reorder axes and return wrong results.
+        //
+        // For example, "ikj,jkl->il" should have contracted = [k, j] (LHS order)
+        // not [j, k] (ASCII order from sort_unstable).
+        //
+        // ❌ WRONG (previous code):
+        //   let mut contracted: Vec<u8> = lhs_set.intersection(&rhs_set)...
+        //   contracted.sort_unstable();
+        //
+        // ✅ CORRECT: Iterate over LHS indices in order
+        let contracted: Vec<u8> = expr
+            .lhs_indices
+            .iter()
+            .filter(|idx| rhs_set.contains(idx) && !out_set.contains(idx))
             .copied()
             .collect();
-
-        // Sort for deterministic behavior
-        contracted.sort_unstable();
 
         // Free indices (lhs): in output and in lhs, in output order
         let free_lhs: Vec<u8> = expr
@@ -425,5 +434,32 @@ mod tests {
         let target = vec![b'i', b'j', b'k'];
         let perm = compute_permutation(&current, &target).unwrap();
         assert_eq!(perm, vec![0, 2, 1]);
+    }
+
+    #[test]
+    fn test_contraction_plan_preserves_lhs_order() {
+        // Critical test: contracted indices must preserve LHS order, not ASCII order
+        // "ikj,jkl->il" should have contracted = [k, j] (LHS order)
+        // NOT [j, k] (ASCII/sorted order)
+        let expr = EinsumExpr::parse("ikj,jkl->il").unwrap();
+        let plan = ContractionPlan::from_expr(&expr);
+
+        // Verify contracted indices are in LHS order: k appears before j in LHS
+        assert_eq!(plan.contracted, vec![b'k', b'j']);
+        assert_eq!(plan.free_lhs, vec![b'i']);
+        assert_eq!(plan.free_rhs, vec![b'l']);
+    }
+
+    #[test]
+    fn test_contraction_plan_multiple_contracted_different_order() {
+        // Another test case: "jki,kij->i"
+        // LHS has j, k, i; contracted are j, k (in that order)
+        let expr = EinsumExpr::parse("jki,kij->i").unwrap();
+        let plan = ContractionPlan::from_expr(&expr);
+
+        // Should preserve LHS order: j appears before k in LHS
+        assert_eq!(plan.contracted, vec![b'j', b'k']);
+        assert_eq!(plan.free_lhs, vec![b'i']);
+        assert_eq!(plan.free_rhs, vec![b'i']);
     }
 }
