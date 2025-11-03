@@ -2,6 +2,7 @@
 
 use crate::index::IndexSet;
 use crate::raw_tensor::RawTensor;
+use num_complex::Complex;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
 
@@ -157,5 +158,105 @@ where
     pub fn add_all(tensors: &[&FatTensor<T>]) -> Result<FatTensor<T>, String> {
         let coefs = vec![T::one(); tensors.len()];
         Self::linear_combine(tensors, &coefs)
+    }
+}
+
+// ============================================================================
+// Norm and normalization operations
+// ============================================================================
+
+impl FatTensor<f64> {
+    /// Compute Frobenius norm
+    pub fn norm(&self) -> f64 {
+        self.tensor.norm()
+    }
+
+    /// Normalize to unit norm (in-place)
+    pub fn normalize(&mut self) -> f64 {
+        self.tensor.normalize()
+    }
+
+    /// Normalize and return new tensor (out-of-place)
+    pub fn normalized(&self) -> (Self, f64) {
+        let (normalized_tensor, norm) = self.tensor.normalized();
+        (
+            Self {
+                tensor: normalized_tensor,
+                indices: self.indices.clone(),
+            },
+            norm,
+        )
+    }
+}
+
+impl FatTensor<f32> {
+    /// Compute Frobenius norm
+    pub fn norm(&self) -> f32 {
+        self.tensor.norm()
+    }
+
+    /// Normalize to unit norm (in-place)
+    pub fn normalize(&mut self) -> f32 {
+        self.tensor.normalize()
+    }
+
+    /// Normalize and return new tensor (out-of-place)
+    pub fn normalized(&self) -> (Self, f32) {
+        let (normalized_tensor, norm) = self.tensor.normalized();
+        (
+            Self {
+                tensor: normalized_tensor,
+                indices: self.indices.clone(),
+            },
+            norm,
+        )
+    }
+}
+
+impl FatTensor<Complex<f64>> {
+    /// Compute Frobenius norm (for complex tensors)
+    pub fn norm(&self) -> f64 {
+        self.tensor.norm()
+    }
+
+    /// Normalize complex tensor to unit norm (in-place)
+    pub fn normalize(&mut self) -> f64 {
+        self.tensor.normalize()
+    }
+
+    /// Normalize complex tensor and return new tensor (out-of-place)
+    pub fn normalized(&self) -> (Self, f64) {
+        let (normalized_tensor, norm) = self.tensor.normalized();
+        (
+            Self {
+                tensor: normalized_tensor,
+                indices: self.indices.clone(),
+            },
+            norm,
+        )
+    }
+}
+
+impl FatTensor<Complex<f32>> {
+    /// Compute Frobenius norm (for complex tensors)
+    pub fn norm(&self) -> f32 {
+        self.tensor.norm()
+    }
+
+    /// Normalize complex tensor to unit norm (in-place)
+    pub fn normalize(&mut self) -> f32 {
+        self.tensor.normalize()
+    }
+
+    /// Normalize complex tensor and return new tensor (out-of-place)
+    pub fn normalized(&self) -> (Self, f32) {
+        let (normalized_tensor, norm) = self.tensor.normalized();
+        (
+            Self {
+                tensor: normalized_tensor,
+                indices: self.indices.clone(),
+            },
+            norm,
+        )
     }
 }
