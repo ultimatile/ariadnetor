@@ -115,7 +115,7 @@ impl Eq for Index {}
 ///
 /// - `indices`: List of indices for each tensor dimension
 /// - `rowrank`: Number of "row" indices (for matrix-like operations)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IndexSet {
     pub indices: Vec<Index>,
     pub rowrank: usize,

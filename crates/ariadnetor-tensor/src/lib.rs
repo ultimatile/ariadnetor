@@ -19,6 +19,7 @@
 //! - `TensorC64`, `DenseTensorC64`: `Complex<f64>` (complex double)
 //! - `TensorC32`, `DenseTensorC32`: `Complex<f32>` (complex single)
 
+pub mod arithmetic;
 pub mod dense;
 pub mod einsum;
 pub mod fat_tensor;
