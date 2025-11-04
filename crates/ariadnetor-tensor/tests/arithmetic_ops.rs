@@ -104,21 +104,13 @@ fn test_linear_combine_f32() {
 
 #[test]
 fn test_linear_combine_complex() {
-    let a = RawTensor::<Complex<f64>>::constant(
-        vec![2, 2],
-        Complex::new(1.0, 0.0),
-    );
-    let b = RawTensor::<Complex<f64>>::constant(
-        vec![2, 2],
-        Complex::new(0.0, 1.0),
-    );
+    let a = RawTensor::<Complex<f64>>::constant(vec![2, 2], Complex::new(1.0, 0.0));
+    let b = RawTensor::<Complex<f64>>::constant(vec![2, 2], Complex::new(0.0, 1.0));
 
     // (2+0i)*(1+0i) + (0+1i)*(0+1i) = (2+0i) + (i^2) = (2+0i) + (-1+0i) = (1+0i)
-    let result = RawTensor::linear_combine(
-        &[&a, &b],
-        &[Complex::new(2.0, 0.0), Complex::new(0.0, 1.0)],
-    )
-    .unwrap();
+    let result =
+        RawTensor::linear_combine(&[&a, &b], &[Complex::new(2.0, 0.0), Complex::new(0.0, 1.0)])
+            .unwrap();
 
     if let Some(data) = result.data() {
         for &val in data {
@@ -240,14 +232,8 @@ fn test_fat_tensor_scaled() {
 fn test_fat_tensor_linear_combine() {
     let indices = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 2)], 0);
 
-    let a = FatTensor::new(
-        RawTensor::<f64>::constant(vec![2, 2], 1.0),
-        indices.clone(),
-    );
-    let b = FatTensor::new(
-        RawTensor::<f64>::constant(vec![2, 2], 2.0),
-        indices.clone(),
-    );
+    let a = FatTensor::new(RawTensor::<f64>::constant(vec![2, 2], 1.0), indices.clone());
+    let b = FatTensor::new(RawTensor::<f64>::constant(vec![2, 2], 2.0), indices.clone());
 
     // 3*a + 2*b = 3*1 + 2*2 = 7
     let result = FatTensor::linear_combine(&[&a, &b], &[3.0, 2.0]).unwrap();
@@ -266,14 +252,8 @@ fn test_fat_tensor_linear_combine_index_mismatch() {
     let indices1 = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 2)], 0);
     let indices2 = IndexSet::new(vec![Index::with_dim("k", 2), Index::with_dim("l", 2)], 0);
 
-    let a = FatTensor::new(
-        RawTensor::<f64>::ones(vec![2, 2]),
-        indices1,
-    );
-    let b = FatTensor::new(
-        RawTensor::<f64>::ones(vec![2, 2]),
-        indices2,
-    );
+    let a = FatTensor::new(RawTensor::<f64>::ones(vec![2, 2]), indices1);
+    let b = FatTensor::new(RawTensor::<f64>::ones(vec![2, 2]), indices2);
 
     let result = FatTensor::linear_combine(&[&a, &b], &[1.0, 1.0]);
     assert!(result.is_err());
@@ -284,18 +264,9 @@ fn test_fat_tensor_linear_combine_index_mismatch() {
 fn test_fat_tensor_add_all() {
     let indices = IndexSet::new(vec![Index::with_dim("x", 3)], 0);
 
-    let a = FatTensor::new(
-        RawTensor::<f64>::constant(vec![3], 1.0),
-        indices.clone(),
-    );
-    let b = FatTensor::new(
-        RawTensor::<f64>::constant(vec![3], 2.0),
-        indices.clone(),
-    );
-    let c = FatTensor::new(
-        RawTensor::<f64>::constant(vec![3], 4.0),
-        indices.clone(),
-    );
+    let a = FatTensor::new(RawTensor::<f64>::constant(vec![3], 1.0), indices.clone());
+    let b = FatTensor::new(RawTensor::<f64>::constant(vec![3], 2.0), indices.clone());
+    let c = FatTensor::new(RawTensor::<f64>::constant(vec![3], 4.0), indices.clone());
 
     let result = FatTensor::add_all(&[&a, &b, &c]).unwrap();
 

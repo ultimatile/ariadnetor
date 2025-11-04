@@ -1,7 +1,10 @@
 // Comprehensive test for contracted indices ordering fix
 // This verifies that the critical bug fix is working correctly
 
-use arnet_tensor::{DenseTensor, einsum::{EinsumExpr, ContractionPlan}};
+use arnet_tensor::{
+    DenseTensor,
+    einsum::{ContractionPlan, EinsumExpr},
+};
 
 #[test]
 fn test_contracted_indices_preserve_lhs_order() {
