@@ -25,12 +25,14 @@ pub mod einsum;
 pub mod fat_tensor;
 pub mod index;
 pub mod raw_tensor;
+pub mod scalar;
 pub mod sector;
 
 pub use dense::DenseTensor;
 pub use fat_tensor::FatTensor;
 pub use index::{Index, IndexSet};
 pub use raw_tensor::RawTensor;
+pub use scalar::{FloatCompute, Scalar};
 
 // Re-export num_complex for user convenience
 pub use num_complex::Complex;

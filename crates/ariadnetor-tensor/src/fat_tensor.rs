@@ -116,10 +116,7 @@ where
     /// // 2*a + 3*b = 2*1 + 3*2 = 8
     /// let result = FatTensor::linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
     /// ```
-    pub fn linear_combine(
-        tensors: &[&FatTensor<T>],
-        coefs: &[T],
-    ) -> Result<FatTensor<T>, String> {
+    pub fn linear_combine(tensors: &[&FatTensor<T>], coefs: &[T]) -> Result<FatTensor<T>, String> {
         if tensors.is_empty() {
             return Err("Cannot combine empty tensor list".to_string());
         }
@@ -165,91 +162,72 @@ where
 // Norm and normalization operations
 // ============================================================================
 
-impl FatTensor<f64> {
+use crate::scalar::Scalar;
+
+impl<T> FatTensor<T>
+where
+    T: Scalar,
+{
     /// Compute Frobenius norm
-    pub fn norm(&self) -> f64 {
+    ///
+    /// Returns √(Σ |element|²) as a real value
+    ///
+    /// # Examples
+    /// ```
+    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    ///
+    /// let raw = RawTensor::<f64>::ones(vec![2, 3]);
+    /// let indices = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 3)], 0);
+    /// let fat = FatTensor::new(raw, indices);
+    ///
+    /// let norm = fat.norm();
+    /// assert!((norm - 6.0f64.sqrt()).abs() < 1e-10);
+    /// ```
+    pub fn norm(&self) -> T::Real {
         self.tensor.norm()
     }
 
     /// Normalize to unit norm (in-place)
-    pub fn normalize(&mut self) -> f64 {
+    ///
+    /// Returns the norm before normalization.
+    /// Panics if the tensor has zero norm.
+    /// Preserves indices.
+    ///
+    /// # Examples
+    /// ```
+    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    ///
+    /// let raw = RawTensor::<f64>::ones(vec![2, 2]);
+    /// let indices = IndexSet::new(vec![Index::with_dim("a", 2), Index::with_dim("b", 2)], 0);
+    /// let mut fat = FatTensor::new(raw, indices);
+    ///
+    /// let norm = fat.normalize();
+    /// assert!((norm - 2.0).abs() < 1e-10);
+    /// assert!((fat.norm() - 1.0).abs() < 1e-10);
+    /// ```
+    pub fn normalize(&mut self) -> T::Real {
         self.tensor.normalize()
     }
 
     /// Normalize and return new tensor (out-of-place)
-    pub fn normalized(&self) -> (Self, f64) {
-        let (normalized_tensor, norm) = self.tensor.normalized();
-        (
-            Self {
-                tensor: normalized_tensor,
-                indices: self.indices.clone(),
-            },
-            norm,
-        )
-    }
-}
-
-impl FatTensor<f32> {
-    /// Compute Frobenius norm
-    pub fn norm(&self) -> f32 {
-        self.tensor.norm()
-    }
-
-    /// Normalize to unit norm (in-place)
-    pub fn normalize(&mut self) -> f32 {
-        self.tensor.normalize()
-    }
-
-    /// Normalize and return new tensor (out-of-place)
-    pub fn normalized(&self) -> (Self, f32) {
-        let (normalized_tensor, norm) = self.tensor.normalized();
-        (
-            Self {
-                tensor: normalized_tensor,
-                indices: self.indices.clone(),
-            },
-            norm,
-        )
-    }
-}
-
-impl FatTensor<Complex<f64>> {
-    /// Compute Frobenius norm (for complex tensors)
-    pub fn norm(&self) -> f64 {
-        self.tensor.norm()
-    }
-
-    /// Normalize complex tensor to unit norm (in-place)
-    pub fn normalize(&mut self) -> f64 {
-        self.tensor.normalize()
-    }
-
-    /// Normalize complex tensor and return new tensor (out-of-place)
-    pub fn normalized(&self) -> (Self, f64) {
-        let (normalized_tensor, norm) = self.tensor.normalized();
-        (
-            Self {
-                tensor: normalized_tensor,
-                indices: self.indices.clone(),
-            },
-            norm,
-        )
-    }
-}
-
-impl FatTensor<Complex<f32>> {
-    /// Compute Frobenius norm (for complex tensors)
-    pub fn norm(&self) -> f32 {
-        self.tensor.norm()
-    }
-
-    /// Normalize complex tensor to unit norm (in-place)
-    pub fn normalize(&mut self) -> f32 {
-        self.tensor.normalize()
-    }
-
-    /// Normalize complex tensor and return new tensor (out-of-place)
-    pub fn normalized(&self) -> (Self, f32) {
+    ///
+    /// Returns `(normalized_tensor, original_norm)`.
+    /// Panics if the tensor has zero norm.
+    /// Preserves indices.
+    ///
+    /// # Examples
+    /// ```
+    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    ///
+    /// let raw = RawTensor::<f64>::constant(vec![3, 3], 2.0);
+    /// let indices = IndexSet::new(vec![Index::with_dim("x", 3), Index::with_dim("y", 3)], 0);
+    /// let fat = FatTensor::new(raw, indices);
+    ///
+    /// let (normalized, norm) = fat.normalized();
+    /// assert!((norm - 6.0).abs() < 1e-10);
+    /// assert!((normalized.norm() - 1.0).abs() < 1e-10);
+    /// ```
+    pub fn normalized(&self) -> (Self, T::Real) {
         let (normalized_tensor, norm) = self.tensor.normalized();
         (
             Self {

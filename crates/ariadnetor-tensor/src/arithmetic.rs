@@ -94,10 +94,7 @@ where
     /// let result = RawTensor::linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
     /// assert_eq!(result.get(&[0, 0]), 8.0);
     /// ```
-    pub fn linear_combine(
-        tensors: &[&RawTensor<T>],
-        coefs: &[T],
-    ) -> Result<RawTensor<T>, String> {
+    pub fn linear_combine(tensors: &[&RawTensor<T>], coefs: &[T]) -> Result<RawTensor<T>, String> {
         if tensors.is_empty() {
             return Err("Cannot combine empty tensor list".to_string());
         }
@@ -163,145 +160,100 @@ where
 // Norm and normalization operations
 // ============================================================================
 
-// NOTE: Due to Rust's orphan rules and potential trait implementation conflicts,
-// we implement norm/normalize operations for specific types rather than using
-// generic Float bounds. This is a temporary solution until we migrate to the
-// Storage/Compute separation pattern (see dev-docs/design/future_dtype_system.md).
+use crate::scalar::{FloatCompute, Scalar};
 
-// Real f64
-impl RawTensor<f64> {
+impl<T> RawTensor<T>
+where
+    T: Scalar,
+{
     /// Compute Frobenius norm
-    ///
-    /// Returns √(Σ element²)
-    ///
-    /// # TCI-spec
-    /// Corresponds to `tci::norm`
-    pub fn norm(&self) -> f64 {
-        self.norm_squared().sqrt()
-    }
-
-    fn norm_squared(&self) -> f64 {
-        match self {
-            Self::Dense(d) => d.data().iter().map(|&x| x * x).sum(),
-        }
-    }
-
-    /// Normalize tensor to unit norm (in-place)
-    ///
-    /// # TCI-spec
-    /// Corresponds to `tci::normalize` overload (1)
-    pub fn normalize(&mut self) -> f64 {
-        let norm = self.norm();
-        if norm == 0.0 {
-            panic!("Cannot normalize zero tensor");
-        }
-        self.scale(1.0 / norm);
-        norm
-    }
-
-    /// Normalize tensor and return new tensor (out-of-place)
-    ///
-    /// # TCI-spec
-    /// Corresponds to `tci::normalize` overload (2)
-    pub fn normalized(&self) -> (Self, f64) {
-        let mut result = self.clone();
-        let norm = result.normalize();
-        (result, norm)
-    }
-}
-
-// Real f32
-impl RawTensor<f32> {
-    /// Compute Frobenius norm
-    pub fn norm(&self) -> f32 {
-        self.norm_squared().sqrt()
-    }
-
-    fn norm_squared(&self) -> f32 {
-        match self {
-            Self::Dense(d) => d.data().iter().map(|&x| x * x).sum(),
-        }
-    }
-
-    /// Normalize tensor to unit norm (in-place)
-    pub fn normalize(&mut self) -> f32 {
-        let norm = self.norm();
-        if norm == 0.0 {
-            panic!("Cannot normalize zero tensor");
-        }
-        self.scale(1.0 / norm);
-        norm
-    }
-
-    /// Normalize tensor and return new tensor (out-of-place)
-    pub fn normalized(&self) -> (Self, f32) {
-        let mut result = self.clone();
-        let norm = result.normalize();
-        (result, norm)
-    }
-}
-
-// Complex f64
-impl RawTensor<Complex<f64>> {
-    /// Compute Frobenius norm (for complex tensors)
     ///
     /// Returns √(Σ |element|²) as a real value
     ///
+    /// For real tensors: √(Σ element²)
+    /// For complex tensors: √(Σ |element|²)
+    ///
     /// # TCI-spec
     /// Corresponds to `tci::norm`
-    pub fn norm(&self) -> f64 {
+    ///
+    /// # Examples
+    /// ```
+    /// use arnet_tensor::RawTensor;
+    ///
+    /// let tensor = RawTensor::<f64>::ones(vec![2, 2]);
+    /// let norm = tensor.norm();
+    /// assert!((norm - 2.0).abs() < 1e-10);
+    /// ```
+    pub fn norm(&self) -> T::Real {
         self.norm_squared().sqrt()
     }
 
-    fn norm_squared(&self) -> f64 {
+    /// Compute squared Frobenius norm
+    fn norm_squared(&self) -> T::Real {
         match self {
-            Self::Dense(d) => d.data().iter().map(|z| z.re * z.re + z.im * z.im).sum(),
+            Self::Dense(d) => d
+                .data()
+                .iter()
+                .map(|&x| {
+                    let abs_val = x.abs();
+                    abs_val.mul(abs_val)
+                })
+                .fold(T::Real::zero(), |acc, x| acc.add(x)),
         }
     }
 
-    /// Normalize complex tensor to unit norm (in-place)
-    pub fn normalize(&mut self) -> f64 {
+    /// Normalize tensor to unit norm (in-place)
+    ///
+    /// Returns the norm before normalization.
+    /// Panics if the tensor has zero norm.
+    ///
+    /// # TCI-spec
+    /// Corresponds to `tci::normalize` overload (1)
+    ///
+    /// # Examples
+    /// ```
+    /// use arnet_tensor::RawTensor;
+    ///
+    /// let mut tensor = RawTensor::<f64>::ones(vec![2, 2]);
+    /// let norm = tensor.normalize();
+    /// assert!((norm - 2.0).abs() < 1e-10);
+    /// assert!((tensor.norm() - 1.0).abs() < 1e-10);
+    /// ```
+    pub fn normalize(&mut self) -> T::Real {
         let norm = self.norm();
-        if norm == 0.0 {
+        if norm == T::Real::zero() {
             panic!("Cannot normalize zero tensor");
         }
-        self.scale(Complex::new(1.0 / norm, 0.0));
+        let inv_norm = T::Real::one().div(norm);
+
+        match self {
+            Self::Dense(d) => {
+                for elem in d.data_mut() {
+                    *elem = elem.scale_real(inv_norm);
+                }
+            }
+        }
         norm
     }
 
-    /// Normalize complex tensor and return new tensor (out-of-place)
-    pub fn normalized(&self) -> (Self, f64) {
-        let mut result = self.clone();
-        let norm = result.normalize();
-        (result, norm)
-    }
-}
-
-// Complex f32
-impl RawTensor<Complex<f32>> {
-    /// Compute Frobenius norm (for complex tensors)
-    pub fn norm(&self) -> f32 {
-        self.norm_squared().sqrt()
-    }
-
-    fn norm_squared(&self) -> f32 {
-        match self {
-            Self::Dense(d) => d.data().iter().map(|z| z.re * z.re + z.im * z.im).sum(),
-        }
-    }
-
-    /// Normalize complex tensor to unit norm (in-place)
-    pub fn normalize(&mut self) -> f32 {
-        let norm = self.norm();
-        if norm == 0.0 {
-            panic!("Cannot normalize zero tensor");
-        }
-        self.scale(Complex::new(1.0 / norm, 0.0));
-        norm
-    }
-
-    /// Normalize complex tensor and return new tensor (out-of-place)
-    pub fn normalized(&self) -> (Self, f32) {
+    /// Normalize tensor and return new tensor (out-of-place)
+    ///
+    /// Returns `(normalized_tensor, original_norm)`.
+    /// Panics if the tensor has zero norm.
+    ///
+    /// # TCI-spec
+    /// Corresponds to `tci::normalize` overload (2)
+    ///
+    /// # Examples
+    /// ```
+    /// use arnet_tensor::RawTensor;
+    ///
+    /// let tensor = RawTensor::<f64>::ones(vec![3, 3]);
+    /// let (normalized, norm) = tensor.normalized();
+    /// assert!((norm - 3.0).abs() < 1e-10);
+    /// assert!((normalized.norm() - 1.0).abs() < 1e-10);
+    /// ```
+    pub fn normalized(&self) -> (Self, T::Real) {
         let mut result = self.clone();
         let norm = result.normalize();
         (result, norm)
