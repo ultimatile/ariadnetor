@@ -2,7 +2,6 @@
 
 use crate::index::IndexSet;
 use crate::raw_tensor::RawTensor;
-use num_complex::Complex;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
 
