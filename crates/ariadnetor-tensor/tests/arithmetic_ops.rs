@@ -4,7 +4,7 @@
 //! - scale: scalar multiplication
 //! - linear_combine: linear combination of tensors
 
-use arnet_tensor::{FatTensor, Index, IndexSet, RawTensor};
+use arnet_tensor::{FatTensor, LabelId, RawTensor};
 use num_complex::Complex;
 
 // ============================================================================
@@ -185,8 +185,8 @@ fn test_add_all_complex() {
 #[test]
 fn test_fat_tensor_scale() {
     let raw = RawTensor::<f64>::ones(vec![2, 3]);
-    let indices = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 3)], 0);
-    let mut fat = FatTensor::new(raw, indices.clone());
+    let labels = vec![LabelId::intern("i"), LabelId::intern("j")];
+    let mut fat = FatTensor::new(raw, labels.clone());
 
     fat.scale(3.0);
 
@@ -196,15 +196,15 @@ fn test_fat_tensor_scale() {
         }
     }
 
-    // Indices should be preserved
-    assert_eq!(fat.indices, indices);
+    // Labels should be preserved
+    assert_eq!(fat.labels, labels);
 }
 
 #[test]
 fn test_fat_tensor_scaled() {
     let raw = RawTensor::<f64>::constant(vec![2, 2], 2.0);
-    let indices = IndexSet::new(vec![Index::with_dim("a", 2), Index::with_dim("b", 2)], 0);
-    let fat = FatTensor::new(raw, indices.clone());
+    let labels = vec![LabelId::intern("a"), LabelId::intern("b")];
+    let fat = FatTensor::new(raw, labels.clone());
 
     let scaled = fat.scaled(5.0);
 
@@ -220,8 +220,8 @@ fn test_fat_tensor_scaled() {
         }
     }
 
-    // Indices preserved in both
-    assert_eq!(scaled.indices, indices);
+    // Labels preserved in both
+    assert_eq!(scaled.labels, labels);
 }
 
 // ============================================================================
@@ -230,10 +230,10 @@ fn test_fat_tensor_scaled() {
 
 #[test]
 fn test_fat_tensor_linear_combine() {
-    let indices = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 2)], 0);
+    let labels = vec![LabelId::intern("i"), LabelId::intern("j")];
 
-    let a = FatTensor::new(RawTensor::<f64>::constant(vec![2, 2], 1.0), indices.clone());
-    let b = FatTensor::new(RawTensor::<f64>::constant(vec![2, 2], 2.0), indices.clone());
+    let a = FatTensor::new(RawTensor::<f64>::constant(vec![2, 2], 1.0), labels.clone());
+    let b = FatTensor::new(RawTensor::<f64>::constant(vec![2, 2], 2.0), labels.clone());
 
     // 3*a + 2*b = 3*1 + 2*2 = 7
     let result = FatTensor::linear_combine(&[&a, &b], &[3.0, 2.0]).unwrap();
@@ -244,29 +244,29 @@ fn test_fat_tensor_linear_combine() {
         }
     }
 
-    assert_eq!(result.indices, indices);
+    assert_eq!(result.labels, labels);
 }
 
 #[test]
 fn test_fat_tensor_linear_combine_index_mismatch() {
-    let indices1 = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 2)], 0);
-    let indices2 = IndexSet::new(vec![Index::with_dim("k", 2), Index::with_dim("l", 2)], 0);
+    let labels1 = vec![LabelId::intern("i"), LabelId::intern("j")];
+    let labels2 = vec![LabelId::intern("k"), LabelId::intern("l")];
 
-    let a = FatTensor::new(RawTensor::<f64>::ones(vec![2, 2]), indices1);
-    let b = FatTensor::new(RawTensor::<f64>::ones(vec![2, 2]), indices2);
+    let a = FatTensor::new(RawTensor::<f64>::ones(vec![2, 2]), labels1);
+    let b = FatTensor::new(RawTensor::<f64>::ones(vec![2, 2]), labels2);
 
     let result = FatTensor::linear_combine(&[&a, &b], &[1.0, 1.0]);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("matching indices"));
+    assert!(result.unwrap_err().contains("matching labels"));
 }
 
 #[test]
 fn test_fat_tensor_add_all() {
-    let indices = IndexSet::new(vec![Index::with_dim("x", 3)], 0);
+    let labels = vec![LabelId::intern("x")];
 
-    let a = FatTensor::new(RawTensor::<f64>::constant(vec![3], 1.0), indices.clone());
-    let b = FatTensor::new(RawTensor::<f64>::constant(vec![3], 2.0), indices.clone());
-    let c = FatTensor::new(RawTensor::<f64>::constant(vec![3], 4.0), indices.clone());
+    let a = FatTensor::new(RawTensor::<f64>::constant(vec![3], 1.0), labels.clone());
+    let b = FatTensor::new(RawTensor::<f64>::constant(vec![3], 2.0), labels.clone());
+    let c = FatTensor::new(RawTensor::<f64>::constant(vec![3], 4.0), labels.clone());
 
     let result = FatTensor::add_all(&[&a, &b, &c]).unwrap();
 

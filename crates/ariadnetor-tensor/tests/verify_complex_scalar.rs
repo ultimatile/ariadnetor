@@ -68,10 +68,7 @@ fn test_complex_f64_normalize() {
 #[test]
 fn test_complex_f32_norm() {
     // Test with f32 complex
-    let data = vec![
-        Complex::new(1.0f32, 1.0f32),
-        Complex::new(1.0f32, -1.0f32),
-    ];
+    let data = vec![Complex::new(1.0f32, 1.0f32), Complex::new(1.0f32, -1.0f32)];
     let tensor = RawTensor::from_data(data, vec![2]);
 
     // |1+i|² = 2, |1-i|² = 2

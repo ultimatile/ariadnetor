@@ -1,11 +1,11 @@
-//! Fat tensor with metadata (storage + indices)
+//! Fat tensor with metadata (storage + labels)
 
-use crate::index::IndexSet;
+use crate::label::LabelId;
 use crate::raw_tensor::RawTensor;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
 
-/// Fat tensor: RawTensor + Index metadata
+/// Fat tensor: RawTensor + Label metadata
 ///
 /// This is the main tensor type for tensor network computations.
 ///
@@ -15,14 +15,20 @@ use std::ops::{Add, Mul};
 #[derive(Debug, Clone)]
 pub struct FatTensor<T = f64> {
     pub tensor: RawTensor<T>,
-    pub indices: IndexSet,
+    pub labels: Vec<LabelId>,
 }
 
 impl<T> FatTensor<T> {
     /// Create a new FatTensor
-    pub fn new(tensor: RawTensor<T>, indices: IndexSet) -> Self {
-        // TODO: Validate that tensor rank matches number of indices
-        Self { tensor, indices }
+    pub fn new(tensor: RawTensor<T>, labels: Vec<LabelId>) -> Self {
+        assert_eq!(tensor.shape().len(), labels.len());
+        Self { tensor, labels }
+    }
+
+    /// Create from raw tensor with string labels
+    pub fn from_raw(tensor: RawTensor<T>, label_names: &[&str]) -> Self {
+        let labels = label_names.iter().map(|s| LabelId::intern(s)).collect();
+        Self::new(tensor, labels)
     }
 
     /// Get the shape of the underlying tensor
@@ -32,7 +38,12 @@ impl<T> FatTensor<T> {
 
     /// Get the rank
     pub fn rank(&self) -> usize {
-        self.tensor.rank()
+        self.labels.len()
+    }
+
+    /// Get label names as strings (for debugging)
+    pub fn label_names(&self) -> Vec<String> {
+        self.labels.iter().map(|l| l.name()).collect()
     }
 }
 
@@ -46,15 +57,14 @@ where
 {
     /// Scale tensor by a scalar factor (in-place)
     ///
-    /// Preserves indices.
+    /// Preserves labels.
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    /// use arnet_tensor::{FatTensor, RawTensor};
     ///
     /// let raw = RawTensor::<f64>::ones(vec![2, 3]);
-    /// let indices = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 3)], 0);
-    /// let mut fat = FatTensor::new(raw, indices);
+    /// let mut fat = FatTensor::from_raw(raw, &["i", "j"]);
     ///
     /// fat.scale(2.5);
     /// ```
@@ -64,22 +74,21 @@ where
 
     /// Scale tensor and return new tensor (out-of-place)
     ///
-    /// Preserves indices.
+    /// Preserves labels.
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    /// use arnet_tensor::{FatTensor, RawTensor};
     ///
     /// let raw = RawTensor::<f64>::ones(vec![2, 2]);
-    /// let indices = IndexSet::new(vec![Index::with_dim("a", 2), Index::with_dim("b", 2)], 0);
-    /// let fat = FatTensor::new(raw, indices);
+    /// let fat = FatTensor::from_raw(raw, &["a", "b"]);
     ///
     /// let scaled = fat.scaled(3.0);
     /// ```
     pub fn scaled(&self, factor: T) -> Self {
         Self {
             tensor: self.tensor.scaled(factor),
-            indices: self.indices.clone(),
+            labels: self.labels.clone(),
         }
     }
 }
@@ -88,28 +97,26 @@ impl<T> FatTensor<T>
 where
     T: Clone + Zero + One + Add<Output = T> + Mul<Output = T>,
 {
-    /// Linear combination of tensors (validates index compatibility)
+    /// Linear combination of tensors (validates label compatibility)
     ///
-    /// All tensors must have matching indices.
+    /// All tensors must have matching labels.
     ///
     /// # Errors
-    /// - Tensors have different indices
+    /// - Tensors have different labels
     /// - Empty input
     /// - Mismatched lengths
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    /// use arnet_tensor::{FatTensor, RawTensor};
     ///
-    /// let indices = IndexSet::new(vec![Index::with_dim("i", 2)], 0);
-    ///
-    /// let a = FatTensor::new(
+    /// let a = FatTensor::from_raw(
     ///     RawTensor::<f64>::constant(vec![2], 1.0),
-    ///     indices.clone(),
+    ///     &["i"],
     /// );
-    /// let b = FatTensor::new(
+    /// let b = FatTensor::from_raw(
     ///     RawTensor::<f64>::constant(vec![2], 2.0),
-    ///     indices.clone(),
+    ///     &["i"],
     /// );
     ///
     /// // 2*a + 3*b = 2*1 + 3*2 = 8
@@ -120,11 +127,11 @@ where
             return Err("Cannot combine empty tensor list".to_string());
         }
 
-        // Validate indices match
-        let indices = &tensors[0].indices;
+        // Validate labels match
+        let labels = &tensors[0].labels;
         for t in &tensors[1..] {
-            if &t.indices != indices {
-                return Err("All tensors must have matching indices".to_string());
+            if &t.labels != labels {
+                return Err("All tensors must have matching labels".to_string());
             }
         }
 
@@ -134,7 +141,7 @@ where
 
         Ok(FatTensor {
             tensor: result_tensor,
-            indices: indices.clone(),
+            labels: labels.clone(),
         })
     }
 
@@ -142,12 +149,10 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    /// use arnet_tensor::{FatTensor, RawTensor};
     ///
-    /// let indices = IndexSet::new(vec![Index::with_dim("x", 2)], 0);
-    ///
-    /// let a = FatTensor::new(RawTensor::<f64>::constant(vec![2], 1.0), indices.clone());
-    /// let b = FatTensor::new(RawTensor::<f64>::constant(vec![2], 2.0), indices.clone());
+    /// let a = FatTensor::from_raw(RawTensor::<f64>::constant(vec![2], 1.0), &["x"]);
+    /// let b = FatTensor::from_raw(RawTensor::<f64>::constant(vec![2], 2.0), &["x"]);
     ///
     /// let result = FatTensor::add_all(&[&a, &b]).unwrap();
     /// ```
@@ -173,11 +178,10 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    /// use arnet_tensor::{FatTensor, RawTensor};
     ///
     /// let raw = RawTensor::<f64>::ones(vec![2, 3]);
-    /// let indices = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 3)], 0);
-    /// let fat = FatTensor::new(raw, indices);
+    /// let fat = FatTensor::from_raw(raw, &["i", "j"]);
     ///
     /// let norm = fat.norm();
     /// assert!((norm - 6.0f64.sqrt()).abs() < 1e-10);
@@ -190,15 +194,14 @@ where
     ///
     /// Returns the norm before normalization.
     /// Panics if the tensor has zero norm.
-    /// Preserves indices.
+    /// Preserves labels.
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    /// use arnet_tensor::{FatTensor, RawTensor};
     ///
     /// let raw = RawTensor::<f64>::ones(vec![2, 2]);
-    /// let indices = IndexSet::new(vec![Index::with_dim("a", 2), Index::with_dim("b", 2)], 0);
-    /// let mut fat = FatTensor::new(raw, indices);
+    /// let mut fat = FatTensor::from_raw(raw, &["a", "b"]);
     ///
     /// let norm = fat.normalize();
     /// assert!((norm - 2.0).abs() < 1e-10);
@@ -212,15 +215,14 @@ where
     ///
     /// Returns `(normalized_tensor, original_norm)`.
     /// Panics if the tensor has zero norm.
-    /// Preserves indices.
+    /// Preserves labels.
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::{FatTensor, RawTensor, Index, IndexSet};
+    /// use arnet_tensor::{FatTensor, RawTensor};
     ///
     /// let raw = RawTensor::<f64>::constant(vec![3, 3], 2.0);
-    /// let indices = IndexSet::new(vec![Index::with_dim("x", 3), Index::with_dim("y", 3)], 0);
-    /// let fat = FatTensor::new(raw, indices);
+    /// let fat = FatTensor::from_raw(raw, &["x", "y"]);
     ///
     /// let (normalized, norm) = fat.normalized();
     /// assert!((norm - 6.0).abs() < 1e-10);
@@ -231,7 +233,7 @@ where
         (
             Self {
                 tensor: normalized_tensor,
-                indices: self.indices.clone(),
+                labels: self.labels.clone(),
             },
             norm,
         )

@@ -23,14 +23,14 @@ pub mod arithmetic;
 pub mod dense;
 pub mod einsum;
 pub mod fat_tensor;
-pub mod index;
+pub mod label;
 pub mod raw_tensor;
 pub mod scalar;
 pub mod sector;
 
 pub use dense::DenseTensor;
 pub use fat_tensor::FatTensor;
-pub use index::{Index, IndexSet};
+pub use label::LabelId;
 pub use raw_tensor::RawTensor;
 pub use scalar::{FloatCompute, Scalar};
 

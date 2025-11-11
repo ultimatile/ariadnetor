@@ -4,7 +4,7 @@
 //! - norm: Frobenius norm (√(Σ|element|²))
 //! - normalize: Divide by norm and return the norm value
 
-use arnet_tensor::{FatTensor, Index, IndexSet, RawTensor};
+use arnet_tensor::{FatTensor, LabelId, RawTensor};
 use num_complex::Complex;
 
 const EPSILON: f64 = 1e-10;
@@ -157,8 +157,8 @@ fn test_normalize_zero_tensor_panic() {
 #[test]
 fn test_fat_tensor_norm() {
     let raw = RawTensor::<f64>::ones(vec![2, 3]);
-    let indices = IndexSet::new(vec![Index::with_dim("i", 2), Index::with_dim("j", 3)], 0);
-    let fat = FatTensor::new(raw, indices);
+    let labels = vec![LabelId::intern("i"), LabelId::intern("j")];
+    let fat = FatTensor::new(raw, labels);
 
     let norm = fat.norm();
     assert!((norm - 6.0f64.sqrt()).abs() < EPSILON);
@@ -171,8 +171,8 @@ fn test_fat_tensor_norm() {
 #[test]
 fn test_fat_tensor_normalize_inplace() {
     let raw = RawTensor::<f64>::ones(vec![2, 2]);
-    let indices = IndexSet::new(vec![Index::with_dim("a", 2), Index::with_dim("b", 2)], 0);
-    let mut fat = FatTensor::new(raw, indices.clone());
+    let labels = vec![LabelId::intern("a"), LabelId::intern("b")];
+    let mut fat = FatTensor::new(raw, labels.clone());
 
     let norm = fat.normalize();
     assert!((norm - 2.0).abs() < EPSILON);
@@ -184,15 +184,15 @@ fn test_fat_tensor_normalize_inplace() {
         }
     }
 
-    // Indices should be preserved
-    assert_eq!(fat.indices, indices);
+    // Labels should be preserved
+    assert_eq!(fat.labels, labels);
 }
 
 #[test]
 fn test_fat_tensor_normalized_out_of_place() {
     let raw = RawTensor::<f64>::constant(vec![3, 3], 2.0);
-    let indices = IndexSet::new(vec![Index::with_dim("x", 3), Index::with_dim("y", 3)], 0);
-    let fat = FatTensor::new(raw, indices.clone());
+    let labels = vec![LabelId::intern("x"), LabelId::intern("y")];
+    let fat = FatTensor::new(raw, labels.clone());
 
     let (normalized, norm) = fat.normalized();
     assert!((norm - 6.0).abs() < EPSILON);
@@ -209,6 +209,6 @@ fn test_fat_tensor_normalized_out_of_place() {
         }
     }
 
-    // Indices preserved
-    assert_eq!(normalized.indices, indices);
+    // Labels preserved
+    assert_eq!(normalized.labels, labels);
 }
