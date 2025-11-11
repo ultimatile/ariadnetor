@@ -20,6 +20,7 @@
 //! - `TensorC32`, `DenseTensorC32`: `Complex<f32>` (complex single)
 
 pub mod arithmetic;
+pub mod contraction_error;
 pub mod dense;
 pub mod einsum;
 pub mod fat_tensor;
@@ -28,6 +29,7 @@ pub mod raw_tensor;
 pub mod scalar;
 pub mod sector;
 
+pub use contraction_error::ContractionError;
 pub use dense::DenseTensor;
 pub use fat_tensor::FatTensor;
 pub use label::LabelId;

@@ -239,3 +239,146 @@ where
         )
     }
 }
+
+// ============================================================================
+// Tensor contraction operations
+// ============================================================================
+
+use crate::contraction_error::ContractionError;
+use crate::einsum::EinsumExpr;
+use std::collections::HashMap;
+
+impl<T> FatTensor<T>
+where
+    T: Clone + Zero + One + std::ops::AddAssign + std::ops::Mul<Output = T> + 'static,
+{
+    /// Contract two tensors using Einstein notation
+    ///
+    /// This method performs tensor contraction based on Einstein summation notation.
+    /// Labels that appear in both input tensors but not in the output are summed over.
+    ///
+    /// # Arguments
+    /// * `other` - The other tensor to contract with
+    /// * `notation` - Einstein notation string (e.g., "ij,jk->ik")
+    ///
+    /// # Examples
+    /// ```
+    /// use arnet_tensor::{FatTensor, RawTensor};
+    ///
+    /// // Matrix multiplication
+    /// let a = FatTensor::from_raw(
+    ///     RawTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]),
+    ///     &["i", "j"]
+    /// );
+    /// let b = FatTensor::from_raw(
+    ///     RawTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]),
+    ///     &["j", "k"]
+    /// );
+    ///
+    /// let c = a.contract(&b, "ij,jk->ik").unwrap();
+    /// assert_eq!(c.shape(), &[2, 2]);
+    /// assert_eq!(c.label_names(), vec!["i", "k"]);
+    /// ```
+    ///
+    /// # Errors
+    /// - `InvalidNotation`: Einstein notation string is malformed
+    /// - `LabelMismatch`: Number of labels in notation doesn't match tensor rank
+    /// - `DimensionMismatch`: Contracted labels have different dimensions
+    /// - `LabelNotFound`: Label in notation not found in tensor
+    pub fn contract(&self, other: &Self, notation: &str) -> Result<Self, ContractionError> {
+        // Parse Einstein notation
+        let expr = EinsumExpr::parse(notation)
+            .map_err(ContractionError::InvalidNotation)?;
+
+        // Validate label counts
+        if self.labels.len() != expr.lhs_indices.len() {
+            return Err(ContractionError::LabelMismatch {
+                expected: expr.lhs_indices.len(),
+                actual: self.labels.len(),
+                tensor: "lhs".to_string(),
+            });
+        }
+        if other.labels.len() != expr.rhs_indices.len() {
+            return Err(ContractionError::LabelMismatch {
+                expected: expr.rhs_indices.len(),
+                actual: other.labels.len(),
+                tensor: "rhs".to_string(),
+            });
+        }
+
+        // Build label name to byte mapping for notation
+        let mut label_to_byte: HashMap<String, u8> = HashMap::new();
+
+        // Map lhs labels
+        for (&label_id, &notation_byte) in self.labels.iter().zip(expr.lhs_indices.iter()) {
+            let label_name = label_id.name();
+            label_to_byte.insert(label_name, notation_byte);
+        }
+
+        // Map rhs labels (reuse existing mappings)
+        for (&label_id, &notation_byte) in other.labels.iter().zip(expr.rhs_indices.iter()) {
+            let label_name = label_id.name();
+            if let Some(&existing_byte) = label_to_byte.get(&label_name) {
+                if existing_byte != notation_byte {
+                    return Err(ContractionError::InvalidNotation(
+                        format!("Label '{}' mapped to different characters", label_name)
+                    ));
+                }
+            } else {
+                label_to_byte.insert(label_name, notation_byte);
+            }
+        }
+
+        // Validate dimensions for contracted labels
+        for (&lhs_label, &lhs_byte) in self.labels.iter().zip(expr.lhs_indices.iter()) {
+            for (&rhs_label, &rhs_byte) in other.labels.iter().zip(expr.rhs_indices.iter()) {
+                if lhs_byte == rhs_byte && !expr.out_indices.contains(&lhs_byte) {
+                    // This is a contracted label
+                    let lhs_pos = self.labels.iter().position(|&l| l == lhs_label).unwrap();
+                    let rhs_pos = other.labels.iter().position(|&l| l == rhs_label).unwrap();
+                    let lhs_dim = self.shape()[lhs_pos];
+                    let rhs_dim = other.shape()[rhs_pos];
+
+                    if lhs_dim != rhs_dim {
+                        return Err(ContractionError::DimensionMismatch {
+                            label: lhs_label.name(),
+                            lhs_dim,
+                            rhs_dim,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Extract DenseTensor from RawTensor
+        let crate::raw_tensor::RawTensor::Dense(lhs_dense) = &self.tensor;
+        let crate::raw_tensor::RawTensor::Dense(rhs_dense) = &other.tensor;
+
+        // Perform contraction using existing contract_naive
+        let result_dense = lhs_dense.contract_naive(rhs_dense, notation);
+
+        // Build output labels from notation
+        let output_labels: Vec<LabelId> = expr.out_indices.iter()
+            .map(|&byte| {
+                // Find which label corresponds to this byte
+                for (&label_id, &notation_byte) in self.labels.iter().zip(expr.lhs_indices.iter()) {
+                    if notation_byte == byte {
+                        return label_id;
+                    }
+                }
+                for (&label_id, &notation_byte) in other.labels.iter().zip(expr.rhs_indices.iter()) {
+                    if notation_byte == byte {
+                        return label_id;
+                    }
+                }
+                // Should not reach here if notation is valid
+                LabelId::intern(&(byte as char).to_string())
+            })
+            .collect();
+
+        Ok(Self {
+            tensor: crate::raw_tensor::RawTensor::Dense(result_dense),
+            labels: output_labels,
+        })
+    }
+}
