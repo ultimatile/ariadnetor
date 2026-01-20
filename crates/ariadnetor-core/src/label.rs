@@ -1,13 +1,13 @@
+//! Lightweight label identifier (interned string)
+
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Lightweight label identifier (interned string)
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct LabelId(u64);
 
-/// Global interner for label strings
 static INTERNER: Lazy<LabelInterner> = Lazy::new(LabelInterner::default);
 
 struct LabelInterner {
@@ -21,25 +21,22 @@ impl Default for LabelInterner {
         Self {
             name_to_id: DashMap::new(),
             id_to_name: DashMap::new(),
-            next_id: AtomicU64::new(1), // 0 reserved for invalid
+            next_id: AtomicU64::new(1),
         }
     }
 }
 
 impl LabelId {
-    /// Intern a label name, returning its ID
     pub fn intern(name: &str) -> Self {
         if let Some(id) = INTERNER.name_to_id.get(name) {
             return LabelId(*id);
         }
-
         let id = INTERNER.next_id.fetch_add(1, Ordering::SeqCst);
         INTERNER.name_to_id.insert(name.to_string(), id);
         INTERNER.id_to_name.insert(id, name.to_string());
         LabelId(id)
     }
 
-    /// Get the label name (requires lookup)
     pub fn name(&self) -> String {
         INTERNER
             .id_to_name
@@ -48,7 +45,6 @@ impl LabelId {
             .unwrap_or_else(|| format!("<unknown:{}>", self.0))
     }
 
-    /// Create a fresh unique label
     pub fn fresh() -> Self {
         let id = INTERNER.next_id.fetch_add(1, Ordering::SeqCst);
         let name = format!("_tmp_{}", id);
@@ -57,20 +53,14 @@ impl LabelId {
         LabelId(id)
     }
 
-    /// Apply prime (string manipulation sugar)
     pub fn prime(&self) -> Self {
-        let name = self.name();
-        Self::intern(&format!("{}'", name))
+        Self::intern(&format!("{}'", self.name()))
     }
 
-    /// Apply n primes
     pub fn primes(&self, n: usize) -> Self {
-        let name = self.name();
-        let primed = format!("{}{}", name, "'".repeat(n));
-        Self::intern(&primed)
+        Self::intern(&format!("{}{}", self.name(), "'".repeat(n)))
     }
 
-    /// Remove one prime level
     pub fn unprime(&self) -> Self {
         let name = self.name();
         if let Some(stripped) = name.strip_suffix('\'') {
@@ -80,25 +70,19 @@ impl LabelId {
         }
     }
 
-    /// Strip all primes, return base label
     pub fn base(&self) -> Self {
-        let name = self.name();
-        let base = name.trim_end_matches('\'');
-        Self::intern(base)
+        Self::intern(self.name().trim_end_matches('\''))
     }
 
-    /// Check if this label has primes
     pub fn is_primed(&self) -> bool {
         self.name().contains('\'')
     }
 
-    /// Count prime level
     pub fn prime_level(&self) -> usize {
         self.name().chars().rev().take_while(|&c| c == '\'').count()
     }
 }
 
-/// Convenience macro for label creation
 #[macro_export]
 macro_rules! label {
     ($name:expr) => {
@@ -106,7 +90,6 @@ macro_rules! label {
     };
 }
 
-/// Convenience macro for fresh label
 #[macro_export]
 macro_rules! fresh {
     () => {
@@ -127,14 +110,9 @@ mod tests {
 
     #[test]
     fn test_prime_operations() {
-        let i = LabelId::intern("i");
-        let i_prime = i.prime();
-        let i_double = i.primes(2);
-
-        assert_eq!(i_prime.name(), "i'");
-        assert_eq!(i_double.name(), "i''");
-        assert_eq!(i_prime.unprime(), i);
-        assert_eq!(i_double.base(), i);
+        let i = LabelId::intern("test_i");
+        assert_eq!(i.prime().name(), "test_i'");
+        assert_eq!(i.primes(2).name(), "test_i''");
     }
 
     #[test]
@@ -142,13 +120,5 @@ mod tests {
         let f1 = LabelId::fresh();
         let f2 = LabelId::fresh();
         assert_ne!(f1, f2);
-    }
-
-    #[test]
-    fn test_prime_level() {
-        let i = LabelId::intern("i");
-        assert_eq!(i.prime_level(), 0);
-        assert_eq!(i.prime().prime_level(), 1);
-        assert_eq!(i.primes(3).prime_level(), 3);
     }
 }

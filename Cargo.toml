@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/ariadnetor-tensor-compute-dialect",
+    "crates/ariadnetor-core",
     "crates/ariadnetor-tensor",
     "crates/ariadnetor",
 ]
@@ -12,10 +12,6 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-# MLIR
-melior = "0.25"
-mlir-sys = "0.5"
-
 # Linear algebra
 faer = "0.23"
 hptt = { path = "../hptt-rs" }
@@ -27,9 +23,6 @@ lru = "0.16"
 # Numeric types
 num-complex = "0.4"
 num-traits = "0.2"
-
-# Build
-cmake = "0.1"
 
 # Dev dependencies
 approx = "0.5"

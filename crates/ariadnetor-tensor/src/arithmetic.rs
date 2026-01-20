@@ -159,7 +159,7 @@ where
 // Norm and normalization operations
 // ============================================================================
 
-use crate::scalar::{FloatCompute, Scalar};
+use crate::{FloatCompute, Scalar};
 
 impl<T> RawTensor<T>
 where

@@ -3,10 +3,10 @@ name = "ariadnetor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "MLIR-based Distributed Tensor Network Framework"
+description = "Pure Rust Distributed Tensor Network Framework"
 
 [dependencies]
-ariadnetor-tensor-compute-dialect = { path = "../ariadnetor-tensor-compute-dialect" }
+ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 anyhow = { workspace = true }
 faer = { workspace = true }
@@ -15,12 +15,10 @@ hptt = { workspace = true, optional = true }
 
 [features]
 default = []
-mlir = ["ariadnetor-tensor-compute-dialect/mlir"]
 transpose = ["hptt"]
 
 [dev-dependencies]
 approx = { workspace = true }
-melior = { workspace = true }
 
 [lib]
 name = "arnet"

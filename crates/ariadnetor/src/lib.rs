@@ -1,11 +1,9 @@
-//! Ariadnetor: MLIR-based Distributed Tensor Network Framework
-//!
-//! Ariadnetor provides high-performance tensor operations with MLIR compilation.
+//! Ariadnetor: Pure Rust Distributed Tensor Network Framework
 //!
 //! # Architecture
 //!
 //! ```text
-//! Einsum DSL → Tensor Dialect → LinAlg → LLVM
+//! Einsum DSL → Tensor Operations → BLAS/LAPACK
 //! ```
 //!
 //! # Example
@@ -29,5 +27,5 @@ pub use einsum::EinsumExpr;
 pub use expr::ExpressionComputeGraph;
 pub use tensor::Tensor;
 
-// Re-export from ariadnetor-tensor-compute-dialect
-pub use ariadnetor_tensor_compute_dialect::{MemRefDescriptor, TCBuilder, TCDialect};
+// Re-export from ariadnetor-core
+pub use arnet_core::{ComputeBackend, ContractionError, LabelId, Scalar};

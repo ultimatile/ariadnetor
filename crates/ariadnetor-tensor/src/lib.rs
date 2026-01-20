@@ -20,24 +20,22 @@
 //! - `TensorC32`, `DenseTensorC32`: `Complex<f32>` (complex single)
 
 pub mod arithmetic;
-pub mod contraction_error;
 pub mod dense;
-pub mod einsum;
 pub mod fat_tensor;
-pub mod label;
 pub mod raw_tensor;
-pub mod scalar;
 pub mod sector;
 
-pub use contraction_error::ContractionError;
+// Re-export from ariadnetor-core
+pub use arnet_core::{
+    contraction_error, einsum, label, scalar,
+    compute_permutation, ContractionError, ContractionPlan, EinsumExpr,
+    FloatCompute, LabelId, Scalar,
+    Complex,
+};
+
 pub use dense::DenseTensor;
 pub use fat_tensor::FatTensor;
-pub use label::LabelId;
 pub use raw_tensor::RawTensor;
-pub use scalar::{FloatCompute, Scalar};
-
-// Re-export num_complex for user convenience
-pub use num_complex::Complex;
 
 /// Public API alias for FatTensor
 pub type Tensor<T = f64> = FatTensor<T>;

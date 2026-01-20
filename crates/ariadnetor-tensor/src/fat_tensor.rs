@@ -1,6 +1,6 @@
 //! Fat tensor with metadata (storage + labels)
 
-use crate::label::LabelId;
+use crate::LabelId;
 use crate::raw_tensor::RawTensor;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
@@ -166,7 +166,7 @@ where
 // Norm and normalization operations
 // ============================================================================
 
-use crate::scalar::Scalar;
+use crate::Scalar;
 
 impl<T> FatTensor<T>
 where
@@ -244,8 +244,8 @@ where
 // Tensor contraction operations
 // ============================================================================
 
-use crate::contraction_error::ContractionError;
-use crate::einsum::EinsumExpr;
+use crate::ContractionError;
+use crate::EinsumExpr;
 use std::collections::HashMap;
 
 impl<T> FatTensor<T>
