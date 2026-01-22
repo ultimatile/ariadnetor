@@ -1,56 +1,61 @@
 # Ariadnetor
 
-MLIR-based Distributed Tensor Network Framework written in Rust.
+Distributed Tensor Network Framework with pluggable backend architecture.
 
 ## Name
 
 **Ariadnetor** is an anagram containing:
 
 - **Ariadne** - The thread through the labyrinth (tensor networks)
-- **IR** - Intermediate Representation (MLIR)
 - **Tensor** - Multi-dimensional arrays
 - **r** - Rust
 
-## Structure
+## Architecture
 
-This is a workspace containing multiple crates:
+```
+┌─────────────────────────────────────────────────────────┐
+│  ariadnetor (arnet)  - High-level API                   │
+│    Einsum DSL, Expression Graph                         │
+├─────────────────────────────────────────────────────────┤
+│  ariadnetor-tensor (arnet_tensor)  - CPU Implementation │
+│    DenseTensor, FatTensor, Contraction                  │
+├─────────────────────────────────────────────────────────┤
+│  ariadnetor-core (arnet_core)  - Core Abstractions      │
+│    Scalar, LabelId, ComputeBackend trait                │
+└─────────────────────────────────────────────────────────┘
+```
 
-### `ariadnetor-tensor-compute-dialect`
+## Workspace Structure
 
-MLIR Tensor Compute Dialect for tensor operations.
+### `ariadnetor-core`
 
-- Dialect definition (C++/TableGen)
-- Lowering passes (TC → LinAlg)
-- IR Builder (Rust)
-- MemRef descriptors for FFI
+Backend-agnostic core abstractions.
+
+- `Scalar` / `FloatCompute` traits - Element type abstraction
+- `LabelId` - Interned tensor index labels
+- `EinsumExpr` / `ContractionPlan` - Einsum parsing and analysis
+- `ComputeBackend` trait - Pluggable backend interface
+
+### `ariadnetor-tensor`
+
+Pure Rust CPU tensor implementation.
+
+- `DenseTensor<T>` - Dense storage with Arc-based CoW
+- `RawTensor<T>` - Storage format enum (Dense, future: Sparse, BlockSparse)
+- `FatTensor<T>` - Tensor with label metadata
+- Arithmetic operations (faer for GEMM, hptt for transpose)
 
 ### `ariadnetor`
 
 Main library crate (use as `arnet`).
 
 - Einsum DSL
-- Tensor API
-- Runtime functions (faer for GEMM, hptt for transpose)
+- Expression compute graph
+- High-level tensor API
 
 ## Prerequisites
 
 - Rust 1.70+
-- **LLVM/MLIR 20.x (required)** - Other versions are not compatible with melior 0.25
-- CMake 3.20+
-
-### Installing LLVM/MLIR
-
-**Important**: You must use LLVM 20.x. Other versions (19.x, 21.x) will cause build or runtime errors due to melior compatibility.
-
-```bash
-# macOS
-brew install llvm@20
-
-# Set environment variable
-export MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20
-```
-
-See [LLVM Getting Started](https://llvm.org/docs/GettingStarted.html) for building from source.
 
 ## Installation
 
@@ -62,61 +67,46 @@ ariadnetor = { git = "https://github.com/ultimatile/ariadnetor" }
 ## Usage
 
 ```rust
-use arnet::{Tensor, einsum};
+use arnet_tensor::{FatTensor, RawTensor, LabelId};
 
-// Matrix multiplication using einsum notation
-let a = Tensor::new(vec![100, 200]);
-let b = Tensor::new(vec![200, 300]);
+// Create tensors with labels
+let a = FatTensor::from_raw(
+    RawTensor::<f64>::ones(vec![2, 3]),
+    &["i", "j"]
+);
+let b = FatTensor::from_raw(
+    RawTensor::<f64>::ones(vec![3, 4]),
+    &["j", "k"]
+);
 
-let c = einsum("ij,jk->ik", vec![&a, &b]);
+// Contract using einsum notation
+let c = a.contract(&b, "ij,jk->ik").unwrap();
 ```
 
 ## Building
 
-### Using cargo-make (Recommended)
+```bash
+cargo build --workspace
+cargo test --workspace
+```
 
-Install cargo-make:
+### Using cargo-make
+
 ```bash
 cargo install cargo-make
+cargo make build
+cargo make test
 ```
 
-Build the project:
-```bash
-cargo make build          # Build entire workspace
-cargo make build-mlir     # Build with MLIR features
-cargo make test           # Run unit tests
-cargo make test-mlir      # Run MLIR feature tests
-```
+## Roadmap
 
-See `Makefile.toml` for all available tasks.
+### Future Backends
 
-### Manual build
+These backends are planned but not yet implemented:
 
-```bash
-# Set environment variables
-export MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20
-export PATH="/opt/homebrew/opt/llvm@20/bin:$PATH"
-
-# Build
-cargo build --workspace
-```
-
-## Troubleshooting
-
-### LLVM version mismatch error
-
-If you see errors like `failed to find correct version of llvm-config` or runtime crashes:
-
-- Ensure you have **LLVM 20.x** installed (not 19.x or 21.x)
-- Set the environment variable: `export MLIR_SYS_200_PREFIX=/path/to/llvm-20`
-- Verify with: `$MLIR_SYS_200_PREFIX/bin/llvm-config --version` (should show 20.x.x)
-
-### Linking errors
-
-If you encounter undefined symbol errors during linking:
-
-- Ensure `MLIR_SYS_200_PREFIX` points to the correct LLVM 20.x installation
-- On macOS: `export MLIR_SYS_200_PREFIX=/opt/homebrew/opt/llvm@20`
+- `ariadnetor-cuda` - cuTENSOR / cuTensorNet integration
+- `ariadnetor-metal` - Metal Performance Shaders for Apple Silicon
+- MLIR/IREE experimentation in a separate repository
 
 ## License
 
