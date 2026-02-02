@@ -43,7 +43,9 @@ pub trait ComputeBackend: Send + Sync {
     fn device_type(&self) -> DeviceType;
 
     /// Check if backend is available
-    fn is_available(&self) -> bool { true }
+    fn is_available(&self) -> bool {
+        true
+    }
 
     /// GEMM: C = alpha * A * B + beta * C
     fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError>;

@@ -27,10 +27,8 @@ pub mod sector;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{
-    contraction_error, einsum, label, scalar,
-    compute_permutation, ContractionError, ContractionPlan, EinsumExpr,
-    FloatCompute, LabelId, Scalar,
-    Complex,
+    Complex, ContractionError, ContractionPlan, EinsumExpr, FloatCompute, LabelId, Scalar,
+    compute_permutation, contraction_error, einsum, label, scalar,
 };
 
 pub use dense::DenseTensor;

@@ -14,7 +14,7 @@ pub mod scalar;
 
 pub use backend::ComputeBackend;
 pub use contraction_error::ContractionError;
-pub use einsum::{compute_permutation, ContractionPlan, EinsumExpr};
+pub use einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 pub use label::LabelId;
 pub use scalar::{FloatCompute, Scalar};
 

@@ -15,14 +15,25 @@ impl EinsumExpr {
         let notation: String = notation.chars().filter(|c| !c.is_whitespace()).collect();
         let parts: Vec<&str> = notation.split("->").collect();
         if parts.len() != 2 {
-            return Err(format!("Invalid einsum: expected 'inputs->output', got '{}'", notation));
+            return Err(format!(
+                "Invalid einsum: expected 'inputs->output', got '{}'",
+                notation
+            ));
         }
 
         let inputs: Vec<&str> = parts[0].split(',').collect();
         let (lhs_indices, rhs_indices) = match inputs.len() {
             1 => (Self::parse_indices(inputs[0])?, Vec::new()),
-            2 => (Self::parse_indices(inputs[0])?, Self::parse_indices(inputs[1])?),
-            _ => return Err(format!("Only unary or binary operations supported, got {}", inputs.len())),
+            2 => (
+                Self::parse_indices(inputs[0])?,
+                Self::parse_indices(inputs[1])?,
+            ),
+            _ => {
+                return Err(format!(
+                    "Only unary or binary operations supported, got {}",
+                    inputs.len()
+                ));
+            }
         };
 
         Ok(Self {
@@ -68,22 +79,32 @@ impl ContractionPlan {
         let lhs_set: HashSet<u8> = expr.lhs_indices.iter().copied().collect();
 
         // Contracted: in both lhs and rhs, not in output (preserve LHS order)
-        let contracted: Vec<u8> = expr.lhs_indices.iter()
+        let contracted: Vec<u8> = expr
+            .lhs_indices
+            .iter()
             .filter(|idx| rhs_set.contains(idx) && !out_set.contains(idx))
             .copied()
             .collect();
 
         // Free indices in output order
-        let free_lhs: Vec<u8> = expr.out_indices.iter()
+        let free_lhs: Vec<u8> = expr
+            .out_indices
+            .iter()
             .filter(|idx| lhs_set.contains(idx))
             .copied()
             .collect();
-        let free_rhs: Vec<u8> = expr.out_indices.iter()
+        let free_rhs: Vec<u8> = expr
+            .out_indices
+            .iter()
             .filter(|idx| rhs_set.contains(idx))
             .copied()
             .collect();
 
-        Self { contracted, free_lhs, free_rhs }
+        Self {
+            contracted,
+            free_lhs,
+            free_rhs,
+        }
     }
 
     pub fn lhs_permutation(&self, lhs_indices: &[u8], rhs_indices: &[u8]) -> Option<Vec<usize>> {
@@ -113,8 +134,14 @@ impl ContractionPlan {
 /// Compute permutation from current to target order
 pub fn compute_permutation(current: &[u8], target: &[u8]) -> Option<Vec<usize>> {
     assert_eq!(current.len(), target.len());
-    let perm: Vec<usize> = target.iter()
-        .map(|&idx| current.iter().position(|&x| x == idx).expect("Index not found"))
+    let perm: Vec<usize> = target
+        .iter()
+        .map(|&idx| {
+            current
+                .iter()
+                .position(|&x| x == idx)
+                .expect("Index not found")
+        })
         .collect();
     if perm.iter().enumerate().all(|(i, &p)| i == p) {
         None

@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/ariadnetor-core",
-    "crates/ariadnetor-tensor",
-    "crates/ariadnetor",
+  "crates/ariadnetor-core",
+  "crates/ariadnetor-tensor",
+  "crates/ariadnetor",
 ]
 resolver = "2"
 

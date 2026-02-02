@@ -287,8 +287,7 @@ where
     /// - `LabelNotFound`: Label in notation not found in tensor
     pub fn contract(&self, other: &Self, notation: &str) -> Result<Self, ContractionError> {
         // Parse Einstein notation
-        let expr = EinsumExpr::parse(notation)
-            .map_err(ContractionError::InvalidNotation)?;
+        let expr = EinsumExpr::parse(notation).map_err(ContractionError::InvalidNotation)?;
 
         // Validate label counts
         if self.labels.len() != expr.lhs_indices.len() {
@@ -320,9 +319,10 @@ where
             let label_name = label_id.name();
             if let Some(&existing_byte) = label_to_byte.get(&label_name) {
                 if existing_byte != notation_byte {
-                    return Err(ContractionError::InvalidNotation(
-                        format!("Label '{}' mapped to different characters", label_name)
-                    ));
+                    return Err(ContractionError::InvalidNotation(format!(
+                        "Label '{}' mapped to different characters",
+                        label_name
+                    )));
                 }
             } else {
                 label_to_byte.insert(label_name, notation_byte);
@@ -358,7 +358,9 @@ where
         let result_dense = lhs_dense.contract_naive(rhs_dense, notation);
 
         // Build output labels from notation
-        let output_labels: Vec<LabelId> = expr.out_indices.iter()
+        let output_labels: Vec<LabelId> = expr
+            .out_indices
+            .iter()
             .map(|&byte| {
                 // Find which label corresponds to this byte
                 for (&label_id, &notation_byte) in self.labels.iter().zip(expr.lhs_indices.iter()) {
@@ -366,7 +368,8 @@ where
                         return label_id;
                     }
                 }
-                for (&label_id, &notation_byte) in other.labels.iter().zip(expr.rhs_indices.iter()) {
+                for (&label_id, &notation_byte) in other.labels.iter().zip(expr.rhs_indices.iter())
+                {
                     if notation_byte == byte {
                         return label_id;
                     }

@@ -37,14 +37,8 @@ fn test_matrix_multiplication() {
 #[test]
 fn test_inner_product() {
     // Inner product: [3] . [3] = scalar (but contract_naive returns [1])
-    let a = FatTensor::from_raw(
-        RawTensor::from_data(vec![1.0, 2.0, 3.0], vec![3]),
-        &["i"],
-    );
-    let b = FatTensor::from_raw(
-        RawTensor::from_data(vec![4.0, 5.0, 6.0], vec![3]),
-        &["i"],
-    );
+    let a = FatTensor::from_raw(RawTensor::from_data(vec![1.0, 2.0, 3.0], vec![3]), &["i"]);
+    let b = FatTensor::from_raw(RawTensor::from_data(vec![4.0, 5.0, 6.0], vec![3]), &["i"]);
 
     let c = a.contract(&b, "i,i->").unwrap();
 
@@ -59,10 +53,7 @@ fn test_inner_product() {
 fn test_outer_product() {
     // Outer product: [2] ⊗ [3] = [2, 3]
     let a = FatTensor::from_raw(RawTensor::from_data(vec![2.0, 3.0], vec![2]), &["i"]);
-    let b = FatTensor::from_raw(
-        RawTensor::from_data(vec![4.0, 5.0, 6.0], vec![3]),
-        &["j"],
-    );
+    let b = FatTensor::from_raw(RawTensor::from_data(vec![4.0, 5.0, 6.0], vec![3]), &["j"]);
 
     let c = a.contract(&b, "i,j->ij").unwrap();
 
@@ -237,10 +228,7 @@ fn test_scalar_contraction() {
 #[test]
 fn test_vector_matrix_contraction() {
     // Vector-matrix multiplication: [3] @ [3x2] = [2]
-    let v = FatTensor::from_raw(
-        RawTensor::from_data(vec![1.0, 2.0, 3.0], vec![3]),
-        &["i"],
-    );
+    let v = FatTensor::from_raw(RawTensor::from_data(vec![1.0, 2.0, 3.0], vec![3]), &["i"]);
     let m = FatTensor::from_raw(
         RawTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]),
         &["i", "j"],

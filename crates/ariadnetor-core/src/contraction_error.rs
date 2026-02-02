@@ -28,11 +28,27 @@ impl fmt::Display for ContractionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::InvalidNotation(msg) => write!(f, "Invalid Einstein notation: {}", msg),
-            Self::LabelMismatch { expected, actual, tensor } => {
-                write!(f, "{} tensor: expected {} labels, got {}", tensor, expected, actual)
+            Self::LabelMismatch {
+                expected,
+                actual,
+                tensor,
+            } => {
+                write!(
+                    f,
+                    "{} tensor: expected {} labels, got {}",
+                    tensor, expected, actual
+                )
             }
-            Self::DimensionMismatch { label, lhs_dim, rhs_dim } => {
-                write!(f, "Dimension mismatch for '{}': lhs={}, rhs={}", label, lhs_dim, rhs_dim)
+            Self::DimensionMismatch {
+                label,
+                lhs_dim,
+                rhs_dim,
+            } => {
+                write!(
+                    f,
+                    "Dimension mismatch for '{}': lhs={}, rhs={}",
+                    label, lhs_dim, rhs_dim
+                )
             }
             Self::LabelNotFound { label, tensor } => {
                 write!(f, "Label '{}' not found in {} tensor", label, tensor)

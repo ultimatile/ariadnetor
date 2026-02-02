@@ -25,32 +25,56 @@ pub trait FloatCompute: Copy + PartialOrd + 'static {
 
 impl FloatCompute for f32 {
     #[inline]
-    fn zero() -> Self { 0.0 }
+    fn zero() -> Self {
+        0.0
+    }
     #[inline]
-    fn one() -> Self { 1.0 }
+    fn one() -> Self {
+        1.0
+    }
     #[inline]
-    fn sqrt(self) -> Self { self.sqrt() }
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
     #[inline]
-    fn add(self, rhs: Self) -> Self { self + rhs }
+    fn add(self, rhs: Self) -> Self {
+        self + rhs
+    }
     #[inline]
-    fn mul(self, rhs: Self) -> Self { self * rhs }
+    fn mul(self, rhs: Self) -> Self {
+        self * rhs
+    }
     #[inline]
-    fn div(self, rhs: Self) -> Self { self / rhs }
+    fn div(self, rhs: Self) -> Self {
+        self / rhs
+    }
 }
 
 impl FloatCompute for f64 {
     #[inline]
-    fn zero() -> Self { 0.0 }
+    fn zero() -> Self {
+        0.0
+    }
     #[inline]
-    fn one() -> Self { 1.0 }
+    fn one() -> Self {
+        1.0
+    }
     #[inline]
-    fn sqrt(self) -> Self { self.sqrt() }
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
     #[inline]
-    fn add(self, rhs: Self) -> Self { self + rhs }
+    fn add(self, rhs: Self) -> Self {
+        self + rhs
+    }
     #[inline]
-    fn mul(self, rhs: Self) -> Self { self * rhs }
+    fn mul(self, rhs: Self) -> Self {
+        self * rhs
+    }
     #[inline]
-    fn div(self, rhs: Self) -> Self { self / rhs }
+    fn div(self, rhs: Self) -> Self {
+        self / rhs
+    }
 }
 
 /// Scalar type for tensor elements (sealed trait).
@@ -73,45 +97,65 @@ pub trait Scalar:
 impl Scalar for f32 {
     type Real = f32;
     #[inline]
-    fn abs(self) -> Self::Real { self.abs() }
+    fn abs(self) -> Self::Real {
+        self.abs()
+    }
     #[inline]
-    fn scale_real(self, factor: Self::Real) -> Self { self * factor }
+    fn scale_real(self, factor: Self::Real) -> Self {
+        self * factor
+    }
     #[inline]
-    fn conj(self) -> Self { self }
+    fn conj(self) -> Self {
+        self
+    }
 }
 
 impl Scalar for f64 {
     type Real = f64;
     #[inline]
-    fn abs(self) -> Self::Real { self.abs() }
+    fn abs(self) -> Self::Real {
+        self.abs()
+    }
     #[inline]
-    fn scale_real(self, factor: Self::Real) -> Self { self * factor }
+    fn scale_real(self, factor: Self::Real) -> Self {
+        self * factor
+    }
     #[inline]
-    fn conj(self) -> Self { self }
+    fn conj(self) -> Self {
+        self
+    }
 }
 
 impl Scalar for Complex<f32> {
     type Real = f32;
     #[inline]
-    fn abs(self) -> Self::Real { self.norm() }
+    fn abs(self) -> Self::Real {
+        self.norm()
+    }
     #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
         Complex::new(self.re * factor, self.im * factor)
     }
     #[inline]
-    fn conj(self) -> Self { Complex::conj(&self) }
+    fn conj(self) -> Self {
+        Complex::conj(&self)
+    }
 }
 
 impl Scalar for Complex<f64> {
     type Real = f64;
     #[inline]
-    fn abs(self) -> Self::Real { self.norm() }
+    fn abs(self) -> Self::Real {
+        self.norm()
+    }
     #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
         Complex::new(self.re * factor, self.im * factor)
     }
     #[inline]
-    fn conj(self) -> Self { Complex::conj(&self) }
+    fn conj(self) -> Self {
+        Complex::conj(&self)
+    }
 }
 
 #[cfg(test)]
