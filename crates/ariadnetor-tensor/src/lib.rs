@@ -1,15 +1,14 @@
 //! Tensor library with two-layer architecture
 //!
-//! - **RawTensor**: Storage layer (Dense, Sparse, BlockSparse)
-//! - **FatTensor**: Metadata layer (storage + indices)
+//! - **TensorStorage**: Storage layer (Dense, Sparse, BlockSparse)
+//! - **Tensor**: Main API type wrapping TensorStorage
 //!
 //! # Type System
 //!
 //! All tensor types are generic over element type `T` with default `f64`:
 //! - [`DenseTensor<T>`]: Dense storage layer
-//! - [`RawTensor<T>`]: Storage format enum
-//! - [`FatTensor<T>`]: Full tensor with metadata
-//! - [`Tensor<T>`]: Public API alias for FatTensor
+//! - [`TensorStorage<T>`]: Storage format enum
+//! - [`Tensor<T>`]: Main tensor type
 //!
 //! # Type Aliases
 //!
@@ -21,22 +20,19 @@
 
 pub mod arithmetic;
 pub mod dense;
-pub mod fat_tensor;
-pub mod raw_tensor;
+pub mod tensor;
+pub mod tensor_storage;
 pub mod sector;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{
-    Complex, ContractionError, ContractionPlan, EinsumExpr, FloatCompute, LabelId, Scalar,
-    compute_permutation, contraction_error, einsum, label, scalar,
+    Complex, ContractionError, ContractionPlan, EinsumExpr, FloatCompute, Scalar,
+    compute_permutation, contraction_error, einsum, scalar,
 };
 
 pub use dense::DenseTensor;
-pub use fat_tensor::FatTensor;
-pub use raw_tensor::RawTensor;
-
-/// Public API alias for FatTensor
-pub type Tensor<T = f64> = FatTensor<T>;
+pub use tensor::Tensor;
+pub use tensor_storage::TensorStorage;
 
 // Convenient type aliases for common numeric types
 pub type Tensor64 = Tensor<f64>;
@@ -49,12 +45,7 @@ pub type DenseTensor32 = DenseTensor<f32>;
 pub type DenseTensorC64 = DenseTensor<Complex<f64>>;
 pub type DenseTensorC32 = DenseTensor<Complex<f32>>;
 
-pub type RawTensor64 = RawTensor<f64>;
-pub type RawTensor32 = RawTensor<f32>;
-pub type RawTensorC64 = RawTensor<Complex<f64>>;
-pub type RawTensorC32 = RawTensor<Complex<f32>>;
-
-pub type FatTensor64 = FatTensor<f64>;
-pub type FatTensor32 = FatTensor<f32>;
-pub type FatTensorC64 = FatTensor<Complex<f64>>;
-pub type FatTensorC32 = FatTensor<Complex<f32>>;
+pub type TensorStorage64 = TensorStorage<f64>;
+pub type TensorStorage32 = TensorStorage<f32>;
+pub type TensorStorageC64 = TensorStorage<Complex<f64>>;
+pub type TensorStorageC32 = TensorStorage<Complex<f32>>;

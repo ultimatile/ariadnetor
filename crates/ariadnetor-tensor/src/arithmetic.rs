@@ -6,15 +6,15 @@
 //! - `norm`: Frobenius norm
 //! - `normalize`: Normalize to unit norm
 
-use crate::raw_tensor::RawTensor;
+use crate::tensor_storage::TensorStorage;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
 
 // ============================================================================
-// RawTensor arithmetic operations
+// TensorStorage arithmetic operations
 // ============================================================================
 
-impl<T> RawTensor<T>
+impl<T> TensorStorage<T>
 where
     T: Clone + Mul<Output = T>,
 {
@@ -27,9 +27,9 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::RawTensor;
+    /// use arnet_tensor::TensorStorage;
     ///
-    /// let mut tensor = RawTensor::<f64>::ones(vec![2, 3]);
+    /// let mut tensor = TensorStorage::<f64>::ones(vec![2, 3]);
     /// tensor.scale(2.5);
     /// assert_eq!(tensor.get(&[0, 0]), 2.5);
     /// ```
@@ -52,9 +52,9 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::RawTensor;
+    /// use arnet_tensor::TensorStorage;
     ///
-    /// let tensor = RawTensor::<f64>::ones(vec![2, 2]);
+    /// let tensor = TensorStorage::<f64>::ones(vec![2, 2]);
     /// let scaled = tensor.scaled(3.0);
     /// assert_eq!(scaled.get(&[0, 0]), 3.0);
     /// assert_eq!(tensor.get(&[0, 0]), 1.0); // Original unchanged
@@ -66,7 +66,7 @@ where
     }
 }
 
-impl<T> RawTensor<T>
+impl<T> TensorStorage<T>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
@@ -84,16 +84,16 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::RawTensor;
+    /// use arnet_tensor::TensorStorage;
     ///
-    /// let a = RawTensor::<f64>::constant(vec![2, 2], 1.0);
-    /// let b = RawTensor::<f64>::constant(vec![2, 2], 2.0);
+    /// let a = TensorStorage::<f64>::constant(vec![2, 2], 1.0);
+    /// let b = TensorStorage::<f64>::constant(vec![2, 2], 2.0);
     ///
     /// // 2*a + 3*b = 2*1 + 3*2 = 8
-    /// let result = RawTensor::linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
+    /// let result = TensorStorage::linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
     /// assert_eq!(result.get(&[0, 0]), 8.0);
     /// ```
-    pub fn linear_combine(tensors: &[&RawTensor<T>], coefs: &[T]) -> Result<RawTensor<T>, String> {
+    pub fn linear_combine(tensors: &[&TensorStorage<T>], coefs: &[T]) -> Result<TensorStorage<T>, String> {
         if tensors.is_empty() {
             return Err("Cannot combine empty tensor list".to_string());
         }
@@ -136,17 +136,17 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::RawTensor;
+    /// use arnet_tensor::TensorStorage;
     ///
-    /// let a = RawTensor::<f64>::constant(vec![2, 2], 1.0);
-    /// let b = RawTensor::<f64>::constant(vec![2, 2], 2.0);
-    /// let c = RawTensor::<f64>::constant(vec![2, 2], 3.0);
+    /// let a = TensorStorage::<f64>::constant(vec![2, 2], 1.0);
+    /// let b = TensorStorage::<f64>::constant(vec![2, 2], 2.0);
+    /// let c = TensorStorage::<f64>::constant(vec![2, 2], 3.0);
     ///
     /// // a + b + c = 6
-    /// let result = RawTensor::add_all(&[&a, &b, &c]).unwrap();
+    /// let result = TensorStorage::add_all(&[&a, &b, &c]).unwrap();
     /// assert_eq!(result.get(&[0, 0]), 6.0);
     /// ```
-    pub fn add_all(tensors: &[&RawTensor<T>]) -> Result<RawTensor<T>, String>
+    pub fn add_all(tensors: &[&TensorStorage<T>]) -> Result<TensorStorage<T>, String>
     where
         T: One,
     {
@@ -161,7 +161,7 @@ where
 
 use crate::{FloatCompute, Scalar};
 
-impl<T> RawTensor<T>
+impl<T> TensorStorage<T>
 where
     T: Scalar,
 {
@@ -177,9 +177,9 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::RawTensor;
+    /// use arnet_tensor::TensorStorage;
     ///
-    /// let tensor = RawTensor::<f64>::ones(vec![2, 2]);
+    /// let tensor = TensorStorage::<f64>::ones(vec![2, 2]);
     /// let norm = tensor.norm();
     /// assert!((norm - 2.0).abs() < 1e-10);
     /// ```
@@ -211,9 +211,9 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::RawTensor;
+    /// use arnet_tensor::TensorStorage;
     ///
-    /// let mut tensor = RawTensor::<f64>::ones(vec![2, 2]);
+    /// let mut tensor = TensorStorage::<f64>::ones(vec![2, 2]);
     /// let norm = tensor.normalize();
     /// assert!((norm - 2.0).abs() < 1e-10);
     /// assert!((tensor.norm() - 1.0).abs() < 1e-10);
@@ -245,9 +245,9 @@ where
     ///
     /// # Examples
     /// ```
-    /// use arnet_tensor::RawTensor;
+    /// use arnet_tensor::TensorStorage;
     ///
-    /// let tensor = RawTensor::<f64>::ones(vec![3, 3]);
+    /// let tensor = TensorStorage::<f64>::ones(vec![3, 3]);
     /// let (normalized, norm) = tensor.normalized();
     /// assert!((norm - 3.0).abs() < 1e-10);
     /// assert!((normalized.norm() - 1.0).abs() < 1e-10);
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_scale_basic() {
-        let mut tensor = RawTensor::<f64>::ones(vec![2, 2]);
+        let mut tensor = TensorStorage::<f64>::ones(vec![2, 2]);
         tensor.scale(3.0);
         assert_eq!(tensor.get(&[0, 0]), 3.0);
         assert_eq!(tensor.get(&[1, 1]), 3.0);
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_scaled_immutable() {
-        let tensor = RawTensor::<f64>::constant(vec![2, 2], 2.0);
+        let tensor = TensorStorage::<f64>::constant(vec![2, 2], 2.0);
         let scaled = tensor.scaled(5.0);
         assert_eq!(tensor.get(&[0, 0]), 2.0);
         assert_eq!(scaled.get(&[0, 0]), 10.0);
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_scale_complex() {
-        let mut tensor = RawTensor::<Complex<f64>>::ones(vec![2, 2]);
+        let mut tensor = TensorStorage::<Complex<f64>>::ones(vec![2, 2]);
         tensor.scale(Complex::new(2.0, 3.0));
         // (1 + 0i) * (2 + 3i) = (2 + 3i)
         assert_eq!(tensor.get(&[0, 0]), Complex::new(2.0, 3.0));
@@ -290,19 +290,19 @@ mod tests {
 
     #[test]
     fn test_linear_combine_basic() {
-        let a = RawTensor::<f64>::constant(vec![2, 2], 1.0);
-        let b = RawTensor::<f64>::constant(vec![2, 2], 2.0);
-        let result = RawTensor::linear_combine(&[&a, &b], &[3.0, 4.0]).unwrap();
+        let a = TensorStorage::<f64>::constant(vec![2, 2], 1.0);
+        let b = TensorStorage::<f64>::constant(vec![2, 2], 2.0);
+        let result = TensorStorage::linear_combine(&[&a, &b], &[3.0, 4.0]).unwrap();
         // 3*1 + 4*2 = 11
         assert_eq!(result.get(&[0, 0]), 11.0);
     }
 
     #[test]
     fn test_add_all_basic() {
-        let a = RawTensor::<f64>::constant(vec![2, 2], 1.0);
-        let b = RawTensor::<f64>::constant(vec![2, 2], 2.0);
-        let c = RawTensor::<f64>::constant(vec![2, 2], 3.0);
-        let result = RawTensor::add_all(&[&a, &b, &c]).unwrap();
+        let a = TensorStorage::<f64>::constant(vec![2, 2], 1.0);
+        let b = TensorStorage::<f64>::constant(vec![2, 2], 2.0);
+        let c = TensorStorage::<f64>::constant(vec![2, 2], 3.0);
+        let result = TensorStorage::add_all(&[&a, &b, &c]).unwrap();
         assert_eq!(result.get(&[0, 0]), 6.0);
     }
 }

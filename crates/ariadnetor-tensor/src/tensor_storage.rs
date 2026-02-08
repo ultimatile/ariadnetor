@@ -1,12 +1,12 @@
-//! Raw tensor storage format enum
+//! Tensor storage format enum
 //!
-//! RawTensor represents the storage layer without metadata (labels, indices, etc.).
+//! TensorStorage represents the storage layer without metadata.
 
 use crate::dense::DenseTensor;
 use num_traits::{One, Zero};
 use std::fmt;
 
-/// Raw tensor storage format (low-level, no metadata)
+/// Tensor storage format (low-level, no metadata)
 ///
 /// This enum represents different tensor storage strategies:
 /// - **Dense**: Contiguous array (all elements stored)
@@ -14,7 +14,7 @@ use std::fmt;
 /// - **BlockSparse**: Block-wise storage with symmetry sectors
 ///
 #[derive(Clone)]
-pub enum RawTensor<T = f64> {
+pub enum TensorStorage<T = f64> {
     /// Dense tensor with contiguous storage
     Dense(DenseTensor<T>),
     // TODO: Phase 1+ - Sparse tensor support
@@ -24,7 +24,7 @@ pub enum RawTensor<T = f64> {
     // BlockSparse(BlockSparseVariant<T>),
 }
 
-impl<T> RawTensor<T> {
+impl<T> TensorStorage<T> {
     /// Get the shape of the tensor
     pub fn shape(&self) -> &[usize] {
         match self {
@@ -61,7 +61,7 @@ impl<T> RawTensor<T> {
     }
 }
 
-impl<T> RawTensor<T>
+impl<T> TensorStorage<T>
 where
     T: Clone,
 {
@@ -145,18 +145,18 @@ where
     }
 }
 
-impl<T> fmt::Debug for RawTensor<T> {
+impl<T> fmt::Debug for TensorStorage<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Dense(t) => write!(f, "RawTensor::Dense({:?})", t),
+            Self::Dense(t) => write!(f, "TensorStorage::Dense({:?})", t),
         }
     }
 }
 
-impl<T> fmt::Display for RawTensor<T> {
+impl<T> fmt::Display for TensorStorage<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Dense(t) => write!(f, "RawTensor::Dense({})", t),
+            Self::Dense(t) => write!(f, "TensorStorage::Dense({})", t),
         }
     }
 }
@@ -166,15 +166,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_raw_tensor_zeros() {
-        let tensor = RawTensor::<f64>::zeros(vec![3, 4]);
+    fn test_tensor_storage_zeros() {
+        let tensor = TensorStorage::<f64>::zeros(vec![3, 4]);
         assert_eq!(tensor.shape(), &[3, 4]);
         assert_eq!(tensor.len(), 12);
     }
 
     #[test]
-    fn test_raw_tensor_ones() {
-        let tensor = RawTensor::<f64>::ones(vec![2, 3]);
+    fn test_tensor_storage_ones() {
+        let tensor = TensorStorage::<f64>::ones(vec![2, 3]);
         if let Some(data) = tensor.data() {
             for &val in data {
                 assert_eq!(val, 1.0);
@@ -183,16 +183,16 @@ mod tests {
     }
 
     #[test]
-    fn test_raw_tensor_from_data() {
+    fn test_tensor_storage_from_data() {
         let data = vec![1.0, 2.0, 3.0, 4.0];
-        let tensor = RawTensor::<f64>::from_data(data.clone(), vec![2, 2]);
+        let tensor = TensorStorage::<f64>::from_data(data.clone(), vec![2, 2]);
         assert_eq!(tensor.shape(), &[2, 2]);
         assert_eq!(tensor.data().unwrap(), &data[..]);
     }
 
     #[test]
-    fn test_raw_tensor_indexing() {
-        let mut tensor = RawTensor::<f64>::zeros(vec![3, 4]);
+    fn test_tensor_storage_indexing() {
+        let mut tensor = TensorStorage::<f64>::zeros(vec![3, 4]);
         tensor.set(&[1, 2], 42.0);
         assert_eq!(tensor.get(&[1, 2]), 42.0);
     }

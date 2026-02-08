@@ -16,6 +16,9 @@ license = "MIT OR Apache-2.0"
 faer = "0.23"
 hptt = { path = "../hptt-rs" }
 
+# Memory alignment
+aligned-vec = "0.6"
+
 # Utilities
 anyhow = "1.0"
 lru = "0.16"

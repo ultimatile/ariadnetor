@@ -2,9 +2,13 @@
 //!
 //! Provides a dense tensor with row-major layout and Arc-based shared ownership.
 
+use aligned_vec::{AVec, ConstAlign};
 use num_traits::{One, Zero};
 use std::fmt;
 use std::sync::Arc;
+
+/// 64-byte alignment for SIMD (AVX-512)
+type Align64 = ConstAlign<64>;
 
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
 ///
@@ -34,12 +38,10 @@ use std::sync::Arc;
 /// ```
 #[derive(Clone)]
 pub struct DenseTensor<T = f64> {
-    /// Shared data buffer (row-major order)
-    data: Arc<Vec<T>>,
+    /// Shared data buffer (row-major order, 64-byte aligned)
+    data: Arc<AVec<T, Align64>>,
     /// Tensor shape
     shape: Vec<usize>,
-    /// Strides for indexing (row-major)
-    strides: Vec<usize>,
 }
 
 impl<T> DenseTensor<T> {
@@ -94,13 +96,12 @@ where
         T: Zero,
     {
         let total_elements: usize = shape.iter().product();
-        let data = Arc::new(vec![T::zero(); total_elements]);
-        let strides = Self::compute_strides(&shape);
+        let mut data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
+        data.resize(total_elements, T::zero());
 
         Self {
-            data,
+            data: Arc::new(data),
             shape,
-            strides,
         }
     }
 
@@ -116,13 +117,12 @@ where
         T: One + Zero,
     {
         let total_elements: usize = shape.iter().product();
-        let data = Arc::new(vec![T::one(); total_elements]);
-        let strides = Self::compute_strides(&shape);
+        let mut data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
+        data.resize(total_elements, T::one());
 
         Self {
-            data,
+            data: Arc::new(data),
             shape,
-            strides,
         }
     }
 
@@ -135,13 +135,12 @@ where
     /// ```
     pub fn constant(shape: Vec<usize>, value: T) -> Self {
         let total_elements: usize = shape.iter().product();
-        let data = Arc::new(vec![value; total_elements]);
-        let strides = Self::compute_strides(&shape);
+        let mut data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
+        data.resize(total_elements, value);
 
         Self {
-            data,
+            data: Arc::new(data),
             shape,
-            strides,
         }
     }
 
@@ -166,12 +165,14 @@ where
             total_elements
         );
 
-        let strides = Self::compute_strides(&shape);
+        let mut aligned_data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
+        for elem in data {
+            aligned_data.push(elem);
+        }
 
         Self {
-            data: Arc::new(data),
+            data: Arc::new(aligned_data),
             shape,
-            strides,
         }
     }
 
@@ -266,14 +267,14 @@ where
                 // Safety: We just checked that T is f64
                 let self_f64: &DenseTensor<f64> = unsafe { std::mem::transmute(self) };
                 let result_f64 = self_f64.permute_hptt(perm);
-                return unsafe { std::mem::transmute(result_f64) };
+                return unsafe { std::mem::transmute::<DenseTensor<f64>, Self>(result_f64) };
             }
 
             if type_id == TypeId::of::<f32>() {
                 // Safety: We just checked that T is f32
                 let self_f32: &DenseTensor<f32> = unsafe { std::mem::transmute(self) };
                 let result_f32 = self_f32.permute_hptt(perm);
-                return unsafe { std::mem::transmute(result_f32) };
+                return unsafe { std::mem::transmute::<DenseTensor<f32>, Self>(result_f32) };
             }
 
             if type_id == TypeId::of::<num_complex::Complex<f64>>() {
@@ -281,7 +282,9 @@ where
                 let self_c64: &DenseTensor<num_complex::Complex<f64>> =
                     unsafe { std::mem::transmute(self) };
                 let result_c64 = self_c64.permute_hptt(perm);
-                return unsafe { std::mem::transmute(result_c64) };
+                return unsafe {
+                    std::mem::transmute::<DenseTensor<num_complex::Complex<f64>>, Self>(result_c64)
+                };
             }
 
             if type_id == TypeId::of::<num_complex::Complex<f32>>() {
@@ -289,7 +292,9 @@ where
                 let self_c32: &DenseTensor<num_complex::Complex<f32>> =
                     unsafe { std::mem::transmute(self) };
                 let result_c32 = self_c32.permute_hptt(perm);
-                return unsafe { std::mem::transmute(result_c32) };
+                return unsafe {
+                    std::mem::transmute::<DenseTensor<num_complex::Complex<f32>>, Self>(result_c32)
+                };
             }
         }
 
@@ -309,24 +314,22 @@ where
 
         let new_shape: Vec<usize> = perm.iter().map(|&i| self.shape[i]).collect();
         let new_strides = Self::compute_strides(&new_shape);
+        let old_strides = Self::compute_strides(&self.shape);
         let total_elements = self.len();
+        let rank = self.rank();
 
         let mut result_data = vec![T::zero(); total_elements];
 
         // Iterate over all elements and reorder
         for old_idx in 0..total_elements {
-            let old_coords = self.linear_to_coords(old_idx);
+            let old_coords = Self::linear_to_coords_with_strides(old_idx, &old_strides, rank);
             let new_coords: Vec<usize> = perm.iter().map(|&i| old_coords[i]).collect();
             let new_idx = Self::coords_to_linear(&new_coords, &new_strides);
 
             result_data[new_idx] = self.data[old_idx].clone();
         }
 
-        Self {
-            data: Arc::new(result_data),
-            shape: new_shape,
-            strides: new_strides,
-        }
+        Self::from_data(result_data, new_shape)
     }
 
     /// Validate permutation
@@ -352,14 +355,14 @@ where
         }
     }
 
-    /// Convert linear index to multi-dimensional coordinates
-    fn linear_to_coords(&self, idx: usize) -> Vec<usize> {
-        let mut coords = vec![0; self.rank()];
+    /// Convert linear index to multi-dimensional coordinates using precomputed strides
+    fn linear_to_coords_with_strides(idx: usize, strides: &[usize], rank: usize) -> Vec<usize> {
+        let mut coords = vec![0; rank];
         let mut remaining = idx;
 
-        for i in 0..self.rank() {
-            coords[i] = remaining / self.strides[i];
-            remaining %= self.strides[i];
+        for i in 0..rank {
+            coords[i] = remaining / strides[i];
+            remaining %= strides[i];
         }
 
         coords
@@ -402,9 +405,10 @@ where
             )
         });
 
+        let strides = Self::compute_strides(&self.shape);
         indices
             .iter()
-            .zip(&self.strides)
+            .zip(&strides)
             .map(|(&idx, &stride)| idx * stride)
             .sum()
     }
@@ -579,7 +583,7 @@ where
             let result_f64 = lhs_f64.gemm_f64(rhs_f64, m, n, k);
             let reshaped =
                 Self::reshape_output(&result_f64, lhs_orig_shape, rhs_orig_shape, plan, expr);
-            return unsafe { std::mem::transmute(reshaped) };
+            return unsafe { std::mem::transmute::<DenseTensor<f64>, Self>(reshaped) };
         }
 
         if type_id == TypeId::of::<f32>() {
@@ -589,7 +593,7 @@ where
             let result_f32 = lhs_f32.gemm_f32(rhs_f32, m, n, k);
             let reshaped =
                 Self::reshape_output(&result_f32, lhs_orig_shape, rhs_orig_shape, plan, expr);
-            return unsafe { std::mem::transmute(reshaped) };
+            return unsafe { std::mem::transmute::<DenseTensor<f32>, Self>(reshaped) };
         }
 
         // Fallback: naive implementation (for Complex and other types)
@@ -684,7 +688,7 @@ impl DenseTensor<f64> {
         let rhs_view = MatRef::from_row_major_slice(rhs.data(), k, n);
 
         // Perform GEMM using operator
-        let output: Mat<f64> = &lhs_view * &rhs_view;
+        let output: Mat<f64> = lhs_view * rhs_view;
 
         // Convert back to row-major for DenseTensor
         let result_data: Vec<f64> = (0..m * n)
@@ -721,7 +725,7 @@ impl DenseTensor<f32> {
         let lhs_view = MatRef::from_row_major_slice(self.data(), m, k);
         let rhs_view = MatRef::from_row_major_slice(rhs.data(), k, n);
 
-        let output: Mat<f32> = &lhs_view * &rhs_view;
+        let output: Mat<f32> = lhs_view * rhs_view;
 
         let result_data: Vec<f32> = (0..m * n)
             .map(|i| {

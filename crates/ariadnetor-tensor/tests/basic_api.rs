@@ -2,23 +2,23 @@
 //!
 //! Tests the public API usage patterns from design documentation.
 
-use arnet_tensor::{DenseTensor, RawTensor};
+use arnet_tensor::{DenseTensor, TensorStorage};
 
 #[test]
-fn test_raw_tensor_creation() {
-    // Create tensors using RawTensor constructors
-    let zeros = RawTensor::<f64>::zeros(vec![10, 20]);
+fn test_tensor_storage_creation() {
+    // Create tensors using TensorStorage constructors
+    let zeros = TensorStorage::<f64>::zeros(vec![10, 20]);
     assert_eq!(zeros.shape(), &[10, 20]);
     assert_eq!(zeros.len(), 200);
 
-    let ones = RawTensor::<f64>::ones(vec![5, 5]);
+    let ones = TensorStorage::<f64>::ones(vec![5, 5]);
     assert_eq!(ones.shape(), &[5, 5]);
     if let Some(data) = ones.data() {
         assert_eq!(data[0], 1.0);
         assert_eq!(data[24], 1.0);
     }
 
-    let from_data = RawTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let from_data = TensorStorage::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     assert_eq!(from_data.shape(), &[2, 2]);
     assert_eq!(from_data.get(&[0, 0]), 1.0);
     assert_eq!(from_data.get(&[1, 1]), 4.0);
@@ -41,7 +41,7 @@ fn test_dense_tensor_creation() {
 
 #[test]
 fn test_tensor_indexing() {
-    let mut tensor = RawTensor::<f64>::zeros(vec![3, 4]);
+    let mut tensor = TensorStorage::<f64>::zeros(vec![3, 4]);
 
     // Set values
     tensor.set(&[0, 0], 1.0);
@@ -56,7 +56,7 @@ fn test_tensor_indexing() {
 
 #[test]
 fn test_tensor_fill() {
-    let mut tensor = RawTensor::<f64>::zeros(vec![10, 10]);
+    let mut tensor = TensorStorage::<f64>::zeros(vec![10, 10]);
     tensor.fill(2.718);
 
     if let Some(data) = tensor.data() {

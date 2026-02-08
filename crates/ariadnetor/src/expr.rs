@@ -296,7 +296,7 @@ mod tests {
         let expr = ExpressionComputeGraph::from_tensor(tensor.clone());
 
         let result = expr.evaluate().unwrap();
-        assert_eq!(result.data(), tensor.data());
+        assert_eq!(result.data().unwrap(), tensor.data().unwrap());
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod tests {
         let scaled = expr.scale(2.0);
         let result = scaled.evaluate().unwrap();
 
-        assert_eq!(result.data(), &[2.0, 4.0, 6.0, 8.0]);
+        assert_eq!(result.data().unwrap(), &[2.0, 4.0, 6.0, 8.0]);
     }
 
     #[test]
@@ -323,7 +323,7 @@ mod tests {
         let sum = expr_a.add(&expr_b);
         let result = sum.evaluate().unwrap();
 
-        assert_eq!(result.data(), &[11.0, 22.0, 33.0, 44.0]);
+        assert_eq!(result.data().unwrap(), &[11.0, 22.0, 33.0, 44.0]);
     }
 
     #[test]
@@ -339,7 +339,7 @@ mod tests {
         let result = expr.evaluate().unwrap();
 
         // (a * 2) + (b * 3) = [2,4,6,8] + [15,18,21,24] = [17,22,27,32]
-        assert_eq!(result.data(), &[17.0, 22.0, 27.0, 32.0]);
+        assert_eq!(result.data().unwrap(), &[17.0, 22.0, 27.0, 32.0]);
     }
 
     #[test]
@@ -362,7 +362,7 @@ mod tests {
         let result = expr.evaluate().unwrap();
 
         // 1*[1,2] + 2*[3,4] + 3*[5,6] = [1,2] + [6,8] + [15,18] = [22,28]
-        assert_eq!(result.data(), &[22.0, 28.0]);
+        assert_eq!(result.data().unwrap(), &[22.0, 28.0]);
     }
 
     #[test]
@@ -380,6 +380,6 @@ mod tests {
         // Expected: matrix multiplication
         // [1 2] × [5 6] = [19 22]
         // [3 4]   [7 8]   [43 50]
-        assert_eq!(result.data(), &[19.0, 22.0, 43.0, 50.0]);
+        assert_eq!(result.data().unwrap(), &[19.0, 22.0, 43.0, 50.0]);
     }
 }

@@ -2,14 +2,13 @@
 //!
 //! Validates that usage examples from two_layer_tensor_architecture.md actually work.
 
-use arnet_tensor::{DenseTensor, RawTensor};
+use arnet_tensor::{DenseTensor, TensorStorage};
 
 #[test]
 fn test_design_doc_example_dense_tensor() {
-    // From two_layer_tensor_architecture.md Section 5
-    // Low-level API usage (メタデータ不要な場合)
-    let raw_a = RawTensor::Dense(DenseTensor::<f64>::zeros(vec![10, 20]));
-    let raw_b = RawTensor::Dense(DenseTensor::<f64>::ones(vec![20, 30]));
+    // Low-level API usage
+    let raw_a = TensorStorage::Dense(DenseTensor::<f64>::zeros(vec![10, 20]));
+    let raw_b = TensorStorage::Dense(DenseTensor::<f64>::ones(vec![20, 30]));
 
     assert_eq!(raw_a.shape(), &[10, 20]);
     assert_eq!(raw_b.shape(), &[20, 30]);
@@ -21,7 +20,6 @@ fn test_design_doc_example_dense_tensor() {
 
 #[test]
 fn test_design_doc_arc_cow() {
-    // From tensor_storage_design.md Section 2.1
     // Arc + Copy-on-Write example
     let mut tensor = DenseTensor::<f64>::zeros(vec![10, 20]);
     let cloned = tensor.clone(); // O(1) - only increments reference count
@@ -35,7 +33,6 @@ fn test_design_doc_arc_cow() {
 
 #[test]
 fn test_design_doc_dense_storage() {
-    // From two_layer_tensor_architecture.md Section 2.1
     // DenseTensor basic usage
     let tensor = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
@@ -50,7 +47,6 @@ fn test_design_doc_dense_storage() {
 
 #[test]
 fn test_design_doc_row_major_layout() {
-    // From dense.rs documentation
     // Row-major layout verification
     // [[a, b, c],
     //  [d, e, f]]
@@ -91,7 +87,6 @@ fn test_design_doc_constructors() {
 
 #[test]
 fn test_design_doc_phase_0_vec_usage() {
-    // From tensor_storage_design.md Phase 0
     // Current implementation uses Vec everywhere
     let tensor = DenseTensor::<f64>::zeros(vec![10, 20, 30, 40]);
 

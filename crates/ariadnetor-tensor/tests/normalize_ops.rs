@@ -1,22 +1,22 @@
 //! Normalization operations tests
 //!
 //! Tests for TCI-spec normalization operations:
-//! - norm: Frobenius norm (√(Σ|element|²))
+//! - norm: Frobenius norm (sqrt(sum|element|^2))
 //! - normalize: Divide by norm and return the norm value
 
-use arnet_tensor::{FatTensor, LabelId, RawTensor};
+use arnet_tensor::{Tensor, TensorStorage};
 use num_complex::Complex;
 
 const EPSILON: f64 = 1e-10;
 
 // ============================================================================
-// RawTensor::norm tests
+// TensorStorage::norm tests
 // ============================================================================
 
 #[test]
 fn test_norm_f64_simple() {
-    // Identity matrix 3x3: norm = √3
-    let mut tensor = RawTensor::<f64>::zeros(vec![3, 3]);
+    // Identity matrix 3x3: norm = sqrt(3)
+    let mut tensor = TensorStorage::<f64>::zeros(vec![3, 3]);
     tensor.set(&[0, 0], 1.0);
     tensor.set(&[1, 1], 1.0);
     tensor.set(&[2, 2], 1.0);
@@ -27,15 +27,15 @@ fn test_norm_f64_simple() {
 
 #[test]
 fn test_norm_f64_all_ones() {
-    // 2x3 tensor of ones: norm = √6
-    let tensor = RawTensor::<f64>::ones(vec![2, 3]);
+    // 2x3 tensor of ones: norm = sqrt(6)
+    let tensor = TensorStorage::<f64>::ones(vec![2, 3]);
     let norm = tensor.norm();
     assert!((norm - 6.0f64.sqrt()).abs() < EPSILON);
 }
 
 #[test]
 fn test_norm_f32() {
-    let tensor = RawTensor::<f32>::ones(vec![2, 2]);
+    let tensor = TensorStorage::<f32>::ones(vec![2, 2]);
     let norm = tensor.norm();
     assert!((norm - 4.0f32.sqrt()).abs() < 1e-6);
 }
@@ -43,34 +43,34 @@ fn test_norm_f32() {
 #[test]
 fn test_norm_complex_f64() {
     // [1+0i, 0+1i, 2+0i, 0+2i]
-    // |1+0i|² = 1, |0+1i|² = 1, |2+0i|² = 4, |0+2i|² = 4
-    // sum = 10, norm = √10
+    // |1+0i|^2 = 1, |0+1i|^2 = 1, |2+0i|^2 = 4, |0+2i|^2 = 4
+    // sum = 10, norm = sqrt(10)
     let data: Vec<Complex<f64>> = vec![
         Complex::new(1.0, 0.0),
         Complex::new(0.0, 1.0),
         Complex::new(2.0, 0.0),
         Complex::new(0.0, 2.0),
     ];
-    let tensor = RawTensor::from_data(data, vec![2, 2]);
+    let tensor = TensorStorage::from_data(data, vec![2, 2]);
     let norm = tensor.norm();
     assert!((norm - 10.0f64.sqrt()).abs() < EPSILON);
 }
 
 #[test]
 fn test_norm_zero_tensor() {
-    let tensor = RawTensor::<f64>::zeros(vec![3, 3]);
+    let tensor = TensorStorage::<f64>::zeros(vec![3, 3]);
     let norm = tensor.norm();
     assert!(norm.abs() < EPSILON);
 }
 
 // ============================================================================
-// RawTensor::normalize tests
+// TensorStorage::normalize tests
 // ============================================================================
 
 #[test]
 fn test_normalize_f64_inplace() {
-    let mut tensor = RawTensor::<f64>::ones(vec![2, 2]);
-    // Initial norm = √4 = 2
+    let mut tensor = TensorStorage::<f64>::ones(vec![2, 2]);
+    // Initial norm = sqrt(4) = 2
     let norm = tensor.normalize();
     assert!((norm - 2.0).abs() < EPSILON);
 
@@ -88,8 +88,8 @@ fn test_normalize_f64_inplace() {
 
 #[test]
 fn test_normalize_f64_out_of_place() {
-    let tensor = RawTensor::<f64>::constant(vec![2, 2], 3.0);
-    // Initial norm = √(4*9) = 6
+    let tensor = TensorStorage::<f64>::constant(vec![2, 2], 3.0);
+    // Initial norm = sqrt(4*9) = 6
     let (normalized, norm) = tensor.normalized();
     assert!((norm - 6.0).abs() < EPSILON);
 
@@ -108,7 +108,7 @@ fn test_normalize_f64_out_of_place() {
 
 #[test]
 fn test_normalize_f32() {
-    let mut tensor = RawTensor::<f32>::ones(vec![3, 3]);
+    let mut tensor = TensorStorage::<f32>::ones(vec![3, 3]);
     let norm = tensor.normalize();
     assert!((norm - 3.0f32).abs() < 1e-6);
 
@@ -121,16 +121,16 @@ fn test_normalize_f32() {
 
 #[test]
 fn test_normalize_complex_f64() {
-    // [2+0i, 0+2i]: |2+0i|² = 4, |0+2i|² = 4, sum = 8, norm = √8 = 2√2
+    // [2+0i, 0+2i]: |2+0i|^2 = 4, |0+2i|^2 = 4, sum = 8, norm = sqrt(8) = 2*sqrt(2)
     let data: Vec<Complex<f64>> = vec![Complex::new(2.0, 0.0), Complex::new(0.0, 2.0)];
-    let mut tensor = RawTensor::from_data(data, vec![2]);
+    let mut tensor = TensorStorage::from_data(data, vec![2]);
 
     let norm = tensor.normalize();
     assert!((norm - 8.0f64.sqrt()).abs() < EPSILON);
 
-    // Each element should be divided by 2√2
+    // Each element should be divided by 2*sqrt(2)
     if let Some(data) = tensor.data() {
-        // 2/(2√2) = 1/√2
+        // 2/(2*sqrt(2)) = 1/sqrt(2)
         let expected = 1.0 / 2.0f64.sqrt();
         assert!((data[0].re - expected).abs() < EPSILON);
         assert!(data[0].im.abs() < EPSILON);
@@ -146,69 +146,56 @@ fn test_normalize_complex_f64() {
 #[test]
 #[should_panic(expected = "Cannot normalize zero tensor")]
 fn test_normalize_zero_tensor_panic() {
-    let mut tensor = RawTensor::<f64>::zeros(vec![2, 2]);
+    let mut tensor = TensorStorage::<f64>::zeros(vec![2, 2]);
     tensor.normalize();
 }
 
 // ============================================================================
-// FatTensor::norm tests
+// Tensor::norm tests
 // ============================================================================
 
 #[test]
-fn test_fat_tensor_norm() {
-    let raw = RawTensor::<f64>::ones(vec![2, 3]);
-    let labels = vec![LabelId::intern("i"), LabelId::intern("j")];
-    let fat = FatTensor::new(raw, labels);
-
-    let norm = fat.norm();
+fn test_tensor_norm() {
+    let t = Tensor::<f64>::ones(vec![2, 3]);
+    let norm = t.norm();
     assert!((norm - 6.0f64.sqrt()).abs() < EPSILON);
 }
 
 // ============================================================================
-// FatTensor::normalize tests
+// Tensor::normalize tests
 // ============================================================================
 
 #[test]
-fn test_fat_tensor_normalize_inplace() {
-    let raw = RawTensor::<f64>::ones(vec![2, 2]);
-    let labels = vec![LabelId::intern("a"), LabelId::intern("b")];
-    let mut fat = FatTensor::new(raw, labels.clone());
+fn test_tensor_normalize_inplace() {
+    let mut t = Tensor::<f64>::ones(vec![2, 2]);
 
-    let norm = fat.normalize();
+    let norm = t.normalize();
     assert!((norm - 2.0).abs() < EPSILON);
 
     // Check normalized values
-    if let Some(data) = fat.tensor.data() {
+    if let Some(data) = t.storage.data() {
         for &val in data {
             assert!((val - 0.5).abs() < EPSILON);
         }
     }
-
-    // Labels should be preserved
-    assert_eq!(fat.labels, labels);
 }
 
 #[test]
-fn test_fat_tensor_normalized_out_of_place() {
-    let raw = RawTensor::<f64>::constant(vec![3, 3], 2.0);
-    let labels = vec![LabelId::intern("x"), LabelId::intern("y")];
-    let fat = FatTensor::new(raw, labels.clone());
+fn test_tensor_normalized_out_of_place() {
+    let t = Tensor::<f64>::constant(vec![3, 3], 2.0);
 
-    let (normalized, norm) = fat.normalized();
+    let (normalized, norm) = t.normalized();
     assert!((norm - 6.0).abs() < EPSILON);
 
     // Original unchanged
-    if let Some(data) = fat.tensor.data() {
+    if let Some(data) = t.storage.data() {
         assert!((data[0] - 2.0).abs() < EPSILON);
     }
 
     // Normalized
-    if let Some(data) = normalized.tensor.data() {
+    if let Some(data) = normalized.storage.data() {
         for &val in data {
             assert!((val - 1.0 / 3.0).abs() < EPSILON);
         }
     }
-
-    // Labels preserved
-    assert_eq!(normalized.labels, labels);
 }

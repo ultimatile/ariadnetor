@@ -11,6 +11,7 @@ hptt = ["dep:hptt"]
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
+aligned-vec = { workspace = true }
 faer = { workspace = true }
 anyhow = { workspace = true }
 num-complex = { workspace = true }
