@@ -2,6 +2,8 @@
 members = [
   "crates/ariadnetor-core",
   "crates/ariadnetor-tensor",
+  "crates/ariadnetor-linalg",
+  "crates/ariadnetor-cpu",
   "crates/ariadnetor",
 ]
 resolver = "2"
