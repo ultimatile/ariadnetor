@@ -1,9 +1,6 @@
 //! Runtime functions for tensor operations
 //!
-//! This module will provide C ABI runtime functions for:
-//! - GEMM (using faer)
-//! - Tensor transpose (using hptt)
+//! GEMM and transpose are now provided via `ComputeBackend` trait
+//! (see `ariadnetor-cpu` for the CPU implementation using faer/HPTT).
 //!
-//! TODO: Implement after workspace structure is stable
-
-// Placeholder for now
+//! This module will host C ABI shims for JIT-compiled code in a future phase.
