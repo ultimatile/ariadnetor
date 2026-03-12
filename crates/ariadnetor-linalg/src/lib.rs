@@ -8,13 +8,19 @@
 //!
 //! - [`transpose`]: Permute tensor axes via backend
 //! - [`contract`]: Tensor contraction via Einstein summation (permute + GEMM)
+//! - [`scale`]: Scalar multiplication (out-of-place)
+//! - [`norm`]: Frobenius norm
+//! - [`normalize`]: Normalize to unit norm (out-of-place)
+//! - [`linear_combine`]: Linear combination of tensors
 
 pub use arnet_core::backend::ComputeBackend;
 
 use arnet_core::backend::{BackendError, GemmDescriptor, TransposeDescriptor};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr};
-use arnet_core::scalar::Scalar;
+use arnet_core::scalar::{FloatCompute, Scalar};
 use arnet_tensor::DenseTensor;
+use num_traits::Zero;
+use std::ops::{Add, Mul};
 
 /// Transpose (permute axes) of a dense tensor using the provided backend.
 ///
@@ -220,6 +226,145 @@ fn compute_output_shape(
     output_shape
 }
 
+// ============================================================================
+// Scalar operations (backend-free)
+// ============================================================================
+
+/// Scale tensor by a scalar factor (out-of-place).
+///
+/// Returns a new tensor with all elements multiplied by `factor`.
+///
+/// # Examples
+///
+/// ```
+/// use arnet_linalg::scale;
+/// use arnet_tensor::DenseTensor;
+///
+/// let tensor = DenseTensor::<f64>::ones(vec![2, 3]);
+/// let scaled = scale(&tensor, 2.5);
+/// assert_eq!(scaled.get(&[0, 0]), 2.5);
+/// ```
+pub fn scale<T>(tensor: &DenseTensor<T>, factor: T) -> DenseTensor<T>
+where
+    T: Clone + Mul<Output = T>,
+{
+    let data: Vec<T> = tensor
+        .data()
+        .iter()
+        .map(|x| x.clone() * factor.clone())
+        .collect();
+    DenseTensor::from_data(data, tensor.shape().to_vec())
+}
+
+/// Compute the Frobenius norm of a tensor.
+///
+/// Returns sqrt(sum |element|^2) as a real value.
+///
+/// # Examples
+///
+/// ```
+/// use arnet_linalg::norm;
+/// use arnet_tensor::DenseTensor;
+///
+/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+/// let n = norm(&tensor);
+/// assert!((n - 2.0).abs() < 1e-10);
+/// ```
+pub fn norm<T: Scalar>(tensor: &DenseTensor<T>) -> T::Real {
+    let sum_sq = tensor
+        .data()
+        .iter()
+        .map(|&x| {
+            let a = x.abs();
+            a.mul(a)
+        })
+        .fold(T::Real::zero(), |acc, x| acc.add(x));
+    sum_sq.sqrt()
+}
+
+/// Normalize a tensor to unit Frobenius norm (out-of-place).
+///
+/// Returns `(normalized_tensor, original_norm)`.
+/// Panics if the tensor has zero norm.
+///
+/// # Examples
+///
+/// ```
+/// use arnet_linalg::normalize;
+/// use arnet_tensor::DenseTensor;
+///
+/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+/// let (normalized, n) = normalize(&tensor);
+/// assert!((n - 2.0).abs() < 1e-10);
+/// assert!((arnet_linalg::norm(&normalized) - 1.0).abs() < 1e-10);
+/// ```
+pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real) {
+    let n = norm(tensor);
+    assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
+    let inv_norm = T::Real::one().div(n);
+    let data: Vec<T> = tensor
+        .data()
+        .iter()
+        .map(|&x| x.scale_real(inv_norm))
+        .collect();
+    (DenseTensor::from_data(data, tensor.shape().to_vec()), n)
+}
+
+/// Linear combination of tensors: sum_i coefs[i] * tensors[i].
+///
+/// All tensors must have the same shape.
+///
+/// # Errors
+///
+/// Returns an error if tensors have different shapes, the list is empty,
+/// or tensors and coefficients have different lengths.
+///
+/// # Examples
+///
+/// ```
+/// use arnet_linalg::linear_combine;
+/// use arnet_tensor::DenseTensor;
+///
+/// let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+/// let b = DenseTensor::<f64>::constant(vec![2, 2], 2.0);
+///
+/// // 2*a + 3*b = 2*1 + 3*2 = 8
+/// let result = linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
+/// assert_eq!(result.get(&[0, 0]), 8.0);
+/// ```
+pub fn linear_combine<T>(
+    tensors: &[&DenseTensor<T>],
+    coefs: &[T],
+) -> Result<DenseTensor<T>, String>
+where
+    T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
+{
+    if tensors.is_empty() {
+        return Err("Cannot combine empty tensor list".to_string());
+    }
+    if tensors.len() != coefs.len() {
+        return Err(format!(
+            "Mismatched lengths: {} tensors vs {} coefficients",
+            tensors.len(),
+            coefs.len()
+        ));
+    }
+    let shape = tensors[0].shape();
+    for t in &tensors[1..] {
+        if t.shape() != shape {
+            return Err("All tensors must have the same shape".to_string());
+        }
+    }
+    let len = tensors[0].len();
+    let mut result = vec![T::zero(); len];
+    for (tensor, coef) in tensors.iter().zip(coefs) {
+        for (r, val) in result.iter_mut().zip(tensor.data()) {
+            *r = r.clone() + coef.clone() * val.clone();
+        }
+    }
+    Ok(DenseTensor::from_data(result, shape.to_vec()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,5 +543,100 @@ mod tests {
         // 3-index notation with rank-2 tensor
         let result = contract(&backend, &a, &b, "ijk,kl->ijl");
         assert!(result.is_err());
+    }
+
+    // --- Scale tests ---
+
+    #[test]
+    fn test_scale_f64() {
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let scaled = scale(&tensor, 2.5);
+        assert_eq!(scaled.get(&[0, 0]), 2.5);
+        assert_eq!(scaled.get(&[0, 1]), 5.0);
+        assert_eq!(scaled.get(&[1, 0]), 7.5);
+        assert_eq!(scaled.get(&[1, 1]), 10.0);
+        // Original unchanged
+        assert_eq!(tensor.get(&[0, 0]), 1.0);
+    }
+
+    #[test]
+    fn test_scale_complex() {
+        use num_complex::Complex;
+        let tensor = DenseTensor::from_data(
+            vec![Complex::new(1.0, 0.0), Complex::new(0.0, 1.0)],
+            vec![2],
+        );
+        let scaled = scale(&tensor, Complex::new(2.0, 3.0));
+        // (1+0i)*(2+3i) = 2+3i
+        assert_eq!(scaled.get(&[0]), Complex::new(2.0, 3.0));
+        // (0+1i)*(2+3i) = -3+2i
+        assert_eq!(scaled.get(&[1]), Complex::new(-3.0, 2.0));
+    }
+
+    // --- Norm tests ---
+
+    #[test]
+    fn test_norm_f64() {
+        let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+        let n = norm(&tensor);
+        assert!((n - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_norm_complex() {
+        use num_complex::Complex;
+        // |3+4i| = 5, so norm of single element [3+4i] = 5
+        let tensor = DenseTensor::from_data(vec![Complex::new(3.0, 4.0)], vec![1]);
+        let n: f64 = norm(&tensor);
+        assert!((n - 5.0).abs() < 1e-10);
+    }
+
+    // --- Normalize tests ---
+
+    #[test]
+    fn test_normalize_f64() {
+        let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+        let (normalized, n) = normalize(&tensor);
+        assert!((n - 2.0).abs() < 1e-10);
+        assert!((norm(&normalized) - 1.0).abs() < 1e-10);
+        // Original unchanged
+        assert_eq!(tensor.get(&[0, 0]), 1.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot normalize zero tensor")]
+    fn test_normalize_zero_panics() {
+        let tensor = DenseTensor::<f64>::zeros(vec![2, 2]);
+        let _ = normalize(&tensor);
+    }
+
+    // --- Linear combine tests ---
+
+    #[test]
+    fn test_linear_combine_basic() {
+        let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+        let b = DenseTensor::<f64>::constant(vec![2, 2], 2.0);
+        let result = linear_combine(&[&a, &b], &[3.0, 4.0]).unwrap();
+        // 3*1 + 4*2 = 11
+        assert_eq!(result.get(&[0, 0]), 11.0);
+    }
+
+    #[test]
+    fn test_linear_combine_shape_mismatch() {
+        let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+        let b = DenseTensor::<f64>::constant(vec![3, 3], 2.0);
+        assert!(linear_combine(&[&a, &b], &[1.0, 1.0]).is_err());
+    }
+
+    #[test]
+    fn test_linear_combine_empty() {
+        let result = linear_combine::<f64>(&[], &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_linear_combine_length_mismatch() {
+        let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+        assert!(linear_combine(&[&a], &[1.0, 2.0]).is_err());
     }
 }
