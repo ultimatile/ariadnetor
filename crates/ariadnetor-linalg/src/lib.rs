@@ -639,10 +639,7 @@ pub fn trunc_svd<T: Scalar>(
     tensor: &DenseTensor<T>,
     nrow: usize,
     params: &TruncSvdParams,
-) -> Result<TruncSvdResult<T>, BackendError>
-where
-    T::Real: Into<f64>,
-{
+) -> Result<TruncSvdResult<T>, BackendError> {
     let (u_full, s_full, vt_full) = svd(backend, tensor, nrow)?;
 
     let shape = tensor.shape();

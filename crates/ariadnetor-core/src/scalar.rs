@@ -14,7 +14,7 @@ mod sealed {
 }
 
 /// Real-valued computation type for norm results and normalization factors.
-pub trait FloatCompute: Copy + PartialOrd + 'static {
+pub trait FloatCompute: Copy + PartialOrd + Into<f64> + 'static {
     fn zero() -> Self;
     fn one() -> Self;
     fn sqrt(self) -> Self;
