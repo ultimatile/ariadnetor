@@ -6,7 +6,7 @@
 
 mod transpose;
 
-use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, GemmDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, GemmDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 
 /// CPU backend using faer for GEMM and HPTT for transpose.
@@ -66,6 +66,28 @@ impl ComputeBackend for CpuBackend {
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
         transpose::dispatch(desc)
     }
+
+    /// Thin SVD via faer: A = U * diag(S) * Vt
+    ///
+    /// Dispatches to faer for f64/f32. Complex types are not yet supported.
+    fn svd<T: Scalar>(&self, desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
+        use std::any::TypeId;
+
+        let tid = TypeId::of::<T>();
+
+        if tid == TypeId::of::<f64>() {
+            // Safety: T is f64, verified by TypeId.
+            let desc_f64 = unsafe { reinterpret_svd_desc::<T, f64>(desc) };
+            svd_f64(desc_f64)
+        } else if tid == TypeId::of::<f32>() {
+            let desc_f32 = unsafe { reinterpret_svd_desc::<T, f32>(desc) };
+            svd_f32(desc_f32)
+        } else {
+            Err(BackendError::NotSupported(
+                "SVD is only supported for f64 and f32; Complex SVD not yet implemented".into(),
+            ))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +112,28 @@ unsafe fn reinterpret_gemm_desc<'a, T, U>(
             beta: std::ptr::read(&beta as *const T as *const U),
             c: std::slice::from_raw_parts_mut(c.as_mut_ptr() as *mut U, c.len()),
             trans_a, trans_b,
+        }
+    }
+}
+
+/// Reinterpret `SvdDescriptor<T>` as `SvdDescriptor<U>`.
+///
+/// # Safety
+/// Caller must guarantee `T` and `U` have identical size and alignment,
+/// and `T::Real` and `U::Real` have identical size and alignment
+/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
+unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
+    desc: SvdDescriptor<'a, T>,
+) -> SvdDescriptor<'a, U> {
+    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    unsafe {
+        SvdDescriptor {
+            m,
+            n,
+            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
+            u: std::slice::from_raw_parts_mut(u.as_mut_ptr() as *mut U, u.len()),
+            s: std::slice::from_raw_parts_mut(s.as_mut_ptr() as *mut U::Real, s.len()),
+            vt: std::slice::from_raw_parts_mut(vt.as_mut_ptr() as *mut U, vt.len()),
         }
     }
 }
@@ -164,6 +208,81 @@ fn gemm_f32(desc: GemmDescriptor<'_, f32>) -> Result<(), BackendError> {
         for j in 0..n {
             let idx = i * n + j;
             c[idx] = alpha * product[(i, j)] + beta * c[idx];
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// SVD implementations (faer)
+// ---------------------------------------------------------------------------
+
+/// Thin SVD for f64 via faer: A = U * diag(S) * Vt
+fn svd_f64(desc: SvdDescriptor<'_, f64>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let thin = mat.thin_svd().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
+    })?;
+
+    // U (m×k, row-major)
+    let u_mat = thin.U();
+    for i in 0..m {
+        for j in 0..k {
+            u[i * k + j] = u_mat[(i, j)];
+        }
+    }
+
+    // Singular values (k)
+    let s_col = thin.S().column_vector();
+    for i in 0..k {
+        s[i] = s_col[i];
+    }
+
+    // Vt = V^T (k×n, row-major)
+    let v_mat = thin.V();
+    for i in 0..k {
+        for j in 0..n {
+            vt[i * n + j] = v_mat[(j, i)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin SVD for f32 via faer: A = U * diag(S) * Vt
+fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let thin = mat.thin_svd().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
+    })?;
+
+    let u_mat = thin.U();
+    for i in 0..m {
+        for j in 0..k {
+            u[i * k + j] = u_mat[(i, j)];
+        }
+    }
+
+    let s_col = thin.S().column_vector();
+    for i in 0..k {
+        s[i] = s_col[i];
+    }
+
+    let v_mat = thin.V();
+    for i in 0..k {
+        for j in 0..n {
+            vt[i * n + j] = v_mat[(j, i)];
         }
     }
 
@@ -367,5 +486,101 @@ mod tests {
         assert_eq!(output[1], Complex::new(7.0, 8.0));
         assert_eq!(output[2], Complex::new(3.0, 4.0));
         assert_eq!(output[3], Complex::new(9.0, 10.0));
+    }
+
+    // --- SVD tests ---
+
+    #[test]
+    fn test_svd_f64_square() {
+        let backend = CpuBackend::new();
+
+        // A = [[1, 2], [3, 4]] (2x2)
+        let a = [1.0f64, 2.0, 3.0, 4.0];
+        let mut u = [0.0f64; 4]; // 2x2
+        let mut s = [0.0f64; 2]; // 2
+        let mut vt = [0.0f64; 4]; // 2x2
+
+        let desc = SvdDescriptor {
+            m: 2, n: 2, a: &a,
+            u: &mut u, s: &mut s, vt: &mut vt,
+        };
+        backend.svd(desc).unwrap();
+
+        // Singular values should be positive and in descending order
+        assert!(s[0] > s[1]);
+        assert!(s[1] >= 0.0);
+
+        // Reconstruct: A ≈ U * diag(S) * Vt
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0;
+                for k in 0..2 {
+                    val += u[i * 2 + k] * s[k] * vt[k * 2 + j];
+                }
+                assert!((val - a[i * 2 + j]).abs() < 1e-10,
+                    "Reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * 2 + j]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_f64_rectangular() {
+        let backend = CpuBackend::new();
+
+        // A = [[1, 2, 3], [4, 5, 6]] (2x3), k = min(2,3) = 2
+        let a = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let (m, n, k) = (2, 3, 2);
+        let mut u = vec![0.0f64; m * k];
+        let mut s = vec![0.0f64; k];
+        let mut vt = vec![0.0f64; k * n];
+
+        let desc = SvdDescriptor {
+            m, n, a: &a,
+            u: &mut u, s: &mut s, vt: &mut vt,
+        };
+        backend.svd(desc).unwrap();
+
+        assert!(s[0] > s[1]);
+
+        // Reconstruct A ≈ U * diag(S) * Vt
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..k {
+                    val += u[i * k + l] * s[l] * vt[l * n + j];
+                }
+                assert!((val - a[i * n + j]).abs() < 1e-10,
+                    "Reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_f32_basic() {
+        let backend = CpuBackend::new();
+
+        let a = [1.0f32, 2.0, 3.0, 4.0];
+        let mut u = [0.0f32; 4];
+        let mut s = [0.0f32; 2];
+        let mut vt = [0.0f32; 4];
+
+        let desc = SvdDescriptor {
+            m: 2, n: 2, a: &a,
+            u: &mut u, s: &mut s, vt: &mut vt,
+        };
+        backend.svd(desc).unwrap();
+
+        assert!(s[0] > s[1]);
+
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0f32;
+                for k in 0..2 {
+                    val += u[i * 2 + k] * s[k] * vt[k * 2 + j];
+                }
+                assert!((val - a[i * 2 + j]).abs() < 1e-4,
+                    "Reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * 2 + j]);
+            }
+        }
     }
 }

@@ -34,6 +34,20 @@ pub struct TransposeDescriptor<'a, T> {
     pub perm: &'a [usize],
 }
 
+/// Thin SVD operation descriptor: A = U * diag(S) * Vt
+///
+/// Computes the thin SVD of an m×n matrix A (row-major).
+/// Outputs: U (m×k, row-major), S (k singular values), Vt (k×n, row-major)
+/// where k = min(m, n).
+pub struct SvdDescriptor<'a, T: Scalar> {
+    pub m: usize,
+    pub n: usize,
+    pub a: &'a [T],
+    pub u: &'a mut [T],
+    pub s: &'a mut [T::Real],
+    pub vt: &'a mut [T],
+}
+
 /// Pluggable compute backend trait
 pub trait ComputeBackend: Send + Sync {
     /// Backend name
@@ -52,6 +66,11 @@ pub trait ComputeBackend: Send + Sync {
 
     /// Transpose tensor
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError>;
+
+    /// Thin SVD: A = U * diag(S) * Vt
+    fn svd<T: Scalar>(&self, _desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
+        Err(BackendError::NotSupported("svd".into()))
+    }
 }
 
 /// Backend error

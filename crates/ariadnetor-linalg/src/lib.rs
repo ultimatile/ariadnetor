@@ -13,10 +13,11 @@
 //! - [`normalize`]: Normalize to unit norm (out-of-place)
 //! - [`linear_combine`]: Linear combination of tensors
 //! - [`trace`]: Partial trace over bond index pairs
+//! - [`svd`]: Thin SVD decomposition via backend
 
 pub use arnet_core::backend::ComputeBackend;
 
-use arnet_core::backend::{BackendError, GemmDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, GemmDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr};
 use arnet_core::scalar::{FloatCompute, Scalar};
 use arnet_tensor::DenseTensor;
@@ -508,6 +509,78 @@ fn decode_coords(mut flat: usize, shape: &[usize], coords: &mut [usize]) {
     }
 }
 
+// ============================================================================
+// Decompositions (backend-dependent)
+// ============================================================================
+
+/// Result of a thin SVD decomposition: `(U, S, Vt)`.
+///
+/// - `U`: Left singular vectors
+/// - `S`: Singular values (real-valued, descending)
+/// - `Vt`: Right singular vectors transposed
+pub type SvdResult<T> = (DenseTensor<T>, DenseTensor<<T as Scalar>::Real>, DenseTensor<T>);
+
+/// Compute thin SVD of a tensor reshaped as a matrix.
+///
+/// The tensor is reshaped to a matrix with the first `nrow` axes
+/// forming the row dimension and the remaining axes forming the column dimension.
+/// Returns `(U, S, Vt)` where A ≈ U * diag(S) * Vt.
+///
+/// # Arguments
+///
+/// * `backend` - Compute backend
+/// * `tensor` - Input tensor
+/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
+///
+/// # Returns
+///
+/// * `U` - Left singular vectors, shape `[m, k]` where `m = product(shape[..nrow])`, `k = min(m, n)`
+/// * `S` - Singular values (real, descending), shape `[k]`
+/// * `Vt` - Right singular vectors transposed, shape `[k, n]` where `n = product(shape[nrow..])`
+///
+/// # Errors
+///
+/// Returns `BackendError` if `nrow` is out of range or the backend fails.
+pub fn svd<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensor<T>,
+    nrow: usize,
+) -> Result<SvdResult<T>, BackendError> {
+    let shape = tensor.shape();
+    let rank = tensor.rank();
+
+    if nrow == 0 || nrow >= rank {
+        return Err(BackendError::InvalidDimension(format!(
+            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+        )));
+    }
+
+    let m: usize = shape[..nrow].iter().product();
+    let n: usize = shape[nrow..].iter().product();
+    let k = m.min(n);
+
+    let mut u_data = vec![T::zero(); m * k];
+    let mut s_data = vec![T::Real::zero(); k];
+    let mut vt_data = vec![T::zero(); k * n];
+
+    let desc = SvdDescriptor {
+        m,
+        n,
+        a: tensor.data(),
+        u: &mut u_data,
+        s: &mut s_data,
+        vt: &mut vt_data,
+    };
+
+    backend.svd(desc)?;
+
+    let u_tensor = DenseTensor::from_data(u_data, vec![m, k]);
+    let s_tensor = DenseTensor::from_data(s_data, vec![k]);
+    let vt_tensor = DenseTensor::from_data(vt_data, vec![k, n]);
+
+    Ok((u_tensor, s_tensor, vt_tensor))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -904,5 +977,135 @@ mod tests {
     fn test_trace_duplicate_index() {
         let tensor = DenseTensor::<f64>::from_data(vec![0.0; 8], vec![2, 2, 2]);
         assert!(trace(&tensor, &[(0, 1), (1, 2)]).is_err());
+    }
+
+    // --- SVD tests ---
+
+    #[test]
+    fn test_svd_f64_2d() {
+        let backend = CpuBackend::new();
+        // A = [[1, 2], [3, 4]] shape [2, 2], nrow=1 → 2×2 matrix
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(u.shape(), &[2, 2]);
+        assert_eq!(s.shape(), &[2]);
+        assert_eq!(vt.shape(), &[2, 2]);
+
+        // Singular values should be positive and descending
+        assert!(s.get(&[0]) > s.get(&[1]));
+        assert!(s.get(&[1]) >= 0.0);
+
+        // Reconstruct: A ≈ U * diag(S) * Vt
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0;
+                for k in 0..2 {
+                    val += u.get(&[i, k]) * s.get(&[k]) * vt.get(&[k, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-10,
+                    "Reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_f64_rectangular() {
+        let backend = CpuBackend::new();
+        // shape [2, 3], nrow=1 → 2×3 matrix, k=2
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+        );
+
+        let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
+
+        let (m, n, k) = (2, 3, 2);
+        assert_eq!(u.shape(), &[m, k]);
+        assert_eq!(s.shape(), &[k]);
+        assert_eq!(vt.shape(), &[k, n]);
+
+        // Reconstruct
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..k {
+                    val += u.get(&[i, l]) * s.get(&[l]) * vt.get(&[l, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-10,
+                    "Reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_f64_higher_rank() {
+        let backend = CpuBackend::new();
+        // shape [2, 3, 4], nrow=2 → m=6, n=4, k=4
+        let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
+        let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+
+        let (u, s, vt) = svd(&backend, &tensor, 2).unwrap();
+
+        let (m, n, k) = (6, 4, 4);
+        assert_eq!(u.shape(), &[m, k]);
+        assert_eq!(s.shape(), &[k]);
+        assert_eq!(vt.shape(), &[k, n]);
+
+        // Reconstruct and verify against original flat data
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..k {
+                    val += u.get(&[i, l]) * s.get(&[l]) * vt.get(&[l, j]);
+                }
+                let orig = tensor.data()[i * n + j];
+                assert!(
+                    (val - orig).abs() < 1e-9,
+                    "Reconstruction mismatch at ({i},{j}): {val} vs {orig}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_f32() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(u.shape(), &[2, 2]);
+        assert_eq!(s.shape(), &[2]);
+        assert_eq!(vt.shape(), &[2, 2]);
+
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0f32;
+                for k in 0..2 {
+                    val += u.get(&[i, k]) * s.get(&[k]) * vt.get(&[k, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-4,
+                    "Reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_invalid_nrow() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        // nrow=0 is invalid
+        assert!(svd(&backend, &tensor, 0).is_err());
+        // nrow=rank is invalid
+        assert!(svd(&backend, &tensor, 2).is_err());
     }
 }
