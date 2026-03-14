@@ -14,68 +14,13 @@ mod sealed {
 }
 
 /// Real-valued computation type for norm results and normalization factors.
-pub trait FloatCompute: Copy + PartialOrd + Into<f64> + 'static {
-    fn zero() -> Self;
-    fn one() -> Self;
-    fn sqrt(self) -> Self;
-    fn add(self, rhs: Self) -> Self;
-    fn mul(self, rhs: Self) -> Self;
-    fn div(self, rhs: Self) -> Self;
-}
+///
+/// Delegates to `num_traits::Float` for arithmetic operations.
+/// Currently implemented for f32 and f64.
+pub trait FloatCompute: num_traits::Float + 'static {}
 
-impl FloatCompute for f32 {
-    #[inline]
-    fn zero() -> Self {
-        0.0
-    }
-    #[inline]
-    fn one() -> Self {
-        1.0
-    }
-    #[inline]
-    fn sqrt(self) -> Self {
-        self.sqrt()
-    }
-    #[inline]
-    fn add(self, rhs: Self) -> Self {
-        self + rhs
-    }
-    #[inline]
-    fn mul(self, rhs: Self) -> Self {
-        self * rhs
-    }
-    #[inline]
-    fn div(self, rhs: Self) -> Self {
-        self / rhs
-    }
-}
-
-impl FloatCompute for f64 {
-    #[inline]
-    fn zero() -> Self {
-        0.0
-    }
-    #[inline]
-    fn one() -> Self {
-        1.0
-    }
-    #[inline]
-    fn sqrt(self) -> Self {
-        self.sqrt()
-    }
-    #[inline]
-    fn add(self, rhs: Self) -> Self {
-        self + rhs
-    }
-    #[inline]
-    fn mul(self, rhs: Self) -> Self {
-        self * rhs
-    }
-    #[inline]
-    fn div(self, rhs: Self) -> Self {
-        self / rhs
-    }
-}
+impl FloatCompute for f32 {}
+impl FloatCompute for f64 {}
 
 /// Scalar type for tensor elements (sealed trait).
 pub trait Scalar:

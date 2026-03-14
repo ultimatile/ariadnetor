@@ -20,9 +20,9 @@ pub use arnet_core::backend::ComputeBackend;
 
 use arnet_core::backend::{BackendError, GemmDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr};
-use arnet_core::scalar::{FloatCompute, Scalar};
+use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
-use num_traits::Zero;
+use num_traits::{Float, One, ToPrimitive, Zero};
 use std::ops::{Add, Mul};
 
 /// Transpose (permute axes) of a dense tensor using the provided backend.
@@ -279,9 +279,9 @@ pub fn norm<T: Scalar>(tensor: &DenseTensor<T>) -> T::Real {
         .iter()
         .map(|&x| {
             let a = x.abs();
-            a.mul(a)
+            a * a
         })
-        .fold(T::Real::zero(), |acc, x| acc.add(x));
+        .fold(T::Real::zero(), |acc, x| acc + x);
     sum_sq.sqrt()
 }
 
@@ -304,7 +304,7 @@ pub fn norm<T: Scalar>(tensor: &DenseTensor<T>) -> T::Real {
 pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real) {
     let n = norm(tensor);
     assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
-    let inv_norm = T::Real::one().div(n);
+    let inv_norm = T::Real::one() / n;
     let data: Vec<T> = tensor
         .data()
         .iter()
@@ -671,7 +671,7 @@ pub fn trunc_svd<T: Scalar>(
         let mut chi_err = k_full;
         for i in (0..k_full).rev() {
             let si = s_data[i];
-            let si_sq: f64 = si.mul(si).into();
+            let si_sq: f64 = (si * si).to_f64().unwrap();
             let new_discarded_sq = discarded_sq + si_sq;
             if new_discarded_sq > target_sq {
                 break;
@@ -692,7 +692,7 @@ pub fn trunc_svd<T: Scalar>(
     let s_data = s_full.data();
     let mut err_sq = T::Real::zero();
     for &si in &s_data[chi..] {
-        err_sq = err_sq.add(si.mul(si));
+        err_sq = err_sq + si * si;
     }
     let trunc_err = err_sq.sqrt();
 

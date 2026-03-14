@@ -159,7 +159,8 @@ where
 // Norm and normalization operations
 // ============================================================================
 
-use crate::{FloatCompute, Scalar};
+use crate::Scalar;
+use num_traits::Float;
 
 impl<T> TensorStorage<T>
 where
@@ -195,9 +196,9 @@ where
                 .iter()
                 .map(|&x| {
                     let abs_val = x.abs();
-                    abs_val.mul(abs_val)
+                    abs_val * abs_val
                 })
-                .fold(T::Real::zero(), |acc, x| acc.add(x)),
+                .fold(T::Real::zero(), |acc, x| acc + x),
         }
     }
 
@@ -223,7 +224,7 @@ where
         if norm == T::Real::zero() {
             panic!("Cannot normalize zero tensor");
         }
-        let inv_norm = T::Real::one().div(norm);
+        let inv_norm = T::Real::one() / norm;
 
         match self {
             Self::Dense(d) => {
