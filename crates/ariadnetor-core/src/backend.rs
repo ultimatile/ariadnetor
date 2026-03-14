@@ -48,6 +48,32 @@ pub struct SvdDescriptor<'a, T: Scalar> {
     pub vt: &'a mut [T],
 }
 
+/// Thin QR decomposition descriptor: A = Q * R
+///
+/// Computes the thin QR of an m×n matrix A (row-major).
+/// Outputs: Q (m×k, row-major), R (k×n, row-major)
+/// where k = min(m, n).
+pub struct QrDescriptor<'a, T> {
+    pub m: usize,
+    pub n: usize,
+    pub a: &'a [T],
+    pub q: &'a mut [T],
+    pub r: &'a mut [T],
+}
+
+/// Thin LQ decomposition descriptor: A = L * Q
+///
+/// Computes the thin LQ of an m×n matrix A (row-major).
+/// Outputs: L (m×k, row-major), Q (k×n, row-major)
+/// where k = min(m, n).
+pub struct LqDescriptor<'a, T> {
+    pub m: usize,
+    pub n: usize,
+    pub a: &'a [T],
+    pub l: &'a mut [T],
+    pub q: &'a mut [T],
+}
+
 /// Pluggable compute backend trait
 pub trait ComputeBackend: Send + Sync {
     /// Backend name
@@ -70,6 +96,16 @@ pub trait ComputeBackend: Send + Sync {
     /// Thin SVD: A = U * diag(S) * Vt
     fn svd<T: Scalar>(&self, _desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
         Err(BackendError::NotSupported("svd".into()))
+    }
+
+    /// Thin QR: A = Q * R
+    fn qr<T: Scalar>(&self, _desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
+        Err(BackendError::NotSupported("qr".into()))
+    }
+
+    /// Thin LQ: A = L * Q
+    fn lq<T: Scalar>(&self, _desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
+        Err(BackendError::NotSupported("lq".into()))
     }
 }
 

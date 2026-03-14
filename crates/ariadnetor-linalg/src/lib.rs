@@ -15,10 +15,12 @@
 //! - [`trace`]: Partial trace over bond index pairs
 //! - [`svd`]: Thin SVD decomposition via backend
 //! - [`trunc_svd`]: Truncated SVD with bond dimension control
+//! - [`qr`]: Thin QR decomposition via backend
+//! - [`lq`]: Thin LQ decomposition via backend
 
 pub use arnet_core::backend::ComputeBackend;
 
-use arnet_core::backend::{BackendError, GemmDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
@@ -715,6 +717,132 @@ pub fn trunc_svd<T: Scalar>(
     let vt_tensor = DenseTensor::from_data(vt_trunc, vec![chi, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor, trunc_err))
+}
+
+/// Result of a thin QR decomposition: `(Q, R)`.
+///
+/// - `Q`: Orthogonal/unitary matrix, shape `[m, k]` where `k = min(m, n)`
+/// - `R`: Upper triangular matrix, shape `[k, n]`
+pub type QrResult<T> = (DenseTensor<T>, DenseTensor<T>);
+
+/// Result of a thin LQ decomposition: `(L, Q)`.
+///
+/// - `L`: Lower triangular matrix, shape `[m, k]` where `k = min(m, n)`
+/// - `Q`: Orthogonal/unitary matrix, shape `[k, n]`
+pub type LqResult<T> = (DenseTensor<T>, DenseTensor<T>);
+
+/// Compute thin QR decomposition of a tensor reshaped as a matrix.
+///
+/// The tensor is reshaped to a matrix with the first `nrow` axes
+/// forming the row dimension and the remaining axes forming the column dimension.
+/// Returns `(Q, R)` where A = Q * R.
+///
+/// # Arguments
+///
+/// * `backend` - Compute backend
+/// * `tensor` - Input tensor
+/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
+///
+/// # Returns
+///
+/// * `Q` - Orthogonal matrix, shape `[m, k]` where `m = product(shape[..nrow])`, `k = min(m, n)`
+/// * `R` - Upper triangular matrix, shape `[k, n]` where `n = product(shape[nrow..])`
+///
+/// # Errors
+///
+/// Returns `BackendError` if `nrow` is out of range or the backend fails.
+pub fn qr<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensor<T>,
+    nrow: usize,
+) -> Result<QrResult<T>, BackendError> {
+    let shape = tensor.shape();
+    let rank = tensor.rank();
+
+    if nrow == 0 || nrow >= rank {
+        return Err(BackendError::InvalidDimension(format!(
+            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+        )));
+    }
+
+    let m: usize = shape[..nrow].iter().product();
+    let n: usize = shape[nrow..].iter().product();
+    let k = m.min(n);
+
+    let mut q_data = vec![T::zero(); m * k];
+    let mut r_data = vec![T::zero(); k * n];
+
+    let desc = QrDescriptor {
+        m,
+        n,
+        a: tensor.data(),
+        q: &mut q_data,
+        r: &mut r_data,
+    };
+
+    backend.qr(desc)?;
+
+    let q_tensor = DenseTensor::from_data(q_data, vec![m, k]);
+    let r_tensor = DenseTensor::from_data(r_data, vec![k, n]);
+
+    Ok((q_tensor, r_tensor))
+}
+
+/// Compute thin LQ decomposition of a tensor reshaped as a matrix.
+///
+/// The tensor is reshaped to a matrix with the first `nrow` axes
+/// forming the row dimension and the remaining axes forming the column dimension.
+/// Returns `(L, Q)` where A = L * Q.
+///
+/// # Arguments
+///
+/// * `backend` - Compute backend
+/// * `tensor` - Input tensor
+/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
+///
+/// # Returns
+///
+/// * `L` - Lower triangular matrix, shape `[m, k]` where `m = product(shape[..nrow])`, `k = min(m, n)`
+/// * `Q` - Orthogonal matrix, shape `[k, n]` where `n = product(shape[nrow..])`
+///
+/// # Errors
+///
+/// Returns `BackendError` if `nrow` is out of range or the backend fails.
+pub fn lq<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensor<T>,
+    nrow: usize,
+) -> Result<LqResult<T>, BackendError> {
+    let shape = tensor.shape();
+    let rank = tensor.rank();
+
+    if nrow == 0 || nrow >= rank {
+        return Err(BackendError::InvalidDimension(format!(
+            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+        )));
+    }
+
+    let m: usize = shape[..nrow].iter().product();
+    let n: usize = shape[nrow..].iter().product();
+    let k = m.min(n);
+
+    let mut l_data = vec![T::zero(); m * k];
+    let mut q_data = vec![T::zero(); k * n];
+
+    let desc = LqDescriptor {
+        m,
+        n,
+        a: tensor.data(),
+        l: &mut l_data,
+        q: &mut q_data,
+    };
+
+    backend.lq(desc)?;
+
+    let l_tensor = DenseTensor::from_data(l_data, vec![m, k]);
+    let q_tensor = DenseTensor::from_data(q_data, vec![k, n]);
+
+    Ok((l_tensor, q_tensor))
 }
 
 #[cfg(test)]
@@ -1461,5 +1589,297 @@ mod tests {
             (recon_err - trunc_err).abs() < 1e-10,
             "recon_err={recon_err} vs trunc_err={trunc_err}"
         );
+    }
+
+    // --- QR tests ---
+
+    #[test]
+    fn test_qr_f64_2d() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (q, r) = qr(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(q.shape(), &[2, 2]);
+        assert_eq!(r.shape(), &[2, 2]);
+
+        // Reconstruct: A ≈ Q * R
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0;
+                for k in 0..2 {
+                    val += q.get(&[i, k]) * r.get(&[k, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-10,
+                    "QR reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_f64_rectangular() {
+        let backend = CpuBackend::new();
+        // shape [3, 2], nrow=1 → 3×2 matrix, k=2
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![3, 2],
+        );
+
+        let (q, r) = qr(&backend, &tensor, 1).unwrap();
+
+        let (m, n, k) = (3, 2, 2);
+        assert_eq!(q.shape(), &[m, k]);
+        assert_eq!(r.shape(), &[k, n]);
+
+        // Reconstruct
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..k {
+                    val += q.get(&[i, l]) * r.get(&[l, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-10,
+                    "QR reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_f64_orthogonality() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![3, 2],
+        );
+
+        let (q, _r) = qr(&backend, &tensor, 1).unwrap();
+
+        let (m, k) = (3, 2);
+        // Q^T * Q should be identity (k×k)
+        for i in 0..k {
+            for j in 0..k {
+                let mut dot = 0.0;
+                for l in 0..m {
+                    dot += q.get(&[l, i]) * q.get(&[l, j]);
+                }
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!(
+                    (dot - expected).abs() < 1e-10,
+                    "Q orthogonality failed: Q^T*Q[{i},{j}] = {dot}, expected {expected}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_f64_higher_rank() {
+        let backend = CpuBackend::new();
+        // shape [2, 3, 4], nrow=2 → m=6, n=4, k=4
+        let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
+        let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+
+        let (q, r) = qr(&backend, &tensor, 2).unwrap();
+
+        let (m, n, k) = (6, 4, 4);
+        assert_eq!(q.shape(), &[m, k]);
+        assert_eq!(r.shape(), &[k, n]);
+
+        // Reconstruct and verify
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..k {
+                    val += q.get(&[i, l]) * r.get(&[l, j]);
+                }
+                let orig = tensor.data()[i * n + j];
+                assert!(
+                    (val - orig).abs() < 1e-9,
+                    "QR reconstruction mismatch at ({i},{j}): {val} vs {orig}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_f32() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (q, r) = qr(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(q.shape(), &[2, 2]);
+        assert_eq!(r.shape(), &[2, 2]);
+
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0f32;
+                for k in 0..2 {
+                    val += q.get(&[i, k]) * r.get(&[k, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-4,
+                    "QR reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_invalid_nrow() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        assert!(qr(&backend, &tensor, 0).is_err());
+        assert!(qr(&backend, &tensor, 2).is_err());
+    }
+
+    // --- LQ tests ---
+
+    #[test]
+    fn test_lq_f64_2d() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (l, q) = lq(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(l.shape(), &[2, 2]);
+        assert_eq!(q.shape(), &[2, 2]);
+
+        // Reconstruct: A ≈ L * Q
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0;
+                for k in 0..2 {
+                    val += l.get(&[i, k]) * q.get(&[k, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-10,
+                    "LQ reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_f64_rectangular() {
+        let backend = CpuBackend::new();
+        // shape [2, 3], nrow=1 → 2×3 matrix, k=2
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+        );
+
+        let (l, q) = lq(&backend, &tensor, 1).unwrap();
+
+        let (m, n, k) = (2, 3, 2);
+        assert_eq!(l.shape(), &[m, k]);
+        assert_eq!(q.shape(), &[k, n]);
+
+        // Reconstruct
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for ll in 0..k {
+                    val += l.get(&[i, ll]) * q.get(&[ll, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-10,
+                    "LQ reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_f64_orthogonality() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+        );
+
+        let (_l, q) = lq(&backend, &tensor, 1).unwrap();
+
+        let (k, n) = (2, 3);
+        // Q * Q^T should be identity (k×k)
+        for i in 0..k {
+            for j in 0..k {
+                let mut dot = 0.0;
+                for l in 0..n {
+                    dot += q.get(&[i, l]) * q.get(&[j, l]);
+                }
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!(
+                    (dot - expected).abs() < 1e-10,
+                    "Q orthogonality failed: Q*Q^T[{i},{j}] = {dot}, expected {expected}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_f64_higher_rank() {
+        let backend = CpuBackend::new();
+        // shape [2, 3, 4], nrow=1 → m=2, n=12, k=2
+        let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
+        let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+
+        let (l, q) = lq(&backend, &tensor, 1).unwrap();
+
+        let (m, n, k) = (2, 12, 2);
+        assert_eq!(l.shape(), &[m, k]);
+        assert_eq!(q.shape(), &[k, n]);
+
+        // Reconstruct and verify
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for ll in 0..k {
+                    val += l.get(&[i, ll]) * q.get(&[ll, j]);
+                }
+                let orig = tensor.data()[i * n + j];
+                assert!(
+                    (val - orig).abs() < 1e-9,
+                    "LQ reconstruction mismatch at ({i},{j}): {val} vs {orig}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_f32() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (l, q) = lq(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(l.shape(), &[2, 2]);
+        assert_eq!(q.shape(), &[2, 2]);
+
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut val = 0.0f32;
+                for k in 0..2 {
+                    val += l.get(&[i, k]) * q.get(&[k, j]);
+                }
+                assert!(
+                    (val - tensor.get(&[i, j])).abs() < 1e-4,
+                    "LQ reconstruction mismatch at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_invalid_nrow() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        assert!(lq(&backend, &tensor, 0).is_err());
+        assert!(lq(&backend, &tensor, 2).is_err());
     }
 }

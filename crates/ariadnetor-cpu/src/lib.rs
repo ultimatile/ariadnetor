@@ -6,7 +6,7 @@
 
 mod transpose;
 
-use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, GemmDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 
 /// CPU backend using faer for GEMM and HPTT for transpose.
@@ -88,6 +88,51 @@ impl ComputeBackend for CpuBackend {
             ))
         }
     }
+
+    /// Thin QR via faer: A = Q * R
+    ///
+    /// Dispatches to faer for f64/f32. Complex types are not yet supported.
+    fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
+        use std::any::TypeId;
+
+        let tid = TypeId::of::<T>();
+
+        if tid == TypeId::of::<f64>() {
+            // Safety: T is f64, verified by TypeId.
+            let desc_f64 = unsafe { reinterpret_qr_desc::<T, f64>(desc) };
+            qr_f64(desc_f64)
+        } else if tid == TypeId::of::<f32>() {
+            let desc_f32 = unsafe { reinterpret_qr_desc::<T, f32>(desc) };
+            qr_f32(desc_f32)
+        } else {
+            Err(BackendError::NotSupported(
+                "QR is only supported for f64 and f32; Complex QR not yet implemented".into(),
+            ))
+        }
+    }
+
+    /// Thin LQ via faer: A = L * Q
+    ///
+    /// Internally computes QR of A^T, then transposes to get LQ.
+    /// Dispatches to faer for f64/f32. Complex types are not yet supported.
+    fn lq<T: Scalar>(&self, desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
+        use std::any::TypeId;
+
+        let tid = TypeId::of::<T>();
+
+        if tid == TypeId::of::<f64>() {
+            // Safety: T is f64, verified by TypeId.
+            let desc_f64 = unsafe { reinterpret_lq_desc::<T, f64>(desc) };
+            lq_f64(desc_f64)
+        } else if tid == TypeId::of::<f32>() {
+            let desc_f32 = unsafe { reinterpret_lq_desc::<T, f32>(desc) };
+            lq_f32(desc_f32)
+        } else {
+            Err(BackendError::NotSupported(
+                "LQ is only supported for f64 and f32; Complex LQ not yet implemented".into(),
+            ))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +179,46 @@ unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
             u: std::slice::from_raw_parts_mut(u.as_mut_ptr() as *mut U, u.len()),
             s: std::slice::from_raw_parts_mut(s.as_mut_ptr() as *mut U::Real, s.len()),
             vt: std::slice::from_raw_parts_mut(vt.as_mut_ptr() as *mut U, vt.len()),
+        }
+    }
+}
+
+/// Reinterpret `QrDescriptor<T>` as `QrDescriptor<U>`.
+///
+/// # Safety
+/// Caller must guarantee `T` and `U` have identical size and alignment
+/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
+unsafe fn reinterpret_qr_desc<'a, T, U>(
+    desc: QrDescriptor<'a, T>,
+) -> QrDescriptor<'a, U> {
+    let QrDescriptor { m, n, a, q, r } = desc;
+    unsafe {
+        QrDescriptor {
+            m,
+            n,
+            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
+            q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
+            r: std::slice::from_raw_parts_mut(r.as_mut_ptr() as *mut U, r.len()),
+        }
+    }
+}
+
+/// Reinterpret `LqDescriptor<T>` as `LqDescriptor<U>`.
+///
+/// # Safety
+/// Caller must guarantee `T` and `U` have identical size and alignment
+/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
+unsafe fn reinterpret_lq_desc<'a, T, U>(
+    desc: LqDescriptor<'a, T>,
+) -> LqDescriptor<'a, U> {
+    let LqDescriptor { m, n, a, l, q } = desc;
+    unsafe {
+        LqDescriptor {
+            m,
+            n,
+            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
+            l: std::slice::from_raw_parts_mut(l.as_mut_ptr() as *mut U, l.len()),
+            q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
         }
     }
 }
@@ -283,6 +368,133 @@ fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> {
     for i in 0..k {
         for j in 0..n {
             vt[i * n + j] = v_mat[(j, i)];
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// QR implementations (faer)
+// ---------------------------------------------------------------------------
+
+/// Thin QR for f64 via faer: A = Q * R
+fn qr_f64(desc: QrDescriptor<'_, f64>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let QrDescriptor { m, n, a, q, r } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let qr = mat.qr();
+
+    // Q (m×k, row-major) — thin Q
+    let q_mat = qr.compute_thin_Q();
+    for i in 0..m {
+        for j in 0..k {
+            q[i * k + j] = q_mat[(i, j)];
+        }
+    }
+
+    // R (k×n, row-major) — thin R
+    let r_mat = qr.thin_R();
+    for i in 0..k {
+        for j in 0..n {
+            r[i * n + j] = r_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin QR for f32 via faer: A = Q * R
+fn qr_f32(desc: QrDescriptor<'_, f32>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let QrDescriptor { m, n, a, q, r } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let qr = mat.qr();
+
+    let q_mat = qr.compute_thin_Q();
+    for i in 0..m {
+        for j in 0..k {
+            q[i * k + j] = q_mat[(i, j)];
+        }
+    }
+
+    let r_mat = qr.thin_R();
+    for i in 0..k {
+        for j in 0..n {
+            r[i * n + j] = r_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// LQ implementations (via transpose → QR → transpose)
+// ---------------------------------------------------------------------------
+
+/// Thin LQ for f64: A = L * Q, computed via QR of A^T
+fn lq_f64(desc: LqDescriptor<'_, f64>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let LqDescriptor { m, n, a, l, q } = desc;
+    let k = m.min(n);
+
+    // Transpose A (m×n, row-major) → A^T (n×m)
+    let a_mat = MatRef::from_row_major_slice(a, m, n);
+    let at = a_mat.transpose().to_owned();
+
+    // QR of A^T: A^T = Q_t * R_t where Q_t is n×k, R_t is k×m
+    let qr = at.qr();
+    let q_t = qr.compute_thin_Q();
+    let r_t = qr.thin_R();
+
+    // A = (Q_t * R_t)^T = R_t^T * Q_t^T = L * Q
+    // L = R_t^T (k×m transposed → m×k, row-major)
+    for i in 0..m {
+        for j in 0..k {
+            l[i * k + j] = r_t[(j, i)];
+        }
+    }
+
+    // Q = Q_t^T (n×k transposed → k×n, row-major)
+    for i in 0..k {
+        for j in 0..n {
+            q[i * n + j] = q_t[(j, i)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin LQ for f32: A = L * Q, computed via QR of A^T
+fn lq_f32(desc: LqDescriptor<'_, f32>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let LqDescriptor { m, n, a, l, q } = desc;
+    let k = m.min(n);
+
+    let a_mat = MatRef::from_row_major_slice(a, m, n);
+    let at = a_mat.transpose().to_owned();
+
+    let qr = at.qr();
+    let q_t = qr.compute_thin_Q();
+    let r_t = qr.thin_R();
+
+    for i in 0..m {
+        for j in 0..k {
+            l[i * k + j] = r_t[(j, i)];
+        }
+    }
+
+    for i in 0..k {
+        for j in 0..n {
+            q[i * n + j] = q_t[(j, i)];
         }
     }
 
@@ -580,6 +792,176 @@ mod tests {
                 }
                 assert!((val - a[i * 2 + j]).abs() < 1e-4,
                     "Reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * 2 + j]);
+            }
+        }
+    }
+
+    // --- QR tests ---
+
+    #[test]
+    fn test_qr_f64_square() {
+        let backend = CpuBackend::new();
+
+        let a = [1.0f64, 2.0, 3.0, 4.0];
+        let (m, n, k) = (2, 2, 2);
+        let mut q = [0.0f64; 4];
+        let mut r = [0.0f64; 4];
+
+        let desc = QrDescriptor {
+            m, n, a: &a,
+            q: &mut q, r: &mut r,
+        };
+        backend.qr(desc).unwrap();
+
+        // Reconstruct: A ≈ Q * R
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..k {
+                    val += q[i * k + l] * r[l * n + j];
+                }
+                assert!((val - a[i * n + j]).abs() < 1e-10,
+                    "QR reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_f64_rectangular() {
+        let backend = CpuBackend::new();
+
+        // A (3×2), k = min(3,2) = 2
+        let a = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let (m, n, k) = (3, 2, 2);
+        let mut q = vec![0.0f64; m * k];
+        let mut r = vec![0.0f64; k * n];
+
+        let desc = QrDescriptor {
+            m, n, a: &a,
+            q: &mut q, r: &mut r,
+        };
+        backend.qr(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..k {
+                    val += q[i * k + l] * r[l * n + j];
+                }
+                assert!((val - a[i * n + j]).abs() < 1e-10,
+                    "QR reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_f32_basic() {
+        let backend = CpuBackend::new();
+
+        let a = [1.0f32, 2.0, 3.0, 4.0];
+        let (m, n, k) = (2, 2, 2);
+        let mut q = [0.0f32; 4];
+        let mut r = [0.0f32; 4];
+
+        let desc = QrDescriptor {
+            m, n, a: &a,
+            q: &mut q, r: &mut r,
+        };
+        backend.qr(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0f32;
+                for l in 0..k {
+                    val += q[i * k + l] * r[l * n + j];
+                }
+                assert!((val - a[i * n + j]).abs() < 1e-4,
+                    "QR reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    // --- LQ tests ---
+
+    #[test]
+    fn test_lq_f64_square() {
+        let backend = CpuBackend::new();
+
+        let a = [1.0f64, 2.0, 3.0, 4.0];
+        let (m, n, k) = (2, 2, 2);
+        let mut l = [0.0f64; 4];
+        let mut q = [0.0f64; 4];
+
+        let desc = LqDescriptor {
+            m, n, a: &a,
+            l: &mut l, q: &mut q,
+        };
+        backend.lq(desc).unwrap();
+
+        // Reconstruct: A ≈ L * Q
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for kk in 0..k {
+                    val += l[i * k + kk] * q[kk * n + j];
+                }
+                assert!((val - a[i * n + j]).abs() < 1e-10,
+                    "LQ reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_f64_rectangular() {
+        let backend = CpuBackend::new();
+
+        // A (2×3), k = min(2,3) = 2
+        let a = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let (m, n, k) = (2, 3, 2);
+        let mut l = vec![0.0f64; m * k];
+        let mut q = vec![0.0f64; k * n];
+
+        let desc = LqDescriptor {
+            m, n, a: &a,
+            l: &mut l, q: &mut q,
+        };
+        backend.lq(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for kk in 0..k {
+                    val += l[i * k + kk] * q[kk * n + j];
+                }
+                assert!((val - a[i * n + j]).abs() < 1e-10,
+                    "LQ reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_f32_basic() {
+        let backend = CpuBackend::new();
+
+        let a = [1.0f32, 2.0, 3.0, 4.0];
+        let (m, n, k) = (2, 2, 2);
+        let mut l = [0.0f32; 4];
+        let mut q = [0.0f32; 4];
+
+        let desc = LqDescriptor {
+            m, n, a: &a,
+            l: &mut l, q: &mut q,
+        };
+        backend.lq(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0f32;
+                for kk in 0..k {
+                    val += l[i * k + kk] * q[kk * n + j];
+                }
+                assert!((val - a[i * n + j]).abs() < 1e-4,
+                    "LQ reconstruction mismatch at ({i},{j})");
             }
         }
     }
