@@ -1,13 +1,15 @@
 //! CPU compute backend for Ariadnetor
 //!
 //! Provides [`CpuBackend`] implementing `ComputeBackend` via:
-//! - **GEMM**: faer (f64, f32)
+//! - **GEMM**: faer (f64, f32, Complex<f64>, Complex<f32>)
+//! - **SVD/QR/LQ**: faer (f64, f32, Complex<f64>, Complex<f32>)
 //! - **Transpose**: HPTT when available (f64, f32, Complex), naive fallback
 
 mod transpose;
 
 use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
+use num_complex::Complex;
 
 /// CPU backend using faer for GEMM and HPTT for transpose.
 ///
@@ -38,7 +40,7 @@ impl ComputeBackend for CpuBackend {
 
     /// GEMM: C = alpha * A * B + beta * C
     ///
-    /// Dispatches to faer for f64/f32. Complex types are not yet supported.
+    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
     fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -52,9 +54,16 @@ impl ComputeBackend for CpuBackend {
         } else if tid == TypeId::of::<f32>() {
             let desc_f32 = unsafe { reinterpret_gemm_desc::<T, f32>(desc) };
             gemm_f32(desc_f32)
+        } else if tid == TypeId::of::<Complex<f64>>() {
+            // Safety: T is Complex<f64>, verified by TypeId.
+            let desc_c64 = unsafe { reinterpret_gemm_desc::<T, Complex<f64>>(desc) };
+            gemm_c64(desc_c64)
+        } else if tid == TypeId::of::<Complex<f32>>() {
+            let desc_c32 = unsafe { reinterpret_gemm_desc::<T, Complex<f32>>(desc) };
+            gemm_c32(desc_c32)
         } else {
             Err(BackendError::NotSupported(
-                "GEMM is only supported for f64 and f32; Complex GEMM not yet implemented".into(),
+                "GEMM is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
             ))
         }
     }
@@ -69,7 +78,8 @@ impl ComputeBackend for CpuBackend {
 
     /// Thin SVD via faer: A = U * diag(S) * Vt
     ///
-    /// Dispatches to faer for f64/f32. Complex types are not yet supported.
+    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// For complex types, Vt stores V^H (conjugate transpose).
     fn svd<T: Scalar>(&self, desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -82,16 +92,23 @@ impl ComputeBackend for CpuBackend {
         } else if tid == TypeId::of::<f32>() {
             let desc_f32 = unsafe { reinterpret_svd_desc::<T, f32>(desc) };
             svd_f32(desc_f32)
+        } else if tid == TypeId::of::<Complex<f64>>() {
+            // Safety: T is Complex<f64>, verified by TypeId.
+            let desc_c64 = unsafe { reinterpret_svd_desc::<T, Complex<f64>>(desc) };
+            svd_c64(desc_c64)
+        } else if tid == TypeId::of::<Complex<f32>>() {
+            let desc_c32 = unsafe { reinterpret_svd_desc::<T, Complex<f32>>(desc) };
+            svd_c32(desc_c32)
         } else {
             Err(BackendError::NotSupported(
-                "SVD is only supported for f64 and f32; Complex SVD not yet implemented".into(),
+                "SVD is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
             ))
         }
     }
 
     /// Thin QR via faer: A = Q * R
     ///
-    /// Dispatches to faer for f64/f32. Complex types are not yet supported.
+    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
     fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -104,17 +121,24 @@ impl ComputeBackend for CpuBackend {
         } else if tid == TypeId::of::<f32>() {
             let desc_f32 = unsafe { reinterpret_qr_desc::<T, f32>(desc) };
             qr_f32(desc_f32)
+        } else if tid == TypeId::of::<Complex<f64>>() {
+            // Safety: T is Complex<f64>, verified by TypeId.
+            let desc_c64 = unsafe { reinterpret_qr_desc::<T, Complex<f64>>(desc) };
+            qr_c64(desc_c64)
+        } else if tid == TypeId::of::<Complex<f32>>() {
+            let desc_c32 = unsafe { reinterpret_qr_desc::<T, Complex<f32>>(desc) };
+            qr_c32(desc_c32)
         } else {
             Err(BackendError::NotSupported(
-                "QR is only supported for f64 and f32; Complex QR not yet implemented".into(),
+                "QR is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
             ))
         }
     }
 
     /// Thin LQ via faer: A = L * Q
     ///
-    /// Internally computes QR of A^T, then transposes to get LQ.
-    /// Dispatches to faer for f64/f32. Complex types are not yet supported.
+    /// Internally computes QR of A^H (adjoint), then takes conjugate transposes.
+    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
     fn lq<T: Scalar>(&self, desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -127,9 +151,16 @@ impl ComputeBackend for CpuBackend {
         } else if tid == TypeId::of::<f32>() {
             let desc_f32 = unsafe { reinterpret_lq_desc::<T, f32>(desc) };
             lq_f32(desc_f32)
+        } else if tid == TypeId::of::<Complex<f64>>() {
+            // Safety: T is Complex<f64>, verified by TypeId.
+            let desc_c64 = unsafe { reinterpret_lq_desc::<T, Complex<f64>>(desc) };
+            lq_c64(desc_c64)
+        } else if tid == TypeId::of::<Complex<f32>>() {
+            let desc_c32 = unsafe { reinterpret_lq_desc::<T, Complex<f32>>(desc) };
+            lq_c32(desc_c32)
         } else {
             Err(BackendError::NotSupported(
-                "LQ is only supported for f64 and f32; Complex LQ not yet implemented".into(),
+                "LQ is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
             ))
         }
     }
@@ -299,6 +330,74 @@ fn gemm_f32(desc: GemmDescriptor<'_, f32>) -> Result<(), BackendError> {
     Ok(())
 }
 
+/// GEMM for Complex<f64> via faer: C = alpha * op(A) * op(B) + beta * C
+fn gemm_c64(desc: GemmDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let GemmDescriptor {
+        m, n, k, alpha, a, b, beta, c, trans_a, trans_b,
+    } = desc;
+
+    let lhs: faer::Mat<Complex<f64>> = if trans_a {
+        let view = MatRef::from_row_major_slice(a, k, m);
+        view.transpose().to_owned()
+    } else {
+        MatRef::from_row_major_slice(a, m, k).to_owned()
+    };
+
+    let rhs: faer::Mat<Complex<f64>> = if trans_b {
+        let view = MatRef::from_row_major_slice(b, n, k);
+        view.transpose().to_owned()
+    } else {
+        MatRef::from_row_major_slice(b, k, n).to_owned()
+    };
+
+    let product = &lhs * &rhs;
+
+    for i in 0..m {
+        for j in 0..n {
+            let idx = i * n + j;
+            c[idx] = alpha * product[(i, j)] + beta * c[idx];
+        }
+    }
+
+    Ok(())
+}
+
+/// GEMM for Complex<f32> via faer: C = alpha * op(A) * op(B) + beta * C
+fn gemm_c32(desc: GemmDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let GemmDescriptor {
+        m, n, k, alpha, a, b, beta, c, trans_a, trans_b,
+    } = desc;
+
+    let lhs: faer::Mat<Complex<f32>> = if trans_a {
+        let view = MatRef::from_row_major_slice(a, k, m);
+        view.transpose().to_owned()
+    } else {
+        MatRef::from_row_major_slice(a, m, k).to_owned()
+    };
+
+    let rhs: faer::Mat<Complex<f32>> = if trans_b {
+        let view = MatRef::from_row_major_slice(b, n, k);
+        view.transpose().to_owned()
+    } else {
+        MatRef::from_row_major_slice(b, k, n).to_owned()
+    };
+
+    let product = &lhs * &rhs;
+
+    for i in 0..m {
+        for j in 0..n {
+            let idx = i * n + j;
+            c[idx] = alpha * product[(i, j)] + beta * c[idx];
+        }
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // SVD implementations (faer)
 // ---------------------------------------------------------------------------
@@ -374,6 +473,77 @@ fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> {
     Ok(())
 }
 
+/// Thin SVD for Complex<f64> via faer: A = U * diag(S) * V^H
+fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let thin = mat.thin_svd().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
+    })?;
+
+    let u_mat = thin.U();
+    for i in 0..m {
+        for j in 0..k {
+            u[i * k + j] = u_mat[(i, j)];
+        }
+    }
+
+    // Singular values are always real; faer stores them as Complex with im=0
+    let s_col = thin.S().column_vector();
+    for i in 0..k {
+        s[i] = s_col[i].re;
+    }
+
+    // Vt = V^H (conjugate transpose)
+    let v_mat = thin.V();
+    for i in 0..k {
+        for j in 0..n {
+            vt[i * n + j] = v_mat[(j, i)].conj();
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin SVD for Complex<f32> via faer: A = U * diag(S) * V^H
+fn svd_c32(desc: SvdDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let thin = mat.thin_svd().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
+    })?;
+
+    let u_mat = thin.U();
+    for i in 0..m {
+        for j in 0..k {
+            u[i * k + j] = u_mat[(i, j)];
+        }
+    }
+
+    let s_col = thin.S().column_vector();
+    for i in 0..k {
+        s[i] = s_col[i].re;
+    }
+
+    // Vt = V^H (conjugate transpose)
+    let v_mat = thin.V();
+    for i in 0..k {
+        for j in 0..n {
+            vt[i * n + j] = v_mat[(j, i)].conj();
+        }
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // QR implementations (faer)
 // ---------------------------------------------------------------------------
@@ -434,8 +604,62 @@ fn qr_f32(desc: QrDescriptor<'_, f32>) -> Result<(), BackendError> {
     Ok(())
 }
 
+/// Thin QR for Complex<f64> via faer: A = Q * R
+fn qr_c64(desc: QrDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let QrDescriptor { m, n, a, q, r } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let qr = mat.qr();
+
+    let q_mat = qr.compute_thin_Q();
+    for i in 0..m {
+        for j in 0..k {
+            q[i * k + j] = q_mat[(i, j)];
+        }
+    }
+
+    let r_mat = qr.thin_R();
+    for i in 0..k {
+        for j in 0..n {
+            r[i * n + j] = r_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin QR for Complex<f32> via faer: A = Q * R
+fn qr_c32(desc: QrDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let QrDescriptor { m, n, a, q, r } = desc;
+    let k = m.min(n);
+
+    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let qr = mat.qr();
+
+    let q_mat = qr.compute_thin_Q();
+    for i in 0..m {
+        for j in 0..k {
+            q[i * k + j] = q_mat[(i, j)];
+        }
+    }
+
+    let r_mat = qr.thin_R();
+    for i in 0..k {
+        for j in 0..n {
+            r[i * n + j] = r_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
-// LQ implementations (via transpose → QR → transpose)
+// LQ implementations (via adjoint → QR → adjoint)
 // ---------------------------------------------------------------------------
 
 /// Thin LQ for f64: A = L * Q, computed via QR of A^T
@@ -495,6 +719,69 @@ fn lq_f32(desc: LqDescriptor<'_, f32>) -> Result<(), BackendError> {
     for i in 0..k {
         for j in 0..n {
             q[i * n + j] = q_t[(j, i)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin LQ for Complex<f64>: A = L * Q, computed via QR of A^H
+fn lq_c64(desc: LqDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let LqDescriptor { m, n, a, l, q } = desc;
+    let k = m.min(n);
+
+    // A^H (n×m) via conjugate transpose
+    let a_mat = MatRef::from_row_major_slice(a, m, n);
+    let ah = a_mat.adjoint().to_owned();
+
+    // QR of A^H: A^H = Q_t * R_t where Q_t is n×k, R_t is k×m
+    let qr = ah.qr();
+    let q_t = qr.compute_thin_Q();
+    let r_t = qr.thin_R();
+
+    // A = (A^H)^H = (Q_t * R_t)^H = R_t^H * Q_t^H = L * Q
+    // L = R_t^H (m×k)
+    for i in 0..m {
+        for j in 0..k {
+            l[i * k + j] = r_t[(j, i)].conj();
+        }
+    }
+
+    // Q = Q_t^H (k×n)
+    for i in 0..k {
+        for j in 0..n {
+            q[i * n + j] = q_t[(j, i)].conj();
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin LQ for Complex<f32>: A = L * Q, computed via QR of A^H
+fn lq_c32(desc: LqDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let LqDescriptor { m, n, a, l, q } = desc;
+    let k = m.min(n);
+
+    let a_mat = MatRef::from_row_major_slice(a, m, n);
+    let ah = a_mat.adjoint().to_owned();
+
+    let qr = ah.qr();
+    let q_t = qr.compute_thin_Q();
+    let r_t = qr.thin_R();
+
+    for i in 0..m {
+        for j in 0..k {
+            l[i * k + j] = r_t[(j, i)].conj();
+        }
+    }
+
+    for i in 0..k {
+        for j in 0..n {
+            q[i * n + j] = q_t[(j, i)].conj();
         }
     }
 
@@ -961,6 +1248,461 @@ mod tests {
                     val += l[i * k + kk] * q[kk * n + j];
                 }
                 assert!((val - a[i * n + j]).abs() < 1e-4,
+                    "LQ reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    // --- Complex GEMM tests ---
+
+    #[test]
+    fn test_gemm_c64_basic() {
+        let backend = CpuBackend::new();
+
+        // A = [[1+i, 2+i], [3+i, 4+i]], B = [[5+i, 6+i], [7+i, 8+i]]
+        let a = [
+            Complex::new(1.0, 1.0), Complex::new(2.0, 1.0),
+            Complex::new(3.0, 1.0), Complex::new(4.0, 1.0),
+        ];
+        let b = [
+            Complex::new(5.0, 1.0), Complex::new(6.0, 1.0),
+            Complex::new(7.0, 1.0), Complex::new(8.0, 1.0),
+        ];
+        let mut c = [Complex::new(0.0, 0.0); 4];
+
+        let desc = GemmDescriptor {
+            m: 2, n: 2, k: 2,
+            alpha: Complex::new(1.0, 0.0), a: &a, b: &b,
+            beta: Complex::new(0.0, 0.0), c: &mut c,
+            trans_a: false, trans_b: false,
+        };
+        backend.gemm(desc).unwrap();
+
+        // C[0,0] = (1+i)(5+i) + (2+i)(7+i) = (4+6i) + (13+9i) = 17+15i
+        // Manually: (1+i)(5+i) = 5+i+5i+i² = 5+6i-1 = 4+6i
+        //           (2+i)(7+i) = 14+2i+7i+i² = 14+9i-1 = 13+9i
+        //           sum = 17+15i
+        assert!((c[0].re - 17.0).abs() < 1e-10);
+        assert!((c[0].im - 15.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_gemm_c64_alpha_beta() {
+        let backend = CpuBackend::new();
+
+        // C = alpha * A * B + beta * C_init with complex alpha, beta
+        let a = [
+            Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
+            Complex::new(0.0, 0.0), Complex::new(1.0, 0.0),
+        ];
+        let b = [
+            Complex::new(3.0, 4.0), Complex::new(0.0, 0.0),
+            Complex::new(0.0, 0.0), Complex::new(3.0, 4.0),
+        ];
+        let mut c = [
+            Complex::new(1.0, 1.0), Complex::new(0.0, 0.0),
+            Complex::new(0.0, 0.0), Complex::new(1.0, 1.0),
+        ];
+
+        // alpha = 2, beta = i → C = 2*I*B + i*C_init = 2*B + i*C_init
+        let desc = GemmDescriptor {
+            m: 2, n: 2, k: 2,
+            alpha: Complex::new(2.0, 0.0), a: &a, b: &b,
+            beta: Complex::new(0.0, 1.0), c: &mut c,
+            trans_a: false, trans_b: false,
+        };
+        backend.gemm(desc).unwrap();
+
+        // C[0,0] = 2*(3+4i) + i*(1+i) = (6+8i) + (i+i²) = (6+8i) + (-1+i) = 5+9i
+        assert!((c[0].re - 5.0).abs() < 1e-10);
+        assert!((c[0].im - 9.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_gemm_c32_basic() {
+        let backend = CpuBackend::new();
+
+        let a = [
+            Complex::new(1.0f32, 1.0), Complex::new(2.0, 1.0),
+            Complex::new(3.0, 1.0), Complex::new(4.0, 1.0),
+        ];
+        let b = [
+            Complex::new(5.0f32, 1.0), Complex::new(6.0, 1.0),
+            Complex::new(7.0, 1.0), Complex::new(8.0, 1.0),
+        ];
+        let mut c = [Complex::new(0.0f32, 0.0); 4];
+
+        let desc = GemmDescriptor {
+            m: 2, n: 2, k: 2,
+            alpha: Complex::new(1.0, 0.0), a: &a, b: &b,
+            beta: Complex::new(0.0, 0.0), c: &mut c,
+            trans_a: false, trans_b: false,
+        };
+        backend.gemm(desc).unwrap();
+
+        assert!((c[0].re - 17.0).abs() < 1e-4);
+        assert!((c[0].im - 15.0).abs() < 1e-4);
+    }
+
+    // --- Complex SVD tests ---
+
+    #[test]
+    fn test_svd_c64_hermitian() {
+        let backend = CpuBackend::new();
+
+        // Hermitian matrix: A = [[2, 1-i], [1+i, 3]]
+        let a = [
+            Complex::new(2.0, 0.0), Complex::new(1.0, -1.0),
+            Complex::new(1.0, 1.0), Complex::new(3.0, 0.0),
+        ];
+        let (m, n, k) = (2, 2, 2);
+        let mut u = vec![Complex::new(0.0, 0.0); m * k];
+        let mut s = vec![0.0f64; k];
+        let mut vt = vec![Complex::new(0.0, 0.0); k * n];
+
+        let desc = SvdDescriptor {
+            m, n, a: &a,
+            u: &mut u, s: &mut s, vt: &mut vt,
+        };
+        backend.svd(desc).unwrap();
+
+        // Singular values should be positive and descending
+        assert!(s[0] > s[1]);
+        assert!(s[1] >= 0.0);
+
+        // Reconstruct: A ≈ U * diag(S) * Vt (where Vt = V^H)
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0, 0.0);
+                for l in 0..k {
+                    val += u[i * k + l] * s[l] * vt[l * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-10,
+                    "SVD reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_c64_rectangular() {
+        let backend = CpuBackend::new();
+
+        // A (2×3) complex
+        let a = [
+            Complex::new(1.0, 2.0), Complex::new(3.0, 0.0), Complex::new(0.0, 1.0),
+            Complex::new(4.0, -1.0), Complex::new(2.0, 3.0), Complex::new(1.0, 1.0),
+        ];
+        let (m, n, k) = (2, 3, 2);
+        let mut u = vec![Complex::new(0.0, 0.0); m * k];
+        let mut s = vec![0.0f64; k];
+        let mut vt = vec![Complex::new(0.0, 0.0); k * n];
+
+        let desc = SvdDescriptor {
+            m, n, a: &a,
+            u: &mut u, s: &mut s, vt: &mut vt,
+        };
+        backend.svd(desc).unwrap();
+
+        assert!(s[0] > s[1]);
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0, 0.0);
+                for l in 0..k {
+                    val += u[i * k + l] * s[l] * vt[l * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-10,
+                    "SVD reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_c64_unitary_check() {
+        let backend = CpuBackend::new();
+
+        // Verify U^H * U = I for SVD result
+        let a = [
+            Complex::new(1.0, 2.0), Complex::new(3.0, -1.0),
+            Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        ];
+        let (m, n, k) = (2, 2, 2);
+        let mut u = vec![Complex::new(0.0, 0.0); m * k];
+        let mut s = vec![0.0f64; k];
+        let mut vt = vec![Complex::new(0.0, 0.0); k * n];
+
+        let desc = SvdDescriptor {
+            m, n, a: &a,
+            u: &mut u, s: &mut s, vt: &mut vt,
+        };
+        backend.svd(desc).unwrap();
+
+        // U^H * U should be identity (k×k)
+        for i in 0..k {
+            for j in 0..k {
+                let mut val = Complex::new(0.0, 0.0);
+                for l in 0..m {
+                    val += u[l * k + i].conj() * u[l * k + j];
+                }
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!(val.norm() - expected < 1e-10,
+                    "U^H * U not identity at ({i},{j}): {val}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_c32_basic() {
+        let backend = CpuBackend::new();
+
+        let a = [
+            Complex::new(2.0f32, 0.0), Complex::new(1.0, -1.0),
+            Complex::new(1.0, 1.0), Complex::new(3.0, 0.0),
+        ];
+        let (m, n, k) = (2, 2, 2);
+        let mut u = vec![Complex::new(0.0f32, 0.0); m * k];
+        let mut s = vec![0.0f32; k];
+        let mut vt = vec![Complex::new(0.0f32, 0.0); k * n];
+
+        let desc = SvdDescriptor {
+            m, n, a: &a,
+            u: &mut u, s: &mut s, vt: &mut vt,
+        };
+        backend.svd(desc).unwrap();
+
+        assert!(s[0] > s[1]);
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0f32, 0.0);
+                for l in 0..k {
+                    val += u[i * k + l] * s[l] * vt[l * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-4,
+                    "SVD reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    // --- Complex QR tests ---
+
+    #[test]
+    fn test_qr_c64_square() {
+        let backend = CpuBackend::new();
+
+        let a = [
+            Complex::new(1.0, 2.0), Complex::new(3.0, -1.0),
+            Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        ];
+        let (m, n, k) = (2, 2, 2);
+        let mut q = vec![Complex::new(0.0, 0.0); m * k];
+        let mut r = vec![Complex::new(0.0, 0.0); k * n];
+
+        let desc = QrDescriptor {
+            m, n, a: &a,
+            q: &mut q, r: &mut r,
+        };
+        backend.qr(desc).unwrap();
+
+        // Reconstruct: A ≈ Q * R
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0, 0.0);
+                for l in 0..k {
+                    val += q[i * k + l] * r[l * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-10,
+                    "QR reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            }
+        }
+
+        // Q should be unitary: Q^H * Q = I
+        for i in 0..k {
+            for j in 0..k {
+                let mut val = Complex::new(0.0, 0.0);
+                for l in 0..m {
+                    val += q[l * k + i].conj() * q[l * k + j];
+                }
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((val.norm() - expected).abs() < 1e-10,
+                    "Q^H * Q not identity at ({i},{j}): {val}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_c64_rectangular() {
+        let backend = CpuBackend::new();
+
+        // A (3×2) complex
+        let a = [
+            Complex::new(1.0, 1.0), Complex::new(2.0, -1.0),
+            Complex::new(3.0, 0.0), Complex::new(0.0, 4.0),
+            Complex::new(-1.0, 2.0), Complex::new(5.0, 1.0),
+        ];
+        let (m, n, k) = (3, 2, 2);
+        let mut q = vec![Complex::new(0.0, 0.0); m * k];
+        let mut r = vec![Complex::new(0.0, 0.0); k * n];
+
+        let desc = QrDescriptor {
+            m, n, a: &a,
+            q: &mut q, r: &mut r,
+        };
+        backend.qr(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0, 0.0);
+                for l in 0..k {
+                    val += q[i * k + l] * r[l * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-10,
+                    "QR reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_c32_basic() {
+        let backend = CpuBackend::new();
+
+        let a = [
+            Complex::new(1.0f32, 2.0), Complex::new(3.0, -1.0),
+            Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        ];
+        let (m, n, k) = (2, 2, 2);
+        let mut q = vec![Complex::new(0.0f32, 0.0); m * k];
+        let mut r = vec![Complex::new(0.0f32, 0.0); k * n];
+
+        let desc = QrDescriptor {
+            m, n, a: &a,
+            q: &mut q, r: &mut r,
+        };
+        backend.qr(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0f32, 0.0);
+                for l in 0..k {
+                    val += q[i * k + l] * r[l * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-4,
+                    "QR reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    // --- Complex LQ tests ---
+
+    #[test]
+    fn test_lq_c64_square() {
+        let backend = CpuBackend::new();
+
+        let a = [
+            Complex::new(1.0, 2.0), Complex::new(3.0, -1.0),
+            Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        ];
+        let (m, n, k) = (2, 2, 2);
+        let mut l = vec![Complex::new(0.0, 0.0); m * k];
+        let mut q = vec![Complex::new(0.0, 0.0); k * n];
+
+        let desc = LqDescriptor {
+            m, n, a: &a,
+            l: &mut l, q: &mut q,
+        };
+        backend.lq(desc).unwrap();
+
+        // Reconstruct: A ≈ L * Q
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0, 0.0);
+                for kk in 0..k {
+                    val += l[i * k + kk] * q[kk * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-10,
+                    "LQ reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            }
+        }
+
+        // Q should have orthonormal rows: Q * Q^H = I
+        for i in 0..k {
+            for j in 0..k {
+                let mut val = Complex::new(0.0, 0.0);
+                for l_idx in 0..n {
+                    val += q[i * n + l_idx] * q[j * n + l_idx].conj();
+                }
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((val.norm() - expected).abs() < 1e-10,
+                    "Q * Q^H not identity at ({i},{j}): {val}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_c64_rectangular() {
+        let backend = CpuBackend::new();
+
+        // A (2×3) complex
+        let a = [
+            Complex::new(1.0, 1.0), Complex::new(2.0, -1.0), Complex::new(0.0, 3.0),
+            Complex::new(4.0, 0.0), Complex::new(-1.0, 2.0), Complex::new(3.0, 1.0),
+        ];
+        let (m, n, k) = (2, 3, 2);
+        let mut l = vec![Complex::new(0.0, 0.0); m * k];
+        let mut q = vec![Complex::new(0.0, 0.0); k * n];
+
+        let desc = LqDescriptor {
+            m, n, a: &a,
+            l: &mut l, q: &mut q,
+        };
+        backend.lq(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0, 0.0);
+                for kk in 0..k {
+                    val += l[i * k + kk] * q[kk * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-10,
+                    "LQ reconstruction mismatch at ({i},{j})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_lq_c32_basic() {
+        let backend = CpuBackend::new();
+
+        let a = [
+            Complex::new(1.0f32, 2.0), Complex::new(3.0, -1.0),
+            Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        ];
+        let (m, n, k) = (2, 2, 2);
+        let mut l = vec![Complex::new(0.0f32, 0.0); m * k];
+        let mut q = vec![Complex::new(0.0f32, 0.0); k * n];
+
+        let desc = LqDescriptor {
+            m, n, a: &a,
+            l: &mut l, q: &mut q,
+        };
+        backend.lq(desc).unwrap();
+
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = Complex::new(0.0f32, 0.0);
+                for kk in 0..k {
+                    val += l[i * k + kk] * q[kk * n + j];
+                }
+                let diff = (val - a[i * n + j]).norm();
+                assert!(diff < 1e-4,
                     "LQ reconstruction mismatch at ({i},{j})");
             }
         }
