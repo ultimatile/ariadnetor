@@ -45,6 +45,7 @@ pub struct ExpressionComputeGraph {
 
 /// A node in the expression compute graph
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields will be read when evaluate() is implemented
 enum ExprNode {
     /// Leaf node containing a concrete tensor
     Leaf(Tensor),
