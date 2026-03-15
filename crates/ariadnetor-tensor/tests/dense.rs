@@ -265,3 +265,74 @@ fn test_reshape_mismatch_panics() {
     let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let _r = t.reshape(vec![2, 2]);
 }
+
+#[test]
+fn test_conj_real() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, -2.0, 3.0, -4.0], vec![2, 2]);
+    let c = t.conj();
+    assert_eq!(c.data(), t.data());
+}
+
+#[test]
+fn test_conj_complex() {
+    let t = DenseTensor::from_data(
+        vec![Complex::new(1.0, 2.0), Complex::new(3.0, -4.0)],
+        vec![2],
+    );
+    let c = t.conj();
+    assert_eq!(c.get(&[0]), Complex::new(1.0, -2.0));
+    assert_eq!(c.get(&[1]), Complex::new(3.0, 4.0));
+}
+
+#[test]
+fn test_to_complex_from_real() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let c = t.to_complex();
+    assert_eq!(c.shape(), &[2]);
+    assert_eq!(c.get(&[0]), Complex::new(1.0, 0.0));
+    assert_eq!(c.get(&[1]), Complex::new(2.0, 0.0));
+}
+
+#[test]
+fn test_to_complex_from_complex() {
+    let t = DenseTensor::from_data(
+        vec![Complex::new(1.0, 2.0), Complex::new(3.0, 4.0)],
+        vec![2],
+    );
+    let c = t.to_complex();
+    assert_eq!(c.data(), t.data());
+}
+
+#[test]
+fn test_real_complex() {
+    let t = DenseTensor::from_data(
+        vec![Complex::new(1.0, 2.0), Complex::new(3.0, -4.0)],
+        vec![2],
+    );
+    let r = t.real();
+    assert_eq!(r.shape(), &[2]);
+    assert_eq!(r.get(&[0]), 1.0);
+    assert_eq!(r.get(&[1]), 3.0);
+}
+
+#[test]
+fn test_imag_complex() {
+    let t = DenseTensor::from_data(
+        vec![Complex::new(1.0, 2.0), Complex::new(3.0, -4.0)],
+        vec![2],
+    );
+    let im = t.imag();
+    assert_eq!(im.shape(), &[2]);
+    assert_eq!(im.get(&[0]), 2.0);
+    assert_eq!(im.get(&[1]), -4.0);
+}
+
+#[test]
+fn test_real_imag_real_type() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let r = t.real();
+    assert_eq!(r.data(), t.data());
+    let im = t.imag();
+    assert_eq!(im.get(&[0]), 0.0);
+    assert_eq!(im.get(&[1]), 0.0);
+}

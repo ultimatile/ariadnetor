@@ -402,6 +402,44 @@ where
 
 }
 
+impl<T> DenseTensor<T>
+where
+    T: arnet_core::scalar::Scalar,
+{
+    /// Element-wise complex conjugate.
+    pub fn conj(&self) -> Self {
+        let data: Vec<T> = self.data().iter().map(|&x| x.conj()).collect();
+        Self::from_data(data, self.shape().to_vec())
+    }
+
+    /// Convert each element to its complex representation.
+    ///
+    /// For real types (f64, f32), wraps each value as `Complex::new(x, 0)`.
+    /// For complex types, this is the identity operation.
+    pub fn to_complex(&self) -> DenseTensor<T::Complex> {
+        let data: Vec<T::Complex> = self.data().iter().map(|&x| x.into_complex()).collect();
+        DenseTensor::from_data(data, self.shape().to_vec())
+    }
+
+    /// Extract the real part of each element.
+    ///
+    /// For real types, returns a copy of the tensor.
+    /// For complex types, extracts the real component.
+    pub fn real(&self) -> DenseTensor<T::Real> {
+        let data: Vec<T::Real> = self.data().iter().map(|&x| x.re()).collect();
+        DenseTensor::from_data(data, self.shape().to_vec())
+    }
+
+    /// Extract the imaginary part of each element.
+    ///
+    /// For real types, returns a tensor of zeros.
+    /// For complex types, extracts the imaginary component.
+    pub fn imag(&self) -> DenseTensor<T::Real> {
+        let data: Vec<T::Real> = self.data().iter().map(|&x| x.im()).collect();
+        DenseTensor::from_data(data, self.shape().to_vec())
+    }
+}
+
 impl<T> fmt::Debug for DenseTensor<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
