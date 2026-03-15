@@ -279,3 +279,39 @@ pub(crate) fn decode_coords(mut flat: usize, shape: &[usize], coords: &mut [usiz
         flat /= shape[i];
     }
 }
+
+/// Extract the diagonal of a square matrix, or construct a diagonal matrix from a vector.
+///
+/// - **Matrix → Vector**: If input has shape `[n, n]`, returns a vector of length `n`
+///   containing the diagonal elements.
+/// - **Vector → Matrix**: If input has shape `[n]`, returns an `n×n` matrix with the
+///   input elements on the diagonal and zeros elsewhere.
+///
+/// # Errors
+///
+/// Returns an error if the input is a non-square matrix (rank 2 with mismatched dimensions)
+/// or has rank > 2.
+pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String> {
+    let shape = tensor.shape();
+    match shape.len() {
+        1 => {
+            // Vector → diagonal matrix
+            let n = shape[0];
+            let mut data = vec![T::zero(); n * n];
+            for i in 0..n {
+                data[i * n + i] = tensor.data()[i];
+            }
+            Ok(DenseTensor::from_data(data, vec![n, n]))
+        }
+        2 => {
+            // Matrix → diagonal vector
+            let (m, n) = (shape[0], shape[1]);
+            if m != n {
+                return Err(format!("diag requires a square matrix, got {m}×{n}"));
+            }
+            let data: Vec<T> = (0..n).map(|i| tensor.data()[i * n + i]).collect();
+            Ok(DenseTensor::from_data(data, vec![n]))
+        }
+        r => Err(format!("diag requires rank 1 or 2, got rank {r}")),
+    }
+}

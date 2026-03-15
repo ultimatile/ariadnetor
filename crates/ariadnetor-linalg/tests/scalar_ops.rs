@@ -1,4 +1,4 @@
-use arnet_linalg::{linear_combine, norm, normalize, scale, trace};
+use arnet_linalg::{diag, linear_combine, norm, normalize, scale, trace};
 use arnet_tensor::DenseTensor;
 
 // --- Scale tests ---
@@ -216,4 +216,71 @@ fn test_trace_self_pair() {
 fn test_trace_duplicate_index() {
     let tensor = DenseTensor::<f64>::from_data(vec![0.0; 8], vec![2, 2, 2]);
     assert!(trace(&tensor, &[(0, 1), (1, 2)]).is_err());
+}
+
+// --- Diag tests ---
+
+#[test]
+fn test_diag_extract_3x3() {
+    let a = DenseTensor::<f64>::from_data(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+        vec![3, 3],
+    );
+    let d = diag(&a).unwrap();
+    assert_eq!(d.shape(), &[3]);
+    assert_eq!(d.data(), &[1.0, 5.0, 9.0]);
+}
+
+#[test]
+fn test_diag_construct_3x3() {
+    let v = DenseTensor::<f64>::from_data(vec![2.0, 5.0, 8.0], vec![3]);
+    let m = diag(&v).unwrap();
+    assert_eq!(m.shape(), &[3, 3]);
+    assert_eq!(
+        m.data(),
+        &[2.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 8.0]
+    );
+}
+
+#[test]
+fn test_diag_identity() {
+    let id = DenseTensor::<f64>::eye(3);
+    let d = diag(&id).unwrap();
+    assert_eq!(d.data(), &[1.0, 1.0, 1.0]);
+}
+
+#[test]
+fn test_diag_round_trip() {
+    let v = DenseTensor::<f64>::from_data(vec![3.0, 7.0], vec![2]);
+    let m = diag(&v).unwrap();
+    let v2 = diag(&m).unwrap();
+    assert_eq!(v2.data(), v.data());
+}
+
+#[test]
+fn test_diag_complex() {
+    use num_complex::Complex;
+
+    let v = DenseTensor::from_data(
+        vec![Complex::new(1.0, 2.0), Complex::new(3.0, 4.0)],
+        vec![2],
+    );
+    let m = diag(&v).unwrap();
+    assert_eq!(m.shape(), &[2, 2]);
+    assert_eq!(m.get(&[0, 0]), Complex::new(1.0, 2.0));
+    assert_eq!(m.get(&[0, 1]), Complex::new(0.0, 0.0));
+    assert_eq!(m.get(&[1, 0]), Complex::new(0.0, 0.0));
+    assert_eq!(m.get(&[1, 1]), Complex::new(3.0, 4.0));
+}
+
+#[test]
+fn test_diag_nonsquare_error() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    assert!(diag(&a).is_err());
+}
+
+#[test]
+fn test_diag_rank3_error() {
+    let a = DenseTensor::<f64>::from_data(vec![0.0; 8], vec![2, 2, 2]);
+    assert!(diag(&a).is_err());
 }

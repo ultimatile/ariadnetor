@@ -13,6 +13,7 @@
 //! - [`normalize`]: Normalize to unit norm (out-of-place)
 //! - [`linear_combine`]: Linear combination of tensors
 //! - [`trace`]: Partial trace over bond index pairs
+//! - [`diag`]: Diagonal extraction and construction
 //! - [`svd`]: Thin SVD decomposition via backend
 //! - [`trunc_svd`]: Truncated SVD with bond dimension control
 //! - [`qr`]: Thin QR decomposition via backend
@@ -42,6 +43,6 @@ pub use decomposition::{
 };
 pub use eigen::{eig, eigh, eigvals, eigvalsh, EigResult, EighResult};
 pub use expm::{expm, expm_antihermitian, expm_hermitian};
-pub use scalar_ops::{linear_combine, norm, normalize, scale, trace};
+pub use scalar_ops::{diag, linear_combine, norm, normalize, scale, trace};
 pub use solve::{inverse, solve};
 pub use transpose::transpose;
