@@ -2,12 +2,12 @@
 //!
 //! Provides [`CpuBackend`] implementing `ComputeBackend` via:
 //! - **GEMM**: faer (f64, f32, Complex<f64>, Complex<f32>)
-//! - **SVD/QR/LQ**: faer (f64, f32, Complex<f64>, Complex<f32>)
+//! - **SVD/QR/LQ/EIGH**: faer (f64, f32, Complex<f64>, Complex<f32>)
 //! - **Transpose**: HPTT when available (f64, f32, Complex), naive fallback
 
 mod transpose;
 
-use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 use num_complex::Complex;
 
@@ -164,6 +164,33 @@ impl ComputeBackend for CpuBackend {
             ))
         }
     }
+
+    /// Self-adjoint eigenvalue decomposition via faer
+    ///
+    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    fn eigh<T: Scalar>(&self, desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
+        use std::any::TypeId;
+
+        let tid = TypeId::of::<T>();
+
+        if tid == TypeId::of::<f64>() {
+            let desc_f64 = unsafe { reinterpret_eigh_desc::<T, f64>(desc) };
+            eigh_f64(desc_f64)
+        } else if tid == TypeId::of::<f32>() {
+            let desc_f32 = unsafe { reinterpret_eigh_desc::<T, f32>(desc) };
+            eigh_f32(desc_f32)
+        } else if tid == TypeId::of::<Complex<f64>>() {
+            let desc_c64 = unsafe { reinterpret_eigh_desc::<T, Complex<f64>>(desc) };
+            eigh_c64(desc_c64)
+        } else if tid == TypeId::of::<Complex<f32>>() {
+            let desc_c32 = unsafe { reinterpret_eigh_desc::<T, Complex<f32>>(desc) };
+            eigh_c32(desc_c32)
+        } else {
+            Err(BackendError::NotSupported(
+                "eigh is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
+            ))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +277,26 @@ unsafe fn reinterpret_lq_desc<'a, T, U>(
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             l: std::slice::from_raw_parts_mut(l.as_mut_ptr() as *mut U, l.len()),
             q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
+        }
+    }
+}
+
+/// Reinterpret `EighDescriptor<T>` as `EighDescriptor<U>`.
+///
+/// # Safety
+/// Caller must guarantee `T` and `U` have identical size and alignment,
+/// and `T::Real` and `U::Real` have identical size and alignment
+/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
+unsafe fn reinterpret_eigh_desc<'a, T: Scalar, U: Scalar>(
+    desc: EighDescriptor<'a, T>,
+) -> EighDescriptor<'a, U> {
+    let EighDescriptor { n, a, w, v } = desc;
+    unsafe {
+        EighDescriptor {
+            n,
+            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
+            w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Real, w.len()),
+            v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U, v.len()),
         }
     }
 }
@@ -782,6 +829,117 @@ fn lq_c32(desc: LqDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
     for i in 0..k {
         for j in 0..n {
             q[i * n + j] = q_t[(j, i)].conj();
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// EIGH implementations (faer)
+// ---------------------------------------------------------------------------
+
+/// Self-adjoint eigenvalue decomposition for f64 via faer
+fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError> {
+    use faer::{MatRef, Side};
+
+    let EighDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
+    })?;
+
+    // Eigenvalues (n, ascending)
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i];
+    }
+
+    // Eigenvectors (n×n, row-major)
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Self-adjoint eigenvalue decomposition for f32 via faer
+fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError> {
+    use faer::{MatRef, Side};
+
+    let EighDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
+    })?;
+
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i];
+    }
+
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Self-adjoint eigenvalue decomposition for Complex<f64> via faer
+fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
+    use faer::{MatRef, Side};
+
+    let EighDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
+    })?;
+
+    // Eigenvalues are real for self-adjoint matrices; faer stores as Complex
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i].re;
+    }
+
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Self-adjoint eigenvalue decomposition for Complex<f32> via faer
+fn eigh_c32(desc: EighDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
+    use faer::{MatRef, Side};
+
+    let EighDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
+    })?;
+
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i].re;
+    }
+
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
         }
     }
 

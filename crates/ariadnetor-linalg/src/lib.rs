@@ -17,10 +17,12 @@
 //! - [`trunc_svd`]: Truncated SVD with bond dimension control
 //! - [`qr`]: Thin QR decomposition via backend
 //! - [`lq`]: Thin LQ decomposition via backend
+//! - [`eigh`]: Self-adjoint eigenvalue decomposition via backend
+//! - [`eigvalsh`]: Eigenvalues-only variant of `eigh`
 
 pub use arnet_core::backend::ComputeBackend;
 
-use arnet_core::backend::{BackendError, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
@@ -843,6 +845,101 @@ pub fn lq<T: Scalar>(
     let q_tensor = DenseTensor::from_data(q_data, vec![k, n]);
 
     Ok((l_tensor, q_tensor))
+}
+
+/// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
+///
+/// - Eigenvalues: `DenseTensor<T::Real>` with shape `[n]`, sorted ascending
+/// - Eigenvectors: `DenseTensor<T>` with shape `[n, n]`, columns are eigenvectors (row-major)
+pub type EighResult<T> = (DenseTensor<<T as Scalar>::Real>, DenseTensor<T>);
+
+/// Compute self-adjoint eigenvalue decomposition of a tensor reshaped as a square matrix.
+///
+/// The tensor is reshaped to a matrix with the first `nrow` axes
+/// forming the row dimension and the remaining axes forming the column dimension.
+/// The resulting matrix must be square.
+///
+/// # Arguments
+///
+/// * `backend` - Compute backend
+/// * `tensor` - Input tensor (must reshape to a square matrix)
+/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
+///
+/// # Returns
+///
+/// * Eigenvalues: shape `[n]`, real, sorted ascending
+/// * Eigenvectors: shape `[n, n]`, columns are eigenvectors
+///
+/// # Errors
+///
+/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// or the backend fails.
+pub fn eigh<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensor<T>,
+    nrow: usize,
+) -> Result<EighResult<T>, BackendError> {
+    let shape = tensor.shape();
+    let rank = tensor.rank();
+
+    if nrow == 0 || nrow >= rank {
+        return Err(BackendError::InvalidDimension(format!(
+            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+        )));
+    }
+
+    let m: usize = shape[..nrow].iter().product();
+    let n: usize = shape[nrow..].iter().product();
+
+    if m != n {
+        return Err(BackendError::InvalidDimension(format!(
+            "eigh requires a square matrix, got {m}×{n}"
+        )));
+    }
+
+    let mut w_data = vec![T::Real::zero(); n];
+    let mut v_data = vec![T::zero(); n * n];
+
+    let desc = EighDescriptor {
+        n,
+        a: tensor.data(),
+        w: &mut w_data,
+        v: &mut v_data,
+    };
+
+    backend.eigh(desc)?;
+
+    let w_tensor = DenseTensor::from_data(w_data, vec![n]);
+    let v_tensor = DenseTensor::from_data(v_data, vec![n, n]);
+
+    Ok((w_tensor, v_tensor))
+}
+
+/// Compute eigenvalues of a self-adjoint tensor reshaped as a square matrix.
+///
+/// This is a convenience wrapper around [`eigh`] that discards the eigenvectors.
+///
+/// # Arguments
+///
+/// * `backend` - Compute backend
+/// * `tensor` - Input tensor (must reshape to a square matrix)
+/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
+///
+/// # Returns
+///
+/// Eigenvalues: shape `[n]`, real, sorted ascending
+///
+/// # Errors
+///
+/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// or the backend fails.
+pub fn eigvalsh<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensor<T>,
+    nrow: usize,
+) -> Result<DenseTensor<T::Real>, BackendError> {
+    let (w, _v) = eigh(backend, tensor, nrow)?;
+    Ok(w)
 }
 
 #[cfg(test)]
@@ -1881,5 +1978,131 @@ mod tests {
 
         assert!(lq(&backend, &tensor, 0).is_err());
         assert!(lq(&backend, &tensor, 2).is_err());
+    }
+
+    // --- EIGH tests ---
+
+    #[test]
+    fn test_eigh_f64_2x2_symmetric() {
+        // [[2, 1], [1, 2]] → eigenvalues [1, 3]
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+
+        let (w, v) = eigh(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+        assert_eq!(v.shape(), &[2, 2]);
+
+        // Eigenvalues ascending: 1, 3
+        assert!((w.get(&[0]) - 1.0).abs() < 1e-10);
+        assert!((w.get(&[1]) - 3.0).abs() < 1e-10);
+
+        // Eigenvectors should be orthogonal
+        let v00 = v.get(&[0, 0]);
+        let v10 = v.get(&[1, 0]);
+        let v01 = v.get(&[0, 1]);
+        let v11 = v.get(&[1, 1]);
+        let dot = v00 * v01 + v10 * v11;
+        assert!(dot.abs() < 1e-10, "Eigenvectors not orthogonal: dot={dot}");
+    }
+
+    #[test]
+    fn test_eigh_f64_3x3_diagonal() {
+        // Diagonal matrix: eigenvalues = diagonal elements (sorted ascending)
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0],
+            vec![3, 3],
+        );
+
+        let (w, _v) = eigh(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[3]);
+        assert!((w.get(&[0]) - 1.0).abs() < 1e-10);
+        assert!((w.get(&[1]) - 2.0).abs() < 1e-10);
+        assert!((w.get(&[2]) - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eigh_c64_hermitian() {
+        use num_complex::Complex;
+
+        // Hermitian: [[2, 1-i], [1+i, 3]]
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::from_data(
+            vec![
+                Complex::new(2.0, 0.0),
+                Complex::new(1.0, -1.0),
+                Complex::new(1.0, 1.0),
+                Complex::new(3.0, 0.0),
+            ],
+            vec![2, 2],
+        );
+
+        let (w, v) = eigh(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+        assert_eq!(v.shape(), &[2, 2]);
+
+        // Eigenvalues: (5 ± sqrt(9))/2 → 1, 4
+        // tr = 5, det = 6 - 2 = 4 → λ² - 5λ + 4 = 0 → λ = 1, 4
+        let w0: f64 = w.get(&[0]);
+        let w1: f64 = w.get(&[1]);
+        assert!((w0 - 1.0).abs() < 1e-10);
+        assert!((w1 - 4.0).abs() < 1e-10);
+
+        // Eigenvectors should be orthogonal (V^H V = I)
+        let v00 = v.get(&[0, 0]);
+        let v10 = v.get(&[1, 0]);
+        let v01 = v.get(&[0, 1]);
+        let v11 = v.get(&[1, 1]);
+        let dot = v00.conj() * v01 + v10.conj() * v11;
+        assert!(dot.norm() < 1e-10, "Eigenvectors not orthogonal: dot={dot}");
+    }
+
+    #[test]
+    fn test_eigvalsh_f64() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+
+        let w = eigvalsh(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+        assert!((w.get(&[0]) - 1.0).abs() < 1e-10);
+        assert!((w.get(&[1]) - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eigh_non_square_error() {
+        let backend = CpuBackend::new();
+        // 2×3 matrix → non-square → error
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+        );
+
+        let result = eigh(&backend, &tensor, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_eigh_f32() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f32>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+
+        let (w, _v) = eigh(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+        assert!((w.get(&[0]) - 1.0).abs() < 1e-5);
+        assert!((w.get(&[1]) - 3.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_eigh_invalid_nrow() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        assert!(eigh(&backend, &tensor, 0).is_err());
+        assert!(eigh(&backend, &tensor, 2).is_err());
     }
 }

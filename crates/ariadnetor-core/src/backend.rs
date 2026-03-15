@@ -74,6 +74,17 @@ pub struct LqDescriptor<'a, T> {
     pub q: &'a mut [T],
 }
 
+/// Self-adjoint eigenvalue decomposition descriptor: A = V * diag(W) * V^H
+///
+/// Computes eigenvalues and eigenvectors of an n×n self-adjoint matrix A (row-major).
+/// Outputs: W (n real eigenvalues, ascending), V (n×n eigenvectors, row-major)
+pub struct EighDescriptor<'a, T: Scalar> {
+    pub n: usize,
+    pub a: &'a [T],
+    pub w: &'a mut [T::Real],
+    pub v: &'a mut [T],
+}
+
 /// Pluggable compute backend trait
 pub trait ComputeBackend: Send + Sync {
     /// Backend name
@@ -106,6 +117,11 @@ pub trait ComputeBackend: Send + Sync {
     /// Thin LQ: A = L * Q
     fn lq<T: Scalar>(&self, _desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
         Err(BackendError::NotSupported("lq".into()))
+    }
+
+    /// Self-adjoint eigenvalue decomposition: A = V * diag(W) * V^H
+    fn eigh<T: Scalar>(&self, _desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
+        Err(BackendError::NotSupported("eigh".into()))
     }
 }
 
