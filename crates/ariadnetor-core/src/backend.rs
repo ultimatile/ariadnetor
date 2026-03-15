@@ -96,6 +96,18 @@ pub struct EigDescriptor<'a, T: Scalar> {
     pub v: &'a mut [T::Complex],
 }
 
+/// Linear solve descriptor: AX = B via LU decomposition
+///
+/// Solves the system AX = B where A is an n×n matrix and B is n×nrhs.
+/// Output X is written to `x` (n×nrhs, row-major).
+pub struct SolveDescriptor<'a, T> {
+    pub n: usize,
+    pub nrhs: usize,
+    pub a: &'a [T],
+    pub b: &'a [T],
+    pub x: &'a mut [T],
+}
+
 /// Pluggable compute backend trait
 pub trait ComputeBackend: Send + Sync {
     /// Backend name
@@ -138,6 +150,11 @@ pub trait ComputeBackend: Send + Sync {
     /// General eigenvalue decomposition
     fn eig<T: Scalar>(&self, _desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
         Err(BackendError::NotSupported("eig".into()))
+    }
+
+    /// Linear solve: AX = B via LU decomposition
+    fn solve<T: Scalar>(&self, _desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
+        Err(BackendError::NotSupported("solve".into()))
     }
 }
 

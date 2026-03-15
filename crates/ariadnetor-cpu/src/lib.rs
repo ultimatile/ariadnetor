@@ -7,7 +7,7 @@
 
 mod transpose;
 
-use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 use num_complex::Complex;
 
@@ -218,6 +218,33 @@ impl ComputeBackend for CpuBackend {
             ))
         }
     }
+
+    /// Linear solve via faer LU decomposition with partial pivoting
+    ///
+    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    fn solve<T: Scalar>(&self, desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
+        use std::any::TypeId;
+
+        let tid = TypeId::of::<T>();
+
+        if tid == TypeId::of::<f64>() {
+            let desc_f64 = unsafe { reinterpret_solve_desc::<T, f64>(desc) };
+            solve_f64(desc_f64)
+        } else if tid == TypeId::of::<f32>() {
+            let desc_f32 = unsafe { reinterpret_solve_desc::<T, f32>(desc) };
+            solve_f32(desc_f32)
+        } else if tid == TypeId::of::<Complex<f64>>() {
+            let desc_c64 = unsafe { reinterpret_solve_desc::<T, Complex<f64>>(desc) };
+            solve_c64(desc_c64)
+        } else if tid == TypeId::of::<Complex<f32>>() {
+            let desc_c32 = unsafe { reinterpret_solve_desc::<T, Complex<f32>>(desc) };
+            solve_c32(desc_c32)
+        } else {
+            Err(BackendError::NotSupported(
+                "solve is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
+            ))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +371,26 @@ unsafe fn reinterpret_eig_desc<'a, T: Scalar, U: Scalar>(
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Complex, w.len()),
             v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U::Complex, v.len()),
+        }
+    }
+}
+
+/// Reinterpret `SolveDescriptor<T>` as `SolveDescriptor<U>`.
+///
+/// # Safety
+/// Caller must guarantee `T` and `U` have identical size and alignment
+/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
+unsafe fn reinterpret_solve_desc<'a, T, U>(
+    desc: SolveDescriptor<'a, T>,
+) -> SolveDescriptor<'a, U> {
+    let SolveDescriptor { n, nrhs, a, b, x } = desc;
+    unsafe {
+        SolveDescriptor {
+            n,
+            nrhs,
+            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
+            b: std::slice::from_raw_parts(b.as_ptr() as *const U, b.len()),
+            x: std::slice::from_raw_parts_mut(x.as_mut_ptr() as *mut U, x.len()),
         }
     }
 }
@@ -1097,6 +1144,94 @@ fn eig_c32(desc: EigDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
     for i in 0..n {
         for j in 0..n {
             v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Solve implementations (faer LU with partial pivoting)
+// ---------------------------------------------------------------------------
+
+/// Linear solve AX = B for f64 via faer partial-pivoting LU
+fn solve_f64(desc: SolveDescriptor<'_, f64>) -> Result<(), BackendError> {
+    use faer::prelude::Solve;
+    use faer::MatRef;
+
+    let SolveDescriptor { n, nrhs, a, b, x } = desc;
+
+    let a_mat = MatRef::from_row_major_slice(a, n, n);
+    let lu = a_mat.partial_piv_lu();
+    let b_mat = MatRef::from_row_major_slice(b, n, nrhs);
+    let x_mat = lu.solve(&b_mat);
+
+    for i in 0..n {
+        for j in 0..nrhs {
+            x[i * nrhs + j] = x_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Linear solve AX = B for f32 via faer partial-pivoting LU
+fn solve_f32(desc: SolveDescriptor<'_, f32>) -> Result<(), BackendError> {
+    use faer::prelude::Solve;
+    use faer::MatRef;
+
+    let SolveDescriptor { n, nrhs, a, b, x } = desc;
+
+    let a_mat = MatRef::from_row_major_slice(a, n, n);
+    let lu = a_mat.partial_piv_lu();
+    let b_mat = MatRef::from_row_major_slice(b, n, nrhs);
+    let x_mat = lu.solve(&b_mat);
+
+    for i in 0..n {
+        for j in 0..nrhs {
+            x[i * nrhs + j] = x_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Linear solve AX = B for Complex<f64> via faer partial-pivoting LU
+fn solve_c64(desc: SolveDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
+    use faer::prelude::Solve;
+    use faer::MatRef;
+
+    let SolveDescriptor { n, nrhs, a, b, x } = desc;
+
+    let a_mat = MatRef::from_row_major_slice(a, n, n);
+    let lu = a_mat.partial_piv_lu();
+    let b_mat = MatRef::from_row_major_slice(b, n, nrhs);
+    let x_mat = lu.solve(&b_mat);
+
+    for i in 0..n {
+        for j in 0..nrhs {
+            x[i * nrhs + j] = x_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// Linear solve AX = B for Complex<f32> via faer partial-pivoting LU
+fn solve_c32(desc: SolveDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
+    use faer::prelude::Solve;
+    use faer::MatRef;
+
+    let SolveDescriptor { n, nrhs, a, b, x } = desc;
+
+    let a_mat = MatRef::from_row_major_slice(a, n, n);
+    let lu = a_mat.partial_piv_lu();
+    let b_mat = MatRef::from_row_major_slice(b, n, nrhs);
+    let x_mat = lu.solve(&b_mat);
+
+    for i in 0..n {
+        for j in 0..nrhs {
+            x[i * nrhs + j] = x_mat[(i, j)];
         }
     }
 
