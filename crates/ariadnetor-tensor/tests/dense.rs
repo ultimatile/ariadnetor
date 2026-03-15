@@ -232,3 +232,36 @@ fn test_eye_1x1() {
     assert_eq!(id.shape(), &[1, 1]);
     assert_eq!(id.get(&[0, 0]), 1.0);
 }
+
+#[test]
+fn test_reshape_2x3_to_3x2() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let r = t.reshape(vec![3, 2]);
+    assert_eq!(r.shape(), &[3, 2]);
+    assert_eq!(r.data(), t.data());
+}
+
+#[test]
+fn test_reshape_chain() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let r1 = t.reshape(vec![6]);
+    assert_eq!(r1.shape(), &[6]);
+    let r2 = r1.reshape(vec![1, 6]);
+    assert_eq!(r2.shape(), &[1, 6]);
+    assert_eq!(r2.data(), t.data());
+}
+
+#[test]
+fn test_reshape_preserves_cow() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let r = t.reshape(vec![4]);
+    // Both share the same underlying Arc — modifying one triggers CoW
+    assert_eq!(t.as_ptr(), r.as_ptr());
+}
+
+#[test]
+#[should_panic(expected = "total elements must match")]
+fn test_reshape_mismatch_panics() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let _r = t.reshape(vec![2, 2]);
+}

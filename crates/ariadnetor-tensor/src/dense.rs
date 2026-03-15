@@ -71,6 +71,28 @@ impl<T> DenseTensor<T> {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
+    /// Reshape the tensor to a new shape without copying data.
+    ///
+    /// The total number of elements must remain the same.
+    /// The returned tensor shares the underlying data via `Arc` (zero-copy).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new shape has a different total number of elements.
+    pub fn reshape(&self, new_shape: Vec<usize>) -> Self {
+        let new_total: usize = new_shape.iter().product();
+        assert_eq!(
+            self.len(),
+            new_total,
+            "reshape: total elements must match ({} vs {new_total})",
+            self.len()
+        );
+        Self {
+            data: Arc::clone(&self.data),
+            shape: new_shape,
+        }
+    }
 }
 
 impl<T> DenseTensor<T>
