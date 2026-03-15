@@ -85,6 +85,17 @@ pub struct EighDescriptor<'a, T: Scalar> {
     pub v: &'a mut [T],
 }
 
+/// General eigenvalue decomposition descriptor
+///
+/// Computes eigenvalues and right eigenvectors of an n×n matrix A (row-major).
+/// Outputs are always complex: W (n complex eigenvalues), V (n×n eigenvectors, row-major)
+pub struct EigDescriptor<'a, T: Scalar> {
+    pub n: usize,
+    pub a: &'a [T],
+    pub w: &'a mut [T::Complex],
+    pub v: &'a mut [T::Complex],
+}
+
 /// Pluggable compute backend trait
 pub trait ComputeBackend: Send + Sync {
     /// Backend name
@@ -122,6 +133,11 @@ pub trait ComputeBackend: Send + Sync {
     /// Self-adjoint eigenvalue decomposition: A = V * diag(W) * V^H
     fn eigh<T: Scalar>(&self, _desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
         Err(BackendError::NotSupported("eigh".into()))
+    }
+
+    /// General eigenvalue decomposition
+    fn eig<T: Scalar>(&self, _desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
+        Err(BackendError::NotSupported("eig".into()))
     }
 }
 

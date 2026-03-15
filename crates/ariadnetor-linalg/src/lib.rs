@@ -19,10 +19,12 @@
 //! - [`lq`]: Thin LQ decomposition via backend
 //! - [`eigh`]: Self-adjoint eigenvalue decomposition via backend
 //! - [`eigvalsh`]: Eigenvalues-only variant of `eigh`
+//! - [`eig`]: General eigenvalue decomposition via backend
+//! - [`eigvals`]: Eigenvalues-only variant of `eig`
 
 pub use arnet_core::backend::ComputeBackend;
 
-use arnet_core::backend::{BackendError, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
@@ -939,6 +941,101 @@ pub fn eigvalsh<T: Scalar>(
     nrow: usize,
 ) -> Result<DenseTensor<T::Real>, BackendError> {
     let (w, _v) = eigh(backend, tensor, nrow)?;
+    Ok(w)
+}
+
+/// Result of a general eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
+///
+/// - Eigenvalues: `DenseTensor<T::Complex>` with shape `[n]`, complex
+/// - Eigenvectors: `DenseTensor<T::Complex>` with shape `[n, n]`, complex, columns are right eigenvectors (row-major)
+pub type EigResult<T> = (DenseTensor<<T as Scalar>::Complex>, DenseTensor<<T as Scalar>::Complex>);
+
+/// Compute general eigenvalue decomposition of a tensor reshaped as a square matrix.
+///
+/// The tensor is reshaped to a matrix with the first `nrow` axes
+/// forming the row dimension and the remaining axes forming the column dimension.
+/// The resulting matrix must be square. Eigenvalues and eigenvectors are always complex.
+///
+/// # Arguments
+///
+/// * `backend` - Compute backend
+/// * `tensor` - Input tensor (must reshape to a square matrix)
+/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
+///
+/// # Returns
+///
+/// * Eigenvalues: shape `[n]`, complex
+/// * Eigenvectors: shape `[n, n]`, complex, columns are right eigenvectors
+///
+/// # Errors
+///
+/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// or the backend fails.
+pub fn eig<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensor<T>,
+    nrow: usize,
+) -> Result<EigResult<T>, BackendError> {
+    let shape = tensor.shape();
+    let rank = tensor.rank();
+
+    if nrow == 0 || nrow >= rank {
+        return Err(BackendError::InvalidDimension(format!(
+            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+        )));
+    }
+
+    let m: usize = shape[..nrow].iter().product();
+    let n: usize = shape[nrow..].iter().product();
+
+    if m != n {
+        return Err(BackendError::InvalidDimension(format!(
+            "eig requires a square matrix, got {m}×{n}"
+        )));
+    }
+
+    let mut w_data = vec![T::Complex::zero(); n];
+    let mut v_data = vec![T::Complex::zero(); n * n];
+
+    let desc = EigDescriptor {
+        n,
+        a: tensor.data(),
+        w: &mut w_data,
+        v: &mut v_data,
+    };
+
+    backend.eig(desc)?;
+
+    let w_tensor = DenseTensor::from_data(w_data, vec![n]);
+    let v_tensor = DenseTensor::from_data(v_data, vec![n, n]);
+
+    Ok((w_tensor, v_tensor))
+}
+
+/// Compute eigenvalues of a general tensor reshaped as a square matrix.
+///
+/// This is a convenience wrapper around [`eig`] that discards the eigenvectors.
+///
+/// # Arguments
+///
+/// * `backend` - Compute backend
+/// * `tensor` - Input tensor (must reshape to a square matrix)
+/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
+///
+/// # Returns
+///
+/// Eigenvalues: shape `[n]`, complex
+///
+/// # Errors
+///
+/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// or the backend fails.
+pub fn eigvals<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensor<T>,
+    nrow: usize,
+) -> Result<DenseTensor<T::Complex>, BackendError> {
+    let (w, _v) = eig(backend, tensor, nrow)?;
     Ok(w)
 }
 
@@ -2104,5 +2201,124 @@ mod tests {
 
         assert!(eigh(&backend, &tensor, 0).is_err());
         assert!(eigh(&backend, &tensor, 2).is_err());
+    }
+
+    // --- EIG tests ---
+
+    #[test]
+    fn test_eig_f64_2x2_trace_det() {
+        // [[1, 2], [3, 4]]
+        // trace = 5, det = -2
+        // eigenvalues satisfy: λ² - 5λ - 2 = 0
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (w, v) = eig(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+        assert_eq!(v.shape(), &[2, 2]);
+
+        // sum(eigenvalues) = trace = 5
+        let sum = w.get(&[0]) + w.get(&[1]);
+        assert!((sum.re - 5.0).abs() < 1e-10, "trace mismatch: {sum}");
+        assert!(sum.im.abs() < 1e-10, "trace should be real: {sum}");
+
+        // prod(eigenvalues) = det = -2
+        let prod = w.get(&[0]) * w.get(&[1]);
+        assert!((prod.re - (-2.0)).abs() < 1e-10, "det mismatch: {prod}");
+        assert!(prod.im.abs() < 1e-10, "det should be real: {prod}");
+    }
+
+    #[test]
+    fn test_eig_f64_diagonal() {
+        // Diagonal: [[3, 0], [0, 7]]
+        // eigenvalues = {3, 7}
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![3.0, 0.0, 0.0, 7.0], vec![2, 2]);
+
+        let (w, _v) = eig(&backend, &tensor, 1).unwrap();
+
+        let mut eigs: Vec<f64> = (0..2).map(|i| w.get(&[i]).re).collect();
+        eigs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!((eigs[0] - 3.0).abs() < 1e-10);
+        assert!((eigs[1] - 7.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eig_c64_complex_input() {
+        use num_complex::Complex;
+
+        // Complex matrix: [[1+i, 2], [0, 3-i]]
+        // Upper triangular → eigenvalues = diagonal = {1+i, 3-i}
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::from_data(
+            vec![
+                Complex::new(1.0, 1.0),
+                Complex::new(2.0, 0.0),
+                Complex::new(0.0, 0.0),
+                Complex::new(3.0, -1.0),
+            ],
+            vec![2, 2],
+        );
+
+        let (w, _v) = eig(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+
+        // Sort by real part for deterministic comparison
+        let mut eigs: Vec<Complex<f64>> = (0..2).map(|i| w.get(&[i])).collect();
+        eigs.sort_by(|a, b| a.re.partial_cmp(&b.re).unwrap());
+
+        assert!((eigs[0].re - 1.0).abs() < 1e-10);
+        assert!((eigs[0].im - 1.0).abs() < 1e-10);
+        assert!((eigs[1].re - 3.0).abs() < 1e-10);
+        assert!((eigs[1].im - (-1.0)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eigvals_f64() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let w = eigvals(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+
+        let sum = w.get(&[0]) + w.get(&[1]);
+        assert!((sum.re - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eig_non_square_error() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+        );
+
+        assert!(eig(&backend, &tensor, 1).is_err());
+    }
+
+    #[test]
+    fn test_eig_f32() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        let (w, _v) = eig(&backend, &tensor, 1).unwrap();
+
+        assert_eq!(w.shape(), &[2]);
+
+        // trace check
+        let sum = w.get(&[0]) + w.get(&[1]);
+        assert!((sum.re - 5.0).abs() < 1e-4, "trace mismatch: {sum}");
+    }
+
+    #[test]
+    fn test_eig_invalid_nrow() {
+        let backend = CpuBackend::new();
+        let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+
+        assert!(eig(&backend, &tensor, 0).is_err());
+        assert!(eig(&backend, &tensor, 2).is_err());
     }
 }

@@ -7,7 +7,7 @@
 
 mod transpose;
 
-use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 use num_complex::Complex;
 
@@ -191,6 +191,33 @@ impl ComputeBackend for CpuBackend {
             ))
         }
     }
+
+    /// General eigenvalue decomposition via faer
+    ///
+    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
+        use std::any::TypeId;
+
+        let tid = TypeId::of::<T>();
+
+        if tid == TypeId::of::<f64>() {
+            let desc_f64 = unsafe { reinterpret_eig_desc::<T, f64>(desc) };
+            eig_f64(desc_f64)
+        } else if tid == TypeId::of::<f32>() {
+            let desc_f32 = unsafe { reinterpret_eig_desc::<T, f32>(desc) };
+            eig_f32(desc_f32)
+        } else if tid == TypeId::of::<Complex<f64>>() {
+            let desc_c64 = unsafe { reinterpret_eig_desc::<T, Complex<f64>>(desc) };
+            eig_c64(desc_c64)
+        } else if tid == TypeId::of::<Complex<f32>>() {
+            let desc_c32 = unsafe { reinterpret_eig_desc::<T, Complex<f32>>(desc) };
+            eig_c32(desc_c32)
+        } else {
+            Err(BackendError::NotSupported(
+                "eig is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
+            ))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +324,26 @@ unsafe fn reinterpret_eigh_desc<'a, T: Scalar, U: Scalar>(
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Real, w.len()),
             v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U, v.len()),
+        }
+    }
+}
+
+/// Reinterpret `EigDescriptor<T>` as `EigDescriptor<U>`.
+///
+/// # Safety
+/// Caller must guarantee `T` and `U` have identical size and alignment,
+/// and `T::Complex` and `U::Complex` have identical size and alignment
+/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
+unsafe fn reinterpret_eig_desc<'a, T: Scalar, U: Scalar>(
+    desc: EigDescriptor<'a, T>,
+) -> EigDescriptor<'a, U> {
+    let EigDescriptor { n, a, w, v } = desc;
+    unsafe {
+        EigDescriptor {
+            n,
+            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
+            w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Complex, w.len()),
+            v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U::Complex, v.len()),
         }
     }
 }
@@ -934,6 +981,116 @@ fn eigh_c32(desc: EighDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> 
     let s_diag = eig.S();
     for i in 0..n {
         w[i] = s_diag[i].re;
+    }
+
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// EIG implementations (faer)
+// ---------------------------------------------------------------------------
+
+/// General eigenvalue decomposition for f64 via faer (real → complex output)
+fn eig_f64(desc: EigDescriptor<'_, f64>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let EigDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.eigen().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
+    })?;
+
+    // Eigenvalues (complex)
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i];
+    }
+
+    // Eigenvectors (complex, n×n, row-major)
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// General eigenvalue decomposition for f32 via faer (real → complex output)
+fn eig_f32(desc: EigDescriptor<'_, f32>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let EigDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.eigen().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
+    })?;
+
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i];
+    }
+
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// General eigenvalue decomposition for Complex<f64> via faer
+fn eig_c64(desc: EigDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let EigDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.eigen().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
+    })?;
+
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i];
+    }
+
+    let u_mat = eig.U();
+    for i in 0..n {
+        for j in 0..n {
+            v[i * n + j] = u_mat[(i, j)];
+        }
+    }
+
+    Ok(())
+}
+
+/// General eigenvalue decomposition for Complex<f32> via faer
+fn eig_c32(desc: EigDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
+    use faer::MatRef;
+
+    let EigDescriptor { n, a, w, v } = desc;
+
+    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let eig = mat.eigen().map_err(|e| {
+        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
+    })?;
+
+    let s_diag = eig.S();
+    for i in 0..n {
+        w[i] = s_diag[i];
     }
 
     let u_mat = eig.U();
