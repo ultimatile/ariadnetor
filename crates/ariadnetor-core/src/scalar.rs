@@ -36,9 +36,12 @@ pub trait Scalar:
     type Real: FloatCompute;
     type Complex: Scalar;
     fn abs(self) -> Self::Real;
+    fn re(self) -> Self::Real;
+    fn im(self) -> Self::Real;
     fn scale_real(self, factor: Self::Real) -> Self;
     fn conj(self) -> Self;
     fn into_complex(self) -> Self::Complex;
+    fn from_real_imag(re: Self::Real, im: Self::Real) -> Self;
 }
 
 impl Scalar for f32 {
@@ -47,6 +50,14 @@ impl Scalar for f32 {
     #[inline]
     fn abs(self) -> Self::Real {
         self.abs()
+    }
+    #[inline]
+    fn re(self) -> Self::Real {
+        self
+    }
+    #[inline]
+    fn im(self) -> Self::Real {
+        0.0
     }
     #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
@@ -59,6 +70,11 @@ impl Scalar for f32 {
     #[inline]
     fn into_complex(self) -> Self::Complex {
         Complex::new(self, 0.0)
+    }
+    #[inline]
+    fn from_real_imag(re: Self::Real, im: Self::Real) -> Self {
+        let _ = im;
+        re
     }
 }
 
@@ -70,6 +86,14 @@ impl Scalar for f64 {
         self.abs()
     }
     #[inline]
+    fn re(self) -> Self::Real {
+        self
+    }
+    #[inline]
+    fn im(self) -> Self::Real {
+        0.0
+    }
+    #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
         self * factor
     }
@@ -81,6 +105,11 @@ impl Scalar for f64 {
     fn into_complex(self) -> Self::Complex {
         Complex::new(self, 0.0)
     }
+    #[inline]
+    fn from_real_imag(re: Self::Real, im: Self::Real) -> Self {
+        let _ = im;
+        re
+    }
 }
 
 impl Scalar for Complex<f32> {
@@ -89,6 +118,14 @@ impl Scalar for Complex<f32> {
     #[inline]
     fn abs(self) -> Self::Real {
         self.norm()
+    }
+    #[inline]
+    fn re(self) -> Self::Real {
+        self.re
+    }
+    #[inline]
+    fn im(self) -> Self::Real {
+        self.im
     }
     #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
@@ -101,6 +138,10 @@ impl Scalar for Complex<f32> {
     #[inline]
     fn into_complex(self) -> Self::Complex {
         self
+    }
+    #[inline]
+    fn from_real_imag(re: Self::Real, im: Self::Real) -> Self {
+        Complex::new(re, im)
     }
 }
 
@@ -112,6 +153,14 @@ impl Scalar for Complex<f64> {
         self.norm()
     }
     #[inline]
+    fn re(self) -> Self::Real {
+        self.re
+    }
+    #[inline]
+    fn im(self) -> Self::Real {
+        self.im
+    }
+    #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
         Complex::new(self.re * factor, self.im * factor)
     }
@@ -122,6 +171,10 @@ impl Scalar for Complex<f64> {
     #[inline]
     fn into_complex(self) -> Self::Complex {
         self
+    }
+    #[inline]
+    fn from_real_imag(re: Self::Real, im: Self::Real) -> Self {
+        Complex::new(re, im)
     }
 }
 
@@ -163,5 +216,78 @@ mod tests {
 
         let z32 = Complex::new(1.0f32, 2.0);
         assert_eq!(z32.into_complex(), z32);
+    }
+
+    #[test]
+    fn test_re_im_f64() {
+        let x = 3.5f64;
+        assert_eq!(x.re(), 3.5);
+        assert_eq!(x.im(), 0.0);
+    }
+
+    #[test]
+    fn test_re_im_f32() {
+        let x = 2.5f32;
+        assert_eq!(x.re(), 2.5);
+        assert_eq!(x.im(), 0.0);
+    }
+
+    #[test]
+    fn test_re_im_complex_f64() {
+        let z = Complex::new(3.0f64, 4.0);
+        assert_eq!(z.re(), 3.0);
+        assert_eq!(z.im(), 4.0);
+    }
+
+    #[test]
+    fn test_re_im_complex_f32() {
+        let z = Complex::new(1.0f32, -2.0);
+        assert_eq!(z.re(), 1.0);
+        assert_eq!(z.im(), -2.0);
+    }
+
+    #[test]
+    fn test_from_real_imag_complex_f64() {
+        let z = Complex::<f64>::from_real_imag(3.0, 4.0);
+        assert_eq!(z, Complex::new(3.0, 4.0));
+    }
+
+    #[test]
+    fn test_from_real_imag_complex_f32() {
+        let z = Complex::<f32>::from_real_imag(1.0, -2.0);
+        assert_eq!(z, Complex::new(1.0, -2.0));
+    }
+
+    #[test]
+    fn test_from_real_imag_f64() {
+        let x = f64::from_real_imag(3.0, 999.0);
+        assert_eq!(x, 3.0);
+    }
+
+    #[test]
+    fn test_from_real_imag_f32() {
+        let x = f32::from_real_imag(2.5, 999.0);
+        assert_eq!(x, 2.5);
+    }
+
+    #[test]
+    fn test_round_trip_complex_f64() {
+        let z = Complex::new(3.0f64, -4.0);
+        let reconstructed = Complex::<f64>::from_real_imag(z.re(), z.im());
+        assert_eq!(reconstructed, z);
+    }
+
+    #[test]
+    fn test_round_trip_complex_f32() {
+        let z = Complex::new(1.5f32, 2.5);
+        let reconstructed = Complex::<f32>::from_real_imag(z.re(), z.im());
+        assert_eq!(reconstructed, z);
+    }
+
+    #[test]
+    fn test_round_trip_f64() {
+        let x = 7.0f64;
+        let reconstructed = f64::from_real_imag(x.re(), x.im());
+        assert_eq!(reconstructed, x);
     }
 }
