@@ -563,3 +563,44 @@ fn test_stack_shape_mismatch() {
     let b = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0], vec![3]);
     let _s = DenseTensor::stack(&[&a, &b], 0);
 }
+
+// --- random tests (require "random" feature) ---
+
+#[cfg(feature = "random")]
+mod random_tests {
+    use arnet_tensor::DenseTensor;
+    use rand::SeedableRng;
+
+    #[test]
+    fn test_random_f64_shape() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let t = DenseTensor::<f64>::random(vec![3, 4], &mut rng);
+        assert_eq!(t.shape(), &[3, 4]);
+        assert_eq!(t.len(), 12);
+    }
+
+    #[test]
+    fn test_random_f64_reproducible() {
+        let mut rng1 = rand::rngs::StdRng::seed_from_u64(123);
+        let mut rng2 = rand::rngs::StdRng::seed_from_u64(123);
+        let t1 = DenseTensor::<f64>::random(vec![2, 3], &mut rng1);
+        let t2 = DenseTensor::<f64>::random(vec![2, 3], &mut rng2);
+        assert_eq!(t1.data(), t2.data());
+    }
+
+    #[test]
+    fn test_random_different_seeds() {
+        let mut rng1 = rand::rngs::StdRng::seed_from_u64(1);
+        let mut rng2 = rand::rngs::StdRng::seed_from_u64(2);
+        let t1 = DenseTensor::<f64>::random(vec![4], &mut rng1);
+        let t2 = DenseTensor::<f64>::random(vec![4], &mut rng2);
+        assert_ne!(t1.data(), t2.data());
+    }
+
+    #[test]
+    fn test_random_f32() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(99);
+        let t = DenseTensor::<f32>::random(vec![5], &mut rng);
+        assert_eq!(t.shape(), &[5]);
+    }
+}

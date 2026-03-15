@@ -214,6 +214,24 @@ where
         }
     }
 
+    /// Create a tensor filled with random values from the standard distribution.
+    ///
+    /// Uses the provided RNG for reproducibility.
+    ///
+    /// # Arguments
+    ///
+    /// * `shape` - Dimensions of the tensor
+    /// * `rng` - Random number generator
+    #[cfg(feature = "random")]
+    pub fn random<R: rand::Rng>(shape: Vec<usize>, rng: &mut R) -> Self
+    where
+        rand::distr::StandardUniform: rand::distr::Distribution<T>,
+    {
+        let total: usize = shape.iter().product();
+        let data: Vec<T> = (0..total).map(|_| rng.random()).collect();
+        Self::from_data(data, shape)
+    }
+
     /// Get a reference to the underlying data
     pub fn data(&self) -> &[T] {
         &self.data
