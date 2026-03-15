@@ -483,3 +483,83 @@ fn test_slice_expand_round_trip() {
     let recovered = expanded.slice(&[(1, 3), (1, 3)]); // back to 2×2
     assert_eq!(recovered.data(), t.data());
 }
+
+// --- concatenate / stack tests ---
+
+#[test]
+fn test_concatenate_axis0() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = DenseTensor::<f64>::from_data(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![2, 3]);
+    let c = DenseTensor::concatenate(&[&a, &b], 0);
+    assert_eq!(c.shape(), &[4, 3]);
+    assert_eq!(
+        c.data(),
+        &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+    );
+}
+
+#[test]
+fn test_concatenate_axis1() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::<f64>::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let c = DenseTensor::concatenate(&[&a, &b], 1);
+    assert_eq!(c.shape(), &[2, 4]);
+    assert_eq!(c.data(), &[1.0, 2.0, 5.0, 6.0, 3.0, 4.0, 7.0, 8.0]);
+}
+
+#[test]
+fn test_concatenate_single() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0], vec![3]);
+    let c = DenseTensor::concatenate(&[&a], 0);
+    assert_eq!(c.data(), a.data());
+}
+
+#[test]
+#[should_panic(expected = "concatenate")]
+fn test_concatenate_shape_mismatch() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let _c = DenseTensor::concatenate(&[&a, &b], 0);
+}
+
+#[test]
+fn test_stack_axis0() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = DenseTensor::<f64>::from_data(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![2, 3]);
+    let s = DenseTensor::stack(&[&a, &b], 0);
+    assert_eq!(s.shape(), &[2, 2, 3]);
+    assert_eq!(
+        s.data(),
+        &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+    );
+}
+
+#[test]
+fn test_stack_axis2() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = DenseTensor::<f64>::from_data(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![2, 3]);
+    let s = DenseTensor::stack(&[&a, &b], 2);
+    assert_eq!(s.shape(), &[2, 3, 2]);
+    // [0,0,:] = [1,7], [0,1,:] = [2,8], [0,2,:] = [3,9]
+    // [1,0,:] = [4,10], [1,1,:] = [5,11], [1,2,:] = [6,12]
+    assert_eq!(
+        s.data(),
+        &[1.0, 7.0, 2.0, 8.0, 3.0, 9.0, 4.0, 10.0, 5.0, 11.0, 6.0, 12.0]
+    );
+}
+
+#[test]
+fn test_stack_single() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let s = DenseTensor::stack(&[&a], 0);
+    assert_eq!(s.shape(), &[1, 2]);
+    assert_eq!(s.data(), &[1.0, 2.0]);
+}
+
+#[test]
+#[should_panic(expected = "stack")]
+fn test_stack_shape_mismatch() {
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let b = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0], vec![3]);
+    let _s = DenseTensor::stack(&[&a, &b], 0);
+}

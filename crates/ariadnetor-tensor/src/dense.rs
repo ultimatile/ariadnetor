@@ -471,6 +471,107 @@ where
         }
     }
 
+    /// Concatenate tensors along an existing axis.
+    ///
+    /// All tensors must have the same shape except along the concatenation axis.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tensors` is empty, `axis` is out of range, or shapes are
+    /// incompatible on non-concatenation axes.
+    pub fn concatenate(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
+        assert!(!tensors.is_empty(), "concatenate: empty tensor list");
+        let rank = tensors[0].rank();
+        assert!(axis < rank, "concatenate: axis {axis} out of range for rank {rank}");
+
+        let base_shape = tensors[0].shape();
+        for (i, t) in tensors.iter().enumerate().skip(1) {
+            assert_eq!(
+                t.rank(), rank,
+                "concatenate: tensor {i} has rank {} but expected {rank}", t.rank()
+            );
+            for (d, (&ts, &bs)) in t.shape().iter().zip(base_shape).enumerate() {
+                if d != axis {
+                    assert_eq!(
+                        ts, bs,
+                        "concatenate: tensor {i} has size {ts} on axis {d} but expected {bs}",
+                    );
+                }
+            }
+        }
+
+        let mut out_shape: Vec<usize> = base_shape.to_vec();
+        out_shape[axis] = tensors.iter().map(|t| t.shape()[axis]).sum();
+        let out_total: usize = out_shape.iter().product();
+        let mut data = Vec::with_capacity(out_total);
+
+        // Size of a "block" along and after the concat axis
+        let outer: usize = out_shape[..axis].iter().product();
+        let inner: usize = if axis + 1 < rank {
+            out_shape[axis + 1..].iter().product()
+        } else {
+            1
+        };
+
+        for o in 0..outer {
+            for t in tensors {
+                let t_axis_size = t.shape()[axis];
+                let t_inner_stride = t_axis_size * inner;
+                let src_offset = o * t_inner_stride;
+                data.extend_from_slice(&t.data()[src_offset..src_offset + t_inner_stride]);
+            }
+        }
+
+        Self::from_data(data, out_shape)
+    }
+
+    /// Stack tensors along a new axis.
+    ///
+    /// All tensors must have identical shapes. A new axis is inserted at position `axis`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tensors` is empty, `axis > rank`, or shapes differ.
+    pub fn stack(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
+        assert!(!tensors.is_empty(), "stack: empty tensor list");
+        let base_shape = tensors[0].shape();
+        let rank = tensors[0].rank();
+        assert!(
+            axis <= rank,
+            "stack: axis {axis} out of range for rank {rank} (max {rank})"
+        );
+
+        for (i, t) in tensors.iter().enumerate().skip(1) {
+            assert_eq!(
+                t.shape(), base_shape,
+                "stack: tensor {i} has shape {:?} but expected {base_shape:?}",
+                t.shape()
+            );
+        }
+
+        // Insert new axis: e.g., shape [2, 3] stacked at axis 0 with n=3 → [3, 2, 3]
+        let n = tensors.len();
+        let mut out_shape = Vec::with_capacity(rank + 1);
+        out_shape.extend_from_slice(&base_shape[..axis]);
+        out_shape.push(n);
+        out_shape.extend_from_slice(&base_shape[axis..]);
+
+        let out_total: usize = out_shape.iter().product();
+        let mut data = Vec::with_capacity(out_total);
+
+        let outer: usize = base_shape[..axis].iter().product();
+        let inner: usize = base_shape[axis..].iter().product();
+
+        for o in 0..outer {
+            for t in tensors {
+                let src_offset = o * inner;
+                data.extend_from_slice(&t.data()[src_offset..src_offset + inner]);
+            }
+        }
+
+        Self::from_data(data, out_shape)
+    }
+
     /// Permute tensor axes (pure-Rust naive implementation)
     ///
     /// For optimized transpose using HPTT or other backends, use
