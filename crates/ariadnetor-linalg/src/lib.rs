@@ -40,7 +40,7 @@ pub use decomposition::{
     lq, qr, svd, trunc_svd, LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult,
 };
 pub use eigen::{eig, eigh, eigvals, eigvalsh, EigResult, EighResult};
-pub use expm::{expm_antihermitian, expm_hermitian};
+pub use expm::{expm, expm_antihermitian, expm_hermitian};
 pub use scalar_ops::{linear_combine, norm, normalize, scale, trace};
 pub use solve::solve;
 pub use transpose::transpose;
