@@ -34,13 +34,16 @@ pub trait Scalar:
     + std::ops::Mul<Output = Self>
 {
     type Real: FloatCompute;
+    type Complex: Scalar;
     fn abs(self) -> Self::Real;
     fn scale_real(self, factor: Self::Real) -> Self;
     fn conj(self) -> Self;
+    fn into_complex(self) -> Self::Complex;
 }
 
 impl Scalar for f32 {
     type Real = f32;
+    type Complex = Complex<f32>;
     #[inline]
     fn abs(self) -> Self::Real {
         self.abs()
@@ -52,11 +55,16 @@ impl Scalar for f32 {
     #[inline]
     fn conj(self) -> Self {
         self
+    }
+    #[inline]
+    fn into_complex(self) -> Self::Complex {
+        Complex::new(self, 0.0)
     }
 }
 
 impl Scalar for f64 {
     type Real = f64;
+    type Complex = Complex<f64>;
     #[inline]
     fn abs(self) -> Self::Real {
         self.abs()
@@ -69,10 +77,15 @@ impl Scalar for f64 {
     fn conj(self) -> Self {
         self
     }
+    #[inline]
+    fn into_complex(self) -> Self::Complex {
+        Complex::new(self, 0.0)
+    }
 }
 
 impl Scalar for Complex<f32> {
     type Real = f32;
+    type Complex = Complex<f32>;
     #[inline]
     fn abs(self) -> Self::Real {
         self.norm()
@@ -84,11 +97,16 @@ impl Scalar for Complex<f32> {
     #[inline]
     fn conj(self) -> Self {
         Complex::conj(&self)
+    }
+    #[inline]
+    fn into_complex(self) -> Self::Complex {
+        self
     }
 }
 
 impl Scalar for Complex<f64> {
     type Real = f64;
+    type Complex = Complex<f64>;
     #[inline]
     fn abs(self) -> Self::Real {
         self.norm()
@@ -100,6 +118,10 @@ impl Scalar for Complex<f64> {
     #[inline]
     fn conj(self) -> Self {
         Complex::conj(&self)
+    }
+    #[inline]
+    fn into_complex(self) -> Self::Complex {
+        self
     }
 }
 
@@ -118,5 +140,28 @@ mod tests {
         let z = Complex::new(3.0, 4.0);
         assert_eq!(z.abs(), 5.0);
         assert_eq!(z.conj(), Complex::new(3.0, -4.0));
+    }
+
+    #[test]
+    fn test_into_complex_f32() {
+        let x = 2.5f32;
+        let z = x.into_complex();
+        assert_eq!(z, Complex::new(2.5f32, 0.0));
+    }
+
+    #[test]
+    fn test_into_complex_f64() {
+        let x = 3.0f64;
+        let z = x.into_complex();
+        assert_eq!(z, Complex::new(3.0f64, 0.0));
+    }
+
+    #[test]
+    fn test_into_complex_already_complex() {
+        let z = Complex::new(1.0f64, 2.0);
+        assert_eq!(z.into_complex(), z);
+
+        let z32 = Complex::new(1.0f32, 2.0);
+        assert_eq!(z32.into_complex(), z32);
     }
 }
