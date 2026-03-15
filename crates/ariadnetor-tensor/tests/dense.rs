@@ -336,3 +336,47 @@ fn test_real_imag_real_type() {
     assert_eq!(im.get(&[0]), 0.0);
     assert_eq!(im.get(&[1]), 0.0);
 }
+
+#[test]
+fn test_map_double() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let r = t.map(|&x| x * 2.0);
+    assert_eq!(r.shape(), &[2, 2]);
+    assert_eq!(r.data(), &[2.0, 4.0, 6.0, 8.0]);
+}
+
+#[test]
+fn test_map_type_conversion() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let c = t.map(|&x| Complex::new(x, 0.0));
+    assert_eq!(c.shape(), &[2]);
+    assert_eq!(c.get(&[0]), Complex::new(1.0, 0.0));
+    assert_eq!(c.get(&[1]), Complex::new(2.0, 0.0));
+}
+
+#[test]
+fn test_map_mut_negate() {
+    let mut t = DenseTensor::<f64>::from_data(vec![1.0, -2.0, 3.0], vec![3]);
+    t.map_mut(|&x| -x);
+    assert_eq!(t.data(), &[-1.0, 2.0, -3.0]);
+}
+
+#[test]
+fn test_map_mut_cow() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let mut t2 = t.clone(); // shares Arc
+    assert_eq!(t.as_ptr(), t2.as_ptr()); // same underlying data
+    t2.map_mut(|&x| x * 10.0);
+    // t2 triggered CoW, t unchanged
+    assert_eq!(t.data(), &[1.0, 2.0]);
+    assert_eq!(t2.data(), &[10.0, 20.0]);
+}
+
+#[test]
+fn test_map_with_index_sum_of_indices() {
+    let t = DenseTensor::<f64>::from_data(vec![0.0; 6], vec![2, 3]);
+    let r = t.map_with_index(|coords, _| (coords[0] + coords[1]) as f64);
+    assert_eq!(r.shape(), &[2, 3]);
+    // [0+0, 0+1, 0+2, 1+0, 1+1, 1+2] = [0, 1, 2, 1, 2, 3]
+    assert_eq!(r.data(), &[0.0, 1.0, 2.0, 1.0, 2.0, 3.0]);
+}

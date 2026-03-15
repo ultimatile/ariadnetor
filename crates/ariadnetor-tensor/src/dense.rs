@@ -270,6 +270,57 @@ where
         Arc::make_mut(&mut self.data).as_mut_ptr()
     }
 
+    /// Apply a function to each element, producing a new tensor.
+    ///
+    /// Supports type-changing transforms (e.g., `DenseTensor<f64>` → `DenseTensor<Complex<f64>>`).
+    pub fn map<U, F>(&self, f: F) -> DenseTensor<U>
+    where
+        F: Fn(&T) -> U,
+        U: Clone + 'static,
+    {
+        let data: Vec<U> = self.data().iter().map(&f).collect();
+        DenseTensor::from_data(data, self.shape().to_vec())
+    }
+
+    /// Apply a function to each element in place (triggers CoW if shared).
+    pub fn map_mut<F>(&mut self, f: F)
+    where
+        F: Fn(&T) -> T,
+    {
+        let data = self.data_mut();
+        for x in data.iter_mut() {
+            *x = f(x);
+        }
+    }
+
+    /// Apply a function with multi-dimensional coordinates to each element.
+    ///
+    /// The closure receives `(&[usize], &T)` where the first argument is the
+    /// multi-dimensional index.
+    pub fn map_with_index<U, F>(&self, f: F) -> DenseTensor<U>
+    where
+        F: Fn(&[usize], &T) -> U,
+        U: Clone + 'static,
+    {
+        let shape = self.shape();
+        let mut coords = vec![0usize; shape.len()];
+        let data: Vec<U> = self
+            .data()
+            .iter()
+            .enumerate()
+            .map(|(flat, x)| {
+                // Decode flat index to coordinates
+                let mut rem = flat;
+                for i in (0..shape.len()).rev() {
+                    coords[i] = rem % shape[i];
+                    rem /= shape[i];
+                }
+                f(&coords, x)
+            })
+            .collect();
+        DenseTensor::from_data(data, self.shape().to_vec())
+    }
+
     /// Permute tensor axes (pure-Rust naive implementation)
     ///
     /// For optimized transpose using HPTT or other backends, use
