@@ -203,3 +203,32 @@ fn test_permute_complex_basic() {
     assert_eq!(result.shape(), result_naive.shape());
     assert_eq!(result.data(), result_naive.data());
 }
+
+#[test]
+fn test_eye_f64_3x3() {
+    let id = DenseTensor::<f64>::eye(3);
+    assert_eq!(id.shape(), &[3, 3]);
+    for i in 0..3 {
+        for j in 0..3 {
+            let expected = if i == j { 1.0 } else { 0.0 };
+            assert_eq!(id.get(&[i, j]), expected);
+        }
+    }
+}
+
+#[test]
+fn test_eye_c64() {
+    let id = DenseTensor::<Complex<f64>>::eye(2);
+    assert_eq!(id.shape(), &[2, 2]);
+    assert_eq!(id.get(&[0, 0]), Complex::new(1.0, 0.0));
+    assert_eq!(id.get(&[0, 1]), Complex::new(0.0, 0.0));
+    assert_eq!(id.get(&[1, 0]), Complex::new(0.0, 0.0));
+    assert_eq!(id.get(&[1, 1]), Complex::new(1.0, 0.0));
+}
+
+#[test]
+fn test_eye_1x1() {
+    let id = DenseTensor::<f64>::eye(1);
+    assert_eq!(id.shape(), &[1, 1]);
+    assert_eq!(id.get(&[0, 0]), 1.0);
+}

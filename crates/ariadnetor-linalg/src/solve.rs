@@ -114,12 +114,7 @@ pub fn inverse<T: Scalar>(
         )));
     }
 
-    // Identity matrix as right-hand side
-    let mut id_data = vec![T::zero(); n * n];
-    for i in 0..n {
-        id_data[i * n + i] = T::one();
-    }
-    let identity = DenseTensor::from_data(id_data, vec![n, n]);
+    let identity = DenseTensor::<T>::eye(n);
 
     // Solve AX = I → X = A⁻¹
     let a_flat = DenseTensor::from_data(tensor.data().to_vec(), vec![n, n]);

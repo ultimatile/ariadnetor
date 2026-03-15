@@ -144,6 +144,22 @@ where
         }
     }
 
+    /// Create an n×n identity matrix.
+    ///
+    /// # Arguments
+    ///
+    /// * `n` - Matrix dimension
+    pub fn eye(n: usize) -> Self
+    where
+        T: Zero + One,
+    {
+        let mut data = vec![T::zero(); n * n];
+        for i in 0..n {
+            data[i * n + i] = T::one();
+        }
+        Self::from_data(data, vec![n, n])
+    }
+
     /// Create a tensor from existing data
     ///
     /// # Arguments

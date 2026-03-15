@@ -141,15 +141,6 @@ pub fn expm_antihermitian<T: Scalar>(
 // General matrix exponential via Scaling and Squaring + Padé approximation
 // ---------------------------------------------------------------------------
 
-/// Identity matrix of size n×n.
-fn eye<T: Scalar>(n: usize) -> DenseTensor<T> {
-    let mut data = vec![T::zero(); n * n];
-    for i in 0..n {
-        data[i * n + i] = T::one();
-    }
-    DenseTensor::from_data(data, vec![n, n])
-}
-
 /// 1-norm of an n×n matrix (maximum absolute column sum).
 fn norm_1<T: Scalar>(data: &[T], n: usize) -> T::Real {
     let mut max_col_sum = <T::Real as Zero>::zero();
@@ -206,7 +197,7 @@ fn pade_uv_small<T: Scalar>(
     m: usize,
 ) -> Result<(DenseTensor<T>, DenseTensor<T>), BackendError> {
     let b = pade_coefficients(m);
-    let id = eye::<T>(n);
+    let id = DenseTensor::<T>::eye(n);
 
     // Compute needed powers of A
     let a2 = matmul(backend, a, a)?;
@@ -325,7 +316,7 @@ fn pade_uv_13<T: Scalar>(
     n: usize,
 ) -> Result<(DenseTensor<T>, DenseTensor<T>), BackendError> {
     let b = pade_coefficients(13);
-    let id = eye::<T>(n);
+    let id = DenseTensor::<T>::eye(n);
 
     let a2 = matmul(backend, a, a)?;
     let a4 = matmul(backend, &a2, &a2)?;
