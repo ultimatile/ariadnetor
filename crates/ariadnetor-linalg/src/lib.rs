@@ -24,6 +24,7 @@
 //! - [`expm_hermitian`]: Matrix exponential for Hermitian matrices
 //! - [`expm_antihermitian`]: Matrix exponential for anti-Hermitian matrices
 //! - [`solve`]: Linear solve AX = B via backend (LU decomposition)
+//! - [`inverse`]: Matrix inverse via LU decomposition
 
 mod contract;
 mod decomposition;
@@ -42,5 +43,5 @@ pub use decomposition::{
 pub use eigen::{eig, eigh, eigvals, eigvalsh, EigResult, EighResult};
 pub use expm::{expm, expm_antihermitian, expm_hermitian};
 pub use scalar_ops::{linear_combine, norm, normalize, scale, trace};
-pub use solve::solve;
+pub use solve::{inverse, solve};
 pub use transpose::transpose;
