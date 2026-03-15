@@ -1,0 +1,219 @@
+use arnet_linalg::{linear_combine, norm, normalize, scale, trace};
+use arnet_tensor::DenseTensor;
+
+// --- Scale tests ---
+
+#[test]
+fn test_scale_f64() {
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let scaled = scale(&tensor, 2.5);
+    assert_eq!(scaled.get(&[0, 0]), 2.5);
+    assert_eq!(scaled.get(&[0, 1]), 5.0);
+    assert_eq!(scaled.get(&[1, 0]), 7.5);
+    assert_eq!(scaled.get(&[1, 1]), 10.0);
+    // Original unchanged
+    assert_eq!(tensor.get(&[0, 0]), 1.0);
+}
+
+#[test]
+fn test_scale_complex() {
+    use num_complex::Complex;
+    let tensor = DenseTensor::from_data(
+        vec![Complex::new(1.0, 0.0), Complex::new(0.0, 1.0)],
+        vec![2],
+    );
+    let scaled = scale(&tensor, Complex::new(2.0, 3.0));
+    // (1+0i)*(2+3i) = 2+3i
+    assert_eq!(scaled.get(&[0]), Complex::new(2.0, 3.0));
+    // (0+1i)*(2+3i) = -3+2i
+    assert_eq!(scaled.get(&[1]), Complex::new(-3.0, 2.0));
+}
+
+// --- Norm tests ---
+
+#[test]
+fn test_norm_f64() {
+    let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+    let n = norm(&tensor);
+    assert!((n - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_norm_complex() {
+    use num_complex::Complex;
+    // |3+4i| = 5, so norm of single element [3+4i] = 5
+    let tensor = DenseTensor::from_data(vec![Complex::new(3.0, 4.0)], vec![1]);
+    let n: f64 = norm(&tensor);
+    assert!((n - 5.0).abs() < 1e-10);
+}
+
+// --- Normalize tests ---
+
+#[test]
+fn test_normalize_f64() {
+    let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+    let (normalized, n) = normalize(&tensor);
+    assert!((n - 2.0).abs() < 1e-10);
+    assert!((norm(&normalized) - 1.0).abs() < 1e-10);
+    // Original unchanged
+    assert_eq!(tensor.get(&[0, 0]), 1.0);
+}
+
+#[test]
+#[should_panic(expected = "Cannot normalize zero tensor")]
+fn test_normalize_zero_panics() {
+    let tensor = DenseTensor::<f64>::zeros(vec![2, 2]);
+    let _ = normalize(&tensor);
+}
+
+// --- Linear combine tests ---
+
+#[test]
+fn test_linear_combine_basic() {
+    let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+    let b = DenseTensor::<f64>::constant(vec![2, 2], 2.0);
+    let result = linear_combine(&[&a, &b], &[3.0, 4.0]).unwrap();
+    // 3*1 + 4*2 = 11
+    assert_eq!(result.get(&[0, 0]), 11.0);
+}
+
+#[test]
+fn test_linear_combine_shape_mismatch() {
+    let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+    let b = DenseTensor::<f64>::constant(vec![3, 3], 2.0);
+    assert!(linear_combine(&[&a, &b], &[1.0, 1.0]).is_err());
+}
+
+#[test]
+fn test_linear_combine_empty() {
+    let result = linear_combine::<f64>(&[], &[]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_linear_combine_length_mismatch() {
+    let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+    assert!(linear_combine(&[&a], &[1.0, 2.0]).is_err());
+}
+
+// --- Trace tests ---
+
+#[test]
+fn test_trace_matrix() {
+    // tr([[1,2],[3,4]]) = 1 + 4 = 5
+    let mat = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let result = trace(&mat, &[(0, 1)]).unwrap();
+    assert_eq!(result.shape(), &[1]);
+    assert_eq!(result.get(&[0]), 5.0);
+}
+
+#[test]
+fn test_trace_3x3_identity() {
+    // tr(I_3) = 3
+    let mut data = vec![0.0; 9];
+    data[0] = 1.0;
+    data[4] = 1.0;
+    data[8] = 1.0;
+    let mat = DenseTensor::<f64>::from_data(data, vec![3, 3]);
+    let result = trace(&mat, &[(0, 1)]).unwrap();
+    assert_eq!(result.get(&[0]), 3.0);
+}
+
+#[test]
+fn test_trace_partial_rank3() {
+    // A[i,j,k] shape [2,3,3], trace over (1,2) → B[i] shape [2]
+    // B[i] = Σ_j A[i,j,j]
+    let mut data = vec![0.0; 18]; // 2*3*3
+    // A[0,0,0]=1, A[0,1,1]=2, A[0,2,2]=3 → B[0] = 6
+    data[0] = 1.0; // [0,0,0]
+    data[4] = 2.0; // [0,1,1]
+    data[8] = 3.0; // [0,2,2]
+    // A[1,0,0]=4, A[1,1,1]=5, A[1,2,2]=6 → B[1] = 15
+    data[9] = 4.0;  // [1,0,0]
+    data[13] = 5.0; // [1,1,1]
+    data[17] = 6.0; // [1,2,2]
+    let tensor = DenseTensor::from_data(data, vec![2, 3, 3]);
+    let result = trace(&tensor, &[(1, 2)]).unwrap();
+    assert_eq!(result.shape(), &[2]);
+    assert_eq!(result.get(&[0]), 6.0);
+    assert_eq!(result.get(&[1]), 15.0);
+}
+
+#[test]
+fn test_trace_tci_example() {
+    // TCI spec example: shape {3, 4, 2, 4, 2}, pairs {{1,3}, {2,4}} → shape {3}
+    // result[i0] = Σ_{t1,t2} A[i0, t1, t2, t1, t2]
+    let shape = vec![3, 4, 2, 4, 2];
+    let total: usize = shape.iter().product();
+    let mut data = vec![0.0f64; total];
+
+    // Set specific elements to verify correctness
+    // A[0, 0, 0, 0, 0] = 1.0
+    // A[0, 1, 1, 1, 1] = 2.0
+    // result[0] should be 3.0
+    let strides = [64, 16, 8, 2, 1]; // row-major strides for shape [3,4,2,4,2]
+    // A[0,0,0,0,0]
+    data[0] = 1.0;
+    // A[0,1,1,1,1]
+    data[strides[1] + strides[2] + strides[3] + strides[4]] = 2.0;
+    // A[1, 2, 0, 2, 0] = 5.0
+    data[strides[0] + 2 * strides[1] + 2 * strides[3]] = 5.0;
+
+    let tensor = DenseTensor::from_data(data, shape);
+    let result = trace(&tensor, &[(1, 3), (2, 4)]).unwrap();
+    assert_eq!(result.shape(), &[3]);
+    assert_eq!(result.get(&[0]), 3.0);
+    assert_eq!(result.get(&[1]), 5.0);
+    assert_eq!(result.get(&[2]), 0.0);
+}
+
+#[test]
+fn test_trace_full_contraction() {
+    // All bonds paired → scalar
+    // A[i,j,i,j] shape [2,3,2,3], pairs [(0,2),(1,3)]
+    // result = Σ_{i,j} A[i,j,i,j]
+    let shape = vec![2, 3, 2, 3];
+    let total: usize = shape.iter().product();
+    let mut data = vec![0.0f64; total];
+    let strides = [18, 6, 3, 1]; // row-major strides for shape [2,3,2,3]
+    // A[0,0,0,0]=1, A[1,1,1,1]=2, A[0,2,0,2]=3
+    data[0] = 1.0;
+    data[strides[0] + strides[1] + strides[2] + strides[3]] = 2.0;
+    data[2 * strides[1] + 2 * strides[3]] = 3.0;
+    let tensor = DenseTensor::from_data(data, shape);
+    let result = trace(&tensor, &[(0, 2), (1, 3)]).unwrap();
+    assert_eq!(result.shape(), &[1]);
+    assert_eq!(result.get(&[0]), 6.0);
+}
+
+#[test]
+fn test_trace_empty_pairs() {
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let result = trace(&tensor, &[]).unwrap();
+    assert_eq!(result.shape(), &[2, 2]);
+    assert_eq!(result.data(), tensor.data());
+}
+
+#[test]
+fn test_trace_dimension_mismatch() {
+    let tensor = DenseTensor::<f64>::from_data(vec![0.0; 6], vec![2, 3]);
+    assert!(trace(&tensor, &[(0, 1)]).is_err());
+}
+
+#[test]
+fn test_trace_index_out_of_range() {
+    let tensor = DenseTensor::<f64>::from_data(vec![0.0; 4], vec![2, 2]);
+    assert!(trace(&tensor, &[(0, 5)]).is_err());
+}
+
+#[test]
+fn test_trace_self_pair() {
+    let tensor = DenseTensor::<f64>::from_data(vec![0.0; 4], vec![2, 2]);
+    assert!(trace(&tensor, &[(1, 1)]).is_err());
+}
+
+#[test]
+fn test_trace_duplicate_index() {
+    let tensor = DenseTensor::<f64>::from_data(vec![0.0; 8], vec![2, 2, 2]);
+    assert!(trace(&tensor, &[(0, 1), (1, 2)]).is_err());
+}
