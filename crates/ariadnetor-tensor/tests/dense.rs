@@ -380,3 +380,106 @@ fn test_map_with_index_sum_of_indices() {
     // [0+0, 0+1, 0+2, 1+0, 1+1, 1+2] = [0, 1, 2, 1, 2, 3]
     assert_eq!(r.data(), &[0.0, 1.0, 2.0, 1.0, 2.0, 3.0]);
 }
+
+// --- slice / expand / replace_slice tests ---
+
+#[test]
+fn test_slice_2x2_from_3x3() {
+    // [[1,2,3],[4,5,6],[7,8,9]] → slice rows 0..2, cols 1..3 → [[2,3],[5,6]]
+    let t = DenseTensor::<f64>::from_data(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+        vec![3, 3],
+    );
+    let s = t.slice(&[(0, 2), (1, 3)]);
+    assert_eq!(s.shape(), &[2, 2]);
+    assert_eq!(s.data(), &[2.0, 3.0, 5.0, 6.0]);
+}
+
+#[test]
+fn test_slice_row() {
+    let t = DenseTensor::<f64>::from_data(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+    );
+    // Extract second row
+    let s = t.slice(&[(1, 2), (0, 3)]);
+    assert_eq!(s.shape(), &[1, 3]);
+    assert_eq!(s.data(), &[4.0, 5.0, 6.0]);
+}
+
+#[test]
+fn test_slice_3d() {
+    let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
+    let t = DenseTensor::from_data(data, vec![2, 3, 4]);
+    let s = t.slice(&[(0, 1), (1, 3), (2, 4)]);
+    assert_eq!(s.shape(), &[1, 2, 2]);
+    // Elements: t[0,1,2]=6, t[0,1,3]=7, t[0,2,2]=10, t[0,2,3]=11
+    assert_eq!(s.data(), &[6.0, 7.0, 10.0, 11.0]);
+}
+
+#[test]
+#[should_panic(expected = "out of bounds")]
+fn test_slice_out_of_bounds() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let _s = t.slice(&[(0, 3), (0, 2)]);
+}
+
+#[test]
+fn test_expand_symmetric() {
+    // [[1,2],[3,4]] with padding (1,1) on each axis → 4×4
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let e = t.expand(&[(1, 1), (1, 1)]);
+    assert_eq!(e.shape(), &[4, 4]);
+    // Row 0: all zeros
+    assert_eq!(e.get(&[0, 0]), 0.0);
+    assert_eq!(e.get(&[0, 1]), 0.0);
+    // Row 1: 0, 1, 2, 0
+    assert_eq!(e.get(&[1, 0]), 0.0);
+    assert_eq!(e.get(&[1, 1]), 1.0);
+    assert_eq!(e.get(&[1, 2]), 2.0);
+    assert_eq!(e.get(&[1, 3]), 0.0);
+    // Row 2: 0, 3, 4, 0
+    assert_eq!(e.get(&[2, 1]), 3.0);
+    assert_eq!(e.get(&[2, 2]), 4.0);
+    // Row 3: all zeros
+    assert_eq!(e.get(&[3, 3]), 0.0);
+}
+
+#[test]
+fn test_expand_asymmetric() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let e = t.expand(&[(2, 1)]);
+    assert_eq!(e.shape(), &[5]);
+    assert_eq!(e.data(), &[0.0, 0.0, 1.0, 2.0, 0.0]);
+}
+
+#[test]
+fn test_replace_slice_center() {
+    // 3×3 zeros, write [[5,6],[7,8]] at position (0,1)
+    let mut t = DenseTensor::<f64>::from_data(vec![0.0; 9], vec![3, 3]);
+    let sub = DenseTensor::<f64>::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    t.replace_slice(&sub, &[0, 1]);
+    assert_eq!(t.get(&[0, 1]), 5.0);
+    assert_eq!(t.get(&[0, 2]), 6.0);
+    assert_eq!(t.get(&[1, 1]), 7.0);
+    assert_eq!(t.get(&[1, 2]), 8.0);
+    // Untouched elements remain zero
+    assert_eq!(t.get(&[0, 0]), 0.0);
+    assert_eq!(t.get(&[2, 2]), 0.0);
+}
+
+#[test]
+#[should_panic(expected = "exceeds boundary")]
+fn test_replace_slice_out_of_bounds() {
+    let mut t = DenseTensor::<f64>::from_data(vec![0.0; 4], vec![2, 2]);
+    let sub = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    t.replace_slice(&sub, &[1, 1]); // 1+2 > 2
+}
+
+#[test]
+fn test_slice_expand_round_trip() {
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let expanded = t.expand(&[(1, 1), (1, 1)]); // 4×4
+    let recovered = expanded.slice(&[(1, 3), (1, 3)]); // back to 2×2
+    assert_eq!(recovered.data(), t.data());
+}

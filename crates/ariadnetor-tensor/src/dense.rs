@@ -321,6 +321,156 @@ where
         DenseTensor::from_data(data, self.shape().to_vec())
     }
 
+    /// Extract a sub-tensor by specifying a range for each axis.
+    ///
+    /// Each range is `(start, end)` with exclusive end, similar to Rust's `start..end`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `ranges` length doesn't match rank, or any range is out of bounds.
+    pub fn slice(&self, ranges: &[(usize, usize)]) -> Self {
+        let shape = self.shape();
+        assert_eq!(
+            ranges.len(),
+            shape.len(),
+            "slice: ranges length {} doesn't match rank {}",
+            ranges.len(),
+            shape.len()
+        );
+        for (i, &(start, end)) in ranges.iter().enumerate() {
+            assert!(
+                start <= end && end <= shape[i],
+                "slice: range ({start}, {end}) out of bounds for axis {i} with size {}",
+                shape[i]
+            );
+        }
+
+        let new_shape: Vec<usize> = ranges.iter().map(|&(s, e)| e - s).collect();
+        let new_total: usize = new_shape.iter().product();
+        let mut data = Vec::with_capacity(new_total);
+
+        let src_strides = Self::compute_strides(shape);
+        let rank = shape.len();
+        let mut coords = vec![0usize; rank];
+
+        for _ in 0..new_total {
+            let flat: usize = (0..rank)
+                .map(|d| (coords[d] + ranges[d].0) * src_strides[d])
+                .sum();
+            data.push(self.data[flat].clone());
+
+            // Increment coordinates (row-major order)
+            for d in (0..rank).rev() {
+                coords[d] += 1;
+                if coords[d] < new_shape[d] {
+                    break;
+                }
+                coords[d] = 0;
+            }
+        }
+
+        Self::from_data(data, new_shape)
+    }
+
+    /// Expand tensor by adding zero-padding at the boundaries.
+    ///
+    /// `padding` specifies `(before, after)` padding for each axis.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `padding` length doesn't match rank.
+    pub fn expand(&self, padding: &[(usize, usize)]) -> Self
+    where
+        T: Zero,
+    {
+        let shape = self.shape();
+        assert_eq!(
+            padding.len(),
+            shape.len(),
+            "expand: padding length {} doesn't match rank {}",
+            padding.len(),
+            shape.len()
+        );
+
+        let new_shape: Vec<usize> = shape
+            .iter()
+            .zip(padding)
+            .map(|(&s, &(before, after))| s + before + after)
+            .collect();
+        let new_total: usize = new_shape.iter().product();
+        let mut data = vec![T::zero(); new_total];
+
+        let src_strides = Self::compute_strides(shape);
+        let dst_strides = Self::compute_strides(&new_shape);
+        let rank = shape.len();
+        let mut coords = vec![0usize; rank];
+
+        for _ in 0..self.len() {
+            let src_flat: usize = (0..rank).map(|d| coords[d] * src_strides[d]).sum();
+            let dst_flat: usize = (0..rank)
+                .map(|d| (coords[d] + padding[d].0) * dst_strides[d])
+                .sum();
+            data[dst_flat] = self.data[src_flat].clone();
+
+            for d in (0..rank).rev() {
+                coords[d] += 1;
+                if coords[d] < shape[d] {
+                    break;
+                }
+                coords[d] = 0;
+            }
+        }
+
+        Self::from_data(data, new_shape)
+    }
+
+    /// Write a sub-tensor into this tensor starting at the given position.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `begin` length doesn't match rank, or the sub-tensor
+    /// would extend beyond the boundaries of this tensor.
+    pub fn replace_slice(&mut self, sub: &Self, begin: &[usize]) {
+        let shape = self.shape().to_vec();
+        let sub_shape = sub.shape();
+        assert_eq!(
+            begin.len(),
+            shape.len(),
+            "replace_slice: begin length {} doesn't match rank {}",
+            begin.len(),
+            shape.len()
+        );
+        for (d, (&b, &ss)) in begin.iter().zip(sub_shape).enumerate() {
+            assert!(
+                b + ss <= shape[d],
+                "replace_slice: sub-tensor exceeds boundary on axis {d} ({b} + {ss} > {})",
+                shape[d]
+            );
+        }
+
+        let dst_strides = Self::compute_strides(&shape);
+        let src_strides = Self::compute_strides(sub_shape);
+        let rank = shape.len();
+        let mut coords = vec![0usize; rank];
+        let data = self.data_mut();
+
+        for _ in 0..sub.len() {
+            let src_flat: usize = (0..rank).map(|d| coords[d] * src_strides[d]).sum();
+            let dst_flat: usize = (0..rank)
+                .map(|d| (coords[d] + begin[d]) * dst_strides[d])
+                .sum();
+            data[dst_flat] = sub.data()[src_flat].clone();
+
+            for d in (0..rank).rev() {
+                coords[d] += 1;
+                if coords[d] < sub_shape[d] {
+                    break;
+                }
+                coords[d] = 0;
+            }
+        }
+    }
+
     /// Permute tensor axes (pure-Rust naive implementation)
     ///
     /// For optimized transpose using HPTT or other backends, use
