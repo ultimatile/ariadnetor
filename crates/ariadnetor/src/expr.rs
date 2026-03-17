@@ -69,7 +69,7 @@ enum ExprNode {
         pairs: Vec<(usize, usize)>,
     },
 
-    /// Linear combination: out = Σ coefs[i] × tensors[i]
+    /// Linear combination: out = Σ coefs\[i\] × tensors\[i\]
     LinearCombine {
         tensors: Vec<ExprNode>,
         coefs: Vec<f64>,
@@ -224,7 +224,7 @@ impl ExpressionComputeGraph {
 
     /// Create a linear combination of multiple expressions
     ///
-    /// Records a linear combination: out = Σ coefs[i] × tensors[i]
+    /// Records a linear combination: out = Σ coefs\[i\] × tensors\[i\]
     ///
     /// # Arguments
     ///

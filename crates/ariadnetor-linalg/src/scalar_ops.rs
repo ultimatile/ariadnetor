@@ -83,7 +83,7 @@ pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real
     (DenseTensor::from_data(data, tensor.shape().to_vec()), n)
 }
 
-/// Linear combination of tensors: sum_i coefs[i] * tensors[i].
+/// Linear combination of tensors: Σ coefs\[i\] * tensors\[i\].
 ///
 /// All tensors must have the same shape.
 ///

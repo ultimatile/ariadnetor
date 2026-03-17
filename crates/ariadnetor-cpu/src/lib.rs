@@ -1,8 +1,8 @@
 //! CPU compute backend for Ariadnetor
 //!
 //! Provides [`CpuBackend`] implementing `ComputeBackend` via:
-//! - **GEMM**: faer (f64, f32, Complex<f64>, Complex<f32>)
-//! - **SVD/QR/LQ/EIGH**: faer (f64, f32, Complex<f64>, Complex<f32>)
+//! - **GEMM**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
+//! - **SVD/QR/LQ/EIGH**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **Transpose**: HPTT when available (f64, f32, Complex), naive fallback
 
 mod eig;
@@ -47,7 +47,7 @@ impl ComputeBackend for CpuBackend {
 
     /// GEMM: C = alpha * A * B + beta * C
     ///
-    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -85,7 +85,7 @@ impl ComputeBackend for CpuBackend {
 
     /// Thin SVD via faer: A = U * diag(S) * Vt
     ///
-    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     /// For complex types, Vt stores V^H (conjugate transpose).
     fn svd<T: Scalar>(&self, desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
@@ -115,7 +115,7 @@ impl ComputeBackend for CpuBackend {
 
     /// Thin QR via faer: A = Q * R
     ///
-    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -145,7 +145,7 @@ impl ComputeBackend for CpuBackend {
     /// Thin LQ via faer: A = L * Q
     ///
     /// Internally computes QR of A^H (adjoint), then takes conjugate transposes.
-    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     fn lq<T: Scalar>(&self, desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -174,7 +174,7 @@ impl ComputeBackend for CpuBackend {
 
     /// Self-adjoint eigenvalue decomposition via faer
     ///
-    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     fn eigh<T: Scalar>(&self, desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -201,7 +201,7 @@ impl ComputeBackend for CpuBackend {
 
     /// General eigenvalue decomposition via faer
     ///
-    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 
@@ -228,7 +228,7 @@ impl ComputeBackend for CpuBackend {
 
     /// Linear solve via faer LU decomposition with partial pivoting
     ///
-    /// Dispatches to faer for f64/f32/Complex<f64>/Complex<f32>.
+    /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     fn solve<T: Scalar>(&self, desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
 

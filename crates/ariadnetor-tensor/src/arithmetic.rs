@@ -70,9 +70,9 @@ impl<T> TensorStorage<T>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
-    /// Linear combination: sum_i coefs[i] * tensors[i]
+    /// Linear combination: Σ coefs\[i\] * tensors\[i\]
     ///
-    /// Forms `out` as Σ coefs[i] * tensors[i].
+    /// Forms `out` as Σ coefs\[i\] * tensors\[i\].
     ///
     /// # TCI-spec
     /// Corresponds to `tci::linear_combine` overload (2)
