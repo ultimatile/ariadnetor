@@ -1,27 +1,27 @@
 # Ariadnetor
 
-Distributed Tensor Network Framework with pluggable backend architecture.
+> [!WARNING]
+> This project is in early development. APIs are unstable and subject to breaking changes.
 
-## Name
-
-**Ariadnetor** is an anagram containing:
-
-- **Ariadne** - The thread through the labyrinth (tensor networks)
-- **Tensor** - Multi-dimensional arrays
-- **r** - Rust
+Tensor network framework in Rust
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  ariadnetor (arnet)  - High-level API                   │
-│    Einsum DSL, Expression Graph                         │
-├─────────────────────────────────────────────────────────┤
-│  ariadnetor-tensor (arnet_tensor)  - CPU Implementation │
-│    DenseTensor, FatTensor, Contraction                  │
+│    Einsum DSL, Expression Graph, Runtime                │
+├──────────────────────────┬──────────────────────────────┤
+│  ariadnetor-linalg       │  ariadnetor-cpu              │
+│  (arnet_linalg)          │  (arnet_cpu)                 │
+│  Backend-agnostic        │  CpuBackend:                 │
+│  linear algebra API      │  faer + hptt-rs              │
+├──────────────────────────┴──────────────────────────────┤
+│  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
+│    DenseTensor, TensorStorage, Tensor                   │
 ├─────────────────────────────────────────────────────────┤
 │  ariadnetor-core (arnet_core)  - Core Abstractions      │
-│    Scalar, LabelId, ComputeBackend trait                │
+│    Scalar, LabelId, ComputeBackend trait, EinsumExpr    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -29,84 +29,72 @@ Distributed Tensor Network Framework with pluggable backend architecture.
 
 ### `ariadnetor-core`
 
-Backend-agnostic core abstractions.
-
-- `Scalar` / `FloatCompute` traits - Element type abstraction
-- `LabelId` - Interned tensor index labels
-- `EinsumExpr` / `ContractionPlan` - Einsum parsing and analysis
-- `ComputeBackend` trait - Pluggable backend interface
+Backend-agnostic core abstractions: `Scalar` trait, `LabelId`, `EinsumExpr`, `ComputeBackend` trait.
 
 ### `ariadnetor-tensor`
 
-Pure Rust CPU tensor implementation.
+Tensor data structures with Arc-based Copy-on-Write.
 
-- `DenseTensor<T>` - Dense storage with Arc-based CoW
-- `RawTensor<T>` - Storage format enum (Dense, future: Sparse, BlockSparse)
-- `FatTensor<T>` - Tensor with label metadata
-- Arithmetic operations (faer for GEMM, hptt for transpose)
+- `DenseTensor<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag
+- `TensorStorage<T>` — Storage format enum (Dense)
+- `Tensor<T>` — Main API type: scale, linear_combine, norm, normalize
+
+### `ariadnetor-linalg`
+
+Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
+
+- contract, transpose
+- scale, norm, normalize, linear_combine, trace, diag
+- svd, trunc_svd, qr, lq
+- eig, eigh, eigvals, eigvalsh
+- expm, expm_hermitian, expm_antihermitian
+- solve, inverse
+
+### `ariadnetor-cpu`
+
+`CpuBackend`: faer + hptt-rs (f32, f64, `Complex<f32>`, `Complex<f64>`)
 
 ### `ariadnetor`
 
-Main library crate (use as `arnet`).
-
-- Einsum DSL
-- Expression compute graph
-- High-level tensor API
-
-## Prerequisites
-
-- Rust 1.70+
-
-## Installation
-
-```toml
-[dependencies]
-ariadnetor = { git = "https://github.com/ultimatile/ariadnetor" }
-```
+Main library crate (`arnet`). Re-exports + `ExpressionComputeGraph` (evaluate not yet implemented).
 
 ## Usage
 
 ```rust
-use arnet_tensor::{FatTensor, RawTensor, LabelId};
+use arnet::{Tensor, CpuBackend};
+use arnet_linalg::{contract, svd, transpose};
 
-// Create tensors with labels
-let a = FatTensor::from_raw(
-    RawTensor::<f64>::ones(vec![2, 3]),
-    &["i", "j"]
-);
-let b = FatTensor::from_raw(
-    RawTensor::<f64>::ones(vec![3, 4]),
-    &["j", "k"]
-);
+// Create tensors
+let a = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+let b = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
-// Contract using einsum notation
-let c = a.contract(&b, "ij,jk->ik").unwrap();
+// Tensor contraction via ComputeBackend
+let backend = CpuBackend::new();
+let c = contract(&a.storage, &b.storage, "ij,jk->ik", &backend).unwrap();
+
+// SVD decomposition
+let result = svd(&a.storage, 0, &backend).unwrap();
 ```
 
 ## Building
+
+```bash
+cargo make build       # Build workspace
+cargo make test        # Run unit tests
+cargo make ci          # Full CI checks (fmt, clippy, test)
+```
+
+Or with plain cargo:
 
 ```bash
 cargo build --workspace
 cargo test --workspace
 ```
 
-### Using cargo-make
+## Prerequisites
 
-```bash
-cargo install cargo-make
-cargo make build
-cargo make test
-```
-
-## Roadmap
-
-### Future Backends
-
-These backends are planned but not yet implemented:
-
-- `ariadnetor-cuda` - cuTENSOR / cuTensorNet integration
-- `ariadnetor-metal` - Metal Performance Shaders for Apple Silicon
-- MLIR/IREE experimentation in a separate repository
+- Rust (edition 2024)
+- [hptt-rs](https://github.com/ultimatile/hptt-rs) (for high-performance transpose)
 
 ## License
 

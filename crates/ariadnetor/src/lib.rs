@@ -1,4 +1,4 @@
-//! Ariadnetor: Pure Rust Distributed Tensor Network Framework
+//! Ariadnetor: tensor network framework in Rust
 //!
 //! # Architecture
 //!
