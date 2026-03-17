@@ -16,7 +16,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 # Linear algebra
 faer = "0.23"
-hptt = { path = "../hptt-rs" }
+hptt = { git = "https://github.com/ultimatile/hptt-rs" }
 
 # Memory alignment
 aligned-vec = "0.6"
