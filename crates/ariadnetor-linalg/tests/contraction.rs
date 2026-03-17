@@ -4,7 +4,7 @@
 //! contraction logic to the linalg crate.
 
 use arnet_cpu::CpuBackend;
-use arnet_linalg::contract;
+use arnet_linalg::{contract, transpose};
 use arnet_tensor::DenseTensor;
 
 // ============================================================================
@@ -167,7 +167,7 @@ fn test_consistency_between_ijk_and_ikj_layouts() {
     let result_ijk = contract(&backend, &a_ijk, &b, "ijk,jkl->il").unwrap();
 
     // Permute A from [i,j,k] to [i,k,j] layout
-    let a_ikj = a_ijk.permute(&[0, 2, 1]);
+    let a_ikj = transpose(&backend, &a_ijk, &[0, 2, 1]).unwrap();
     let result_ikj = contract(&backend, &a_ikj, &b, "ikj,jkl->il").unwrap();
 
     assert_eq!(result_ijk.shape(), result_ikj.shape());
