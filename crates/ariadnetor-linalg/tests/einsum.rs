@@ -1,4 +1,4 @@
-//! Tests for single-tensor einsum operations (trace, transpose, permutation)
+//! Tests for einsum: single-tensor, 2-tensor, and N-tensor operations
 
 use arnet_cpu::CpuBackend;
 use arnet_linalg::einsum;
@@ -164,6 +164,101 @@ fn test_einsum_two_input_matmul() {
     assert_eq!(c.get(&[0, 1]), 22.0);
     assert_eq!(c.get(&[1, 0]), 43.0);
     assert_eq!(c.get(&[1, 1]), 50.0);
+}
+
+// ============================================================================
+// N-tensor pairwise reduction (3+ tensors)
+// ============================================================================
+
+#[test]
+fn test_einsum_3_tensor_chain() {
+    let backend = CpuBackend::new();
+    // A(2×3) · B(3×4) · C(4×2) = D(2×2)
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = DenseTensor::from_data(
+        (1..=12).map(|x| x as f64).collect(),
+        vec![3, 4],
+    );
+    let c = DenseTensor::from_data(
+        (1..=8).map(|x| x as f64).collect(),
+        vec![4, 2],
+    );
+
+    let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il").unwrap();
+
+    assert_eq!(d.shape(), &[2, 2]);
+
+    // Verify against manual 2-step contraction
+    use arnet_linalg::contract;
+    let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
+    let expected = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
+    assert_eq!(d.data(), expected.data());
+}
+
+#[test]
+fn test_einsum_3_tensor_implicit_output() {
+    let backend = CpuBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
+
+    // Implicit output: "ij,jk,kl" → free indices i,l → "ij,jk,kl->il"
+    let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl").unwrap();
+    let d_explicit = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il").unwrap();
+
+    assert_eq!(d.shape(), d_explicit.shape());
+    assert_eq!(d.data(), d_explicit.data());
+}
+
+#[test]
+fn test_einsum_4_tensor_chain() {
+    let backend = CpuBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
+    let d = DenseTensor::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+
+    let result = einsum(&backend, &[&a, &b, &c, &d], "ij,jk,kl,lm->im").unwrap();
+
+    assert_eq!(result.shape(), &[2, 2]);
+
+    // Verify against sequential contraction
+    use arnet_linalg::contract;
+    let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
+    let abc = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
+    let expected = contract(&backend, &abc, &d, "il,lm->im").unwrap();
+    assert_eq!(result.data(), expected.data());
+}
+
+#[test]
+fn test_einsum_3_tensor_trace_of_product() {
+    let backend = CpuBackend::new();
+    // tr(A · B · C) = "ij,jk,ki->"
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
+
+    let result = einsum(&backend, &[&a, &b, &c], "ij,jk,ki->").unwrap();
+
+    assert_eq!(result.shape(), &[1]);
+
+    // A·B = [[19,22],[43,50]], A·B·C = [[19,22],[43,50]], tr = 19+50 = 69
+    assert_eq!(result.get(&[0]), 69.0);
+}
+
+#[test]
+fn test_einsum_2_tensor_hadamard() {
+    let backend = CpuBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::from_data(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2]);
+
+    let c = einsum(&backend, &[&a, &b], "ij,ij->ij").unwrap();
+
+    assert_eq!(c.shape(), &[2, 2]);
+    assert_eq!(c.get(&[0, 0]), 2.0);
+    assert_eq!(c.get(&[0, 1]), 6.0);
+    assert_eq!(c.get(&[1, 0]), 12.0);
+    assert_eq!(c.get(&[1, 1]), 20.0);
 }
 
 // ============================================================================

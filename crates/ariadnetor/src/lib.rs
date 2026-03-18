@@ -9,13 +9,15 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use arnet::{Tensor, einsum};
+//! use arnet::{einsum, CpuBackend};
+//! use arnet_tensor::DenseTensor;
 //!
-//! // Matrix multiplication using einsum notation
-//! let a = Tensor::new(vec![100, 200]);
-//! let b = Tensor::new(vec![200, 300]);
+//! let backend = CpuBackend::new();
+//! let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+//! let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 //!
-//! let c = einsum("ij,jk->ik", vec![&a, &b]);
+//! // Matrix multiplication
+//! let c = einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap();
 //! ```
 
 pub mod expr;

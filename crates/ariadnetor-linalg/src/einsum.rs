@@ -1,8 +1,9 @@
-//! General einsum dispatcher for 1- and 2-input tensor operations.
+//! General einsum dispatcher for N-input tensor operations.
 //!
 //! Dispatches to:
 //! - [`crate::scalar_ops::trace`] + [`crate::transpose::transpose`] for single-tensor ops
 //! - [`crate::contract::contract`] for two-tensor contractions
+//! - Sequential pairwise contraction for 3+ tensor chains
 
 use std::collections::{HashMap, HashSet};
 
@@ -15,30 +16,32 @@ use crate::contract::contract;
 use crate::scalar_ops::trace;
 use crate::transpose::transpose;
 
-/// Execute an Einstein summation over one or two tensors.
+/// Execute an Einstein summation over N tensors.
 ///
 /// Parses the notation and dispatches:
 /// - **1 input**: trace (repeated indices not in output) + transpose (reorder)
-/// - **2 inputs**: delegates to [`contract`]
+/// - **2 inputs**: delegates to [`contract`] (supports Hadamard, batched GEMM)
+/// - **N inputs** (N > 2): sequential left-to-right pairwise contraction
 ///
-/// # Supported single-tensor patterns
+/// # Examples
 ///
-/// | Notation | Operation |
-/// |----------|-----------|
-/// | `"ii->"` | Full trace |
-/// | `"iij->j"` | Partial trace |
-/// | `"ij->ji"` | Transpose |
-/// | `"ijk->kji"` | Axis permutation |
-/// | `"ijki->kj"` | Trace + transpose |
+/// ```rust,ignore
+/// use arnet_linalg::einsum;
+/// use arnet_cpu::CpuBackend;
+///
+/// let backend = CpuBackend::new();
+/// // Matrix multiplication
+/// let c = einsum(&backend, &[&a, &b], "ij,jk->ik")?;
+/// // 3-tensor chain
+/// let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il")?;
+/// // Trace
+/// let t = einsum(&backend, &[&m], "ii->")?;
+/// ```
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if:
-/// - Notation is invalid
-/// - Number of tensors doesn't match notation
-/// - An index appears once in input but not in output (general reduction)
-/// - An index appears twice in input and also in output (diagonal extraction)
-/// - An index appears more than twice in a single input
+/// Returns `BackendError` if notation is invalid, tensor count mismatches,
+/// or any sub-operation fails.
 pub fn einsum<T: Scalar>(
     backend: &impl ComputeBackend,
     tensors: &[&DenseTensor<T>],
@@ -56,12 +59,79 @@ pub fn einsum<T: Scalar>(
     }
 
     match expr.num_inputs() {
+        0 => Err(BackendError::ExecutionFailed(
+            "einsum requires at least 1 input".to_string(),
+        )),
         1 => einsum_single(backend, tensors[0], &expr),
         2 => contract(backend, tensors[0], tensors[1], notation),
-        n => Err(BackendError::ExecutionFailed(format!(
-            "einsum supports 1 or 2 inputs, got {n}"
-        ))),
+        _ => einsum_multi(backend, tensors, &expr),
     }
+}
+
+/// Sequential left-to-right pairwise contraction for 3+ tensors.
+///
+/// For each step, computes intermediate output indices as the intersection of
+/// (accumulated ∪ next tensor indices) with (final output ∪ all future input indices).
+fn einsum_multi<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensors: &[&DenseTensor<T>],
+    expr: &EinsumExpr,
+) -> Result<DenseTensor<T>, BackendError> {
+    let inputs = expr.inputs();
+    let final_output = expr.out_indices();
+    let n = inputs.len();
+
+    // First contraction: tensors[0] with tensors[1]
+    let intermediate_out = compute_intermediate_output(&inputs[0], &inputs[1], &inputs[2..], final_output);
+    let notation = build_notation(&inputs[0], &inputs[1], &intermediate_out);
+    let mut accumulated = contract(backend, tensors[0], tensors[1], &notation)?;
+    let mut acc_indices = intermediate_out;
+
+    // Subsequent contractions: accumulated with tensors[i]
+    for i in 2..n {
+        let remaining = &inputs[i + 1..];
+        let intermediate_out = compute_intermediate_output(&acc_indices, &inputs[i], remaining, final_output);
+        let notation = build_notation(&acc_indices, &inputs[i], &intermediate_out);
+        accumulated = contract(backend, &accumulated, tensors[i], &notation)?;
+        acc_indices = intermediate_out;
+    }
+
+    Ok(accumulated)
+}
+
+/// Compute intermediate output indices for a pairwise contraction step.
+///
+/// Keeps indices from (lhs ∪ rhs) that appear in the final output or in any
+/// future input tensor, preserving the order of first appearance.
+fn compute_intermediate_output(
+    lhs: &[u8],
+    rhs: &[u8],
+    future_inputs: &[Vec<u8>],
+    final_output: &[u8],
+) -> Vec<u8> {
+    // Indices that must survive this contraction step
+    let mut needed: HashSet<u8> = final_output.iter().copied().collect();
+    for future in future_inputs {
+        needed.extend(future.iter().copied());
+    }
+
+    // Keep indices from lhs ∪ rhs that are needed, in order of first appearance
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for &idx in lhs.iter().chain(rhs.iter()) {
+        if needed.contains(&idx) && seen.insert(idx) {
+            out.push(idx);
+        }
+    }
+    out
+}
+
+/// Build a 2-input einsum notation string from index slices.
+fn build_notation(lhs: &[u8], rhs: &[u8], output: &[u8]) -> String {
+    let lhs_s: String = lhs.iter().map(|&b| b as char).collect();
+    let rhs_s: String = rhs.iter().map(|&b| b as char).collect();
+    let out_s: String = output.iter().map(|&b| b as char).collect();
+    format!("{lhs_s},{rhs_s}->{out_s}")
 }
 
 /// Dispatch a single-tensor einsum to trace and/or transpose.
