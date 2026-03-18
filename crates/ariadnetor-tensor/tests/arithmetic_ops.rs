@@ -4,7 +4,7 @@
 //! - scale: scalar multiplication
 //! - linear_combine: linear combination of tensors
 
-use arnet_tensor::{Tensor, TensorStorage};
+use arnet_tensor::TensorStorage;
 use num_complex::Complex;
 
 // ============================================================================
@@ -180,70 +180,5 @@ fn test_add_all_complex() {
     }
 }
 
-// ============================================================================
-// Tensor::scale tests
-// ============================================================================
-
-#[test]
-fn test_tensor_scale() {
-    let mut t = Tensor::<f64>::ones(vec![2, 3]);
-    t.scale(3.0);
-
-    if let Some(data) = t.storage.data() {
-        for &val in data {
-            assert_eq!(val, 3.0);
-        }
-    }
-}
-
-#[test]
-fn test_tensor_scaled() {
-    let t = Tensor::<f64>::constant(vec![2, 2], 2.0);
-    let scaled = t.scaled(5.0);
-
-    // Original unchanged
-    if let Some(data) = t.storage.data() {
-        assert_eq!(data[0], 2.0);
-    }
-
-    // Scaled version
-    if let Some(data) = scaled.storage.data() {
-        for &val in data {
-            assert_eq!(val, 10.0);
-        }
-    }
-}
-
-// ============================================================================
-// Tensor::linear_combine tests
-// ============================================================================
-
-#[test]
-fn test_tensor_linear_combine() {
-    let a = Tensor::<f64>::constant(vec![2, 2], 1.0);
-    let b = Tensor::<f64>::constant(vec![2, 2], 2.0);
-
-    // 3*a + 2*b = 3*1 + 2*2 = 7
-    let result = Tensor::linear_combine(&[&a, &b], &[3.0, 2.0]).unwrap();
-
-    if let Some(data) = result.storage.data() {
-        for &val in data {
-            assert_eq!(val, 7.0);
-        }
-    }
-}
-
-#[test]
-fn test_tensor_add_all() {
-    let a = Tensor::<f64>::constant(vec![3], 1.0);
-    let b = Tensor::<f64>::constant(vec![3], 2.0);
-    let c = Tensor::<f64>::constant(vec![3], 4.0);
-
-    let result = Tensor::add_all(&[&a, &b, &c]).unwrap();
-
-    if let Some(data) = result.storage.data() {
-        for &val in data {
-            assert_eq!(val, 7.0);
-        }
-    }
-}
+// Tensor-level tests (scale, linear_combine, etc.) are in ariadnetor/tests/
+// since Tensor is now defined in the ariadnetor crate.

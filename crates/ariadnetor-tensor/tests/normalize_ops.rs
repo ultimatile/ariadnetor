@@ -4,7 +4,7 @@
 //! - norm: Frobenius norm (sqrt(sum|element|^2))
 //! - normalize: Divide by norm and return the norm value
 
-use arnet_tensor::{Tensor, TensorStorage};
+use arnet_tensor::TensorStorage;
 use num_complex::Complex;
 
 const EPSILON: f64 = 1e-10;
@@ -150,52 +150,5 @@ fn test_normalize_zero_tensor_panic() {
     tensor.normalize();
 }
 
-// ============================================================================
-// Tensor::norm tests
-// ============================================================================
-
-#[test]
-fn test_tensor_norm() {
-    let t = Tensor::<f64>::ones(vec![2, 3]);
-    let norm = t.norm();
-    assert!((norm - 6.0f64.sqrt()).abs() < EPSILON);
-}
-
-// ============================================================================
-// Tensor::normalize tests
-// ============================================================================
-
-#[test]
-fn test_tensor_normalize_inplace() {
-    let mut t = Tensor::<f64>::ones(vec![2, 2]);
-
-    let norm = t.normalize();
-    assert!((norm - 2.0).abs() < EPSILON);
-
-    // Check normalized values
-    if let Some(data) = t.storage.data() {
-        for &val in data {
-            assert!((val - 0.5).abs() < EPSILON);
-        }
-    }
-}
-
-#[test]
-fn test_tensor_normalized_out_of_place() {
-    let t = Tensor::<f64>::constant(vec![3, 3], 2.0);
-
-    let (normalized, norm) = t.normalized();
-    assert!((norm - 6.0).abs() < EPSILON);
-
-    // Original unchanged
-    if let Some(data) = t.storage.data() {
-        assert!((data[0] - 2.0).abs() < EPSILON);
-    }
-
-    // Normalized
-    if let Some(data) = normalized.storage.data() {
-        for &val in data {
-            assert!((val - 1.0 / 3.0).abs() < EPSILON);
-        }
-    }
-}
+// Tensor-level norm/normalize tests are in ariadnetor/tests/
+// since Tensor is now defined in the ariadnetor crate.

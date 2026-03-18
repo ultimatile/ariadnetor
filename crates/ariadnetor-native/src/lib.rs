@@ -14,19 +14,31 @@ mod solve;
 mod svd;
 mod transpose;
 
+use std::sync::{Arc, OnceLock};
+
 use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 use num_complex::Complex;
 
-/// CPU backend using faer for GEMM and HPTT for transpose.
+/// Native backend using faer for GEMM and HPTT for transpose.
 ///
 /// This is the sole owner of faer and hptt-rs dependencies in the workspace.
 /// Other crates access these capabilities through the `ComputeBackend` trait.
+#[derive(Debug, Clone)]
 pub struct NativeBackend;
 
 impl NativeBackend {
     pub fn new() -> Self {
         Self
+    }
+
+    /// Get a shared singleton instance.
+    ///
+    /// All tensors using the default backend share this single Arc,
+    /// avoiding per-tensor allocation.
+    pub fn shared() -> Arc<NativeBackend> {
+        static INSTANCE: OnceLock<Arc<NativeBackend>> = OnceLock::new();
+        INSTANCE.get_or_init(|| Arc::new(NativeBackend)).clone()
     }
 }
 

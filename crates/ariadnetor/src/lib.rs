@@ -24,16 +24,15 @@ pub mod expr;
 pub mod runtime;
 pub mod tensor;
 
-// Re-export EinsumExpr from core (unified in #29)
-pub use arnet_core::EinsumExpr;
+// Main types
+pub use tensor::{DenseTensor, Tensor, TensorStorage};
 pub use expr::ExpressionComputeGraph;
-pub use tensor::Tensor;
 
 // Re-export from ariadnetor-core
-pub use arnet_core::{ComputeBackend, ContractionError, LabelId, Scalar};
+pub use arnet_core::{ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};
 
 // Re-export backend-agnostic linear algebra operations
 pub use arnet_linalg::{contract, einsum, transpose};
 
-// Re-export the CPU backend
+// Re-export the native backend
 pub use arnet_native::NativeBackend;
