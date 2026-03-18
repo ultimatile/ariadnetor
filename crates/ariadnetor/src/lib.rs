@@ -31,7 +31,7 @@ pub use tensor::Tensor;
 pub use arnet_core::{ComputeBackend, ContractionError, LabelId, Scalar};
 
 // Re-export backend-agnostic linear algebra operations
-pub use arnet_linalg::{contract, transpose};
+pub use arnet_linalg::{contract, einsum, transpose};
 
 // Re-export the CPU backend
 pub use arnet_cpu::CpuBackend;

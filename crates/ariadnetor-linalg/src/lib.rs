@@ -30,6 +30,7 @@
 mod contract;
 mod decomposition;
 mod eigen;
+mod einsum;
 mod expm;
 mod scalar_ops;
 mod solve;
@@ -38,6 +39,7 @@ mod transpose;
 pub use arnet_core::backend::ComputeBackend;
 
 pub use contract::contract;
+pub use einsum::einsum;
 pub use decomposition::{
     lq, qr, svd, trunc_svd, LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult,
 };
