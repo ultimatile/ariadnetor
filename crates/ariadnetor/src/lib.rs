@@ -18,12 +18,12 @@
 //! let c = einsum("ij,jk->ik", vec![&a, &b]);
 //! ```
 
-pub mod einsum;
 pub mod expr;
 pub mod runtime;
 pub mod tensor;
 
-pub use einsum::EinsumExpr;
+// Re-export EinsumExpr from core (unified in #29)
+pub use arnet_core::EinsumExpr;
 pub use expr::ExpressionComputeGraph;
 pub use tensor::Tensor;
 

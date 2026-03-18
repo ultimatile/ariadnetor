@@ -35,26 +35,26 @@ pub fn contract<T: Scalar>(
         .map_err(|e| BackendError::ExecutionFailed(format!("Failed to parse einsum: {e}")))?;
 
     // Validate tensor ranks against notation
-    if lhs.rank() != expr.lhs_indices.len() {
+    if lhs.rank() != expr.lhs_indices().len() {
         return Err(BackendError::InvalidDimension(format!(
             "LHS tensor rank {} doesn't match notation {}",
             lhs.rank(),
-            expr.lhs_indices.len()
+            expr.lhs_indices().len()
         )));
     }
-    if rhs.rank() != expr.rhs_indices.len() {
+    if rhs.rank() != expr.rhs_indices().len() {
         return Err(BackendError::InvalidDimension(format!(
             "RHS tensor rank {} doesn't match notation {}",
             rhs.rank(),
-            expr.rhs_indices.len()
+            expr.rhs_indices().len()
         )));
     }
 
     let plan = ContractionPlan::from_expr(&expr);
 
     // Permute operands so contracted indices are adjacent for GEMM reshape
-    let lhs_perm = plan.lhs_permutation(&expr.lhs_indices, &expr.rhs_indices);
-    let rhs_perm = plan.rhs_permutation(&expr.rhs_indices);
+    let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
+    let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
         transpose(backend, lhs, &perm)?
@@ -74,7 +74,7 @@ pub fn contract<T: Scalar>(
         .iter()
         .map(|&idx| {
             let pos = expr
-                .lhs_indices
+                .lhs_indices()
                 .iter()
                 .position(|&x| x == idx)
                 .expect("Free index not found in LHS");
@@ -87,7 +87,7 @@ pub fn contract<T: Scalar>(
         .iter()
         .map(|&idx| {
             let pos = expr
-                .rhs_indices
+                .rhs_indices()
                 .iter()
                 .position(|&x| x == idx)
                 .expect("Free index not found in RHS");
@@ -100,7 +100,7 @@ pub fn contract<T: Scalar>(
         .iter()
         .map(|&idx| {
             let pos = expr
-                .lhs_indices
+                .lhs_indices()
                 .iter()
                 .position(|&x| x == idx)
                 .expect("Contracted index not found in LHS");
@@ -148,7 +148,7 @@ fn compute_output_shape(
 
     for &idx in &plan.free_lhs {
         let pos = expr
-            .lhs_indices
+            .lhs_indices()
             .iter()
             .position(|&x| x == idx)
             .expect("Free LHS index not found");
@@ -157,7 +157,7 @@ fn compute_output_shape(
 
     for &idx in &plan.free_rhs {
         let pos = expr
-            .rhs_indices
+            .rhs_indices()
             .iter()
             .position(|&x| x == idx)
             .expect("Free RHS index not found");

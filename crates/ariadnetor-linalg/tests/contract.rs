@@ -83,7 +83,8 @@ fn test_contract_invalid_notation() {
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::<f64>::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let result = contract(&backend, &a, &b, "ik,kj");
+    // Invalid: output index 'm' not in any input
+    let result = contract(&backend, &a, &b, "ik,kj->im");
     assert!(result.is_err());
 }
 

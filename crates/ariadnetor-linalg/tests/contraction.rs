@@ -111,7 +111,7 @@ fn test_scalar_contraction() {
     let a = DenseTensor::from_data(vec![5.0], vec![]);
     let b = DenseTensor::from_data(vec![3.0], vec![]);
 
-    let c = contract(&backend, &a, &b, "->").unwrap();
+    let c = contract(&backend, &a, &b, ",->").unwrap();
 
     assert_eq!(c.shape(), &[1]);
     assert_eq!(c.get(&[0]), 15.0);
