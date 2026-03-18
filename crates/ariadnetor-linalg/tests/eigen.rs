@@ -1,4 +1,4 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
 use arnet_tensor::DenseTensor;
 
@@ -7,7 +7,7 @@ use arnet_tensor::DenseTensor;
 #[test]
 fn test_eigh_f64_2x2_symmetric() {
     // [[2, 1], [1, 2]] → eigenvalues [1, 3]
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
 
     let (w, v) = eigh(&backend, &tensor, 1).unwrap();
@@ -31,7 +31,7 @@ fn test_eigh_f64_2x2_symmetric() {
 #[test]
 fn test_eigh_f64_3x3_diagonal() {
     // Diagonal matrix: eigenvalues = diagonal elements (sorted ascending)
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(
         vec![3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0],
         vec![3, 3],
@@ -50,7 +50,7 @@ fn test_eigh_c64_hermitian() {
     use num_complex::Complex;
 
     // Hermitian: [[2, 1-i], [1+i, 3]]
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::from_data(
         vec![
             Complex::new(2.0, 0.0),
@@ -84,7 +84,7 @@ fn test_eigh_c64_hermitian() {
 
 #[test]
 fn test_eigvalsh_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
 
     let w = eigvalsh(&backend, &tensor, 1).unwrap();
@@ -96,7 +96,7 @@ fn test_eigvalsh_f64() {
 
 #[test]
 fn test_eigh_non_square_error() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 2×3 matrix → non-square → error
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -109,7 +109,7 @@ fn test_eigh_non_square_error() {
 
 #[test]
 fn test_eigh_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f32>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
 
     let (w, _v) = eigh(&backend, &tensor, 1).unwrap();
@@ -121,7 +121,7 @@ fn test_eigh_f32() {
 
 #[test]
 fn test_eigh_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     assert!(eigh(&backend, &tensor, 0).is_err());
@@ -135,7 +135,7 @@ fn test_eig_f64_2x2_trace_det() {
     // [[1, 2], [3, 4]]
     // trace = 5, det = -2
     // eigenvalues satisfy: λ² - 5λ - 2 = 0
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let (w, v) = eig(&backend, &tensor, 1).unwrap();
@@ -158,7 +158,7 @@ fn test_eig_f64_2x2_trace_det() {
 fn test_eig_f64_diagonal() {
     // Diagonal: [[3, 0], [0, 7]]
     // eigenvalues = {3, 7}
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![3.0, 0.0, 0.0, 7.0], vec![2, 2]);
 
     let (w, _v) = eig(&backend, &tensor, 1).unwrap();
@@ -175,7 +175,7 @@ fn test_eig_c64_complex_input() {
 
     // Complex matrix: [[1+i, 2], [0, 3-i]]
     // Upper triangular → eigenvalues = diagonal = {1+i, 3-i}
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::from_data(
         vec![
             Complex::new(1.0, 1.0),
@@ -202,7 +202,7 @@ fn test_eig_c64_complex_input() {
 
 #[test]
 fn test_eigvals_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let w = eigvals(&backend, &tensor, 1).unwrap();
@@ -215,7 +215,7 @@ fn test_eigvals_f64() {
 
 #[test]
 fn test_eig_non_square_error() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
@@ -226,7 +226,7 @@ fn test_eig_non_square_error() {
 
 #[test]
 fn test_eig_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let (w, _v) = eig(&backend, &tensor, 1).unwrap();
@@ -240,7 +240,7 @@ fn test_eig_f32() {
 
 #[test]
 fn test_eig_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     assert!(eig(&backend, &tensor, 0).is_err());

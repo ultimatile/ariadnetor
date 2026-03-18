@@ -1,10 +1,10 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, SvdDescriptor};
 use num_complex::Complex;
 
 #[test]
 fn test_svd_f64_square() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1, 2], [3, 4]] (2x2)
     let a = [1.0f64, 2.0, 3.0, 4.0];
@@ -37,7 +37,7 @@ fn test_svd_f64_square() {
 
 #[test]
 fn test_svd_f64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1, 2, 3], [4, 5, 6]] (2x3), k = min(2,3) = 2
     let a = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
@@ -69,7 +69,7 @@ fn test_svd_f64_rectangular() {
 
 #[test]
 fn test_svd_f32_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [1.0f32, 2.0, 3.0, 4.0];
     let mut u = [0.0f32; 4];
@@ -100,7 +100,7 @@ fn test_svd_f32_basic() {
 
 #[test]
 fn test_svd_c64_hermitian() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Hermitian matrix: A = [[2, 1-i], [1+i, 3]]
     let a = [
@@ -138,7 +138,7 @@ fn test_svd_c64_hermitian() {
 
 #[test]
 fn test_svd_c64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A (2x3) complex
     let a = [
@@ -173,7 +173,7 @@ fn test_svd_c64_rectangular() {
 
 #[test]
 fn test_svd_c64_unitary_check() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Verify U^H * U = I for SVD result
     let a = [
@@ -207,7 +207,7 @@ fn test_svd_c64_unitary_check() {
 
 #[test]
 fn test_svd_c32_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [
         Complex::new(2.0f32, 0.0), Complex::new(1.0, -1.0),

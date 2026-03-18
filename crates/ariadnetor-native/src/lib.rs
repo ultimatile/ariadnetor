@@ -1,6 +1,6 @@
 //! CPU compute backend for Ariadnetor
 //!
-//! Provides [`CpuBackend`] implementing `ComputeBackend` via:
+//! Provides [`NativeBackend`] implementing `ComputeBackend` via:
 //! - **GEMM**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **SVD/QR/LQ/EIGH**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **Transpose**: HPTT when available (f64, f32, Complex), naive fallback
@@ -22,21 +22,21 @@ use num_complex::Complex;
 ///
 /// This is the sole owner of faer and hptt-rs dependencies in the workspace.
 /// Other crates access these capabilities through the `ComputeBackend` trait.
-pub struct CpuBackend;
+pub struct NativeBackend;
 
-impl CpuBackend {
+impl NativeBackend {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for CpuBackend {
+impl Default for NativeBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ComputeBackend for CpuBackend {
+impl ComputeBackend for NativeBackend {
     fn name(&self) -> &'static str {
         "cpu"
     }

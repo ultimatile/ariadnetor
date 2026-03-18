@@ -9,7 +9,7 @@ description = "High-performance tensor network framework in Pure Rust"
 ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 ariadnetor-linalg = { path = "../ariadnetor-linalg" }
-ariadnetor-cpu = { path = "../ariadnetor-cpu" }
+ariadnetor-native = { path = "../ariadnetor-native" }
 anyhow = { workspace = true }
 lru = { workspace = true }
 

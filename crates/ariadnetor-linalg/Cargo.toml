@@ -12,7 +12,7 @@ num-complex = { workspace = true }
 num-traits = { workspace = true }
 
 [dev-dependencies]
-ariadnetor-cpu = { path = "../ariadnetor-cpu" }
+ariadnetor-native = { path = "../ariadnetor-native" }
 approx = { workspace = true }
 
 [lib]

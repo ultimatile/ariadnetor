@@ -1,10 +1,10 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, LqDescriptor};
 use num_complex::Complex;
 
 #[test]
 fn test_lq_f64_square() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [1.0f64, 2.0, 3.0, 4.0];
     let (m, n, k) = (2, 2, 2);
@@ -32,7 +32,7 @@ fn test_lq_f64_square() {
 
 #[test]
 fn test_lq_f64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A (2x3), k = min(2,3) = 2
     let a = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
@@ -60,7 +60,7 @@ fn test_lq_f64_rectangular() {
 
 #[test]
 fn test_lq_f32_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [1.0f32, 2.0, 3.0, 4.0];
     let (m, n, k) = (2, 2, 2);
@@ -89,7 +89,7 @@ fn test_lq_f32_basic() {
 
 #[test]
 fn test_lq_c64_square() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [
         Complex::new(1.0, 2.0), Complex::new(3.0, -1.0),
@@ -134,7 +134,7 @@ fn test_lq_c64_square() {
 
 #[test]
 fn test_lq_c64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A (2x3) complex
     let a = [
@@ -166,7 +166,7 @@ fn test_lq_c64_rectangular() {
 
 #[test]
 fn test_lq_c32_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [
         Complex::new(1.0f32, 2.0), Complex::new(3.0, -1.0),

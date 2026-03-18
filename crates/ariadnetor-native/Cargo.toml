@@ -1,9 +1,9 @@
 [package]
-name = "ariadnetor-cpu"
+name = "ariadnetor-native"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "CPU backend for Ariadnetor (faer GEMM + HPTT transpose)"
+description = "Native backend for Ariadnetor (faer + hptt-rs)"
 
 [features]
 default = ["hptt"]
@@ -20,5 +20,5 @@ num-traits = { workspace = true }
 approx = { workspace = true }
 
 [lib]
-name = "arnet_cpu"
+name = "arnet_native"
 path = "src/lib.rs"

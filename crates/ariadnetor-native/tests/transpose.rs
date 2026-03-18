@@ -1,10 +1,10 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, DeviceType, TransposeDescriptor};
 use num_complex::Complex;
 
 #[test]
 fn test_backend_metadata() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     assert_eq!(backend.name(), "cpu");
     assert_eq!(backend.device_type(), DeviceType::Cpu);
     assert!(backend.is_available());
@@ -14,7 +14,7 @@ fn test_backend_metadata() {
 
 #[test]
 fn test_transpose_f64_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // 2x3 matrix -> 3x2
     let input = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
@@ -33,7 +33,7 @@ fn test_transpose_f64_2d() {
 
 #[test]
 fn test_transpose_f64_3d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Shape [2,3,4], perm [1,0,2] -> shape [3,2,4]
     let input: Vec<f64> = (0..24).map(|i| i as f64).collect();
@@ -56,7 +56,7 @@ fn test_transpose_f64_3d() {
 
 #[test]
 fn test_transpose_f32_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let input = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
     let mut output = [0.0f32; 6];
@@ -73,7 +73,7 @@ fn test_transpose_f32_2d() {
 
 #[test]
 fn test_transpose_complex_f64_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let input = [
         Complex::new(1.0, 2.0), Complex::new(3.0, 4.0), Complex::new(5.0, 6.0),

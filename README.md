@@ -12,9 +12,9 @@ Tensor network framework in Rust
 │  ariadnetor (arnet)  - High-level API                   │
 │    Einsum DSL, Expression Graph, Runtime                │
 ├──────────────────────────┬──────────────────────────────┤
-│  ariadnetor-linalg       │  ariadnetor-cpu              │
-│  (arnet_linalg)          │  (arnet_cpu)                 │
-│  Backend-agnostic        │  CpuBackend:                 │
+│  ariadnetor-linalg       │  ariadnetor-native           │
+│  (arnet_linalg)          │  (arnet_native)              │
+│  Backend-agnostic        │  NativeBackend:              │
 │  linear algebra API      │  faer + hptt-rs              │
 ├──────────────────────────┴──────────────────────────────┤
 │  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
@@ -50,9 +50,9 @@ Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
 - expm, expm_hermitian, expm_antihermitian
 - solve, inverse
 
-### `ariadnetor-cpu`
+### `ariadnetor-native`
 
-`CpuBackend`: faer + hptt-rs (f32, f64, `Complex<f32>`, `Complex<f64>`)
+`NativeBackend`: faer + hptt-rs (f32, f64, `Complex<f32>`, `Complex<f64>`)
 
 ### `ariadnetor`
 
@@ -61,7 +61,7 @@ Main library crate (`arnet`). Re-exports + `ExpressionComputeGraph` (evaluate no
 ## Usage
 
 ```rust
-use arnet::{Tensor, CpuBackend};
+use arnet::{Tensor, NativeBackend};
 use arnet_linalg::{contract, svd, transpose};
 
 // Create tensors
@@ -69,7 +69,7 @@ let a = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3])
 let b = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
 // Tensor contraction via ComputeBackend
-let backend = CpuBackend::new();
+let backend = NativeBackend::new();
 let c = contract(&a.storage, &b.storage, "ij,jk->ik", &backend).unwrap();
 
 // SVD decomposition

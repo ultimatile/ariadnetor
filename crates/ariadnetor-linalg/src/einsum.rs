@@ -27,9 +27,9 @@ use crate::transpose::transpose;
 ///
 /// ```rust,ignore
 /// use arnet_linalg::einsum;
-/// use arnet_cpu::CpuBackend;
+/// use arnet_native::NativeBackend;
 ///
-/// let backend = CpuBackend::new();
+/// let backend = NativeBackend::new();
 /// // Matrix multiplication
 /// let c = einsum(&backend, &[&a, &b], "ij,jk->ik")?;
 /// // 3-tensor chain

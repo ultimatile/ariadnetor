@@ -1,6 +1,6 @@
 //! Tests for einsum: single-tensor, 2-tensor, and N-tensor operations
 
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_linalg::einsum;
 use arnet_tensor::DenseTensor;
 
@@ -10,7 +10,7 @@ use arnet_tensor::DenseTensor;
 
 #[test]
 fn test_einsum_transpose_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 2×3 matrix
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
@@ -28,7 +28,7 @@ fn test_einsum_transpose_2d() {
 
 #[test]
 fn test_einsum_permutation_3d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 2×3×4 tensor
     let data: Vec<f64> = (1..=24).map(|x| x as f64).collect();
     let a = DenseTensor::from_data(data, vec![2, 3, 4]);
@@ -46,7 +46,7 @@ fn test_einsum_permutation_3d() {
 
 #[test]
 fn test_einsum_identity_permutation() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // Identity permutation: no actual transpose needed
@@ -62,7 +62,7 @@ fn test_einsum_identity_permutation() {
 
 #[test]
 fn test_einsum_full_trace() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 3×3 matrix
     let a = DenseTensor::from_data(
         vec![1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0],
@@ -78,7 +78,7 @@ fn test_einsum_full_trace() {
 
 #[test]
 fn test_einsum_partial_trace() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 2×2×3 tensor: A[i,i,j] → sum over diagonal of i, keep j
     let a = DenseTensor::from_data(
         vec![
@@ -108,7 +108,7 @@ fn test_einsum_partial_trace() {
 
 #[test]
 fn test_einsum_trace_then_transpose() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 2×3×2 tensor: "iji->j" traces i (positions 0,2), keeps j
     // This is a valid trace+result case
     let data: Vec<f64> = (1..=12).map(|x| x as f64).collect();
@@ -128,7 +128,7 @@ fn test_einsum_trace_then_transpose() {
 
 #[test]
 fn test_einsum_trace_and_permute() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 2×3×4×2 tensor: "ijki->kj" traces i (positions 0,3), keeps j,k → permute to k,j
     let data: Vec<f64> = (1..=48).map(|x| x as f64).collect();
     let a = DenseTensor::from_data(data, vec![2, 3, 4, 2]);
@@ -153,7 +153,7 @@ fn test_einsum_trace_and_permute() {
 
 #[test]
 fn test_einsum_two_input_matmul() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
@@ -172,7 +172,7 @@ fn test_einsum_two_input_matmul() {
 
 #[test]
 fn test_einsum_3_tensor_chain() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // A(2×3) · B(3×4) · C(4×2) = D(2×2)
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let b = DenseTensor::from_data(
@@ -197,7 +197,7 @@ fn test_einsum_3_tensor_chain() {
 
 #[test]
 fn test_einsum_3_tensor_implicit_output() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
     let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
@@ -212,7 +212,7 @@ fn test_einsum_3_tensor_implicit_output() {
 
 #[test]
 fn test_einsum_4_tensor_chain() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
     let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
@@ -232,7 +232,7 @@ fn test_einsum_4_tensor_chain() {
 
 #[test]
 fn test_einsum_3_tensor_trace_of_product() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // tr(A · B · C) = "ij,jk,ki->"
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
@@ -248,7 +248,7 @@ fn test_einsum_3_tensor_trace_of_product() {
 
 #[test]
 fn test_einsum_2_tensor_hadamard() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::from_data(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2]);
 
@@ -267,7 +267,7 @@ fn test_einsum_2_tensor_hadamard() {
 
 #[test]
 fn test_einsum_wrong_tensor_count() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // Notation expects 2 inputs but only 1 given
@@ -277,7 +277,7 @@ fn test_einsum_wrong_tensor_count() {
 
 #[test]
 fn test_einsum_rank_mismatch() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // 3-index notation with rank-2 tensor
@@ -287,7 +287,7 @@ fn test_einsum_rank_mismatch() {
 
 #[test]
 fn test_einsum_diagonal_extraction_unsupported() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // "ii->i" is diagonal extraction, not yet supported
@@ -299,7 +299,7 @@ fn test_einsum_diagonal_extraction_unsupported() {
 
 #[test]
 fn test_einsum_reduction_unsupported() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // "ij->i" is a sum over j, not supported as single-tensor einsum

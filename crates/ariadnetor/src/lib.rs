@@ -9,10 +9,10 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use arnet::{einsum, CpuBackend};
+//! use arnet::{einsum, NativeBackend};
 //! use arnet_tensor::DenseTensor;
 //!
-//! let backend = CpuBackend::new();
+//! let backend = NativeBackend::new();
 //! let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 //! let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 //!
@@ -36,4 +36,4 @@ pub use arnet_core::{ComputeBackend, ContractionError, LabelId, Scalar};
 pub use arnet_linalg::{contract, einsum, transpose};
 
 // Re-export the CPU backend
-pub use arnet_cpu::CpuBackend;
+pub use arnet_native::NativeBackend;

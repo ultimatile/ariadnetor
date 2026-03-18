@@ -1,4 +1,4 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_linalg::{lq, qr, svd, trunc_svd, TruncSvdParams};
 use arnet_tensor::DenseTensor;
 
@@ -6,7 +6,7 @@ use arnet_tensor::DenseTensor;
 
 #[test]
 fn test_svd_f64_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // A = [[1, 2], [3, 4]] shape [2, 2], nrow=1 → 2×2 matrix
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
@@ -37,7 +37,7 @@ fn test_svd_f64_2d() {
 
 #[test]
 fn test_svd_f64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -68,7 +68,7 @@ fn test_svd_f64_rectangular() {
 
 #[test]
 fn test_svd_f64_higher_rank() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // shape [2, 3, 4], nrow=2 → m=6, n=4, k=4
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
@@ -98,7 +98,7 @@ fn test_svd_f64_higher_rank() {
 
 #[test]
 fn test_svd_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
@@ -123,7 +123,7 @@ fn test_svd_f32() {
 
 #[test]
 fn test_svd_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // nrow=0 is invalid
@@ -136,7 +136,7 @@ fn test_svd_invalid_nrow() {
 
 #[test]
 fn test_trunc_svd_chi_max() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 3×4 matrix with rank > 1
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
@@ -181,7 +181,7 @@ fn test_trunc_svd_chi_max() {
 
 #[test]
 fn test_trunc_svd_chi_max_zero_is_error() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let params = TruncSvdParams {
@@ -193,7 +193,7 @@ fn test_trunc_svd_chi_max_zero_is_error() {
 
 #[test]
 fn test_trunc_svd_chi_max_no_truncation() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // chi_max >= k=2 means no truncation
@@ -211,7 +211,7 @@ fn test_trunc_svd_chi_max_no_truncation() {
 
 #[test]
 fn test_trunc_svd_target_trunc_err() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 4×4 matrix
     let data: Vec<f64> = (1..=16).map(|i| i as f64).collect();
     let tensor = DenseTensor::from_data(data, vec![4, 4]);
@@ -244,7 +244,7 @@ fn test_trunc_svd_target_trunc_err() {
 
 #[test]
 fn test_trunc_svd_both_params() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // 4×4 matrix
     let data: Vec<f64> = (1..=16).map(|i| i as f64).collect();
     let tensor = DenseTensor::from_data(data, vec![4, 4]);
@@ -293,7 +293,7 @@ fn test_trunc_svd_both_params() {
 
 #[test]
 fn test_trunc_svd_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f32>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
@@ -313,7 +313,7 @@ fn test_trunc_svd_f32() {
 
 #[test]
 fn test_trunc_svd_reconstruction() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // Verify that truncated reconstruction is a valid low-rank approximation
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
@@ -354,7 +354,7 @@ fn test_trunc_svd_reconstruction() {
 
 #[test]
 fn test_qr_f64_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let (q, r) = qr(&backend, &tensor, 1).unwrap();
@@ -379,7 +379,7 @@ fn test_qr_f64_2d() {
 
 #[test]
 fn test_qr_f64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // shape [3, 2], nrow=1 → 3×2 matrix, k=2
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -409,7 +409,7 @@ fn test_qr_f64_rectangular() {
 
 #[test]
 fn test_qr_f64_orthogonality() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![3, 2],
@@ -436,7 +436,7 @@ fn test_qr_f64_orthogonality() {
 
 #[test]
 fn test_qr_f64_higher_rank() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // shape [2, 3, 4], nrow=2 → m=6, n=4, k=4
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
@@ -465,7 +465,7 @@ fn test_qr_f64_higher_rank() {
 
 #[test]
 fn test_qr_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let (q, r) = qr(&backend, &tensor, 1).unwrap();
@@ -489,7 +489,7 @@ fn test_qr_f32() {
 
 #[test]
 fn test_qr_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     assert!(qr(&backend, &tensor, 0).is_err());
@@ -500,7 +500,7 @@ fn test_qr_invalid_nrow() {
 
 #[test]
 fn test_lq_f64_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let (l, q) = lq(&backend, &tensor, 1).unwrap();
@@ -525,7 +525,7 @@ fn test_lq_f64_2d() {
 
 #[test]
 fn test_lq_f64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -555,7 +555,7 @@ fn test_lq_f64_rectangular() {
 
 #[test]
 fn test_lq_f64_orthogonality() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
@@ -582,7 +582,7 @@ fn test_lq_f64_orthogonality() {
 
 #[test]
 fn test_lq_f64_higher_rank() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     // shape [2, 3, 4], nrow=1 → m=2, n=12, k=2
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
@@ -611,7 +611,7 @@ fn test_lq_f64_higher_rank() {
 
 #[test]
 fn test_lq_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let (l, q) = lq(&backend, &tensor, 1).unwrap();
@@ -635,7 +635,7 @@ fn test_lq_f32() {
 
 #[test]
 fn test_lq_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     assert!(lq(&backend, &tensor, 0).is_err());

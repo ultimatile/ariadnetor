@@ -1,10 +1,10 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, GemmDescriptor};
 use num_complex::Complex;
 
 #[test]
 fn test_gemm_f64_identity() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1, 0], [0, 1]] (2x2 identity)
     let a = [1.0f64, 0.0, 0.0, 1.0];
@@ -23,7 +23,7 @@ fn test_gemm_f64_identity() {
 
 #[test]
 fn test_gemm_f64_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1, 2], [3, 4]] (2x2), B = [[5, 6], [7, 8]] (2x2)
     // C = A * B = [[19, 22], [43, 50]]
@@ -43,7 +43,7 @@ fn test_gemm_f64_basic() {
 
 #[test]
 fn test_gemm_f64_alpha_beta() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // C = 2.0 * A * B + 3.0 * C_init
     let a = [1.0f64, 2.0, 3.0, 4.0];
@@ -63,7 +63,7 @@ fn test_gemm_f64_alpha_beta() {
 
 #[test]
 fn test_gemm_f64_rectangular() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A (2x3) * B (3x2) = C (2x2)
     let a = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
@@ -84,7 +84,7 @@ fn test_gemm_f64_rectangular() {
 
 #[test]
 fn test_gemm_f32_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [1.0f32, 2.0, 3.0, 4.0];
     let b = [5.0f32, 6.0, 7.0, 8.0];
@@ -104,7 +104,7 @@ fn test_gemm_f32_basic() {
 
 #[test]
 fn test_gemm_c64_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1+i, 2+i], [3+i, 4+i]], B = [[5+i, 6+i], [7+i, 8+i]]
     let a = [
@@ -132,7 +132,7 @@ fn test_gemm_c64_basic() {
 
 #[test]
 fn test_gemm_c64_alpha_beta() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // C = alpha * A * B + beta * C_init with complex alpha, beta
     let a = [
@@ -164,7 +164,7 @@ fn test_gemm_c64_alpha_beta() {
 
 #[test]
 fn test_gemm_c32_basic() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = [
         Complex::new(1.0f32, 1.0), Complex::new(2.0, 1.0),

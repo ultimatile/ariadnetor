@@ -1,10 +1,10 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_linalg::{contract, eigh, expm, expm_antihermitian, expm_hermitian, EighResult};
 use arnet_tensor::DenseTensor;
 
 #[test]
 fn test_expm_hermitian_diagonal_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(diag(1, 2)) = diag(e, e²)
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 2.0], vec![2, 2]);
@@ -20,7 +20,7 @@ fn test_expm_hermitian_diagonal_f64() {
 
 #[test]
 fn test_expm_hermitian_zero_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(0) = I
     let a = DenseTensor::<f64>::from_data(vec![0.0; 4], vec![2, 2]);
@@ -34,7 +34,7 @@ fn test_expm_hermitian_zero_f64() {
 
 #[test]
 fn test_expm_hermitian_identity_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(I) = e * I
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
@@ -49,7 +49,7 @@ fn test_expm_hermitian_identity_f64() {
 
 #[test]
 fn test_expm_hermitian_2x2_symmetric() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[0, 1], [1, 0]] (Pauli X), eigenvalues ±1
     // exp(A) = cosh(1)*I + sinh(1)*A
@@ -68,7 +68,7 @@ fn test_expm_hermitian_2x2_symmetric() {
 fn test_expm_hermitian_c64() {
     use num_complex::Complex;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Hermitian: A = [[2, 1-i], [1+i, 3]]
     // eigenvalues from eigh: λ₁ ≈ 1.0, λ₂ ≈ 4.0
@@ -109,7 +109,7 @@ fn test_expm_hermitian_c64() {
 
 #[test]
 fn test_expm_hermitian_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(diag(1, 2)) = diag(e, e²)
     let a = DenseTensor::<f32>::from_data(vec![1.0, 0.0, 0.0, 2.0], vec![2, 2]);
@@ -122,14 +122,14 @@ fn test_expm_hermitian_f32() {
 
 #[test]
 fn test_expm_hermitian_invalid_nonsquare() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     assert!(expm_hermitian(&backend, &a, 1).is_err());
 }
 
 #[test]
 fn test_expm_hermitian_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
     assert!(expm_hermitian(&backend, &a, 0).is_err());
     assert!(expm_hermitian(&backend, &a, 2).is_err());
@@ -142,7 +142,7 @@ fn test_expm_antihermitian_unitarity_c64() {
     use num_complex::Complex;
     use num_traits::Zero;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Anti-Hermitian: A = [[i, 1], [-1, -i]] → A† = [[-i, -1], [1, i]] = -A
     let a = DenseTensor::from_data(
@@ -183,7 +183,7 @@ fn test_expm_antihermitian_unitarity_c64() {
 fn test_expm_antihermitian_pauli_z() {
     use num_complex::Complex;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = -iσ_z * t = [[-it, 0], [0, it]] which is anti-Hermitian
     // exp(A) = [[exp(-it), 0], [0, exp(it)]]
@@ -222,7 +222,7 @@ fn test_expm_antihermitian_zero_c64() {
     use num_complex::Complex;
     use num_traits::Zero;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(0) = I
     let a = DenseTensor::from_data(vec![Complex::<f64>::zero(); 4], vec![2, 2]);
@@ -242,7 +242,7 @@ fn test_expm_antihermitian_zero_c64() {
 
 #[test]
 fn test_expm_antihermitian_real_type_error() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Real types should return error
     let a_f64 = DenseTensor::<f64>::from_data(vec![0.0; 4], vec![2, 2]);
@@ -257,7 +257,7 @@ fn test_expm_antihermitian_invalid_nonsquare() {
     use num_complex::Complex;
     use num_traits::Zero;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::from_data(vec![Complex::<f64>::zero(); 6], vec![2, 3]);
     assert!(expm_antihermitian(&backend, &a, 1).is_err());
 }
@@ -266,7 +266,7 @@ fn test_expm_antihermitian_invalid_nonsquare() {
 
 #[test]
 fn test_expm_diagonal_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(diag(1, 2)) = diag(e, e²)
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 2.0], vec![2, 2]);
@@ -281,7 +281,7 @@ fn test_expm_diagonal_f64() {
 
 #[test]
 fn test_expm_zero_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(0) = I
     let a = DenseTensor::<f64>::from_data(vec![0.0; 4], vec![2, 2]);
@@ -295,7 +295,7 @@ fn test_expm_zero_f64() {
 
 #[test]
 fn test_expm_identity_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // exp(I) = e * I
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
@@ -310,7 +310,7 @@ fn test_expm_identity_f64() {
 
 #[test]
 fn test_expm_nilpotent_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // N = [[0, 1], [0, 0]] is nilpotent (N² = 0)
     // exp(N) = I + N = [[1, 1], [0, 1]]
@@ -325,7 +325,7 @@ fn test_expm_nilpotent_f64() {
 
 #[test]
 fn test_expm_general_2x2_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1, 2], [3, 4]] — compare with eigendecomposition result
     // eigenvalues: λ = (5 ± √33) / 2
@@ -355,7 +355,7 @@ fn test_expm_general_2x2_f64() {
 
 #[test]
 fn test_expm_general_3x3_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[0,1,0],[0,0,1],[0,0,0]] (upper triangular nilpotent, N³=0)
     // exp(A) = I + A + A²/2 = [[1,1,0.5],[0,1,1],[0,0,1]]
@@ -377,7 +377,7 @@ fn test_expm_general_3x3_f64() {
 fn test_expm_complex_f64() {
     use num_complex::Complex;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Complex diagonal: exp(diag(i, -i)) = diag(exp(i), exp(-i))
     let a = DenseTensor::from_data(
@@ -403,7 +403,7 @@ fn test_expm_complex_f64() {
 
 #[test]
 fn test_expm_large_norm_f64() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = 10*I — triggers scaling (||A||_1 = 10 > θ_13)
     // exp(10*I) = e^10 * I
@@ -427,7 +427,7 @@ fn test_expm_large_norm_f64() {
 
 #[test]
 fn test_expm_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = DenseTensor::<f32>::from_data(vec![1.0, 0.0, 0.0, 2.0], vec![2, 2]);
     let result = expm(&backend, &a, 1).unwrap();
@@ -439,14 +439,14 @@ fn test_expm_f32() {
 
 #[test]
 fn test_expm_invalid_nonsquare() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     assert!(expm(&backend, &a, 1).is_err());
 }
 
 #[test]
 fn test_expm_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
     assert!(expm(&backend, &a, 0).is_err());
     assert!(expm(&backend, &a, 2).is_err());

@@ -1,10 +1,10 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_linalg::{contract, inverse, solve};
 use arnet_tensor::DenseTensor;
 
 #[test]
 fn test_solve_f64_2x2() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[2, 1], [5, 3]], B = [[4], [7]]
     // Solution: X = [[5], [-6]]
@@ -19,7 +19,7 @@ fn test_solve_f64_2x2() {
 
 #[test]
 fn test_solve_f64_identity() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = I, B = [[1, 2], [3, 4]] → X = B
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
@@ -37,7 +37,7 @@ fn test_solve_f64_identity() {
 
 #[test]
 fn test_solve_f64_multiple_rhs() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1, 2], [3, 4]], B = [[5, 6], [7, 8]]
     // Verify A * X = B
@@ -61,7 +61,7 @@ fn test_solve_f64_multiple_rhs() {
 fn test_solve_c64() {
     use num_complex::Complex;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[1+i, 2], [0, 3-i]], B = [[1], [1]]
     let a = DenseTensor::from_data(
@@ -90,7 +90,7 @@ fn test_solve_c64() {
 
 #[test]
 fn test_solve_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = DenseTensor::<f32>::from_data(vec![2.0, 1.0, 5.0, 3.0], vec![2, 2]);
     let b = DenseTensor::<f32>::from_data(vec![4.0, 7.0], vec![2, 1]);
@@ -102,7 +102,7 @@ fn test_solve_f32() {
 
 #[test]
 fn test_solve_invalid_nonsquare() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // 2×3 matrix — not square
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
@@ -113,7 +113,7 @@ fn test_solve_invalid_nonsquare() {
 
 #[test]
 fn test_solve_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2, 1]);
 
@@ -125,7 +125,7 @@ fn test_solve_invalid_nrow() {
 
 #[test]
 fn test_inverse_f64_2x2() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // A = [[2, 1], [5, 3]], det = 1
     // A⁻¹ = [[3, -1], [-5, 2]]
@@ -154,7 +154,7 @@ fn test_inverse_f64_2x2() {
 
 #[test]
 fn test_inverse_diagonal() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // inv(diag(2, 5)) = diag(0.5, 0.2)
     let a = DenseTensor::<f64>::from_data(vec![2.0, 0.0, 0.0, 5.0], vec![2, 2]);
@@ -168,7 +168,7 @@ fn test_inverse_diagonal() {
 
 #[test]
 fn test_inverse_identity() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // inv(I) = I
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
@@ -184,7 +184,7 @@ fn test_inverse_identity() {
 
 #[test]
 fn test_inverse_orthogonal() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     // Rotation matrix: inv(Q) = Q^T
     let angle = std::f64::consts::FRAC_PI_4; // 45 degrees
@@ -204,7 +204,7 @@ fn test_inverse_orthogonal() {
 fn test_inverse_c64() {
     use num_complex::Complex;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = DenseTensor::from_data(
         vec![
@@ -234,7 +234,7 @@ fn test_inverse_c64() {
 
 #[test]
 fn test_inverse_f32() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
 
     let a = DenseTensor::<f32>::from_data(vec![2.0, 1.0, 5.0, 3.0], vec![2, 2]);
     let a_inv = inverse(&backend, &a, 1).unwrap();
@@ -247,14 +247,14 @@ fn test_inverse_f32() {
 
 #[test]
 fn test_inverse_invalid_nonsquare() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     assert!(inverse(&backend, &a, 1).is_err());
 }
 
 #[test]
 fn test_inverse_invalid_nrow() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let a = DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
     assert!(inverse(&backend, &a, 0).is_err());
     assert!(inverse(&backend, &a, 2).is_err());

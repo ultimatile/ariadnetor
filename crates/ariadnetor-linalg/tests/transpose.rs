@@ -1,10 +1,10 @@
-use arnet_cpu::CpuBackend;
+use arnet_native::NativeBackend;
 use arnet_linalg::transpose;
 use arnet_tensor::DenseTensor;
 
 #[test]
 fn test_transpose_f64_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor =
         DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
@@ -16,7 +16,7 @@ fn test_transpose_f64_2d() {
 
 #[test]
 fn test_transpose_f64_3d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
 
@@ -32,7 +32,7 @@ fn test_transpose_f64_3d() {
 
 #[test]
 fn test_transpose_f32_2d() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor =
         DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
@@ -46,7 +46,7 @@ fn test_transpose_f32_2d() {
 fn test_transpose_complex_f64_2d() {
     use num_complex::Complex;
 
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let input = vec![
         Complex::new(1.0, 2.0),
         Complex::new(3.0, 4.0),
@@ -68,7 +68,7 @@ fn test_transpose_complex_f64_2d() {
 
 #[test]
 fn test_transpose_empty_tensor() {
-    let backend = CpuBackend::new();
+    let backend = NativeBackend::new();
     let tensor = DenseTensor::<f64>::from_data(vec![], vec![0, 3]);
 
     let result = transpose(&backend, &tensor, &[1, 0]).unwrap();
