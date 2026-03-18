@@ -86,7 +86,6 @@ fn test_identity_multiplication() {
 }
 
 #[test]
-#[ignore = "contract doesn't handle element-wise multiplication (no contraction) case - returns [2,2,2,2] instead of [2,2]"]
 fn test_hadamard_product() {
     let backend = CpuBackend::new();
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);

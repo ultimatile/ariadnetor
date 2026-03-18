@@ -270,9 +270,15 @@ impl EinsumExpr {
     }
 }
 
-/// Contraction plan identifying contracted and free indices for a 2-input einsum
+/// Contraction plan identifying batch, contracted, and free indices for a 2-input einsum.
+///
+/// - **batch**: indices in both inputs AND in output (iterated over, not contracted)
+/// - **contracted**: indices in both inputs but NOT in output (summed over)
+/// - **free_lhs**: indices only in lhs and output (not in rhs)
+/// - **free_rhs**: indices only in rhs and output (not in lhs)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContractionPlan {
+    pub batch: Vec<u8>,
     pub contracted: Vec<u8>,
     pub free_lhs: Vec<u8>,
     pub free_rhs: Vec<u8>,
@@ -284,9 +290,9 @@ impl ContractionPlan {
         let rhs = expr.rhs_indices();
         let out = expr.out_indices();
 
+        let lhs_set: HashSet<u8> = lhs.iter().copied().collect();
         let rhs_set: HashSet<u8> = rhs.iter().copied().collect();
         let out_set: HashSet<u8> = out.iter().copied().collect();
-        let lhs_set: HashSet<u8> = lhs.iter().copied().collect();
 
         // Contracted: in both lhs and rhs, not in output (preserve LHS order)
         let contracted: Vec<u8> = lhs
@@ -295,28 +301,42 @@ impl ContractionPlan {
             .copied()
             .collect();
 
-        // Free indices in output order
-        let free_lhs: Vec<u8> = out
+        // Batch: in both lhs and rhs AND in output (output order)
+        let batch: Vec<u8> = out
             .iter()
-            .filter(|idx| lhs_set.contains(idx))
+            .filter(|idx| lhs_set.contains(idx) && rhs_set.contains(idx))
             .copied()
             .collect();
+
+        let batch_set: HashSet<u8> = batch.iter().copied().collect();
+
+        // Free lhs: in output and lhs, not in rhs (excludes batch)
+        let free_lhs: Vec<u8> = out
+            .iter()
+            .filter(|idx| lhs_set.contains(idx) && !batch_set.contains(idx))
+            .copied()
+            .collect();
+
+        // Free rhs: in output and rhs, not in lhs (excludes batch)
         let free_rhs: Vec<u8> = out
             .iter()
-            .filter(|idx| rhs_set.contains(idx))
+            .filter(|idx| rhs_set.contains(idx) && !batch_set.contains(idx))
             .copied()
             .collect();
 
         Self {
+            batch,
             contracted,
             free_lhs,
             free_rhs,
         }
     }
 
+    /// Compute LHS permutation to [batch, free_lhs, contracted] order.
     pub fn lhs_permutation(&self, lhs_indices: &[u8], rhs_indices: &[u8]) -> Option<Vec<usize>> {
         let contracted_set: HashSet<u8> = self.contracted.iter().copied().collect();
-        let mut target = self.free_lhs.clone();
+        let mut target = self.batch.clone();
+        target.extend(&self.free_lhs);
         for &idx in rhs_indices {
             if contracted_set.contains(&idx) && !target.contains(&idx) {
                 target.push(idx);
@@ -325,9 +345,10 @@ impl ContractionPlan {
         compute_permutation(lhs_indices, &target)
     }
 
+    /// Compute RHS permutation to [batch, contracted, free_rhs] order.
     pub fn rhs_permutation(&self, rhs_indices: &[u8]) -> Option<Vec<usize>> {
         let contracted_set: HashSet<u8> = self.contracted.iter().copied().collect();
-        let mut target = Vec::new();
+        let mut target = self.batch.clone();
         for &idx in rhs_indices {
             if contracted_set.contains(&idx) && !target.contains(&idx) {
                 target.push(idx);

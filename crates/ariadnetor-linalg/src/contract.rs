@@ -7,12 +7,10 @@ use crate::transpose::transpose;
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
 ///
-/// Performs a single GEMM-based contraction:
-/// 1. Parse Einstein notation
-/// 2. Permute operands to align contracted indices (via backend transpose)
-/// 3. Reshape to 2D matrices
-/// 4. GEMM via backend
-/// 5. Reshape result to output tensor shape
+/// Handles three cases:
+/// 1. **Pure element-wise** (Hadamard product): all indices are batch, no contracted/free
+/// 2. **Batched GEMM**: batch indices iterated, GEMM on remaining free/contracted dims
+/// 3. **Standard GEMM**: no batch indices, single GEMM call
 ///
 /// # Arguments
 ///
@@ -52,7 +50,7 @@ pub fn contract<T: Scalar>(
 
     let plan = ContractionPlan::from_expr(&expr);
 
-    // Permute operands so contracted indices are adjacent for GEMM reshape
+    // Permute operands so indices are in [batch, free, contracted] order
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
@@ -68,73 +66,82 @@ pub fn contract<T: Scalar>(
         rhs.clone()
     };
 
-    // Compute GEMM dimensions from the original shapes
+    // Compute dimensions for each index category
+    let batch_size: usize = plan
+        .batch
+        .iter()
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .product::<usize>()
+        .max(1);
+
     let m: usize = plan
         .free_lhs
         .iter()
-        .map(|&idx| {
-            let pos = expr
-                .lhs_indices()
-                .iter()
-                .position(|&x| x == idx)
-                .expect("Free index not found in LHS");
-            lhs.shape()[pos]
-        })
-        .product();
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .product::<usize>()
+        .max(1);
 
     let n: usize = plan
         .free_rhs
         .iter()
-        .map(|&idx| {
-            let pos = expr
-                .rhs_indices()
-                .iter()
-                .position(|&x| x == idx)
-                .expect("Free index not found in RHS");
-            rhs.shape()[pos]
-        })
-        .product();
+        .map(|&idx| dim_of(idx, expr.rhs_indices(), rhs.shape()))
+        .product::<usize>()
+        .max(1);
 
     let k: usize = plan
         .contracted
         .iter()
-        .map(|&idx| {
-            let pos = expr
-                .lhs_indices()
-                .iter()
-                .position(|&x| x == idx)
-                .expect("Contracted index not found in LHS");
-            lhs.shape()[pos]
-        })
-        .product();
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .product::<usize>()
+        .max(1);
 
-    // Handle scalar dimensions (empty product = 1)
-    let m = m.max(1);
-    let n = n.max(1);
-    let k = k.max(1);
-
-    // GEMM: C = 1 · A · B + 0 · C
-    let mut c_data = vec![T::zero(); m * n];
-
-    let desc = GemmDescriptor {
-        m,
-        n,
-        k,
-        alpha: T::one(),
-        a: lhs_permuted.data(),
-        b: rhs_permuted.data(),
-        beta: T::zero(),
-        c: &mut c_data,
-        trans_a: false,
-        trans_b: false,
-    };
-
-    backend.gemm(desc)?;
-
-    // Compute output tensor shape from free indices in output order
+    let lhs_data = lhs_permuted.data();
+    let rhs_data = rhs_permuted.data();
     let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
 
-    Ok(DenseTensor::from_data(c_data, output_shape))
+    if m == 1 && n == 1 && k == 1 {
+        // Pure element-wise multiplication (Hadamard product):
+        // all indices are batch, no free or contracted dimensions
+        let c_data: Vec<T> = lhs_data
+            .iter()
+            .zip(rhs_data.iter())
+            .map(|(&a, &b)| a * b)
+            .collect();
+        Ok(DenseTensor::from_data(c_data, output_shape))
+    } else {
+        // Batched GEMM: loop over batch dimensions, GEMM per slice
+        let mk = m * k;
+        let kn = k * n;
+        let mn = m * n;
+        let mut c_data = vec![T::zero(); batch_size * mn];
+
+        for b in 0..batch_size {
+            let desc = GemmDescriptor {
+                m,
+                n,
+                k,
+                alpha: T::one(),
+                a: &lhs_data[b * mk..(b + 1) * mk],
+                b: &rhs_data[b * kn..(b + 1) * kn],
+                beta: T::zero(),
+                c: &mut c_data[b * mn..(b + 1) * mn],
+                trans_a: false,
+                trans_b: false,
+            };
+            backend.gemm(desc)?;
+        }
+
+        Ok(DenseTensor::from_data(c_data, output_shape))
+    }
+}
+
+/// Look up the dimension of an index in the given index list and shape.
+fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
+    let pos = indices
+        .iter()
+        .position(|&x| x == idx)
+        .expect("Index not found in tensor");
+    shape[pos]
 }
 
 /// Derive output tensor shape from contraction plan and original input shapes.
@@ -146,22 +153,17 @@ fn compute_output_shape(
 ) -> Vec<usize> {
     let mut output_shape = Vec::new();
 
+    // Batch dimensions (shared between both inputs, use lhs for lookup)
+    for &idx in &plan.batch {
+        output_shape.push(dim_of(idx, expr.lhs_indices(), lhs_shape));
+    }
+
     for &idx in &plan.free_lhs {
-        let pos = expr
-            .lhs_indices()
-            .iter()
-            .position(|&x| x == idx)
-            .expect("Free LHS index not found");
-        output_shape.push(lhs_shape[pos]);
+        output_shape.push(dim_of(idx, expr.lhs_indices(), lhs_shape));
     }
 
     for &idx in &plan.free_rhs {
-        let pos = expr
-            .rhs_indices()
-            .iter()
-            .position(|&x| x == idx)
-            .expect("Free RHS index not found");
-        output_shape.push(rhs_shape[pos]);
+        output_shape.push(dim_of(idx, expr.rhs_indices(), rhs_shape));
     }
 
     // Scalar result (no free indices) → shape [1]
