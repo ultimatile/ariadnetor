@@ -1,7 +1,7 @@
 //! Tests for einsum: single-tensor, 2-tensor, and N-tensor operations
 
-use arnet_native::NativeBackend;
 use arnet_linalg::einsum;
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 // ============================================================================
@@ -175,14 +175,8 @@ fn test_einsum_3_tensor_chain() {
     let backend = NativeBackend::new();
     // A(2×3) · B(3×4) · C(4×2) = D(2×2)
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = DenseTensor::from_data(
-        (1..=12).map(|x| x as f64).collect(),
-        vec![3, 4],
-    );
-    let c = DenseTensor::from_data(
-        (1..=8).map(|x| x as f64).collect(),
-        vec![4, 2],
-    );
+    let b = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
+    let c = DenseTensor::from_data((1..=8).map(|x| x as f64).collect(), vec![4, 2]);
 
     let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il").unwrap();
 

@@ -3,8 +3,8 @@
 //! Migrated from ariadnetor-tensor integration tests after moving
 //! contraction logic to the linalg crate.
 
-use arnet_native::NativeBackend;
 use arnet_linalg::{contract, transpose};
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 // ============================================================================
@@ -137,14 +137,8 @@ fn test_vector_matrix_contraction() {
 #[test]
 fn test_actual_contraction_with_reordered_indices() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        vec![2, 2, 2],
-    );
-    let b = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        vec![2, 2, 2],
-    );
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
 
     let c = contract(&backend, &a, &b, "ikj,jkl->il").unwrap();
     assert_eq!(c.shape(), &[2, 2]);
@@ -154,14 +148,8 @@ fn test_actual_contraction_with_reordered_indices() {
 #[test]
 fn test_consistency_between_ijk_and_ikj_layouts() {
     let backend = NativeBackend::new();
-    let a_ijk = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        vec![2, 2, 2],
-    );
-    let b = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        vec![2, 2, 2],
-    );
+    let a_ijk = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
 
     let result_ijk = contract(&backend, &a_ijk, &b, "ijk,jkl->il").unwrap();
 

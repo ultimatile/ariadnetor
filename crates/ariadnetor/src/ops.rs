@@ -38,7 +38,10 @@ pub type LqResult<T, B> = (Tensor<T, B>, Tensor<T, B>);
 pub type EighResult<T, B> = (Tensor<<T as Scalar>::Real, B>, Tensor<T, B>);
 
 /// General eigenvalue result: `(eigenvalues, eigenvectors)` (complex).
-pub type EigResult<T, B> = (Tensor<<T as Scalar>::Complex, B>, Tensor<<T as Scalar>::Complex, B>);
+pub type EigResult<T, B> = (
+    Tensor<<T as Scalar>::Complex, B>,
+    Tensor<<T as Scalar>::Complex, B>,
+);
 
 // ============================================================================
 // Helpers
@@ -115,8 +118,7 @@ pub fn trunc_svd<T: Scalar, B: ComputeBackend>(
     nrow: usize,
     params: &arnet_linalg::TruncSvdParams,
 ) -> Result<TruncSvdResult<T, B>, BackendError> {
-    let (u, s, vt, err) =
-        arnet_linalg::trunc_svd(tensor.backend(), dense(tensor), nrow, params)?;
+    let (u, s, vt, err) = arnet_linalg::trunc_svd(tensor.backend(), dense(tensor), nrow, params)?;
     let ba = tensor.backend_arc();
     Ok((wrap(u, ba), wrap(s, ba), wrap(vt, ba), err))
 }
@@ -256,9 +258,7 @@ pub fn norm<T: Scalar, B: ComputeBackend>(tensor: &Tensor<T, B>) -> T::Real {
 }
 
 /// Normalize to unit norm (out-of-place).
-pub fn normalize<T: Scalar, B: ComputeBackend>(
-    tensor: &Tensor<T, B>,
-) -> (Tensor<T, B>, T::Real) {
+pub fn normalize<T: Scalar, B: ComputeBackend>(tensor: &Tensor<T, B>) -> (Tensor<T, B>, T::Real) {
     let (result, n) = arnet_linalg::normalize(dense(tensor));
     (wrap(result, tensor.backend_arc()), n)
 }
@@ -273,9 +273,7 @@ pub fn trace<T: Scalar, B: ComputeBackend>(
 }
 
 /// Diagonal extraction (2D → 1D) or construction (1D → 2D).
-pub fn diag<T: Scalar, B: ComputeBackend>(
-    tensor: &Tensor<T, B>,
-) -> Result<Tensor<T, B>, String> {
+pub fn diag<T: Scalar, B: ComputeBackend>(tensor: &Tensor<T, B>) -> Result<Tensor<T, B>, String> {
     let result = arnet_linalg::diag(dense(tensor))?;
     Ok(wrap(result, tensor.backend_arc()))
 }

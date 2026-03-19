@@ -102,7 +102,10 @@ pub fn eigvalsh<T: Scalar>(
 ///
 /// - Eigenvalues: `DenseTensor<T::Complex>` with shape `[n]`, complex
 /// - Eigenvectors: `DenseTensor<T::Complex>` with shape `[n, n]`, complex, columns are right eigenvectors (row-major)
-pub type EigResult<T> = (DenseTensor<<T as Scalar>::Complex>, DenseTensor<<T as Scalar>::Complex>);
+pub type EigResult<T> = (
+    DenseTensor<<T as Scalar>::Complex>,
+    DenseTensor<<T as Scalar>::Complex>,
+);
 
 /// Compute general eigenvalue decomposition of a tensor reshaped as a square matrix.
 ///

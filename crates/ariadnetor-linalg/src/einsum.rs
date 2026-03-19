@@ -82,7 +82,8 @@ fn einsum_multi<T: Scalar>(
     let n = inputs.len();
 
     // First contraction: tensors[0] with tensors[1]
-    let intermediate_out = compute_intermediate_output(&inputs[0], &inputs[1], &inputs[2..], final_output);
+    let intermediate_out =
+        compute_intermediate_output(&inputs[0], &inputs[1], &inputs[2..], final_output);
     let notation = build_notation(&inputs[0], &inputs[1], &intermediate_out);
     let mut accumulated = contract(backend, tensors[0], tensors[1], &notation)?;
     let mut acc_indices = intermediate_out;
@@ -90,7 +91,8 @@ fn einsum_multi<T: Scalar>(
     // Subsequent contractions: accumulated with tensors[i]
     for i in 2..n {
         let remaining = &inputs[i + 1..];
-        let intermediate_out = compute_intermediate_output(&acc_indices, &inputs[i], remaining, final_output);
+        let intermediate_out =
+            compute_intermediate_output(&acc_indices, &inputs[i], remaining, final_output);
         let notation = build_notation(&acc_indices, &inputs[i], &intermediate_out);
         accumulated = contract(backend, &accumulated, tensors[i], &notation)?;
         acc_indices = intermediate_out;

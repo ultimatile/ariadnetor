@@ -500,13 +500,18 @@ where
     pub fn concatenate(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "concatenate: empty tensor list");
         let rank = tensors[0].rank();
-        assert!(axis < rank, "concatenate: axis {axis} out of range for rank {rank}");
+        assert!(
+            axis < rank,
+            "concatenate: axis {axis} out of range for rank {rank}"
+        );
 
         let base_shape = tensors[0].shape();
         for (i, t) in tensors.iter().enumerate().skip(1) {
             assert_eq!(
-                t.rank(), rank,
-                "concatenate: tensor {i} has rank {} but expected {rank}", t.rank()
+                t.rank(),
+                rank,
+                "concatenate: tensor {i} has rank {} but expected {rank}",
+                t.rank()
             );
             for (d, (&ts, &bs)) in t.shape().iter().zip(base_shape).enumerate() {
                 if d != axis {
@@ -561,7 +566,8 @@ where
 
         for (i, t) in tensors.iter().enumerate().skip(1) {
             assert_eq!(
-                t.shape(), base_shape,
+                t.shape(),
+                base_shape,
                 "stack: tensor {i} has shape {:?} but expected {base_shape:?}",
                 t.shape()
             );
@@ -625,7 +631,6 @@ where
             .map(|(&idx, &stride)| idx * stride)
             .sum()
     }
-
 }
 
 impl<T> DenseTensor<T>

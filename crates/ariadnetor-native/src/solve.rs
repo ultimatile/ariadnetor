@@ -1,8 +1,8 @@
 //! Linear solve implementations via faer LU with partial pivoting for all supported scalar types
 
 use arnet_core::backend::{BackendError, SolveDescriptor};
-use faer::prelude::Solve;
 use faer::MatRef;
+use faer::prelude::Solve;
 use num_complex::Complex;
 
 /// Linear solve AX = B for f64 via faer partial-pivoting LU

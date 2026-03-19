@@ -1,5 +1,5 @@
-use arnet_native::NativeBackend;
 use arnet_linalg::{contract, inverse, solve};
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 #[test]

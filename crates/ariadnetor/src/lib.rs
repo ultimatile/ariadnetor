@@ -18,17 +18,17 @@ pub mod runtime;
 pub mod tensor;
 
 // Main types
-pub use tensor::{DenseTensor, Tensor, TensorStorage};
 pub use expr::ExpressionComputeGraph;
+pub use tensor::{DenseTensor, Tensor, TensorStorage};
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};
 
 // High-level free functions (backend extracted from Tensor)
 pub use ops::{
-    contract, diag, eig, eigh, eigvals, eigvalsh, einsum, expm, expm_antihermitian,
-    expm_hermitian, inverse, linear_combine, lq, norm, normalize, qr, scale, solve, svd,
-    trace, transpose, trunc_svd,
+    contract, diag, eig, eigh, eigvals, eigvalsh, einsum, expm, expm_antihermitian, expm_hermitian,
+    inverse, linear_combine, lq, norm, normalize, qr, scale, solve, svd, trace, transpose,
+    trunc_svd,
 };
 
 // Re-export result types from linalg

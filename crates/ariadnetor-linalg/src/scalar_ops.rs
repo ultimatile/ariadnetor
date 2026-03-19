@@ -105,10 +105,7 @@ pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real
 /// let result = linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
 /// assert_eq!(result.get(&[0, 0]), 8.0);
 /// ```
-pub fn linear_combine<T>(
-    tensors: &[&DenseTensor<T>],
-    coefs: &[T],
-) -> Result<DenseTensor<T>, String>
+pub fn linear_combine<T>(tensors: &[&DenseTensor<T>], coefs: &[T]) -> Result<DenseTensor<T>, String>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
@@ -193,9 +190,7 @@ pub fn trace<T: Scalar>(
             return Err(format!("Self-pair not allowed: ({a}, {b})"));
         }
         if used[a] || used[b] {
-            return Err(format!(
-                "Bond index used in multiple pairs: ({a}, {b})"
-            ));
+            return Err(format!("Bond index used in multiple pairs: ({a}, {b})"));
         }
         if shape[a] != shape[b] {
             return Err(format!(

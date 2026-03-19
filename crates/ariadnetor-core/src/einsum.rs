@@ -258,11 +258,9 @@ impl EinsumExpr {
 
         let mut output_shape = Vec::new();
         for &idx in &self.out_indices {
-            let dim = index_dims
-                .get(&idx)
-                .ok_or_else(|| {
-                    format!("Output index '{}' not found in input tensors", idx as char)
-                })?;
+            let dim = index_dims.get(&idx).ok_or_else(|| {
+                format!("Output index '{}' not found in input tensors", idx as char)
+            })?;
             output_shape.push(*dim);
         }
 

@@ -1,5 +1,5 @@
-use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, QrDescriptor};
+use arnet_native::NativeBackend;
 use num_complex::Complex;
 
 #[test]
@@ -12,8 +12,11 @@ fn test_qr_f64_square() {
     let mut r = [0.0f64; 4];
 
     let desc = QrDescriptor {
-        m, n, a: &a,
-        q: &mut q, r: &mut r,
+        m,
+        n,
+        a: &a,
+        q: &mut q,
+        r: &mut r,
     };
     backend.qr(desc).unwrap();
 
@@ -24,8 +27,11 @@ fn test_qr_f64_square() {
             for l in 0..k {
                 val += q[i * k + l] * r[l * n + j];
             }
-            assert!((val - a[i * n + j]).abs() < 1e-10,
-                "QR reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            assert!(
+                (val - a[i * n + j]).abs() < 1e-10,
+                "QR reconstruction mismatch at ({i},{j}): {val} vs {}",
+                a[i * n + j]
+            );
         }
     }
 }
@@ -41,8 +47,11 @@ fn test_qr_f64_rectangular() {
     let mut r = vec![0.0f64; k * n];
 
     let desc = QrDescriptor {
-        m, n, a: &a,
-        q: &mut q, r: &mut r,
+        m,
+        n,
+        a: &a,
+        q: &mut q,
+        r: &mut r,
     };
     backend.qr(desc).unwrap();
 
@@ -52,8 +61,10 @@ fn test_qr_f64_rectangular() {
             for l in 0..k {
                 val += q[i * k + l] * r[l * n + j];
             }
-            assert!((val - a[i * n + j]).abs() < 1e-10,
-                "QR reconstruction mismatch at ({i},{j})");
+            assert!(
+                (val - a[i * n + j]).abs() < 1e-10,
+                "QR reconstruction mismatch at ({i},{j})"
+            );
         }
     }
 }
@@ -68,8 +79,11 @@ fn test_qr_f32_basic() {
     let mut r = [0.0f32; 4];
 
     let desc = QrDescriptor {
-        m, n, a: &a,
-        q: &mut q, r: &mut r,
+        m,
+        n,
+        a: &a,
+        q: &mut q,
+        r: &mut r,
     };
     backend.qr(desc).unwrap();
 
@@ -79,8 +93,10 @@ fn test_qr_f32_basic() {
             for l in 0..k {
                 val += q[i * k + l] * r[l * n + j];
             }
-            assert!((val - a[i * n + j]).abs() < 1e-4,
-                "QR reconstruction mismatch at ({i},{j})");
+            assert!(
+                (val - a[i * n + j]).abs() < 1e-4,
+                "QR reconstruction mismatch at ({i},{j})"
+            );
         }
     }
 }
@@ -92,16 +108,21 @@ fn test_qr_c64_square() {
     let backend = NativeBackend::new();
 
     let a = [
-        Complex::new(1.0, 2.0), Complex::new(3.0, -1.0),
-        Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        Complex::new(1.0, 2.0),
+        Complex::new(3.0, -1.0),
+        Complex::new(0.0, 4.0),
+        Complex::new(2.0, 1.0),
     ];
     let (m, n, k) = (2, 2, 2);
     let mut q = vec![Complex::new(0.0, 0.0); m * k];
     let mut r = vec![Complex::new(0.0, 0.0); k * n];
 
     let desc = QrDescriptor {
-        m, n, a: &a,
-        q: &mut q, r: &mut r,
+        m,
+        n,
+        a: &a,
+        q: &mut q,
+        r: &mut r,
     };
     backend.qr(desc).unwrap();
 
@@ -113,8 +134,11 @@ fn test_qr_c64_square() {
                 val += q[i * k + l] * r[l * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-10,
-                "QR reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            assert!(
+                diff < 1e-10,
+                "QR reconstruction mismatch at ({i},{j}): {val} vs {}",
+                a[i * n + j]
+            );
         }
     }
 
@@ -126,8 +150,10 @@ fn test_qr_c64_square() {
                 val += q[l * k + i].conj() * q[l * k + j];
             }
             let expected: f64 = if i == j { 1.0 } else { 0.0 };
-            assert!((val.norm() - expected).abs() < 1e-10,
-                "Q^H * Q not identity at ({i},{j}): {val}");
+            assert!(
+                (val.norm() - expected).abs() < 1e-10,
+                "Q^H * Q not identity at ({i},{j}): {val}"
+            );
         }
     }
 }
@@ -138,17 +164,23 @@ fn test_qr_c64_rectangular() {
 
     // A (3x2) complex
     let a = [
-        Complex::new(1.0, 1.0), Complex::new(2.0, -1.0),
-        Complex::new(3.0, 0.0), Complex::new(0.0, 4.0),
-        Complex::new(-1.0, 2.0), Complex::new(5.0, 1.0),
+        Complex::new(1.0, 1.0),
+        Complex::new(2.0, -1.0),
+        Complex::new(3.0, 0.0),
+        Complex::new(0.0, 4.0),
+        Complex::new(-1.0, 2.0),
+        Complex::new(5.0, 1.0),
     ];
     let (m, n, k) = (3, 2, 2);
     let mut q = vec![Complex::new(0.0, 0.0); m * k];
     let mut r = vec![Complex::new(0.0, 0.0); k * n];
 
     let desc = QrDescriptor {
-        m, n, a: &a,
-        q: &mut q, r: &mut r,
+        m,
+        n,
+        a: &a,
+        q: &mut q,
+        r: &mut r,
     };
     backend.qr(desc).unwrap();
 
@@ -159,8 +191,7 @@ fn test_qr_c64_rectangular() {
                 val += q[i * k + l] * r[l * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-10,
-                "QR reconstruction mismatch at ({i},{j})");
+            assert!(diff < 1e-10, "QR reconstruction mismatch at ({i},{j})");
         }
     }
 }
@@ -170,16 +201,21 @@ fn test_qr_c32_basic() {
     let backend = NativeBackend::new();
 
     let a = [
-        Complex::new(1.0f32, 2.0), Complex::new(3.0, -1.0),
-        Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        Complex::new(1.0f32, 2.0),
+        Complex::new(3.0, -1.0),
+        Complex::new(0.0, 4.0),
+        Complex::new(2.0, 1.0),
     ];
     let (m, n, k) = (2, 2, 2);
     let mut q = vec![Complex::new(0.0f32, 0.0); m * k];
     let mut r = vec![Complex::new(0.0f32, 0.0); k * n];
 
     let desc = QrDescriptor {
-        m, n, a: &a,
-        q: &mut q, r: &mut r,
+        m,
+        n,
+        a: &a,
+        q: &mut q,
+        r: &mut r,
     };
     backend.qr(desc).unwrap();
 
@@ -190,8 +226,7 @@ fn test_qr_c32_basic() {
                 val += q[i * k + l] * r[l * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-4,
-                "QR reconstruction mismatch at ({i},{j})");
+            assert!(diff < 1e-4, "QR reconstruction mismatch at ({i},{j})");
         }
     }
 }

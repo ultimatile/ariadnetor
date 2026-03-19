@@ -1,5 +1,5 @@
+use arnet_linalg::{EighResult, contract, eigh, expm, expm_antihermitian, expm_hermitian};
 use arnet_native::NativeBackend;
-use arnet_linalg::{contract, eigh, expm, expm_antihermitian, expm_hermitian, EighResult};
 use arnet_tensor::DenseTensor;
 
 #[test]
@@ -95,7 +95,10 @@ fn test_expm_hermitian_c64() {
     assert!(f64::abs(r11.im) < 1e-10, "r11 not real: {r11}");
 
     // Off-diagonal: r01 = conj(r10)
-    assert!((r01 - r10.conj()).norm() < 1e-10, "not Hermitian: r01={r01}, r10={r10}");
+    assert!(
+        (r01 - r10.conj()).norm() < 1e-10,
+        "not Hermitian: r01={r01}, r10={r10}"
+    );
 
     // Verify via eigenvalue comparison: tr(exp(A)) = exp(λ₁) + exp(λ₂)
     let (w, _): EighResult<Complex<f64>> = eigh(&backend, &a, 1).unwrap();
@@ -345,8 +348,8 @@ fn test_expm_general_2x2_f64() {
 
     // det(exp(A)) = exp(tr(A)) = exp(5)
     let expected_det = 5.0f64.exp();
-    let actual_det = result.get(&[0, 0]) * result.get(&[1, 1])
-        - result.get(&[0, 1]) * result.get(&[1, 0]);
+    let actual_det =
+        result.get(&[0, 0]) * result.get(&[1, 1]) - result.get(&[0, 1]) * result.get(&[1, 0]);
     assert!(
         (actual_det - expected_det).abs() < 1e-6,
         "det mismatch: actual={actual_det}, expected={expected_det}"

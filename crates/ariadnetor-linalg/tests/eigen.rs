@@ -1,5 +1,5 @@
-use arnet_native::NativeBackend;
 use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 // --- EIGH tests ---
@@ -98,10 +98,7 @@ fn test_eigvalsh_f64() {
 fn test_eigh_non_square_error() {
     let backend = NativeBackend::new();
     // 2×3 matrix → non-square → error
-    let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let result = eigh(&backend, &tensor, 1);
     assert!(result.is_err());
@@ -216,10 +213,7 @@ fn test_eigvals_f64() {
 #[test]
 fn test_eig_non_square_error() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     assert!(eig(&backend, &tensor, 1).is_err());
 }

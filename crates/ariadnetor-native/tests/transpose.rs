@@ -1,5 +1,5 @@
-use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, DeviceType, TransposeDescriptor};
+use arnet_native::NativeBackend;
 use num_complex::Complex;
 
 #[test]
@@ -76,8 +76,12 @@ fn test_transpose_complex_f64_2d() {
     let backend = NativeBackend::new();
 
     let input = [
-        Complex::new(1.0, 2.0), Complex::new(3.0, 4.0), Complex::new(5.0, 6.0),
-        Complex::new(7.0, 8.0), Complex::new(9.0, 10.0), Complex::new(11.0, 12.0),
+        Complex::new(1.0, 2.0),
+        Complex::new(3.0, 4.0),
+        Complex::new(5.0, 6.0),
+        Complex::new(7.0, 8.0),
+        Complex::new(9.0, 10.0),
+        Complex::new(11.0, 12.0),
     ];
     let mut output = [Complex::new(0.0, 0.0); 6];
 

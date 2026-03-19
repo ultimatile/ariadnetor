@@ -10,9 +10,9 @@ pub(crate) fn svd_f64(desc: SvdDescriptor<'_, f64>) -> Result<(), BackendError> 
     let k = m.min(n);
 
     let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
-    let thin = mat.thin_svd().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
-    })?;
+    let thin = mat
+        .thin_svd()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
 
     // U (m*k, row-major)
     let u_mat = thin.U();
@@ -45,9 +45,9 @@ pub(crate) fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> 
     let k = m.min(n);
 
     let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
-    let thin = mat.thin_svd().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
-    })?;
+    let thin = mat
+        .thin_svd()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
 
     let u_mat = thin.U();
     for i in 0..m {
@@ -77,9 +77,9 @@ pub(crate) fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), Backe
     let k = m.min(n);
 
     let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
-    let thin = mat.thin_svd().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
-    })?;
+    let thin = mat
+        .thin_svd()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
 
     let u_mat = thin.U();
     for i in 0..m {
@@ -111,9 +111,9 @@ pub(crate) fn svd_c32(desc: SvdDescriptor<'_, Complex<f32>>) -> Result<(), Backe
     let k = m.min(n);
 
     let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
-    let thin = mat.thin_svd().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}"))
-    })?;
+    let thin = mat
+        .thin_svd()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
 
     let u_mat = thin.U();
     for i in 0..m {

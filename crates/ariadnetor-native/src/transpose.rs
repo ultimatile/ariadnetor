@@ -22,15 +22,13 @@ pub(crate) fn dispatch<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<()
             return hptt_f32(desc_f32);
         }
         if tid == TypeId::of::<num_complex::Complex<f64>>() {
-            let desc_c64 = unsafe {
-                reinterpret_transpose_desc::<T, num_complex::Complex<f64>>(desc)
-            };
+            let desc_c64 =
+                unsafe { reinterpret_transpose_desc::<T, num_complex::Complex<f64>>(desc) };
             return hptt_c64(desc_c64);
         }
         if tid == TypeId::of::<num_complex::Complex<f32>>() {
-            let desc_c32 = unsafe {
-                reinterpret_transpose_desc::<T, num_complex::Complex<f32>>(desc)
-            };
+            let desc_c32 =
+                unsafe { reinterpret_transpose_desc::<T, num_complex::Complex<f32>>(desc) };
             return hptt_c32(desc_c32);
         }
     }
@@ -51,7 +49,12 @@ pub(crate) fn dispatch<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<()
 unsafe fn reinterpret_transpose_desc<'a, T, U>(
     desc: TransposeDescriptor<'a, T>,
 ) -> TransposeDescriptor<'a, U> {
-    let TransposeDescriptor { input, output, shape, perm } = desc;
+    let TransposeDescriptor {
+        input,
+        output,
+        shape,
+        perm,
+    } = desc;
     unsafe {
         TransposeDescriptor {
             input: std::slice::from_raw_parts(input.as_ptr() as *const U, input.len()),
@@ -84,8 +87,16 @@ fn hptt_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
 fn hptt_c64(desc: TransposeDescriptor<'_, num_complex::Complex<f64>>) -> Result<(), BackendError> {
     let alpha = num_complex::Complex::new(1.0, 0.0);
     let beta = num_complex::Complex::new(0.0, 0.0);
-    hptt::transpose_c64(desc.perm, alpha, desc.input, desc.shape, beta, desc.output, 1)
-        .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c64: {e}")))?;
+    hptt::transpose_c64(
+        desc.perm,
+        alpha,
+        desc.input,
+        desc.shape,
+        beta,
+        desc.output,
+        1,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c64: {e}")))?;
     Ok(())
 }
 
@@ -93,8 +104,16 @@ fn hptt_c64(desc: TransposeDescriptor<'_, num_complex::Complex<f64>>) -> Result<
 fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<(), BackendError> {
     let alpha = num_complex::Complex::new(1.0, 0.0);
     let beta = num_complex::Complex::new(0.0, 0.0);
-    hptt::transpose_c32(desc.perm, alpha, desc.input, desc.shape, beta, desc.output, 1)
-        .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c32: {e}")))?;
+    hptt::transpose_c32(
+        desc.perm,
+        alpha,
+        desc.input,
+        desc.shape,
+        beta,
+        desc.output,
+        1,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c32: {e}")))?;
     Ok(())
 }
 

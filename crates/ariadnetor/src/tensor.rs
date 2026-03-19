@@ -101,12 +101,18 @@ where
 
     /// Create a tensor filled with a constant value (default: NativeBackend).
     pub fn constant(shape: Vec<usize>, value: T) -> Self {
-        Self::with_backend(TensorStorage::constant(shape, value), NativeBackend::shared())
+        Self::with_backend(
+            TensorStorage::constant(shape, value),
+            NativeBackend::shared(),
+        )
     }
 
     /// Create a tensor from existing data (default: NativeBackend).
     pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
-        Self::with_backend(TensorStorage::from_data(data, shape), NativeBackend::shared())
+        Self::with_backend(
+            TensorStorage::from_data(data, shape),
+            NativeBackend::shared(),
+        )
     }
 }
 
@@ -229,4 +235,3 @@ where
         )
     }
 }
-

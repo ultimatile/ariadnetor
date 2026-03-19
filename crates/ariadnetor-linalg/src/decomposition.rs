@@ -1,4 +1,6 @@
-use arnet_core::backend::{BackendError, ComputeBackend, LqDescriptor, QrDescriptor, SvdDescriptor};
+use arnet_core::backend::{
+    BackendError, ComputeBackend, LqDescriptor, QrDescriptor, SvdDescriptor,
+};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
 use num_traits::{Float, ToPrimitive, Zero};
@@ -8,7 +10,11 @@ use num_traits::{Float, ToPrimitive, Zero};
 /// - `U`: Left singular vectors
 /// - `S`: Singular values (real-valued, descending)
 /// - `Vt`: Right singular vectors transposed
-pub type SvdResult<T> = (DenseTensor<T>, DenseTensor<<T as Scalar>::Real>, DenseTensor<T>);
+pub type SvdResult<T> = (
+    DenseTensor<T>,
+    DenseTensor<<T as Scalar>::Real>,
+    DenseTensor<T>,
+);
 
 /// Result of a truncated SVD decomposition: `(U, S, Vt, trunc_err)`.
 ///

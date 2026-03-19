@@ -64,10 +64,7 @@ fn main() {
     // Example 4: Implicit output inference
     println!("4. Implicit Output: ij,jk (no ->)");
     let expr = EinsumExpr::parse("ij,jk").unwrap();
-    println!(
-        "   Inferred output: {:?}",
-        fmt_indices(expr.out_indices())
-    );
+    println!("   Inferred output: {:?}", fmt_indices(expr.out_indices()));
     println!("   Num inputs: {}\n", expr.num_inputs());
 
     // Example 5: Single tensor trace

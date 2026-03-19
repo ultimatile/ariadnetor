@@ -129,7 +129,7 @@ fn test_trace_partial_rank3() {
     data[4] = 2.0; // [0,1,1]
     data[8] = 3.0; // [0,2,2]
     // A[1,0,0]=4, A[1,1,1]=5, A[1,2,2]=6 → B[1] = 15
-    data[9] = 4.0;  // [1,0,0]
+    data[9] = 4.0; // [1,0,0]
     data[13] = 5.0; // [1,1,1]
     data[17] = 6.0; // [1,2,2]
     let tensor = DenseTensor::from_data(data, vec![2, 3, 3]);
@@ -236,10 +236,7 @@ fn test_diag_construct_3x3() {
     let v = DenseTensor::<f64>::from_data(vec![2.0, 5.0, 8.0], vec![3]);
     let m = diag(&v).unwrap();
     assert_eq!(m.shape(), &[3, 3]);
-    assert_eq!(
-        m.data(),
-        &[2.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 8.0]
-    );
+    assert_eq!(m.data(), &[2.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 8.0]);
 }
 
 #[test]

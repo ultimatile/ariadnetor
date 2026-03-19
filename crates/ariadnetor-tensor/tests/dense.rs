@@ -114,7 +114,6 @@ fn test_ffi_pointer_types() {
     let _ptr_c32: *const Complex<f32> = tensor_c32.as_ptr();
 }
 
-
 #[test]
 fn test_eye_f64_3x3() {
     let id = DenseTensor::<f64>::eye(3);
@@ -308,10 +307,7 @@ fn test_slice_2x2_from_3x3() {
 
 #[test]
 fn test_slice_row() {
-    let t = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     // Extract second row
     let s = t.slice(&[(1, 2), (0, 3)]);
     assert_eq!(s.shape(), &[1, 3]);
@@ -405,7 +401,9 @@ fn test_concatenate_axis0() {
     assert_eq!(c.shape(), &[4, 3]);
     assert_eq!(
         c.data(),
-        &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+        &[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0
+        ]
     );
 }
 
@@ -441,7 +439,9 @@ fn test_stack_axis0() {
     assert_eq!(s.shape(), &[2, 2, 3]);
     assert_eq!(
         s.data(),
-        &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+        &[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0
+        ]
     );
 }
 
@@ -455,7 +455,9 @@ fn test_stack_axis2() {
     // [1,0,:] = [4,10], [1,1,:] = [5,11], [1,2,:] = [6,12]
     assert_eq!(
         s.data(),
-        &[1.0, 7.0, 2.0, 8.0, 3.0, 9.0, 4.0, 10.0, 5.0, 11.0, 6.0, 12.0]
+        &[
+            1.0, 7.0, 2.0, 8.0, 3.0, 9.0, 4.0, 10.0, 5.0, 11.0, 6.0, 12.0
+        ]
     );
 }
 

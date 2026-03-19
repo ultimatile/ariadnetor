@@ -1,5 +1,5 @@
-use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, SvdDescriptor};
+use arnet_native::NativeBackend;
 use num_complex::Complex;
 
 #[test]
@@ -13,8 +13,12 @@ fn test_svd_f64_square() {
     let mut vt = [0.0f64; 4]; // 2x2
 
     let desc = SvdDescriptor {
-        m: 2, n: 2, a: &a,
-        u: &mut u, s: &mut s, vt: &mut vt,
+        m: 2,
+        n: 2,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
     };
     backend.svd(desc).unwrap();
 
@@ -29,8 +33,11 @@ fn test_svd_f64_square() {
             for k in 0..2 {
                 val += u[i * 2 + k] * s[k] * vt[k * 2 + j];
             }
-            assert!((val - a[i * 2 + j]).abs() < 1e-10,
-                "Reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * 2 + j]);
+            assert!(
+                (val - a[i * 2 + j]).abs() < 1e-10,
+                "Reconstruction mismatch at ({i},{j}): {val} vs {}",
+                a[i * 2 + j]
+            );
         }
     }
 }
@@ -47,8 +54,12 @@ fn test_svd_f64_rectangular() {
     let mut vt = vec![0.0f64; k * n];
 
     let desc = SvdDescriptor {
-        m, n, a: &a,
-        u: &mut u, s: &mut s, vt: &mut vt,
+        m,
+        n,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
     };
     backend.svd(desc).unwrap();
 
@@ -61,8 +72,10 @@ fn test_svd_f64_rectangular() {
             for l in 0..k {
                 val += u[i * k + l] * s[l] * vt[l * n + j];
             }
-            assert!((val - a[i * n + j]).abs() < 1e-10,
-                "Reconstruction mismatch at ({i},{j})");
+            assert!(
+                (val - a[i * n + j]).abs() < 1e-10,
+                "Reconstruction mismatch at ({i},{j})"
+            );
         }
     }
 }
@@ -77,8 +90,12 @@ fn test_svd_f32_basic() {
     let mut vt = [0.0f32; 4];
 
     let desc = SvdDescriptor {
-        m: 2, n: 2, a: &a,
-        u: &mut u, s: &mut s, vt: &mut vt,
+        m: 2,
+        n: 2,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
     };
     backend.svd(desc).unwrap();
 
@@ -90,8 +107,11 @@ fn test_svd_f32_basic() {
             for k in 0..2 {
                 val += u[i * 2 + k] * s[k] * vt[k * 2 + j];
             }
-            assert!((val - a[i * 2 + j]).abs() < 1e-4,
-                "Reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * 2 + j]);
+            assert!(
+                (val - a[i * 2 + j]).abs() < 1e-4,
+                "Reconstruction mismatch at ({i},{j}): {val} vs {}",
+                a[i * 2 + j]
+            );
         }
     }
 }
@@ -104,8 +124,10 @@ fn test_svd_c64_hermitian() {
 
     // Hermitian matrix: A = [[2, 1-i], [1+i, 3]]
     let a = [
-        Complex::new(2.0, 0.0), Complex::new(1.0, -1.0),
-        Complex::new(1.0, 1.0), Complex::new(3.0, 0.0),
+        Complex::new(2.0, 0.0),
+        Complex::new(1.0, -1.0),
+        Complex::new(1.0, 1.0),
+        Complex::new(3.0, 0.0),
     ];
     let (m, n, k) = (2, 2, 2);
     let mut u = vec![Complex::new(0.0, 0.0); m * k];
@@ -113,8 +135,12 @@ fn test_svd_c64_hermitian() {
     let mut vt = vec![Complex::new(0.0, 0.0); k * n];
 
     let desc = SvdDescriptor {
-        m, n, a: &a,
-        u: &mut u, s: &mut s, vt: &mut vt,
+        m,
+        n,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
     };
     backend.svd(desc).unwrap();
 
@@ -130,8 +156,11 @@ fn test_svd_c64_hermitian() {
                 val += u[i * k + l] * s[l] * vt[l * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-10,
-                "SVD reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            assert!(
+                diff < 1e-10,
+                "SVD reconstruction mismatch at ({i},{j}): {val} vs {}",
+                a[i * n + j]
+            );
         }
     }
 }
@@ -142,8 +171,12 @@ fn test_svd_c64_rectangular() {
 
     // A (2x3) complex
     let a = [
-        Complex::new(1.0, 2.0), Complex::new(3.0, 0.0), Complex::new(0.0, 1.0),
-        Complex::new(4.0, -1.0), Complex::new(2.0, 3.0), Complex::new(1.0, 1.0),
+        Complex::new(1.0, 2.0),
+        Complex::new(3.0, 0.0),
+        Complex::new(0.0, 1.0),
+        Complex::new(4.0, -1.0),
+        Complex::new(2.0, 3.0),
+        Complex::new(1.0, 1.0),
     ];
     let (m, n, k) = (2, 3, 2);
     let mut u = vec![Complex::new(0.0, 0.0); m * k];
@@ -151,8 +184,12 @@ fn test_svd_c64_rectangular() {
     let mut vt = vec![Complex::new(0.0, 0.0); k * n];
 
     let desc = SvdDescriptor {
-        m, n, a: &a,
-        u: &mut u, s: &mut s, vt: &mut vt,
+        m,
+        n,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
     };
     backend.svd(desc).unwrap();
 
@@ -165,8 +202,7 @@ fn test_svd_c64_rectangular() {
                 val += u[i * k + l] * s[l] * vt[l * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-10,
-                "SVD reconstruction mismatch at ({i},{j})");
+            assert!(diff < 1e-10, "SVD reconstruction mismatch at ({i},{j})");
         }
     }
 }
@@ -177,8 +213,10 @@ fn test_svd_c64_unitary_check() {
 
     // Verify U^H * U = I for SVD result
     let a = [
-        Complex::new(1.0, 2.0), Complex::new(3.0, -1.0),
-        Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        Complex::new(1.0, 2.0),
+        Complex::new(3.0, -1.0),
+        Complex::new(0.0, 4.0),
+        Complex::new(2.0, 1.0),
     ];
     let (m, n, k) = (2, 2, 2);
     let mut u = vec![Complex::new(0.0, 0.0); m * k];
@@ -186,8 +224,12 @@ fn test_svd_c64_unitary_check() {
     let mut vt = vec![Complex::new(0.0, 0.0); k * n];
 
     let desc = SvdDescriptor {
-        m, n, a: &a,
-        u: &mut u, s: &mut s, vt: &mut vt,
+        m,
+        n,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
     };
     backend.svd(desc).unwrap();
 
@@ -199,8 +241,10 @@ fn test_svd_c64_unitary_check() {
                 val += u[l * k + i].conj() * u[l * k + j];
             }
             let expected = if i == j { 1.0 } else { 0.0 };
-            assert!(val.norm() - expected < 1e-10,
-                "U^H * U not identity at ({i},{j}): {val}");
+            assert!(
+                val.norm() - expected < 1e-10,
+                "U^H * U not identity at ({i},{j}): {val}"
+            );
         }
     }
 }
@@ -210,8 +254,10 @@ fn test_svd_c32_basic() {
     let backend = NativeBackend::new();
 
     let a = [
-        Complex::new(2.0f32, 0.0), Complex::new(1.0, -1.0),
-        Complex::new(1.0, 1.0), Complex::new(3.0, 0.0),
+        Complex::new(2.0f32, 0.0),
+        Complex::new(1.0, -1.0),
+        Complex::new(1.0, 1.0),
+        Complex::new(3.0, 0.0),
     ];
     let (m, n, k) = (2, 2, 2);
     let mut u = vec![Complex::new(0.0f32, 0.0); m * k];
@@ -219,8 +265,12 @@ fn test_svd_c32_basic() {
     let mut vt = vec![Complex::new(0.0f32, 0.0); k * n];
 
     let desc = SvdDescriptor {
-        m, n, a: &a,
-        u: &mut u, s: &mut s, vt: &mut vt,
+        m,
+        n,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
     };
     backend.svd(desc).unwrap();
 
@@ -233,8 +283,7 @@ fn test_svd_c32_basic() {
                 val += u[i * k + l] * s[l] * vt[l * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-4,
-                "SVD reconstruction mismatch at ({i},{j})");
+            assert!(diff < 1e-4, "SVD reconstruction mismatch at ({i},{j})");
         }
     }
 }

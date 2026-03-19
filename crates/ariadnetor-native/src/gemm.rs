@@ -7,7 +7,16 @@ use num_complex::Complex;
 /// GEMM for f64 via faer: C = alpha * op(A) * op(B) + beta * C
 pub(crate) fn gemm_f64(desc: GemmDescriptor<'_, f64>) -> Result<(), BackendError> {
     let GemmDescriptor {
-        m, n, k, alpha, a, b, beta, c, trans_a, trans_b,
+        m,
+        n,
+        k,
+        alpha,
+        a,
+        b,
+        beta,
+        c,
+        trans_a,
+        trans_b,
     } = desc;
 
     // Construct faer MatRef views from row-major flat slices.
@@ -43,7 +52,16 @@ pub(crate) fn gemm_f64(desc: GemmDescriptor<'_, f64>) -> Result<(), BackendError
 /// GEMM for f32 via faer: C = alpha * op(A) * op(B) + beta * C
 pub(crate) fn gemm_f32(desc: GemmDescriptor<'_, f32>) -> Result<(), BackendError> {
     let GemmDescriptor {
-        m, n, k, alpha, a, b, beta, c, trans_a, trans_b,
+        m,
+        n,
+        k,
+        alpha,
+        a,
+        b,
+        beta,
+        c,
+        trans_a,
+        trans_b,
     } = desc;
 
     let lhs: faer::Mat<f32> = if trans_a {
@@ -75,7 +93,16 @@ pub(crate) fn gemm_f32(desc: GemmDescriptor<'_, f32>) -> Result<(), BackendError
 /// GEMM for Complex<f64> via faer: C = alpha * op(A) * op(B) + beta * C
 pub(crate) fn gemm_c64(desc: GemmDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
     let GemmDescriptor {
-        m, n, k, alpha, a, b, beta, c, trans_a, trans_b,
+        m,
+        n,
+        k,
+        alpha,
+        a,
+        b,
+        beta,
+        c,
+        trans_a,
+        trans_b,
     } = desc;
 
     let lhs: faer::Mat<Complex<f64>> = if trans_a {
@@ -107,7 +134,16 @@ pub(crate) fn gemm_c64(desc: GemmDescriptor<'_, Complex<f64>>) -> Result<(), Bac
 /// GEMM for Complex<f32> via faer: C = alpha * op(A) * op(B) + beta * C
 pub(crate) fn gemm_c32(desc: GemmDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
     let GemmDescriptor {
-        m, n, k, alpha, a, b, beta, c, trans_a, trans_b,
+        m,
+        n,
+        k,
+        alpha,
+        a,
+        b,
+        beta,
+        c,
+        trans_a,
+        trans_b,
     } = desc;
 
     let lhs: faer::Mat<Complex<f32>> = if trans_a {

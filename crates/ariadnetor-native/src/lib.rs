@@ -16,7 +16,10 @@ mod transpose;
 
 use std::sync::{Arc, OnceLock};
 
-use arnet_core::backend::{BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor};
+use arnet_core::backend::{
+    BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor,
+    LqDescriptor, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor,
+};
 use arnet_core::scalar::Scalar;
 use num_complex::Complex;
 
@@ -275,19 +278,31 @@ impl ComputeBackend for NativeBackend {
 /// # Safety
 /// Caller must guarantee `T` and `U` have identical size and alignment
 /// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
-unsafe fn reinterpret_gemm_desc<'a, T, U>(
-    desc: GemmDescriptor<'a, T>,
-) -> GemmDescriptor<'a, U> {
-    let GemmDescriptor { m, n, k, alpha, a, b, beta, c, trans_a, trans_b } = desc;
+unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDescriptor<'a, U> {
+    let GemmDescriptor {
+        m,
+        n,
+        k,
+        alpha,
+        a,
+        b,
+        beta,
+        c,
+        trans_a,
+        trans_b,
+    } = desc;
     unsafe {
         GemmDescriptor {
-            m, n, k,
+            m,
+            n,
+            k,
             alpha: std::ptr::read(&alpha as *const T as *const U),
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             b: std::slice::from_raw_parts(b.as_ptr() as *const U, b.len()),
             beta: std::ptr::read(&beta as *const T as *const U),
             c: std::slice::from_raw_parts_mut(c.as_mut_ptr() as *mut U, c.len()),
-            trans_a, trans_b,
+            trans_a,
+            trans_b,
         }
     }
 }
@@ -319,9 +334,7 @@ unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
 /// # Safety
 /// Caller must guarantee `T` and `U` have identical size and alignment
 /// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
-unsafe fn reinterpret_qr_desc<'a, T, U>(
-    desc: QrDescriptor<'a, T>,
-) -> QrDescriptor<'a, U> {
+unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescriptor<'a, U> {
     let QrDescriptor { m, n, a, q, r } = desc;
     unsafe {
         QrDescriptor {
@@ -339,9 +352,7 @@ unsafe fn reinterpret_qr_desc<'a, T, U>(
 /// # Safety
 /// Caller must guarantee `T` and `U` have identical size and alignment
 /// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
-unsafe fn reinterpret_lq_desc<'a, T, U>(
-    desc: LqDescriptor<'a, T>,
-) -> LqDescriptor<'a, U> {
+unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescriptor<'a, U> {
     let LqDescriptor { m, n, a, l, q } = desc;
     unsafe {
         LqDescriptor {
@@ -399,9 +410,7 @@ unsafe fn reinterpret_eig_desc<'a, T: Scalar, U: Scalar>(
 /// # Safety
 /// Caller must guarantee `T` and `U` have identical size and alignment
 /// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
-unsafe fn reinterpret_solve_desc<'a, T, U>(
-    desc: SolveDescriptor<'a, T>,
-) -> SolveDescriptor<'a, U> {
+unsafe fn reinterpret_solve_desc<'a, T, U>(desc: SolveDescriptor<'a, T>) -> SolveDescriptor<'a, U> {
     let SolveDescriptor { n, nrhs, a, b, x } = desc;
     unsafe {
         SolveDescriptor {

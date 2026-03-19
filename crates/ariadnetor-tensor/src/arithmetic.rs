@@ -93,7 +93,10 @@ where
     /// let result = TensorStorage::linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
     /// assert_eq!(result.get(&[0, 0]), 8.0);
     /// ```
-    pub fn linear_combine(tensors: &[&TensorStorage<T>], coefs: &[T]) -> Result<TensorStorage<T>, String> {
+    pub fn linear_combine(
+        tensors: &[&TensorStorage<T>],
+        coefs: &[T],
+    ) -> Result<TensorStorage<T>, String> {
         if tensors.is_empty() {
             return Err("Cannot combine empty tensor list".to_string());
         }

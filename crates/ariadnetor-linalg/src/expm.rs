@@ -89,8 +89,7 @@ pub fn expm_antihermitian<T: Scalar>(
     let tid = TypeId::of::<T>();
     if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
         return Err(BackendError::InvalidDimension(
-            "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)"
-                .into(),
+            "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
         ));
     }
 
@@ -167,7 +166,11 @@ fn matmul<T: Scalar>(
 
 /// Scale each element of a tensor by a real factor.
 fn scale_real<T: Scalar>(tensor: &DenseTensor<T>, factor: T::Real) -> DenseTensor<T> {
-    let data: Vec<T> = tensor.data().iter().map(|&x| x.scale_real(factor)).collect();
+    let data: Vec<T> = tensor
+        .data()
+        .iter()
+        .map(|&x| x.scale_real(factor))
+        .collect();
     DenseTensor::from_data(data, tensor.shape().to_vec())
 }
 
@@ -209,16 +212,10 @@ fn pade_uv_small<T: Scalar>(
         3 => {
             // V = b_0 I + b_2 A²
             // U = A(b_1 I + b_3 A²)
-            let v = linear_combine(
-                &[&id, &a2],
-                &[coeff::<T>(b[0]), coeff::<T>(b[2])],
-            )
-            .map_err(BackendError::ExecutionFailed)?;
-            let u_inner = linear_combine(
-                &[&id, &a2],
-                &[coeff::<T>(b[1]), coeff::<T>(b[3])],
-            )
-            .map_err(BackendError::ExecutionFailed)?;
+            let v = linear_combine(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])
+                .map_err(BackendError::ExecutionFailed)?;
+            let u_inner = linear_combine(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])
+                .map_err(BackendError::ExecutionFailed)?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -226,20 +223,12 @@ fn pade_uv_small<T: Scalar>(
             let a4 = matmul(backend, &a2, &a2)?;
             let v = linear_combine(
                 &[&id, &a2, &a4],
-                &[
-                    coeff::<T>(b[0]),
-                    coeff::<T>(b[2]),
-                    coeff::<T>(b[4]),
-                ],
+                &[coeff::<T>(b[0]), coeff::<T>(b[2]), coeff::<T>(b[4])],
             )
             .map_err(BackendError::ExecutionFailed)?;
             let u_inner = linear_combine(
                 &[&id, &a2, &a4],
-                &[
-                    coeff::<T>(b[1]),
-                    coeff::<T>(b[3]),
-                    coeff::<T>(b[5]),
-                ],
+                &[coeff::<T>(b[1]), coeff::<T>(b[3]), coeff::<T>(b[5])],
             )
             .map_err(BackendError::ExecutionFailed)?;
             let u = matmul(backend, a, &u_inner)?;
@@ -325,11 +314,7 @@ fn pade_uv_13<T: Scalar>(
     // W₁ = b₁₃ A⁶ + b₁₁ A⁴ + b₉ A²
     let w1 = linear_combine(
         &[&a6, &a4, &a2],
-        &[
-            coeff::<T>(b[13]),
-            coeff::<T>(b[11]),
-            coeff::<T>(b[9]),
-        ],
+        &[coeff::<T>(b[13]), coeff::<T>(b[11]), coeff::<T>(b[9])],
     )
     .map_err(BackendError::ExecutionFailed)?;
 
@@ -354,11 +339,7 @@ fn pade_uv_13<T: Scalar>(
     // W₃ = b₁₂ A⁶ + b₁₀ A⁴ + b₈ A²
     let w3 = linear_combine(
         &[&a6, &a4, &a2],
-        &[
-            coeff::<T>(b[12]),
-            coeff::<T>(b[10]),
-            coeff::<T>(b[8]),
-        ],
+        &[coeff::<T>(b[12]), coeff::<T>(b[10]), coeff::<T>(b[8])],
     )
     .map_err(BackendError::ExecutionFailed)?;
 
@@ -504,12 +485,12 @@ fn solve_pade<T: Scalar>(
 ) -> Result<DenseTensor<T>, BackendError> {
     // V - U
     let neg_one: T = coeff::<T>(-1.0);
-    let lhs = linear_combine(&[v, u], &[T::one(), neg_one])
-        .map_err(BackendError::ExecutionFailed)?;
+    let lhs =
+        linear_combine(&[v, u], &[T::one(), neg_one]).map_err(BackendError::ExecutionFailed)?;
 
     // V + U
-    let rhs = linear_combine(&[v, u], &[T::one(), T::one()])
-        .map_err(BackendError::ExecutionFailed)?;
+    let rhs =
+        linear_combine(&[v, u], &[T::one(), T::one()]).map_err(BackendError::ExecutionFailed)?;
 
     // Reshape rhs to n×n for solve (nrow_a=1 since shape is [n, n])
     solve(backend, &lhs, &rhs, 1)

@@ -1,5 +1,5 @@
+use arnet_linalg::{TruncSvdParams, lq, qr, svd, trunc_svd};
 use arnet_native::NativeBackend;
-use arnet_linalg::{lq, qr, svd, trunc_svd, TruncSvdParams};
 use arnet_tensor::DenseTensor;
 
 // --- SVD tests ---
@@ -39,10 +39,7 @@ fn test_svd_f64_2d() {
 fn test_svd_f64_rectangular() {
     let backend = NativeBackend::new();
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
-    let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
 
@@ -139,7 +136,9 @@ fn test_trunc_svd_chi_max() {
     let backend = NativeBackend::new();
     // 3×4 matrix with rank > 1
     let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ],
         vec![3, 4],
     );
 
@@ -294,10 +293,7 @@ fn test_trunc_svd_both_params() {
 #[test]
 fn test_trunc_svd_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let params = TruncSvdParams {
         chi_max: Some(1),
@@ -316,7 +312,9 @@ fn test_trunc_svd_reconstruction() {
     let backend = NativeBackend::new();
     // Verify that truncated reconstruction is a valid low-rank approximation
     let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ],
         vec![3, 4],
     );
 
@@ -381,10 +379,7 @@ fn test_qr_f64_2d() {
 fn test_qr_f64_rectangular() {
     let backend = NativeBackend::new();
     // shape [3, 2], nrow=1 → 3×2 matrix, k=2
-    let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![3, 2],
-    );
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
     let (q, r) = qr(&backend, &tensor, 1).unwrap();
 
@@ -410,10 +405,7 @@ fn test_qr_f64_rectangular() {
 #[test]
 fn test_qr_f64_orthogonality() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![3, 2],
-    );
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
     let (q, _r) = qr(&backend, &tensor, 1).unwrap();
 
@@ -527,10 +519,7 @@ fn test_lq_f64_2d() {
 fn test_lq_f64_rectangular() {
     let backend = NativeBackend::new();
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
-    let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let (l, q) = lq(&backend, &tensor, 1).unwrap();
 
@@ -556,10 +545,7 @@ fn test_lq_f64_rectangular() {
 #[test]
 fn test_lq_f64_orthogonality() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let (_l, q) = lq(&backend, &tensor, 1).unwrap();
 

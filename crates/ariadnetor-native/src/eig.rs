@@ -9,9 +9,9 @@ pub(crate) fn eig_f64(desc: EigDescriptor<'_, f64>) -> Result<(), BackendError> 
     let EigDescriptor { n, a, w, v } = desc;
 
     let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
-    let eig = mat.eigen().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
-    })?;
+    let eig = mat
+        .eigen()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
 
     // Eigenvalues (complex)
     let s_diag = eig.S();
@@ -35,9 +35,9 @@ pub(crate) fn eig_f32(desc: EigDescriptor<'_, f32>) -> Result<(), BackendError> 
     let EigDescriptor { n, a, w, v } = desc;
 
     let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
-    let eig = mat.eigen().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
-    })?;
+    let eig = mat
+        .eigen()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
 
     let s_diag = eig.S();
     for i in 0..n {
@@ -59,9 +59,9 @@ pub(crate) fn eig_c64(desc: EigDescriptor<'_, Complex<f64>>) -> Result<(), Backe
     let EigDescriptor { n, a, w, v } = desc;
 
     let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
-    let eig = mat.eigen().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
-    })?;
+    let eig = mat
+        .eigen()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
 
     let s_diag = eig.S();
     for i in 0..n {
@@ -83,9 +83,9 @@ pub(crate) fn eig_c32(desc: EigDescriptor<'_, Complex<f32>>) -> Result<(), Backe
     let EigDescriptor { n, a, w, v } = desc;
 
     let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
-    let eig = mat.eigen().map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}"))
-    })?;
+    let eig = mat
+        .eigen()
+        .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
 
     let s_diag = eig.S();
     for i in 0..n {

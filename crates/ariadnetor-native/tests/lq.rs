@@ -1,5 +1,5 @@
-use arnet_native::NativeBackend;
 use arnet_core::backend::{ComputeBackend, LqDescriptor};
+use arnet_native::NativeBackend;
 use num_complex::Complex;
 
 #[test]
@@ -12,8 +12,11 @@ fn test_lq_f64_square() {
     let mut q = [0.0f64; 4];
 
     let desc = LqDescriptor {
-        m, n, a: &a,
-        l: &mut l, q: &mut q,
+        m,
+        n,
+        a: &a,
+        l: &mut l,
+        q: &mut q,
     };
     backend.lq(desc).unwrap();
 
@@ -24,8 +27,11 @@ fn test_lq_f64_square() {
             for kk in 0..k {
                 val += l[i * k + kk] * q[kk * n + j];
             }
-            assert!((val - a[i * n + j]).abs() < 1e-10,
-                "LQ reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            assert!(
+                (val - a[i * n + j]).abs() < 1e-10,
+                "LQ reconstruction mismatch at ({i},{j}): {val} vs {}",
+                a[i * n + j]
+            );
         }
     }
 }
@@ -41,8 +47,11 @@ fn test_lq_f64_rectangular() {
     let mut q = vec![0.0f64; k * n];
 
     let desc = LqDescriptor {
-        m, n, a: &a,
-        l: &mut l, q: &mut q,
+        m,
+        n,
+        a: &a,
+        l: &mut l,
+        q: &mut q,
     };
     backend.lq(desc).unwrap();
 
@@ -52,8 +61,10 @@ fn test_lq_f64_rectangular() {
             for kk in 0..k {
                 val += l[i * k + kk] * q[kk * n + j];
             }
-            assert!((val - a[i * n + j]).abs() < 1e-10,
-                "LQ reconstruction mismatch at ({i},{j})");
+            assert!(
+                (val - a[i * n + j]).abs() < 1e-10,
+                "LQ reconstruction mismatch at ({i},{j})"
+            );
         }
     }
 }
@@ -68,8 +79,11 @@ fn test_lq_f32_basic() {
     let mut q = [0.0f32; 4];
 
     let desc = LqDescriptor {
-        m, n, a: &a,
-        l: &mut l, q: &mut q,
+        m,
+        n,
+        a: &a,
+        l: &mut l,
+        q: &mut q,
     };
     backend.lq(desc).unwrap();
 
@@ -79,8 +93,10 @@ fn test_lq_f32_basic() {
             for kk in 0..k {
                 val += l[i * k + kk] * q[kk * n + j];
             }
-            assert!((val - a[i * n + j]).abs() < 1e-4,
-                "LQ reconstruction mismatch at ({i},{j})");
+            assert!(
+                (val - a[i * n + j]).abs() < 1e-4,
+                "LQ reconstruction mismatch at ({i},{j})"
+            );
         }
     }
 }
@@ -92,16 +108,21 @@ fn test_lq_c64_square() {
     let backend = NativeBackend::new();
 
     let a = [
-        Complex::new(1.0, 2.0), Complex::new(3.0, -1.0),
-        Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        Complex::new(1.0, 2.0),
+        Complex::new(3.0, -1.0),
+        Complex::new(0.0, 4.0),
+        Complex::new(2.0, 1.0),
     ];
     let (m, n, k) = (2, 2, 2);
     let mut l = vec![Complex::new(0.0, 0.0); m * k];
     let mut q = vec![Complex::new(0.0, 0.0); k * n];
 
     let desc = LqDescriptor {
-        m, n, a: &a,
-        l: &mut l, q: &mut q,
+        m,
+        n,
+        a: &a,
+        l: &mut l,
+        q: &mut q,
     };
     backend.lq(desc).unwrap();
 
@@ -113,8 +134,11 @@ fn test_lq_c64_square() {
                 val += l[i * k + kk] * q[kk * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-10,
-                "LQ reconstruction mismatch at ({i},{j}): {val} vs {}", a[i * n + j]);
+            assert!(
+                diff < 1e-10,
+                "LQ reconstruction mismatch at ({i},{j}): {val} vs {}",
+                a[i * n + j]
+            );
         }
     }
 
@@ -126,8 +150,10 @@ fn test_lq_c64_square() {
                 val += q[i * n + l_idx] * q[j * n + l_idx].conj();
             }
             let expected: f64 = if i == j { 1.0 } else { 0.0 };
-            assert!((val.norm() - expected).abs() < 1e-10,
-                "Q * Q^H not identity at ({i},{j}): {val}");
+            assert!(
+                (val.norm() - expected).abs() < 1e-10,
+                "Q * Q^H not identity at ({i},{j}): {val}"
+            );
         }
     }
 }
@@ -138,16 +164,23 @@ fn test_lq_c64_rectangular() {
 
     // A (2x3) complex
     let a = [
-        Complex::new(1.0, 1.0), Complex::new(2.0, -1.0), Complex::new(0.0, 3.0),
-        Complex::new(4.0, 0.0), Complex::new(-1.0, 2.0), Complex::new(3.0, 1.0),
+        Complex::new(1.0, 1.0),
+        Complex::new(2.0, -1.0),
+        Complex::new(0.0, 3.0),
+        Complex::new(4.0, 0.0),
+        Complex::new(-1.0, 2.0),
+        Complex::new(3.0, 1.0),
     ];
     let (m, n, k) = (2, 3, 2);
     let mut l = vec![Complex::new(0.0, 0.0); m * k];
     let mut q = vec![Complex::new(0.0, 0.0); k * n];
 
     let desc = LqDescriptor {
-        m, n, a: &a,
-        l: &mut l, q: &mut q,
+        m,
+        n,
+        a: &a,
+        l: &mut l,
+        q: &mut q,
     };
     backend.lq(desc).unwrap();
 
@@ -158,8 +191,7 @@ fn test_lq_c64_rectangular() {
                 val += l[i * k + kk] * q[kk * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-10,
-                "LQ reconstruction mismatch at ({i},{j})");
+            assert!(diff < 1e-10, "LQ reconstruction mismatch at ({i},{j})");
         }
     }
 }
@@ -169,16 +201,21 @@ fn test_lq_c32_basic() {
     let backend = NativeBackend::new();
 
     let a = [
-        Complex::new(1.0f32, 2.0), Complex::new(3.0, -1.0),
-        Complex::new(0.0, 4.0), Complex::new(2.0, 1.0),
+        Complex::new(1.0f32, 2.0),
+        Complex::new(3.0, -1.0),
+        Complex::new(0.0, 4.0),
+        Complex::new(2.0, 1.0),
     ];
     let (m, n, k) = (2, 2, 2);
     let mut l = vec![Complex::new(0.0f32, 0.0); m * k];
     let mut q = vec![Complex::new(0.0f32, 0.0); k * n];
 
     let desc = LqDescriptor {
-        m, n, a: &a,
-        l: &mut l, q: &mut q,
+        m,
+        n,
+        a: &a,
+        l: &mut l,
+        q: &mut q,
     };
     backend.lq(desc).unwrap();
 
@@ -189,8 +226,7 @@ fn test_lq_c32_basic() {
                 val += l[i * k + kk] * q[kk * n + j];
             }
             let diff = (val - a[i * n + j]).norm();
-            assert!(diff < 1e-4,
-                "LQ reconstruction mismatch at ({i},{j})");
+            assert!(diff < 1e-4, "LQ reconstruction mismatch at ({i},{j})");
         }
     }
 }

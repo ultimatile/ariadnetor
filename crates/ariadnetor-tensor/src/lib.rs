@@ -9,8 +9,8 @@
 
 pub mod arithmetic;
 pub mod dense;
-pub mod tensor_storage;
 pub mod sector;
+pub mod tensor_storage;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{

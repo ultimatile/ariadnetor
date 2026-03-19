@@ -108,11 +108,9 @@ fn test_linear_combine_complex() {
     let b = TensorStorage::<Complex<f64>>::constant(vec![2, 2], Complex::new(0.0, 1.0));
 
     // (2+0i)*(1+0i) + (0+1i)*(0+1i) = (2+0i) + (i^2) = (2+0i) + (-1+0i) = (1+0i)
-    let result = TensorStorage::linear_combine(
-        &[&a, &b],
-        &[Complex::new(2.0, 0.0), Complex::new(0.0, 1.0)],
-    )
-    .unwrap();
+    let result =
+        TensorStorage::linear_combine(&[&a, &b], &[Complex::new(2.0, 0.0), Complex::new(0.0, 1.0)])
+            .unwrap();
 
     if let Some(data) = result.data() {
         for &val in data {

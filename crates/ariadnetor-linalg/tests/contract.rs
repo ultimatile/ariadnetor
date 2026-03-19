@@ -1,5 +1,5 @@
-use arnet_native::NativeBackend;
 use arnet_linalg::contract;
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 #[test]
@@ -22,14 +22,8 @@ fn test_contract_matmul() {
 fn test_contract_tensor_contraction() {
     let backend = NativeBackend::new();
     // C[i,l] = Σ_{j,k} A[i,j,k] × B[j,k,l]
-    let a = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        vec![2, 2, 2],
-    );
-    let b = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        vec![2, 2, 2],
-    );
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
 
     let c = contract(&backend, &a, &b, "ijk,jkl->il").unwrap();
 
@@ -53,10 +47,7 @@ fn test_contract_f32() {
 fn test_contract_with_permutation() {
     let backend = NativeBackend::new();
     // A[i,k,j] × B[k,j] → C[i] requires permutation of LHS
-    let a = DenseTensor::from_data(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        vec![2, 2, 2],
-    );
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
     let b = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     let c = contract(&backend, &a, &b, "ikj,kj->i").unwrap();

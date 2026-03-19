@@ -39,11 +39,11 @@ mod transpose;
 pub use arnet_core::backend::ComputeBackend;
 
 pub use contract::contract;
-pub use einsum::einsum;
 pub use decomposition::{
-    lq, qr, svd, trunc_svd, LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult,
+    LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq, qr, svd, trunc_svd,
 };
-pub use eigen::{eig, eigh, eigvals, eigvalsh, EigResult, EighResult};
+pub use eigen::{EigResult, EighResult, eig, eigh, eigvals, eigvalsh};
+pub use einsum::einsum;
 pub use expm::{expm, expm_antihermitian, expm_hermitian};
 pub use scalar_ops::{diag, linear_combine, norm, normalize, scale, trace};
 pub use solve::{inverse, solve};

@@ -1,12 +1,11 @@
-use arnet_native::NativeBackend;
 use arnet_linalg::transpose;
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 #[test]
 fn test_transpose_f64_2d() {
     let backend = NativeBackend::new();
-    let tensor =
-        DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let result = transpose(&backend, &tensor, &[1, 0]).unwrap();
 
@@ -33,8 +32,7 @@ fn test_transpose_f64_3d() {
 #[test]
 fn test_transpose_f32_2d() {
     let backend = NativeBackend::new();
-    let tensor =
-        DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let result = transpose(&backend, &tensor, &[1, 0]).unwrap();
 
