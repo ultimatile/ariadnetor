@@ -42,6 +42,10 @@ pub struct DenseTensor<T = f64> {
     strides: Vec<isize>,
     /// Offset into the data buffer (element index of the first logical element)
     offset: usize,
+    /// The memory order this tensor was created with.
+    /// Needed to disambiguate layouts where strides alone are ambiguous
+    /// (e.g., 1D tensors, tensors with size-1 dimensions).
+    order: MemoryOrder,
 }
 
 // ============================================================================
@@ -127,15 +131,22 @@ impl<T> DenseTensor<T> {
         self.strides == column_major_strides(&self.shape)
     }
 
+    /// The memory order this tensor was created with.
+    ///
+    /// Unlike `is_row_major()` / `is_column_major()` which check strides,
+    /// this returns the authoritative order that disambiguates cases where
+    /// strides are ambiguous (e.g., 1D tensors or tensors with size-1 dims).
+    pub fn memory_order(&self) -> MemoryOrder {
+        self.order
+    }
+
     /// Determine the memory order of this tensor, if contiguous.
     fn contiguous_order(&self) -> Option<MemoryOrder> {
-        if self.is_row_major() {
-            Some(MemoryOrder::RowMajor)
-        } else if self.is_column_major() {
-            Some(MemoryOrder::ColumnMajor)
-        } else {
-            None
+        if !self.is_contiguous() {
+            return None;
         }
+        // Use the authoritative order field, not strides-based heuristic
+        Some(self.order)
     }
 }
 
@@ -162,6 +173,7 @@ where
             strides,
             shape,
             offset: 0,
+            order: MemoryOrder::RowMajor,
         }
     }
 
@@ -180,6 +192,7 @@ where
             strides,
             shape,
             offset: 0,
+            order: MemoryOrder::RowMajor,
         }
     }
 
@@ -195,6 +208,7 @@ where
             strides,
             shape,
             offset: 0,
+            order: MemoryOrder::RowMajor,
         }
     }
 
@@ -237,6 +251,7 @@ where
             strides,
             shape,
             offset: 0,
+            order: MemoryOrder::RowMajor,
         }
     }
 
@@ -253,6 +268,7 @@ where
         shape: Vec<usize>,
         strides: Vec<isize>,
         offset: usize,
+        order: MemoryOrder,
     ) -> Self {
         assert_eq!(
             shape.len(),
@@ -299,6 +315,7 @@ where
             shape,
             strides,
             offset,
+            order,
         }
     }
 
@@ -468,6 +485,7 @@ where
                 shape: new_shape,
                 strides: new_strides,
                 offset: self.offset,
+                order,
             });
         }
 
@@ -522,7 +540,7 @@ where
             }
         }
 
-        Self::from_data_with_strides(new_data, self.shape.clone(), new_strides, 0)
+        Self::from_data_with_strides(new_data, self.shape.clone(), new_strides, 0, order)
     }
 
     // ========================================================================
