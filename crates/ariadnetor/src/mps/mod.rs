@@ -8,12 +8,14 @@
 //! - **MPS**: `(χ_L, d, χ_R)` — left-bond, physical, right-bond
 //! - **MPO**: `(χ_L, d_ket, d_bra, χ_R)` — left-bond, ket, bra, right-bond
 
+mod apply;
 mod chain;
 mod inner;
 mod orthogonalize;
 mod truncate;
 mod types;
 
+pub use apply::apply;
 pub use chain::TensorChain;
 pub use inner::{expect, inner, norm};
 pub use orthogonalize::orthogonalize;
