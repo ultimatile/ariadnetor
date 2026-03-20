@@ -46,15 +46,16 @@ pub(crate) fn gemm_f64(desc: GemmDescriptor<'_, f64>) -> Result<(), BackendError
             }
         }
         MemoryOrder::ColumnMajor => {
+            // When transposed, a stores k×m and b stores n×k
             let lhs: faer::Mat<f64> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, m, k);
+                let view = MatRef::from_column_major_slice(a, k, m);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(a, m, k).to_owned()
             };
 
             let rhs: faer::Mat<f64> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, k, n);
+                let view = MatRef::from_column_major_slice(b, n, k);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(b, k, n).to_owned()
@@ -117,14 +118,14 @@ pub(crate) fn gemm_f32(desc: GemmDescriptor<'_, f32>) -> Result<(), BackendError
         }
         MemoryOrder::ColumnMajor => {
             let lhs: faer::Mat<f32> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, m, k);
+                let view = MatRef::from_column_major_slice(a, k, m);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(a, m, k).to_owned()
             };
 
             let rhs: faer::Mat<f32> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, k, n);
+                let view = MatRef::from_column_major_slice(b, n, k);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(b, k, n).to_owned()
@@ -187,14 +188,14 @@ pub(crate) fn gemm_c64(desc: GemmDescriptor<'_, Complex<f64>>) -> Result<(), Bac
         }
         MemoryOrder::ColumnMajor => {
             let lhs: faer::Mat<Complex<f64>> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, m, k);
+                let view = MatRef::from_column_major_slice(a, k, m);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(a, m, k).to_owned()
             };
 
             let rhs: faer::Mat<Complex<f64>> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, k, n);
+                let view = MatRef::from_column_major_slice(b, n, k);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(b, k, n).to_owned()
@@ -257,14 +258,14 @@ pub(crate) fn gemm_c32(desc: GemmDescriptor<'_, Complex<f32>>) -> Result<(), Bac
         }
         MemoryOrder::ColumnMajor => {
             let lhs: faer::Mat<Complex<f32>> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, m, k);
+                let view = MatRef::from_column_major_slice(a, k, m);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(a, m, k).to_owned()
             };
 
             let rhs: faer::Mat<Complex<f32>> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, k, n);
+                let view = MatRef::from_column_major_slice(b, n, k);
                 view.transpose().to_owned()
             } else {
                 MatRef::from_column_major_slice(b, k, n).to_owned()

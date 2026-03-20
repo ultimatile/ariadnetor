@@ -82,7 +82,15 @@ pub fn solve<T: Scalar>(
 
     backend.solve(desc)?;
 
-    Ok(make_tensor(x_data, b.shape().to_vec(), order))
+    // x_data is a column-major n×nrhs 2D buffer.
+    // Convert to row-major 2D first, then reshape to b's original shape
+    // to preserve standard unflatten semantics for higher-rank RHS.
+    let x_2d = make_tensor(x_data, vec![n, nrhs], order);
+    let x_rm = x_2d.to_contiguous(MemoryOrder::RowMajor);
+    Ok(DenseTensor::from_data(
+        x_rm.data().to_vec(),
+        b.shape().to_vec(),
+    ))
 }
 
 /// Compute the inverse of a square matrix via LU decomposition.
