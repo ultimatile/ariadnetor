@@ -180,6 +180,8 @@ fn absorb_from_left<T: Scalar>(
     next: &DenseTensor<T>,
     backend: &impl ComputeBackend,
 ) -> DenseTensor<T> {
+    // Ensure row-major so reshape uses standard axis merge order.
+    let next = next.to_contiguous(MemoryOrder::RowMajor);
     let next_shape = next.shape().to_vec();
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
@@ -200,6 +202,8 @@ fn absorb_from_right<T: Scalar>(
     right: &DenseTensor<T>,
     backend: &impl ComputeBackend,
 ) -> DenseTensor<T> {
+    // Ensure row-major so reshape uses standard axis merge order.
+    let prev = prev.to_contiguous(MemoryOrder::RowMajor);
     let prev_shape = prev.shape().to_vec();
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();

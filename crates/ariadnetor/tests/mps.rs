@@ -2,7 +2,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet::mps::{self, CanonicalForm, Mpo, Mps, TensorChain};
-use arnet_tensor::{DenseTensor, TensorStorage};
+use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 // ============================================================================
 // MPS construction and accessors
@@ -1015,4 +1015,139 @@ fn test_qubit_proj_completeness() {
             );
         }
     }
+}
+
+// ============================================================================
+// Column-major MPS integration tests
+// ============================================================================
+
+/// Convert a row-major DenseTensor to column-major layout (same logical values).
+fn to_col_major(t: &DenseTensor<f64>) -> DenseTensor<f64> {
+    t.to_contiguous(MemoryOrder::ColumnMajor)
+}
+
+/// Build the same 4-site MPS as make_4site_mps but with column-major site tensors.
+fn make_4site_mps_col_major() -> Mps<f64> {
+    let rm = make_4site_mps();
+    let storages: Vec<TensorStorage<f64>> = (0..rm.len())
+        .map(|j| {
+            let dense = match rm.storage(j) {
+                TensorStorage::Dense(d) => d,
+            };
+            TensorStorage::Dense(to_col_major(dense))
+        })
+        .collect();
+    Mps::from_storages(storages)
+}
+
+#[test]
+fn test_col_major_orthogonalize_preserves_state() {
+    let mps_rm = make_4site_mps();
+    let mut mps_cm = make_4site_mps_col_major();
+
+    let dense_before = mps_to_dense(&mps_rm).to_contiguous(MemoryOrder::RowMajor);
+
+    mps::orthogonalize(&mut mps_cm, 1);
+
+    let dense_after = mps_to_dense(&mps_cm).to_contiguous(MemoryOrder::RowMajor);
+    for (a, b) in dense_before.data().iter().zip(dense_after.data().iter()) {
+        assert_abs_diff_eq!(a, b, epsilon = 1e-10);
+    }
+}
+
+#[test]
+fn test_col_major_inner_matches_row_major() {
+    let mps_rm = make_4site_mps();
+    let mps_cm = make_4site_mps_col_major();
+
+    let inner_rm = mps::inner(&mps_rm, &mps_rm);
+    let inner_cm = mps::inner(&mps_cm, &mps_cm);
+
+    assert_abs_diff_eq!(inner_rm, inner_cm, epsilon = 1e-10);
+}
+
+#[test]
+fn test_col_major_inner_cross() {
+    let mps_rm = make_4site_mps();
+    let mps_cm = make_4site_mps_col_major();
+
+    // ⟨rm|cm⟩ should equal ⟨rm|rm⟩ since they represent the same state
+    let inner_rr = mps::inner(&mps_rm, &mps_rm);
+    let inner_rc = mps::inner(&mps_rm, &mps_cm);
+
+    assert_abs_diff_eq!(inner_rr, inner_rc, epsilon = 1e-10);
+}
+
+#[test]
+fn test_col_major_truncate_preserves_state() {
+    let mps_rm = make_4site_mps();
+    let mut mps_cm = make_4site_mps_col_major();
+
+    let norm_before = mps::norm(&mps_rm);
+
+    mps::orthogonalize(&mut mps_cm, 1);
+    let params = mps::TruncSvdParams {
+        chi_max: Some(3),
+        target_trunc_err: None,
+    };
+    let err = mps::truncate(&mut mps_cm, &params);
+
+    // Truncation error should be small relative to norm
+    assert!(err / norm_before < 0.5, "truncation error too large: {err}");
+
+    // Inner product with original should be close to norm squared
+    let overlap = mps::inner(&mps_rm, &mps_cm);
+    let norm_after = mps::norm(&mps_cm);
+    // Cauchy-Schwarz: |overlap| <= norm_before * norm_after
+    assert!(overlap.abs() <= norm_before * norm_after + 1e-10);
+    assert!(overlap.abs() > 0.0);
+}
+
+#[test]
+fn test_col_major_apply_identity() {
+    let mps_rm = make_4site_mps();
+    let mps_cm = make_4site_mps_col_major();
+    let identity = make_identity_mpo(4, 2);
+
+    let result = mps::apply(&identity, &mps_cm, None);
+
+    // Apply result sites are row-major, so compare with row-major reference
+    let dense_ref = mps_to_dense(&mps_rm).to_contiguous(MemoryOrder::RowMajor);
+    let dense_result = mps_to_dense(&result).to_contiguous(MemoryOrder::RowMajor);
+    for (a, b) in dense_ref.data().iter().zip(dense_result.data().iter()) {
+        assert_abs_diff_eq!(a, b, epsilon = 1e-10);
+    }
+}
+
+#[test]
+fn test_col_major_apply_with_truncation() {
+    let mps_cm = make_4site_mps_col_major();
+    let identity = make_identity_mpo(4, 2);
+
+    let params = mps::TruncSvdParams {
+        chi_max: Some(3),
+        target_trunc_err: None,
+    };
+    let result = mps::apply(&identity, &mps_cm, Some(&params));
+
+    // Bond dims should be capped
+    for d in result.bond_dims() {
+        assert!(d <= 3, "bond dim {d} exceeds chi_max=3");
+    }
+    assert_eq!(
+        *result.canonical_form(),
+        CanonicalForm::Canonicalized { center: 0 }
+    );
+}
+
+#[test]
+fn test_col_major_braket() {
+    let mps_rm = make_4site_mps();
+    let mps_cm = make_4site_mps_col_major();
+    let identity = make_identity_mpo(4, 2);
+
+    let braket_rm = mps::braket(&mps_rm, &identity, &mps_rm);
+    let braket_cm = mps::braket(&mps_cm, &identity, &mps_cm);
+
+    assert_abs_diff_eq!(braket_rm, braket_cm, epsilon = 1e-10);
 }
