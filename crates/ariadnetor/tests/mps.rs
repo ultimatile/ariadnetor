@@ -805,3 +805,90 @@ fn test_apply_matches_expect() {
 
     assert_abs_diff_eq!(expect_val, apply_val, epsilon = 1e-10);
 }
+
+// ============================================================================
+// SiteOps / SpinHalf tests
+// ============================================================================
+
+use arnet::mps::{SiteOps, SpinHalf};
+
+#[test]
+fn test_spin_half_dim() {
+    assert_eq!(SpinHalf.dim(), 2);
+}
+
+#[test]
+fn test_spin_half_sz_f64() {
+    let sz = SpinHalf.sz::<f64>();
+    assert_eq!(sz.shape(), &[2, 2]);
+    assert_abs_diff_eq!(sz.get(&[0, 0]), 0.5, epsilon = 1e-15);
+    assert_abs_diff_eq!(sz.get(&[0, 1]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sz.get(&[1, 0]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sz.get(&[1, 1]), -0.5, epsilon = 1e-15);
+}
+
+#[test]
+fn test_spin_half_sp_f64() {
+    let sp = SpinHalf.sp::<f64>();
+    assert_eq!(sp.shape(), &[2, 2]);
+    assert_abs_diff_eq!(sp.get(&[0, 0]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sp.get(&[0, 1]), 1.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sp.get(&[1, 0]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sp.get(&[1, 1]), 0.0, epsilon = 1e-15);
+}
+
+#[test]
+fn test_spin_half_sm_f64() {
+    let sm = SpinHalf.sm::<f64>();
+    assert_abs_diff_eq!(sm.get(&[0, 0]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sm.get(&[0, 1]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sm.get(&[1, 0]), 1.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sm.get(&[1, 1]), 0.0, epsilon = 1e-15);
+}
+
+#[test]
+fn test_spin_half_id_f64() {
+    let id = SpinHalf.id::<f64>();
+    assert_abs_diff_eq!(id.get(&[0, 0]), 1.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(id.get(&[0, 1]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(id.get(&[1, 0]), 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(id.get(&[1, 1]), 1.0, epsilon = 1e-15);
+}
+
+#[test]
+fn test_spin_half_sz_f32() {
+    let sz = SpinHalf.sz::<f32>();
+    assert_abs_diff_eq!(sz.get(&[0, 0]), 0.5f32, epsilon = 1e-6);
+    assert_abs_diff_eq!(sz.get(&[1, 1]), -0.5f32, epsilon = 1e-6);
+}
+
+#[test]
+fn test_spin_half_sz_complex_f64() {
+    use arnet_tensor::Complex;
+    let sz = SpinHalf.sz::<Complex<f64>>();
+    assert_abs_diff_eq!(sz.get(&[0, 0]).re, 0.5, epsilon = 1e-15);
+    assert_abs_diff_eq!(sz.get(&[0, 0]).im, 0.0, epsilon = 1e-15);
+    assert_abs_diff_eq!(sz.get(&[1, 1]).re, -0.5, epsilon = 1e-15);
+    assert_abs_diff_eq!(sz.get(&[1, 1]).im, 0.0, epsilon = 1e-15);
+}
+
+#[test]
+fn test_spin_half_commutation() {
+    // [S+, S-] = 2*Sz
+    let backend = arnet_native::NativeBackend::new();
+    let sp = SpinHalf.sp::<f64>();
+    let sm = SpinHalf.sm::<f64>();
+    let sz = SpinHalf.sz::<f64>();
+
+    let sp_sm = arnet_linalg::contract(&backend, &sp, &sm, "ij,jk->ik").unwrap();
+    let sm_sp = arnet_linalg::contract(&backend, &sm, &sp, "ij,jk->ik").unwrap();
+
+    // [S+, S-] = S+S- - S-S+
+    for i in 0..2 {
+        for j in 0..2 {
+            let commutator = sp_sm.get(&[i, j]) - sm_sp.get(&[i, j]);
+            let expected = 2.0 * sz.get(&[i, j]);
+            assert_abs_diff_eq!(commutator, expected, epsilon = 1e-12);
+        }
+    }
+}
