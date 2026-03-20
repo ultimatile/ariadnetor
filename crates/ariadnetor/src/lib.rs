@@ -13,6 +13,7 @@
 //! ```
 
 pub mod expr;
+#[cfg(feature = "mps")]
 pub mod mps;
 pub mod ops;
 pub mod runtime;

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "High-performance tensor network framework in Pure Rust"
 
+[features]
+default = ["mps"]
+mps = []
+
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }

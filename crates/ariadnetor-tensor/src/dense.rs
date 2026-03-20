@@ -1,6 +1,8 @@
-//! Dense tensor storage
+//! Dense tensor storage with strides-based memory layout
 //!
-//! Provides a dense tensor with row-major layout and Arc-based shared ownership.
+//! Provides a dense tensor with explicit strides and Arc-based shared ownership.
+//! The tensor is self-describing regarding its memory layout — code should not
+//! assume row-major or column-major without checking.
 
 use aligned_vec::{AVec, ConstAlign};
 use num_traits::{One, Zero};
@@ -10,39 +12,65 @@ use std::sync::Arc;
 /// 64-byte alignment for SIMD (AVX-512)
 type Align64 = ConstAlign<64>;
 
+/// Memory layout order for tensor data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryOrder {
+    /// Row-major (C order): last axis varies fastest.
+    RowMajor,
+    /// Column-major (Fortran order): first axis varies fastest.
+    ColumnMajor,
+}
+
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
+///
+/// # Memory Layout
+///
+/// Each tensor carries explicit `strides` and `offset` describing how logical
+/// indices map to positions in the underlying data buffer. Constructors default
+/// to row-major (C-contiguous) layout, but backends may produce other layouts.
 ///
 /// # Type Parameters
 ///
-/// * `T` - Element type (default: f64). Commonly used types:
-///   - `f64`: Double precision floating point
-///   - `f32`: Single precision floating point
-///   - `Complex<f64>`: Double precision complex numbers
-///   - `Complex<f32>`: Single precision complex numbers
-///
-/// # Memory Management
-///
-/// Uses `Arc<Vec<T>>` for efficient cloning:
-/// - Cloning is O(1) (only increments reference count)
-/// - Mutation triggers Copy-on-Write if reference count > 1
-/// - Ideal for read-heavy workloads
-///
-/// # Layout
-///
-/// Data is stored in row-major order (C-contiguous).
-/// For a 2D tensor `[2, 3]`:
-/// ```text
-/// [[a, b, c],
-///  [d, e, f]]
-/// → [a, b, c, d, e, f]
-/// ```
+/// * `T` - Element type (default: f64)
 #[derive(Clone)]
 pub struct DenseTensor<T = f64> {
-    /// Shared data buffer (row-major order, 64-byte aligned)
+    /// Shared data buffer (64-byte aligned)
     data: Arc<AVec<T, Align64>>,
     /// Tensor shape
     shape: Vec<usize>,
+    /// Strides for each axis (element count, signed for future negative strides)
+    strides: Vec<isize>,
+    /// Offset into the data buffer (element index of the first logical element)
+    offset: usize,
 }
+
+// ============================================================================
+// Strides computation helpers
+// ============================================================================
+
+/// Compute row-major (C-order) strides from shape.
+/// Last axis has stride 1, each preceding axis has stride = product of subsequent dims.
+pub fn row_major_strides(shape: &[usize]) -> Vec<isize> {
+    let mut strides = vec![1isize; shape.len()];
+    for i in (0..shape.len().saturating_sub(1)).rev() {
+        strides[i] = strides[i + 1] * shape[i + 1] as isize;
+    }
+    strides
+}
+
+/// Compute column-major (Fortran-order) strides from shape.
+/// First axis has stride 1, each subsequent axis has stride = product of preceding dims.
+fn column_major_strides(shape: &[usize]) -> Vec<isize> {
+    let mut strides = vec![1isize; shape.len()];
+    for i in 1..shape.len() {
+        strides[i] = strides[i - 1] * shape[i - 1] as isize;
+    }
+    strides
+}
+
+// ============================================================================
+// Basic accessors
+// ============================================================================
 
 impl<T> DenseTensor<T> {
     /// Get the shape of the tensor
@@ -56,63 +84,70 @@ impl<T> DenseTensor<T> {
     }
 
     /// Get shape as i64 slice for MLIR compatibility
-    ///
-    /// MLIR uses i64 for tensor dimensions, so we need conversion from usize.
     pub fn shape_i64(&self) -> Vec<i64> {
         self.shape.iter().map(|&s| s as i64).collect()
     }
 
-    /// Get the total number of elements
+    /// Get the total number of logical elements
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.shape.iter().product::<usize>()
     }
 
     /// Check if tensor is empty
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        self.len() == 0
     }
 
-    /// Reshape the tensor to a new shape without copying data.
-    ///
-    /// The total number of elements must remain the same.
-    /// The returned tensor shares the underlying data via `Arc` (zero-copy).
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new shape has a different total number of elements.
-    pub fn reshape(&self, new_shape: Vec<usize>) -> Self {
-        let new_total: usize = new_shape.iter().product();
-        assert_eq!(
-            self.len(),
-            new_total,
-            "reshape: total elements must match ({} vs {new_total})",
-            self.len()
-        );
-        Self {
-            data: Arc::clone(&self.data),
-            shape: new_shape,
+    /// Get the strides of the tensor
+    pub fn strides(&self) -> &[isize] {
+        &self.strides
+    }
+
+    /// Get the offset into the data buffer
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    // ========================================================================
+    // Layout queries
+    // ========================================================================
+
+    /// Check if the tensor is contiguous in any standard order.
+    pub fn is_contiguous(&self) -> bool {
+        self.is_row_major() || self.is_column_major()
+    }
+
+    /// Check if strides match row-major (C-order) layout.
+    pub fn is_row_major(&self) -> bool {
+        self.strides == row_major_strides(&self.shape)
+    }
+
+    /// Check if strides match column-major (Fortran-order) layout.
+    pub fn is_column_major(&self) -> bool {
+        self.strides == column_major_strides(&self.shape)
+    }
+
+    /// Determine the memory order of this tensor, if contiguous.
+    fn contiguous_order(&self) -> Option<MemoryOrder> {
+        if self.is_row_major() {
+            Some(MemoryOrder::RowMajor)
+        } else if self.is_column_major() {
+            Some(MemoryOrder::ColumnMajor)
+        } else {
+            None
         }
     }
 }
+
+// ============================================================================
+// Constructors
+// ============================================================================
 
 impl<T> DenseTensor<T>
 where
     T: Clone,
 {
     /// Create a new tensor filled with zeros
-    ///
-    /// # Arguments
-    ///
-    /// * `shape` - Dimensions of the tensor
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use arnet_tensor::DenseTensor;
-    ///
-    /// let tensor = DenseTensor::zeros(vec![10, 20]);
-    /// assert_eq!(tensor.shape(), &[10, 20]);
-    /// ```
     pub fn zeros(shape: Vec<usize>) -> Self
     where
         T: Zero,
@@ -120,20 +155,17 @@ where
         let total_elements: usize = shape.iter().product();
         let mut data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
         data.resize(total_elements, T::zero());
+        let strides = row_major_strides(&shape);
 
         Self {
             data: Arc::new(data),
+            strides,
             shape,
+            offset: 0,
         }
     }
 
     /// Create a tensor filled with ones
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let tensor = DenseTensor::ones(vec![5, 5]);
-    /// ```
     pub fn ones(shape: Vec<usize>) -> Self
     where
         T: One + Zero,
@@ -141,36 +173,32 @@ where
         let total_elements: usize = shape.iter().product();
         let mut data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
         data.resize(total_elements, T::one());
+        let strides = row_major_strides(&shape);
 
         Self {
             data: Arc::new(data),
+            strides,
             shape,
+            offset: 0,
         }
     }
 
     /// Create a tensor filled with a constant value
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let tensor = DenseTensor::constant(vec![3, 3], 3.14);
-    /// ```
     pub fn constant(shape: Vec<usize>, value: T) -> Self {
         let total_elements: usize = shape.iter().product();
         let mut data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
         data.resize(total_elements, value);
+        let strides = row_major_strides(&shape);
 
         Self {
             data: Arc::new(data),
+            strides,
             shape,
+            offset: 0,
         }
     }
 
     /// Create an n×n identity matrix.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - Matrix dimension
     pub fn eye(n: usize) -> Self
     where
         T: Zero + One,
@@ -182,16 +210,11 @@ where
         Self::from_data(data, vec![n, n])
     }
 
-    /// Create a tensor from existing data
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - Tensor data in row-major order
-    /// * `shape` - Dimensions of the tensor
+    /// Create a tensor from existing data in row-major order.
     ///
     /// # Panics
     ///
-    /// Panics if data length doesn't match the shape
+    /// Panics if data length doesn't match the shape.
     pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
         let total_elements: usize = shape.iter().product();
         assert_eq!(
@@ -207,21 +230,79 @@ where
         for elem in data {
             aligned_data.push(elem);
         }
+        let strides = row_major_strides(&shape);
+
+        Self {
+            data: Arc::new(aligned_data),
+            strides,
+            shape,
+            offset: 0,
+        }
+    }
+
+    /// Create a tensor from data with explicit strides and offset.
+    ///
+    /// Used by backends to produce tensors in non-row-major layouts.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any logical index would address outside the data buffer,
+    /// or if shape and strides ranks differ.
+    pub fn from_data_with_strides(
+        data: Vec<T>,
+        shape: Vec<usize>,
+        strides: Vec<isize>,
+        offset: usize,
+    ) -> Self {
+        assert_eq!(
+            shape.len(),
+            strides.len(),
+            "Shape rank {} doesn't match strides rank {}",
+            shape.len(),
+            strides.len()
+        );
+
+        // Validate that all reachable indices are within bounds.
+        let data_len = data.len();
+
+        // Empty tensors still need offset within buffer (for data()/as_ptr() safety)
+        assert!(
+            offset <= data_len,
+            "from_data_with_strides: offset {offset} exceeds data buffer of length {data_len}"
+        );
+
+        if !shape.contains(&0) {
+            let mut min_offset: isize = offset as isize;
+            let mut max_offset: isize = offset as isize;
+            for (&dim, &stride) in shape.iter().zip(&strides) {
+                let end = stride * (dim as isize - 1);
+                if end >= 0 {
+                    max_offset += end;
+                } else {
+                    min_offset += end;
+                }
+            }
+            assert!(
+                min_offset >= 0 && (max_offset as usize) < data_len,
+                "from_data_with_strides: reachable index range [{min_offset}, {max_offset}] \
+                 exceeds data buffer of length {data_len}"
+            );
+        }
+
+        let mut aligned_data: AVec<T, Align64> = AVec::with_capacity(64, data_len);
+        for elem in data {
+            aligned_data.push(elem);
+        }
 
         Self {
             data: Arc::new(aligned_data),
             shape,
+            strides,
+            offset,
         }
     }
 
     /// Create a tensor filled with random values from the standard distribution.
-    ///
-    /// Uses the provided RNG for reproducibility.
-    ///
-    /// # Arguments
-    ///
-    /// * `shape` - Dimensions of the tensor
-    /// * `rng` - Random number generator
     #[cfg(feature = "random")]
     pub fn random<R: rand::Rng>(shape: Vec<usize>, rng: &mut R) -> Self
     where
@@ -232,79 +313,265 @@ where
         Self::from_data(data, shape)
     }
 
-    /// Get a reference to the underlying data
+    // ========================================================================
+    // Data access
+    // ========================================================================
+
+    /// Get a reference to the underlying data as a row-major contiguous slice.
+    ///
+    /// Existing callers (linalg, transpose, scalar_ops) index this slice
+    /// assuming row-major layout. Returning non-row-major data would silently
+    /// produce wrong results in those paths.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor is not row-major contiguous.
     pub fn data(&self) -> &[T] {
-        &self.data
+        assert!(
+            self.is_row_major(),
+            "data() requires row-major contiguous tensor; \
+             call to_contiguous(MemoryOrder::RowMajor) first"
+        );
+        &self.data[self.offset..self.offset + self.len()]
     }
 
-    /// Get a mutable reference to the underlying data (triggers CoW if shared)
+    /// Get a mutable reference to the underlying data (triggers CoW if shared).
     ///
-    /// # Copy-on-Write
+    /// # Panics
     ///
-    /// If the data is shared (Arc reference count > 1), this will clone the data
-    /// before returning a mutable reference.
+    /// Panics if the tensor is not row-major contiguous.
     pub fn data_mut(&mut self) -> &mut [T] {
-        Arc::make_mut(&mut self.data).as_mut_slice()
+        assert!(
+            self.is_row_major(),
+            "data_mut() requires row-major contiguous tensor; \
+             call to_contiguous(MemoryOrder::RowMajor) first"
+        );
+        let len = self.len();
+        let offset = self.offset;
+        &mut Arc::make_mut(&mut self.data).as_mut_slice()[offset..offset + len]
     }
 
     /// Get element at given indices
     ///
     /// # Panics
     ///
-    /// Panics if indices are out of bounds
+    /// Panics if indices are out of bounds.
     pub fn get(&self, indices: &[usize]) -> T {
         let flat_index = self.flat_index(indices);
         self.data[flat_index].clone()
     }
 
-    /// Set element at given indices (triggers CoW if shared)
+    /// Set element at given indices (triggers CoW if shared).
     ///
     /// # Panics
     ///
-    /// Panics if indices are out of bounds
+    /// Panics if indices are out of bounds.
     pub fn set(&mut self, indices: &[usize], value: T) {
         let flat_index = self.flat_index(indices);
         Arc::make_mut(&mut self.data)[flat_index] = value;
     }
 
-    /// Fill tensor with a constant value (triggers CoW if shared)
+    /// Fill tensor with a constant value (triggers CoW if shared).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor is not row-major contiguous.
     pub fn fill(&mut self, value: T) {
-        Arc::make_mut(&mut self.data).fill(value);
+        assert!(
+            self.is_row_major(),
+            "fill() requires row-major contiguous tensor"
+        );
+        let len = self.len();
+        let offset = self.offset;
+        Arc::make_mut(&mut self.data).as_mut_slice()[offset..offset + len].fill(value);
     }
 
-    /// Get pointer to the underlying data for FFI
+    /// Get pointer to the underlying data for FFI.
     ///
-    /// Returns a pointer that can be passed to JIT-compiled functions.
-    /// The pointer remains valid as long as the DenseTensor is not moved or dropped.
+    /// Returns a pointer to the first logical element (accounting for offset).
+    /// Callers rebuild a `len()`-element slice from this pointer, so
+    /// non-contiguous tensors would drop stride information and feed wrong
+    /// values to kernels.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor is not contiguous.
     pub fn as_ptr(&self) -> *const T {
-        self.data.as_ptr()
+        assert!(self.is_contiguous(), "as_ptr() requires contiguous tensor");
+        unsafe { self.data.as_ptr().add(self.offset) }
     }
 
-    /// Get mutable pointer to the underlying data for FFI (triggers CoW if shared)
+    /// Get mutable pointer to the underlying data for FFI (triggers CoW if shared).
     ///
-    /// Returns a mutable pointer for writing results from JIT-compiled functions.
-    /// The pointer remains valid as long as the DenseTensor is not moved or dropped.
+    /// # Panics
+    ///
+    /// Panics if the tensor is not contiguous.
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        Arc::make_mut(&mut self.data).as_mut_ptr()
+        assert!(
+            self.is_contiguous(),
+            "as_mut_ptr() requires contiguous tensor"
+        );
+        let offset = self.offset;
+        unsafe { Arc::make_mut(&mut self.data).as_mut_ptr().add(offset) }
     }
 
-    /// Apply a function to each element, producing a new tensor.
+    // ========================================================================
+    // Reshape
+    // ========================================================================
+
+    /// Reshape the tensor to a new shape.
     ///
-    /// Supports type-changing transforms (e.g., `DenseTensor<f64>` → `DenseTensor<Complex<f64>>`).
+    /// Zero-copy if strides are compatible with the new shape.
+    /// Otherwise, copies to contiguous layout first.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new shape has a different total number of elements.
+    pub fn reshape(&self, new_shape: Vec<usize>) -> Self {
+        let new_total: usize = new_shape.iter().product();
+        assert_eq!(
+            self.len(),
+            new_total,
+            "reshape: total elements must match ({} vs {new_total})",
+            self.len()
+        );
+
+        if let Some(view) = self.reshape_view(new_shape.clone()) {
+            return view;
+        }
+
+        // Non-contiguous: copy to contiguous first, then reshape
+        let contiguous = self.to_contiguous(MemoryOrder::RowMajor);
+        contiguous
+            .reshape_view(new_shape)
+            .expect("reshape_view failed on contiguous tensor")
+    }
+
+    /// Zero-copy reshape if strides are compatible with the new shape.
+    ///
+    /// Returns `None` if the tensor must be copied to support the new shape.
+    pub fn reshape_view(&self, new_shape: Vec<usize>) -> Option<Self> {
+        let new_total: usize = new_shape.iter().product();
+        if self.len() != new_total {
+            return None;
+        }
+
+        // For contiguous tensors, reshape is always zero-copy:
+        // just compute new strides in the same memory order.
+        if let Some(order) = self.contiguous_order() {
+            let new_strides = match order {
+                MemoryOrder::RowMajor => row_major_strides(&new_shape),
+                MemoryOrder::ColumnMajor => column_major_strides(&new_shape),
+            };
+            return Some(Self {
+                data: Arc::clone(&self.data),
+                shape: new_shape,
+                strides: new_strides,
+                offset: self.offset,
+            });
+        }
+
+        // Non-contiguous: cannot reshape without copying
+        None
+    }
+
+    // ========================================================================
+    // Contiguity conversion
+    // ========================================================================
+
+    /// Create a contiguous copy in the specified memory order.
+    ///
+    /// No-op (Arc clone) if already contiguous in the requested order.
+    pub fn to_contiguous(&self, order: MemoryOrder) -> Self {
+        let already_ok = match order {
+            MemoryOrder::RowMajor => self.is_row_major() && self.offset == 0,
+            MemoryOrder::ColumnMajor => self.is_column_major() && self.offset == 0,
+        };
+
+        if already_ok {
+            return self.clone();
+        }
+
+        let total = self.len();
+        let new_strides = match order {
+            MemoryOrder::RowMajor => row_major_strides(&self.shape),
+            MemoryOrder::ColumnMajor => column_major_strides(&self.shape),
+        };
+
+        // Iterate through all logical indices in the target order and copy
+        let mut new_data = Vec::with_capacity(total);
+        let rank = self.rank();
+        let mut coords = vec![0usize; rank];
+
+        // Iteration order depends on target layout
+        let axis_order: Vec<usize> = match order {
+            MemoryOrder::RowMajor => (0..rank).collect(),
+            MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+        };
+
+        for _ in 0..total {
+            new_data.push(self.get(&coords));
+
+            // Increment coordinates in the target order
+            for &d in axis_order.iter().rev() {
+                coords[d] += 1;
+                if coords[d] < self.shape[d] {
+                    break;
+                }
+                coords[d] = 0;
+            }
+        }
+
+        Self::from_data_with_strides(new_data, self.shape.clone(), new_strides, 0)
+    }
+
+    // ========================================================================
+    // Element-wise operations
+    // ========================================================================
+
+    /// Apply a function to each element, producing a new row-major tensor.
+    ///
+    /// Iterates in logical (row-major) order regardless of this tensor's layout.
     pub fn map<U, F>(&self, f: F) -> DenseTensor<U>
     where
         F: Fn(&T) -> U,
         U: Clone + 'static,
     {
-        let data: Vec<U> = self.data().iter().map(&f).collect();
-        DenseTensor::from_data(data, self.shape().to_vec())
+        let shape = self.shape();
+        let rank = shape.len();
+        let total = self.len();
+        let mut coords = vec![0usize; rank];
+        let mut result = Vec::with_capacity(total);
+
+        for _ in 0..total {
+            let val = self.get(&coords);
+            result.push(f(&val));
+
+            for d in (0..rank).rev() {
+                coords[d] += 1;
+                if coords[d] < shape[d] {
+                    break;
+                }
+                coords[d] = 0;
+            }
+        }
+
+        DenseTensor::from_data(result, shape.to_vec())
     }
 
     /// Apply a function to each element in place (triggers CoW if shared).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor is not row-major contiguous.
     pub fn map_mut<F>(&mut self, f: F)
     where
         F: Fn(&T) -> T,
     {
+        assert!(
+            self.is_row_major(),
+            "map_mut() requires row-major contiguous tensor"
+        );
         let data = self.data_mut();
         for x in data.iter_mut() {
             *x = f(x);
@@ -312,36 +579,41 @@ where
     }
 
     /// Apply a function with multi-dimensional coordinates to each element.
-    ///
-    /// The closure receives `(&[usize], &T)` where the first argument is the
-    /// multi-dimensional index.
     pub fn map_with_index<U, F>(&self, f: F) -> DenseTensor<U>
     where
         F: Fn(&[usize], &T) -> U,
         U: Clone + 'static,
     {
         let shape = self.shape();
-        let mut coords = vec![0usize; shape.len()];
-        let data: Vec<U> = self
-            .data()
-            .iter()
-            .enumerate()
-            .map(|(flat, x)| {
-                // Decode flat index to coordinates
-                let mut rem = flat;
-                for i in (0..shape.len()).rev() {
-                    coords[i] = rem % shape[i];
-                    rem /= shape[i];
+        let rank = shape.len();
+        let total = self.len();
+        let mut coords = vec![0usize; rank];
+        let mut result = Vec::with_capacity(total);
+
+        for _ in 0..total {
+            let val = self.get(&coords);
+            result.push(f(&coords, &val));
+
+            // Increment in row-major order
+            for d in (0..rank).rev() {
+                coords[d] += 1;
+                if coords[d] < shape[d] {
+                    break;
                 }
-                f(&coords, x)
-            })
-            .collect();
-        DenseTensor::from_data(data, self.shape().to_vec())
+                coords[d] = 0;
+            }
+        }
+
+        DenseTensor::from_data(result, shape.to_vec())
     }
+
+    // ========================================================================
+    // Slice / expand / replace
+    // ========================================================================
 
     /// Extract a sub-tensor by specifying a range for each axis.
     ///
-    /// Each range is `(start, end)` with exclusive end, similar to Rust's `start..end`.
+    /// Each range is `(start, end)` with exclusive end.
     ///
     /// # Panics
     ///
@@ -367,17 +639,17 @@ where
         let new_total: usize = new_shape.iter().product();
         let mut data = Vec::with_capacity(new_total);
 
-        let src_strides = Self::compute_strides(shape);
         let rank = shape.len();
         let mut coords = vec![0usize; rank];
 
         for _ in 0..new_total {
-            let flat: usize = (0..rank)
-                .map(|d| (coords[d] + ranges[d].0) * src_strides[d])
-                .sum();
-            data.push(self.data[flat].clone());
+            let src_coords: Vec<usize> = coords
+                .iter()
+                .zip(ranges)
+                .map(|(&c, &(s, _))| c + s)
+                .collect();
+            data.push(self.get(&src_coords));
 
-            // Increment coordinates (row-major order)
             for d in (0..rank).rev() {
                 coords[d] += 1;
                 if coords[d] < new_shape[d] {
@@ -391,12 +663,6 @@ where
     }
 
     /// Expand tensor by adding zero-padding at the boundaries.
-    ///
-    /// `padding` specifies `(before, after)` padding for each axis.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `padding` length doesn't match rank.
     pub fn expand(&self, padding: &[(usize, usize)]) -> Self
     where
         T: Zero,
@@ -416,19 +682,18 @@ where
             .map(|(&s, &(before, after))| s + before + after)
             .collect();
         let new_total: usize = new_shape.iter().product();
-        let mut data = vec![T::zero(); new_total];
-
-        let src_strides = Self::compute_strides(shape);
-        let dst_strides = Self::compute_strides(&new_shape);
+        let dst_strides = compute_strides_usize(&new_shape);
         let rank = shape.len();
+        let mut data = vec![T::zero(); new_total];
         let mut coords = vec![0usize; rank];
 
-        for _ in 0..self.len() {
-            let src_flat: usize = (0..rank).map(|d| coords[d] * src_strides[d]).sum();
+        let src_total = self.len();
+        for _ in 0..src_total {
+            let val = self.get(&coords);
             let dst_flat: usize = (0..rank)
                 .map(|d| (coords[d] + padding[d].0) * dst_strides[d])
                 .sum();
-            data[dst_flat] = self.data[src_flat].clone();
+            data[dst_flat] = val;
 
             for d in (0..rank).rev() {
                 coords[d] += 1;
@@ -443,11 +708,6 @@ where
     }
 
     /// Write a sub-tensor into this tensor starting at the given position.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `begin` length doesn't match rank, or the sub-tensor
-    /// would extend beyond the boundaries of this tensor.
     pub fn replace_slice(&mut self, sub: &Self, begin: &[usize]) {
         let shape = self.shape().to_vec();
         let sub_shape = sub.shape();
@@ -466,18 +726,14 @@ where
             );
         }
 
-        let dst_strides = Self::compute_strides(&shape);
-        let src_strides = Self::compute_strides(sub_shape);
         let rank = shape.len();
+        let sub_total = sub.len();
         let mut coords = vec![0usize; rank];
-        let data = self.data_mut();
 
-        for _ in 0..sub.len() {
-            let src_flat: usize = (0..rank).map(|d| coords[d] * src_strides[d]).sum();
-            let dst_flat: usize = (0..rank)
-                .map(|d| (coords[d] + begin[d]) * dst_strides[d])
-                .sum();
-            data[dst_flat] = sub.data()[src_flat].clone();
+        for _ in 0..sub_total {
+            let val = sub.get(&coords);
+            let dst_coords: Vec<usize> = coords.iter().zip(begin).map(|(&c, &b)| c + b).collect();
+            self.set(&dst_coords, val);
 
             for d in (0..rank).rev() {
                 coords[d] += 1;
@@ -489,14 +745,13 @@ where
         }
     }
 
+    // ========================================================================
+    // Multi-tensor operations
+    // ========================================================================
+
     /// Concatenate tensors along an existing axis.
     ///
-    /// All tensors must have the same shape except along the concatenation axis.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `tensors` is empty, `axis` is out of range, or shapes are
-    /// incompatible on non-concatenation axes.
+    /// Output is always row-major. Inputs may be any layout.
     pub fn concatenate(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "concatenate: empty tensor list");
         let rank = tensors[0].rank();
@@ -525,23 +780,35 @@ where
 
         let mut out_shape: Vec<usize> = base_shape.to_vec();
         out_shape[axis] = tensors.iter().map(|t| t.shape()[axis]).sum();
+
+        // Build output by iterating in logical row-major order
         let out_total: usize = out_shape.iter().product();
         let mut data = Vec::with_capacity(out_total);
+        let mut coords = vec![0usize; rank];
 
-        // Size of a "block" along and after the concat axis
-        let outer: usize = out_shape[..axis].iter().product();
-        let inner: usize = if axis + 1 < rank {
-            out_shape[axis + 1..].iter().product()
-        } else {
-            1
-        };
-
-        for o in 0..outer {
+        for _ in 0..out_total {
+            // Determine which input tensor and local coordinate for the concat axis
+            let mut axis_pos = coords[axis];
+            let mut src_tensor = None;
             for t in tensors {
-                let t_axis_size = t.shape()[axis];
-                let t_inner_stride = t_axis_size * inner;
-                let src_offset = o * t_inner_stride;
-                data.extend_from_slice(&t.data()[src_offset..src_offset + t_inner_stride]);
+                let t_size = t.shape()[axis];
+                if axis_pos < t_size {
+                    src_tensor = Some(t);
+                    break;
+                }
+                axis_pos -= t_size;
+            }
+            let t = src_tensor.expect("concatenate: axis position out of range");
+            let mut src_coords = coords.clone();
+            src_coords[axis] = axis_pos;
+            data.push(t.get(&src_coords));
+
+            for d in (0..rank).rev() {
+                coords[d] += 1;
+                if coords[d] < out_shape[d] {
+                    break;
+                }
+                coords[d] = 0;
             }
         }
 
@@ -550,11 +817,7 @@ where
 
     /// Stack tensors along a new axis.
     ///
-    /// All tensors must have identical shapes. A new axis is inserted at position `axis`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `tensors` is empty, `axis > rank`, or shapes differ.
+    /// Output is always row-major. Inputs may be any layout.
     pub fn stack(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "stack: empty tensor list");
         let base_shape = tensors[0].shape();
@@ -573,7 +836,6 @@ where
             );
         }
 
-        // Insert new axis: e.g., shape [2, 3] stacked at axis 0 with n=3 → [3, 2, 3]
         let n = tensors.len();
         let mut out_shape = Vec::with_capacity(rank + 1);
         out_shape.extend_from_slice(&base_shape[..axis]);
@@ -581,31 +843,34 @@ where
         out_shape.extend_from_slice(&base_shape[axis..]);
 
         let out_total: usize = out_shape.iter().product();
+        let out_rank = out_shape.len();
         let mut data = Vec::with_capacity(out_total);
+        let mut coords = vec![0usize; out_rank];
 
-        let outer: usize = base_shape[..axis].iter().product();
-        let inner: usize = base_shape[axis..].iter().product();
+        for _ in 0..out_total {
+            // The stacked axis at position `axis` indexes into tensors
+            let t_idx = coords[axis];
+            let mut src_coords: Vec<usize> = coords[..axis].to_vec();
+            src_coords.extend_from_slice(&coords[axis + 1..]);
+            data.push(tensors[t_idx].get(&src_coords));
 
-        for o in 0..outer {
-            for t in tensors {
-                let src_offset = o * inner;
-                data.extend_from_slice(&t.data()[src_offset..src_offset + inner]);
+            for d in (0..out_rank).rev() {
+                coords[d] += 1;
+                if coords[d] < out_shape[d] {
+                    break;
+                }
+                coords[d] = 0;
             }
         }
 
         Self::from_data(data, out_shape)
     }
 
-    /// Compute strides for row-major layout
-    fn compute_strides(shape: &[usize]) -> Vec<usize> {
-        let mut strides = vec![1; shape.len()];
-        for i in (0..shape.len().saturating_sub(1)).rev() {
-            strides[i] = strides[i + 1] * shape[i + 1];
-        }
-        strides
-    }
+    // ========================================================================
+    // Private helpers
+    // ========================================================================
 
-    /// Convert multi-dimensional indices to flat index
+    /// Convert multi-dimensional indices to flat index using strides and offset.
     fn flat_index(&self, indices: &[usize]) -> usize {
         assert_eq!(
             indices.len(),
@@ -624,14 +889,18 @@ where
             )
         });
 
-        let strides = Self::compute_strides(&self.shape);
-        indices
+        let raw: isize = indices
             .iter()
-            .zip(&strides)
-            .map(|(&idx, &stride)| idx * stride)
-            .sum()
+            .zip(&self.strides)
+            .map(|(&idx, &stride)| idx as isize * stride)
+            .sum();
+        (self.offset as isize + raw) as usize
     }
 }
+
+// ============================================================================
+// Scalar-dependent operations
+// ============================================================================
 
 impl<T> DenseTensor<T>
 where
@@ -639,44 +908,37 @@ where
 {
     /// Element-wise complex conjugate.
     pub fn conj(&self) -> Self {
-        let data: Vec<T> = self.data().iter().map(|&x| x.conj()).collect();
-        Self::from_data(data, self.shape().to_vec())
+        self.map(|x| x.conj())
     }
 
     /// Convert each element to its complex representation.
-    ///
-    /// For real types (f64, f32), wraps each value as `Complex::new(x, 0)`.
-    /// For complex types, this is the identity operation.
     pub fn to_complex(&self) -> DenseTensor<T::Complex> {
-        let data: Vec<T::Complex> = self.data().iter().map(|&x| x.into_complex()).collect();
-        DenseTensor::from_data(data, self.shape().to_vec())
+        self.map(|x| x.into_complex())
     }
 
     /// Extract the real part of each element.
-    ///
-    /// For real types, returns a copy of the tensor.
-    /// For complex types, extracts the real component.
     pub fn real(&self) -> DenseTensor<T::Real> {
-        let data: Vec<T::Real> = self.data().iter().map(|&x| x.re()).collect();
-        DenseTensor::from_data(data, self.shape().to_vec())
+        self.map(|x| x.re())
     }
 
     /// Extract the imaginary part of each element.
-    ///
-    /// For real types, returns a tensor of zeros.
-    /// For complex types, extracts the imaginary component.
     pub fn imag(&self) -> DenseTensor<T::Real> {
-        let data: Vec<T::Real> = self.data().iter().map(|&x| x.im()).collect();
-        DenseTensor::from_data(data, self.shape().to_vec())
+        self.map(|x| x.im())
     }
 }
+
+// ============================================================================
+// Display / Debug
+// ============================================================================
 
 impl<T> fmt::Debug for DenseTensor<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "DenseTensor(shape={:?}, elements={})",
+            "DenseTensor(shape={:?}, strides={:?}, offset={}, elements={})",
             self.shape,
+            self.strides,
+            self.offset,
             self.len()
         )
     }
@@ -686,4 +948,13 @@ impl<T> fmt::Display for DenseTensor<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "DenseTensor{:?}", self.shape)
     }
+}
+
+/// Compute row-major strides as usize (for internal use in expand/replace_slice).
+fn compute_strides_usize(shape: &[usize]) -> Vec<usize> {
+    let mut strides = vec![1usize; shape.len()];
+    for i in (0..shape.len().saturating_sub(1)).rev() {
+        strides[i] = strides[i + 1] * shape[i + 1];
+    }
+    strides
 }
