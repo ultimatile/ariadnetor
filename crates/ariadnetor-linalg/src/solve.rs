@@ -1,6 +1,8 @@
-use arnet_core::backend::{BackendError, ComputeBackend, SolveDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, MemoryOrder, SolveDescriptor};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
+
+use crate::decomposition::make_tensor;
 
 /// Solve the linear system AX = B via LU decomposition.
 ///
@@ -48,7 +50,14 @@ pub fn solve<T: Scalar>(
     }
 
     let n = m;
-    let b_total = b.data().len();
+    let order = backend.preferred_order();
+    // Ensure row-major reshape semantics, then convert to backend order
+    let a_rm = a.to_contiguous(MemoryOrder::RowMajor);
+    let a_2d = DenseTensor::from_data(a_rm.data().to_vec(), vec![n, n]);
+    let a_contiguous = a_2d.to_contiguous(order);
+
+    let b_rm = b.to_contiguous(MemoryOrder::RowMajor);
+    let b_total = b_rm.len();
 
     if !b_total.is_multiple_of(n) {
         return Err(BackendError::InvalidDimension(format!(
@@ -58,19 +67,22 @@ pub fn solve<T: Scalar>(
 
     let nrhs = b_total / n;
 
+    let b_2d = DenseTensor::from_data(b_rm.data().to_vec(), vec![n, nrhs]);
+    let b_contiguous = b_2d.to_contiguous(order);
+
     let mut x_data = vec![T::zero(); n * nrhs];
 
     let desc = SolveDescriptor {
         n,
         nrhs,
-        a: a.data(),
-        b: b.data(),
+        a: a_contiguous.data_contiguous(),
+        b: b_contiguous.data_contiguous(),
         x: &mut x_data,
     };
 
     backend.solve(desc)?;
 
-    Ok(DenseTensor::from_data(x_data, b.shape().to_vec()))
+    Ok(make_tensor(x_data, b.shape().to_vec(), order))
 }
 
 /// Compute the inverse of a square matrix via LU decomposition.
@@ -116,12 +128,15 @@ pub fn inverse<T: Scalar>(
 
     let identity = DenseTensor::<T>::eye(n);
 
-    // Solve AX = I → X = A⁻¹
-    let a_flat = DenseTensor::from_data(tensor.data().to_vec(), vec![n, n]);
+    // Flatten to n×n and solve AX = I → X = A⁻¹
+    let a_rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let a_flat = DenseTensor::from_data(a_rm.data().to_vec(), vec![n, n]);
     let result = solve(backend, &a_flat, &identity, 1)?;
 
+    // Return in original shape, row-major (inverse output matches input convention)
+    let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
     Ok(DenseTensor::from_data(
-        result.data().to_vec(),
+        result_rm.data().to_vec(),
         shape.to_vec(),
     ))
 }

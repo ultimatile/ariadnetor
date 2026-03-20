@@ -12,7 +12,18 @@ pub enum DeviceType {
     Metal,
 }
 
+/// Memory layout order for tensor data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryOrder {
+    /// Row-major (C order): last axis varies fastest.
+    RowMajor,
+    /// Column-major (Fortran order): first axis varies fastest.
+    ColumnMajor,
+}
+
 /// GEMM operation descriptor
+///
+/// Data layout (A, B, C slices) is specified by the `order` field.
 pub struct GemmDescriptor<'a, T> {
     pub m: usize,
     pub n: usize,
@@ -24,6 +35,7 @@ pub struct GemmDescriptor<'a, T> {
     pub c: &'a mut [T],
     pub trans_a: bool,
     pub trans_b: bool,
+    pub order: MemoryOrder,
 }
 
 /// Transpose operation descriptor
@@ -36,8 +48,9 @@ pub struct TransposeDescriptor<'a, T> {
 
 /// Thin SVD operation descriptor: A = U * diag(S) * Vt
 ///
-/// Computes the thin SVD of an m×n matrix A (row-major).
-/// Outputs: U (m×k, row-major), S (k singular values), Vt (k×n, row-major)
+/// Computes the thin SVD of an m×n matrix A.
+/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Outputs: U (m×k), S (k singular values), Vt (k×n)
 /// where k = min(m, n).
 pub struct SvdDescriptor<'a, T: Scalar> {
     pub m: usize,
@@ -50,8 +63,9 @@ pub struct SvdDescriptor<'a, T: Scalar> {
 
 /// Thin QR decomposition descriptor: A = Q * R
 ///
-/// Computes the thin QR of an m×n matrix A (row-major).
-/// Outputs: Q (m×k, row-major), R (k×n, row-major)
+/// Computes the thin QR of an m×n matrix A.
+/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Outputs: Q (m×k), R (k×n)
 /// where k = min(m, n).
 pub struct QrDescriptor<'a, T> {
     pub m: usize,
@@ -63,8 +77,9 @@ pub struct QrDescriptor<'a, T> {
 
 /// Thin LQ decomposition descriptor: A = L * Q
 ///
-/// Computes the thin LQ of an m×n matrix A (row-major).
-/// Outputs: L (m×k, row-major), Q (k×n, row-major)
+/// Computes the thin LQ of an m×n matrix A.
+/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Outputs: L (m×k), Q (k×n)
 /// where k = min(m, n).
 pub struct LqDescriptor<'a, T> {
     pub m: usize,
@@ -76,8 +91,9 @@ pub struct LqDescriptor<'a, T> {
 
 /// Self-adjoint eigenvalue decomposition descriptor: A = V * diag(W) * V^H
 ///
-/// Computes eigenvalues and eigenvectors of an n×n self-adjoint matrix A (row-major).
-/// Outputs: W (n real eigenvalues, ascending), V (n×n eigenvectors, row-major)
+/// Computes eigenvalues and eigenvectors of an n×n self-adjoint matrix A.
+/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Outputs: W (n real eigenvalues, ascending), V (n×n eigenvectors)
 pub struct EighDescriptor<'a, T: Scalar> {
     pub n: usize,
     pub a: &'a [T],
@@ -87,8 +103,9 @@ pub struct EighDescriptor<'a, T: Scalar> {
 
 /// General eigenvalue decomposition descriptor
 ///
-/// Computes eigenvalues and right eigenvectors of an n×n matrix A (row-major).
-/// Outputs are always complex: W (n complex eigenvalues), V (n×n eigenvectors, row-major)
+/// Computes eigenvalues and right eigenvectors of an n×n matrix A.
+/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Outputs are always complex: W (n complex eigenvalues), V (n×n eigenvectors)
 pub struct EigDescriptor<'a, T: Scalar> {
     pub n: usize,
     pub a: &'a [T],
@@ -99,7 +116,8 @@ pub struct EigDescriptor<'a, T: Scalar> {
 /// Linear solve descriptor: AX = B via LU decomposition
 ///
 /// Solves the system AX = B where A is an n×n matrix and B is n×nrhs.
-/// Output X is written to `x` (n×nrhs, row-major).
+/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Output X is written to `x` (n×nrhs).
 pub struct SolveDescriptor<'a, T> {
     pub n: usize,
     pub nrhs: usize,
@@ -115,6 +133,12 @@ pub trait ComputeBackend: Send + Sync {
 
     /// Device type
     fn device_type(&self) -> DeviceType;
+
+    /// Preferred memory order for this backend's data layout.
+    ///
+    /// Descriptor data (input/output slices) is expected in this order.
+    /// The linalg layer converts tensors to this order before constructing descriptors.
+    fn preferred_order(&self) -> MemoryOrder;
 
     /// Check if backend is available
     fn is_available(&self) -> bool {

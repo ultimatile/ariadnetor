@@ -1,12 +1,16 @@
-use arnet_core::backend::{BackendError, ComputeBackend, EigDescriptor, EighDescriptor};
+use arnet_core::backend::{
+    BackendError, ComputeBackend, EigDescriptor, EighDescriptor, MemoryOrder,
+};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
 use num_traits::Zero;
 
+use crate::decomposition::make_tensor;
+
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
 /// - Eigenvalues: `DenseTensor<T::Real>` with shape `[n]`, sorted ascending
-/// - Eigenvectors: `DenseTensor<T>` with shape `[n, n]`, columns are eigenvectors (row-major)
+/// - Eigenvectors: `DenseTensor<T>` with shape `[n, n]`, columns are eigenvectors
 pub type EighResult<T> = (DenseTensor<<T as Scalar>::Real>, DenseTensor<T>);
 
 /// Compute self-adjoint eigenvalue decomposition of a tensor reshaped as a square matrix.
@@ -53,12 +57,18 @@ pub fn eigh<T: Scalar>(
         )));
     }
 
+    let order = backend.preferred_order();
+    // Ensure row-major reshape to 2D, then convert to backend order
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let mat_2d = DenseTensor::from_data(rm.data().to_vec(), vec![n, n]);
+    let contiguous = mat_2d.to_contiguous(order);
+
     let mut w_data = vec![T::Real::zero(); n];
     let mut v_data = vec![T::zero(); n * n];
 
     let desc = EighDescriptor {
         n,
-        a: tensor.data(),
+        a: contiguous.data_contiguous(),
         w: &mut w_data,
         v: &mut v_data,
     };
@@ -66,7 +76,7 @@ pub fn eigh<T: Scalar>(
     backend.eigh(desc)?;
 
     let w_tensor = DenseTensor::from_data(w_data, vec![n]);
-    let v_tensor = DenseTensor::from_data(v_data, vec![n, n]);
+    let v_tensor = make_tensor(v_data, vec![n, n], order);
 
     Ok((w_tensor, v_tensor))
 }
@@ -101,7 +111,7 @@ pub fn eigvalsh<T: Scalar>(
 /// Result of a general eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
 /// - Eigenvalues: `DenseTensor<T::Complex>` with shape `[n]`, complex
-/// - Eigenvectors: `DenseTensor<T::Complex>` with shape `[n, n]`, complex, columns are right eigenvectors (row-major)
+/// - Eigenvectors: `DenseTensor<T::Complex>` with shape `[n, n]`, complex, columns are right eigenvectors
 pub type EigResult<T> = (
     DenseTensor<<T as Scalar>::Complex>,
     DenseTensor<<T as Scalar>::Complex>,
@@ -151,12 +161,17 @@ pub fn eig<T: Scalar>(
         )));
     }
 
+    let order = backend.preferred_order();
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let mat_2d = DenseTensor::from_data(rm.data().to_vec(), vec![n, n]);
+    let contiguous = mat_2d.to_contiguous(order);
+
     let mut w_data = vec![T::Complex::zero(); n];
     let mut v_data = vec![T::Complex::zero(); n * n];
 
     let desc = EigDescriptor {
         n,
-        a: tensor.data(),
+        a: contiguous.data_contiguous(),
         w: &mut w_data,
         v: &mut v_data,
     };
@@ -164,7 +179,7 @@ pub fn eig<T: Scalar>(
     backend.eig(desc)?;
 
     let w_tensor = DenseTensor::from_data(w_data, vec![n]);
-    let v_tensor = DenseTensor::from_data(v_data, vec![n, n]);
+    let v_tensor = make_tensor(v_data, vec![n, n], order);
 
     Ok((w_tensor, v_tensor))
 }

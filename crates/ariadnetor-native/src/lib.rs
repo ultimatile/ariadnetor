@@ -18,7 +18,7 @@ use std::sync::{Arc, OnceLock};
 
 use arnet_core::backend::{
     BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor,
-    LqDescriptor, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor,
+    LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor,
 };
 use arnet_core::scalar::Scalar;
 use num_complex::Complex;
@@ -58,6 +58,10 @@ impl ComputeBackend for NativeBackend {
 
     fn device_type(&self) -> DeviceType {
         DeviceType::Cpu
+    }
+
+    fn preferred_order(&self) -> MemoryOrder {
+        MemoryOrder::ColumnMajor
     }
 
     /// GEMM: C = alpha * A * B + beta * C
@@ -290,6 +294,7 @@ unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDe
         c,
         trans_a,
         trans_b,
+        order,
     } = desc;
     unsafe {
         GemmDescriptor {
@@ -303,6 +308,7 @@ unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDe
             c: std::slice::from_raw_parts_mut(c.as_mut_ptr() as *mut U, c.len()),
             trans_a,
             trans_b,
+            order,
         }
     }
 }

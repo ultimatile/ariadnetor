@@ -8,7 +8,7 @@ use num_complex::Complex;
 pub(crate) fn eig_f64(desc: EigDescriptor<'_, f64>) -> Result<(), BackendError> {
     let EigDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat
         .eigen()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
@@ -19,11 +19,11 @@ pub(crate) fn eig_f64(desc: EigDescriptor<'_, f64>) -> Result<(), BackendError> 
         w[i] = s_diag[i];
     }
 
-    // Eigenvectors (complex, n*n, row-major)
+    // Eigenvectors (complex, n×n, column-major)
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 
@@ -34,7 +34,7 @@ pub(crate) fn eig_f64(desc: EigDescriptor<'_, f64>) -> Result<(), BackendError> 
 pub(crate) fn eig_f32(desc: EigDescriptor<'_, f32>) -> Result<(), BackendError> {
     let EigDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat
         .eigen()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
@@ -47,7 +47,7 @@ pub(crate) fn eig_f32(desc: EigDescriptor<'_, f32>) -> Result<(), BackendError> 
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 
@@ -58,7 +58,7 @@ pub(crate) fn eig_f32(desc: EigDescriptor<'_, f32>) -> Result<(), BackendError> 
 pub(crate) fn eig_c64(desc: EigDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
     let EigDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat
         .eigen()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
@@ -71,7 +71,7 @@ pub(crate) fn eig_c64(desc: EigDescriptor<'_, Complex<f64>>) -> Result<(), Backe
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 
@@ -82,7 +82,7 @@ pub(crate) fn eig_c64(desc: EigDescriptor<'_, Complex<f64>>) -> Result<(), Backe
 pub(crate) fn eig_c32(desc: EigDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
     let EigDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat
         .eigen()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer eigen failed: {e:?}")))?;
@@ -95,7 +95,7 @@ pub(crate) fn eig_c32(desc: EigDescriptor<'_, Complex<f32>>) -> Result<(), Backe
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 

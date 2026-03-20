@@ -9,16 +9,16 @@ pub(crate) fn svd_f64(desc: SvdDescriptor<'_, f64>) -> Result<(), BackendError> 
     let SvdDescriptor { m, n, a, u, s, vt } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let thin = mat
         .thin_svd()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
 
-    // U (m*k, row-major)
+    // U (m×k, column-major)
     let u_mat = thin.U();
     for i in 0..m {
         for j in 0..k {
-            u[i * k + j] = u_mat[(i, j)];
+            u[j * m + i] = u_mat[(i, j)];
         }
     }
 
@@ -28,11 +28,11 @@ pub(crate) fn svd_f64(desc: SvdDescriptor<'_, f64>) -> Result<(), BackendError> 
         s[i] = s_col[i];
     }
 
-    // Vt = V^T (k*n, row-major)
+    // Vt = V^T (k×n, column-major)
     let v_mat = thin.V();
     for i in 0..k {
         for j in 0..n {
-            vt[i * n + j] = v_mat[(j, i)];
+            vt[j * k + i] = v_mat[(j, i)];
         }
     }
 
@@ -44,7 +44,7 @@ pub(crate) fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> 
     let SvdDescriptor { m, n, a, u, s, vt } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let thin = mat
         .thin_svd()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
@@ -52,7 +52,7 @@ pub(crate) fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> 
     let u_mat = thin.U();
     for i in 0..m {
         for j in 0..k {
-            u[i * k + j] = u_mat[(i, j)];
+            u[j * m + i] = u_mat[(i, j)];
         }
     }
 
@@ -64,7 +64,7 @@ pub(crate) fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> 
     let v_mat = thin.V();
     for i in 0..k {
         for j in 0..n {
-            vt[i * n + j] = v_mat[(j, i)];
+            vt[j * k + i] = v_mat[(j, i)];
         }
     }
 
@@ -76,7 +76,7 @@ pub(crate) fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), Backe
     let SvdDescriptor { m, n, a, u, s, vt } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let thin = mat
         .thin_svd()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
@@ -84,7 +84,7 @@ pub(crate) fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), Backe
     let u_mat = thin.U();
     for i in 0..m {
         for j in 0..k {
-            u[i * k + j] = u_mat[(i, j)];
+            u[j * m + i] = u_mat[(i, j)];
         }
     }
 
@@ -94,11 +94,11 @@ pub(crate) fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), Backe
         s[i] = s_col[i].re;
     }
 
-    // Vt = V^H (conjugate transpose)
+    // Vt = V^H (conjugate transpose, k×n, column-major)
     let v_mat = thin.V();
     for i in 0..k {
         for j in 0..n {
-            vt[i * n + j] = v_mat[(j, i)].conj();
+            vt[j * k + i] = v_mat[(j, i)].conj();
         }
     }
 
@@ -110,7 +110,7 @@ pub(crate) fn svd_c32(desc: SvdDescriptor<'_, Complex<f32>>) -> Result<(), Backe
     let SvdDescriptor { m, n, a, u, s, vt } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let thin = mat
         .thin_svd()
         .map_err(|e| BackendError::ExecutionFailed(format!("faer thin_svd failed: {e:?}")))?;
@@ -118,7 +118,7 @@ pub(crate) fn svd_c32(desc: SvdDescriptor<'_, Complex<f32>>) -> Result<(), Backe
     let u_mat = thin.U();
     for i in 0..m {
         for j in 0..k {
-            u[i * k + j] = u_mat[(i, j)];
+            u[j * m + i] = u_mat[(i, j)];
         }
     }
 
@@ -127,11 +127,11 @@ pub(crate) fn svd_c32(desc: SvdDescriptor<'_, Complex<f32>>) -> Result<(), Backe
         s[i] = s_col[i].re;
     }
 
-    // Vt = V^H (conjugate transpose)
+    // Vt = V^H (conjugate transpose, k×n, column-major)
     let v_mat = thin.V();
     for i in 0..k {
         for j in 0..n {
-            vt[i * n + j] = v_mat[(j, i)].conj();
+            vt[j * k + i] = v_mat[(j, i)].conj();
         }
     }
 

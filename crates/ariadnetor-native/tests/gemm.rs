@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, GemmDescriptor};
+use arnet_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -22,6 +22,7 @@ fn test_gemm_f64_identity() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
     assert_eq!(c, [5.0, 6.0, 7.0, 8.0]);
@@ -48,6 +49,7 @@ fn test_gemm_f64_basic() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
     assert_eq!(c, [19.0, 22.0, 43.0, 50.0]);
@@ -73,6 +75,7 @@ fn test_gemm_f64_alpha_beta() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
     // C = 2 * [19, 22, 43, 50] + 3 * [1, 1, 1, 1] = [41, 47, 89, 103]
@@ -99,6 +102,7 @@ fn test_gemm_f64_rectangular() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
     // [1*7+2*9+3*11, 1*8+2*10+3*12, 4*7+5*9+6*11, 4*8+5*10+6*12]
@@ -125,6 +129,7 @@ fn test_gemm_f32_basic() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
     assert_eq!(c, [19.0, 22.0, 43.0, 50.0]);
@@ -162,6 +167,7 @@ fn test_gemm_c64_basic() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
 
@@ -206,6 +212,7 @@ fn test_gemm_c64_alpha_beta() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
 
@@ -243,6 +250,7 @@ fn test_gemm_c32_basic() {
         c: &mut c,
         trans_a: false,
         trans_b: false,
+        order: MemoryOrder::RowMajor,
     };
     backend.gemm(desc).unwrap();
 

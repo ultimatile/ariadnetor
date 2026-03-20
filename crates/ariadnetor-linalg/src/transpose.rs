@@ -1,6 +1,6 @@
 use arnet_core::backend::{BackendError, ComputeBackend, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 /// Transpose (permute axes) of a dense tensor using the provided backend.
 ///
@@ -25,10 +25,12 @@ pub fn transpose<T: Scalar>(
         return Ok(DenseTensor::from_data(vec![], new_shape));
     }
 
+    // Ensure row-major contiguous input for the transpose backend
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
     let mut output = vec![T::zero(); total];
 
     let desc = TransposeDescriptor {
-        input: tensor.data(),
+        input: rm.data(),
         output: &mut output,
         shape: tensor.shape(),
         perm,

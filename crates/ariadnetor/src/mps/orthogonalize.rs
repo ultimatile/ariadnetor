@@ -3,7 +3,7 @@
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{contract, lq, qr};
-use arnet_tensor::{DenseTensor, TensorStorage};
+use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 use super::chain::TensorChain;
 use super::types::CanonicalForm;
@@ -60,12 +60,14 @@ where
         let (q, r) = qr(chain.backend(), dense, rank - 1)
             .expect("QR decomposition failed during orthogonalize");
 
-        // Reshape Q from (m, k) back to (*orig[..rank-1], k)
-        let k = q.shape()[1];
+        // Reshape Q from (m, k) back to (*orig[..rank-1], k).
+        // Convert to row-major first so reshape uses standard axis merge order.
+        let q_rm = q.to_contiguous(MemoryOrder::RowMajor);
+        let k = q_rm.shape()[1];
         let mut q_shape = orig_shape[..rank - 1].to_vec();
         q_shape.push(k);
 
-        (TensorStorage::Dense(q.reshape(q_shape)), r)
+        (TensorStorage::Dense(q_rm.reshape(q_shape)), r)
     };
 
     *chain.storage_mut(j) = q_storage;
@@ -94,12 +96,14 @@ where
         let (l, q) =
             lq(chain.backend(), dense, 1).expect("LQ decomposition failed during orthogonalize");
 
-        // Reshape Q from (k, n) back to (k, *orig[1..])
-        let k = q.shape()[0];
+        // Reshape Q from (k, n) back to (k, *orig[1..]).
+        // Convert to row-major first so reshape uses standard axis merge order.
+        let q_rm = q.to_contiguous(MemoryOrder::RowMajor);
+        let k = q_rm.shape()[0];
         let mut q_shape = vec![k];
         q_shape.extend_from_slice(&orig_shape[1..]);
 
-        (TensorStorage::Dense(q.reshape(q_shape)), l)
+        (TensorStorage::Dense(q_rm.reshape(q_shape)), l)
     };
 
     *chain.storage_mut(j) = q_storage;

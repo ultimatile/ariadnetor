@@ -27,11 +27,13 @@ fn test_solve_f64_identity() {
 
     let x = solve(&backend, &a, &b, 1).unwrap();
     assert_eq!(x.shape(), &[2, 2]);
-    for i in 0..4 {
-        assert!(
-            (x.data()[i] - b.data()[i]).abs() < 1e-10,
-            "mismatch at index {i}"
-        );
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!(
+                (x.get(&[i, j]) - b.get(&[i, j])).abs() < 1e-10,
+                "mismatch at ({i},{j})"
+            );
+        }
     }
 }
 

@@ -6,6 +6,7 @@
 //! - `norm`: Frobenius norm
 //! - `normalize`: Normalize to unit norm
 
+use crate::dense::MemoryOrder;
 use crate::tensor_storage::TensorStorage;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
@@ -36,6 +37,7 @@ where
     pub fn scale(&mut self, factor: T) {
         match self {
             Self::Dense(d) => {
+                *d = d.to_contiguous(MemoryOrder::RowMajor);
                 for elem in d.data_mut() {
                     *elem = elem.clone() * factor.clone();
                 }
@@ -123,7 +125,8 @@ where
                 let Self::Dense(result_dense) = &mut result;
                 for (tensor, coef) in tensors.iter().zip(coefs) {
                     let Self::Dense(t) = tensor;
-                    for (res, val) in result_dense.data_mut().iter_mut().zip(t.data()) {
+                    let t_rm = t.to_contiguous(MemoryOrder::RowMajor);
+                    for (res, val) in result_dense.data_mut().iter_mut().zip(t_rm.data()) {
                         *res = res.clone() + coef.clone() * val.clone();
                     }
                 }
@@ -194,14 +197,16 @@ where
     /// Compute squared Frobenius norm
     fn norm_squared(&self) -> T::Real {
         match self {
-            Self::Dense(d) => d
-                .data()
-                .iter()
-                .map(|&x| {
-                    let abs_val = x.abs();
-                    abs_val * abs_val
-                })
-                .fold(T::Real::zero(), |acc, x| acc + x),
+            Self::Dense(d) => {
+                let rm = d.to_contiguous(MemoryOrder::RowMajor);
+                rm.data()
+                    .iter()
+                    .map(|&x| {
+                        let abs_val = x.abs();
+                        abs_val * abs_val
+                    })
+                    .fold(T::Real::zero(), |acc, x| acc + x)
+            }
         }
     }
 
@@ -231,6 +236,7 @@ where
 
         match self {
             Self::Dense(d) => {
+                *d = d.to_contiguous(MemoryOrder::RowMajor);
                 for elem in d.data_mut() {
                     *elem = elem.scale_real(inv_norm);
                 }

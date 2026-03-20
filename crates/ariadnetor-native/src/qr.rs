@@ -9,22 +9,22 @@ pub(crate) fn qr_f64(desc: QrDescriptor<'_, f64>) -> Result<(), BackendError> {
     let QrDescriptor { m, n, a, q, r } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let qr = mat.qr();
 
-    // Q (m*k, row-major) -- thin Q
+    // Q (m×k, column-major)
     let q_mat = qr.compute_thin_Q();
     for i in 0..m {
         for j in 0..k {
-            q[i * k + j] = q_mat[(i, j)];
+            q[j * m + i] = q_mat[(i, j)];
         }
     }
 
-    // R (k*n, row-major) -- thin R
+    // R (k×n, column-major)
     let r_mat = qr.thin_R();
     for i in 0..k {
         for j in 0..n {
-            r[i * n + j] = r_mat[(i, j)];
+            r[j * k + i] = r_mat[(i, j)];
         }
     }
 
@@ -36,20 +36,20 @@ pub(crate) fn qr_f32(desc: QrDescriptor<'_, f32>) -> Result<(), BackendError> {
     let QrDescriptor { m, n, a, q, r } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let qr = mat.qr();
 
     let q_mat = qr.compute_thin_Q();
     for i in 0..m {
         for j in 0..k {
-            q[i * k + j] = q_mat[(i, j)];
+            q[j * m + i] = q_mat[(i, j)];
         }
     }
 
     let r_mat = qr.thin_R();
     for i in 0..k {
         for j in 0..n {
-            r[i * n + j] = r_mat[(i, j)];
+            r[j * k + i] = r_mat[(i, j)];
         }
     }
 
@@ -61,20 +61,20 @@ pub(crate) fn qr_c64(desc: QrDescriptor<'_, Complex<f64>>) -> Result<(), Backend
     let QrDescriptor { m, n, a, q, r } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let qr = mat.qr();
 
     let q_mat = qr.compute_thin_Q();
     for i in 0..m {
         for j in 0..k {
-            q[i * k + j] = q_mat[(i, j)];
+            q[j * m + i] = q_mat[(i, j)];
         }
     }
 
     let r_mat = qr.thin_R();
     for i in 0..k {
         for j in 0..n {
-            r[i * n + j] = r_mat[(i, j)];
+            r[j * k + i] = r_mat[(i, j)];
         }
     }
 
@@ -86,20 +86,20 @@ pub(crate) fn qr_c32(desc: QrDescriptor<'_, Complex<f32>>) -> Result<(), Backend
     let QrDescriptor { m, n, a, q, r } = desc;
     let k = m.min(n);
 
-    let mat = MatRef::from_row_major_slice(a, m, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
     let qr = mat.qr();
 
     let q_mat = qr.compute_thin_Q();
     for i in 0..m {
         for j in 0..k {
-            q[i * k + j] = q_mat[(i, j)];
+            q[j * m + i] = q_mat[(i, j)];
         }
     }
 
     let r_mat = qr.thin_R();
     for i in 0..k {
         for j in 0..n {
-            r[i * n + j] = r_mat[(i, j)];
+            r[j * k + i] = r_mat[(i, j)];
         }
     }
 

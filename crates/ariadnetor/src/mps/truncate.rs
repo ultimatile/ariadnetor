@@ -3,7 +3,7 @@
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
-use arnet_tensor::{DenseTensor, TensorStorage};
+use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 use num_traits::{Float, Zero};
 
 use super::chain::TensorChain;
@@ -72,15 +72,17 @@ where
         let (u, s, vt, err) = trunc_svd(chain.backend(), dense, rank - 1, params)
             .expect("trunc_svd failed during truncate");
 
-        // Reshape U from (m, chi) to (*orig[..rank-1], chi)
-        let chi = u.shape()[1];
+        // Reshape U from (m, chi) to (*orig[..rank-1], chi).
+        // Convert to row-major first so reshape uses standard axis merge order.
+        let u_rm = u.to_contiguous(MemoryOrder::RowMajor);
+        let chi = u_rm.shape()[1];
         let mut u_shape = orig_shape[..rank - 1].to_vec();
         u_shape.push(chi);
 
         // S·Vt: scale each row of Vt by corresponding singular value
         let svt = scale_rows_by_sv::<T>(&s, &vt);
 
-        (TensorStorage::Dense(u.reshape(u_shape)), svt, err)
+        (TensorStorage::Dense(u_rm.reshape(u_shape)), svt, err)
     };
 
     *chain.storage_mut(j) = u_storage;
@@ -111,15 +113,17 @@ where
         let (u, s, vt, err) =
             trunc_svd(chain.backend(), dense, 1, params).expect("trunc_svd failed during truncate");
 
-        // Reshape Vt from (chi, n) to (chi, *orig[1..])
-        let chi = vt.shape()[0];
+        // Reshape Vt from (chi, n) to (chi, *orig[1..]).
+        // Convert to row-major first so reshape uses standard axis merge order.
+        let vt_rm = vt.to_contiguous(MemoryOrder::RowMajor);
+        let chi = vt_rm.shape()[0];
         let mut vt_shape = vec![chi];
         vt_shape.extend_from_slice(&orig_shape[1..]);
 
         // U·S: scale each column of U by corresponding singular value
         let us = scale_cols_by_sv::<T>(&u, &s);
 
-        (TensorStorage::Dense(vt.reshape(vt_shape)), us, err)
+        (TensorStorage::Dense(vt_rm.reshape(vt_shape)), us, err)
     };
 
     *chain.storage_mut(j) = vt_storage;

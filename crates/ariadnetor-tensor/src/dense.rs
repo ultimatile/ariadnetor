@@ -12,14 +12,7 @@ use std::sync::Arc;
 /// 64-byte alignment for SIMD (AVX-512)
 type Align64 = ConstAlign<64>;
 
-/// Memory layout order for tensor data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemoryOrder {
-    /// Row-major (C order): last axis varies fastest.
-    RowMajor,
-    /// Column-major (Fortran order): first axis varies fastest.
-    ColumnMajor,
-}
+pub use arnet_core::MemoryOrder;
 
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
 ///
@@ -64,7 +57,7 @@ pub fn row_major_strides(shape: &[usize]) -> Vec<isize> {
 
 /// Compute column-major (Fortran-order) strides from shape.
 /// First axis has stride 1, each subsequent axis has stride = product of preceding dims.
-fn column_major_strides(shape: &[usize]) -> Vec<isize> {
+pub fn column_major_strides(shape: &[usize]) -> Vec<isize> {
     let mut strides = vec![1isize; shape.len()];
     for i in 1..shape.len() {
         strides[i] = strides[i - 1] * shape[i - 1] as isize;
@@ -362,6 +355,41 @@ where
             self.is_row_major(),
             "data_mut() requires row-major contiguous tensor; \
              call to_contiguous(MemoryOrder::RowMajor) first"
+        );
+        let len = self.len();
+        let offset = self.offset;
+        &mut Arc::make_mut(&mut self.data).as_mut_slice()[offset..offset + len]
+    }
+
+    /// Get a reference to the underlying data for any contiguous layout.
+    ///
+    /// Unlike [`data()`](Self::data) which requires row-major, this accepts
+    /// any contiguous tensor (row-major or column-major). The caller must
+    /// know the tensor's layout to interpret the data correctly.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor is not contiguous.
+    pub fn data_contiguous(&self) -> &[T] {
+        assert!(
+            self.is_contiguous(),
+            "data_contiguous() requires contiguous tensor; \
+             call to_contiguous() first"
+        );
+        &self.data[self.offset..self.offset + self.len()]
+    }
+
+    /// Get a mutable reference to the underlying data for any contiguous layout
+    /// (triggers CoW if shared).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor is not contiguous.
+    pub fn data_contiguous_mut(&mut self) -> &mut [T] {
+        assert!(
+            self.is_contiguous(),
+            "data_contiguous_mut() requires contiguous tensor; \
+             call to_contiguous() first"
         );
         let len = self.len();
         let offset = self.offset;

@@ -18,7 +18,7 @@ pub use arnet_core::{
     compute_permutation, contraction_error, einsum, scalar,
 };
 
-pub use dense::{DenseTensor, MemoryOrder, row_major_strides};
+pub use dense::{DenseTensor, MemoryOrder, column_major_strides, row_major_strides};
 pub use tensor_storage::TensorStorage;
 
 // Convenient type aliases for common numeric types

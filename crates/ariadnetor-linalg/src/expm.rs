@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use arnet_core::backend::{BackendError, ComputeBackend};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract;
@@ -34,15 +34,19 @@ pub fn expm_hermitian<T: Scalar>(
     tensor: &DenseTensor<T>,
     nrow: usize,
 ) -> Result<DenseTensor<T>, BackendError> {
-    let (w, v) = eigh(backend, tensor, nrow)?;
+    let (w, v_orig) = eigh(backend, tensor, nrow)?;
     let n = w.data().len();
+
+    // Convert eigenvectors to row-major for direct indexing
+    let v = v_orig.to_contiguous(MemoryOrder::RowMajor);
+    let v_data = v.data();
 
     // V_scaled[i,j] = V[i,j] * exp(λ_j)
     let exp_w: Vec<T::Real> = w.data().iter().map(|&lam| lam.exp()).collect();
     let mut vd_data = vec![T::zero(); n * n];
     for i in 0..n {
         for j in 0..n {
-            vd_data[i * n + j] = v.data()[i * n + j].scale_real(exp_w[j]);
+            vd_data[i * n + j] = v_data[i * n + j].scale_real(exp_w[j]);
         }
     }
     let v_scaled = DenseTensor::from_data(vd_data, vec![n, n]);
@@ -51,7 +55,7 @@ pub fn expm_hermitian<T: Scalar>(
     let mut vh_data = vec![T::zero(); n * n];
     for i in 0..n {
         for j in 0..n {
-            vh_data[i * n + j] = v.data()[j * n + i].conj();
+            vh_data[i * n + j] = v_data[j * n + i].conj();
         }
     }
     let v_dagger = DenseTensor::from_data(vh_data, vec![n, n]);
@@ -93,7 +97,8 @@ pub fn expm_antihermitian<T: Scalar>(
         ));
     }
 
-    let data = tensor.data();
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let data = rm.data();
     let shape = tensor.shape();
 
     // Compute H = iA: element-wise multiply by imaginary unit
@@ -105,8 +110,12 @@ pub fn expm_antihermitian<T: Scalar>(
     let ia = DenseTensor::from_data(ia_data, shape.to_vec());
 
     // eigh(iA) → real eigenvalues λ, eigenvectors V
-    let (w, v) = eigh(backend, &ia, nrow)?;
+    let (w, v_orig) = eigh(backend, &ia, nrow)?;
     let n = w.data().len();
+
+    // Convert eigenvectors to row-major for direct indexing
+    let v = v_orig.to_contiguous(MemoryOrder::RowMajor);
+    let v_data = v.data();
 
     // V_scaled[i,j] = V[i,j] * exp(-iλ_j)
     // exp(-iλ) = cos(λ) - i*sin(λ)
@@ -119,7 +128,7 @@ pub fn expm_antihermitian<T: Scalar>(
     let mut vd_data = vec![T::zero(); n * n];
     for i in 0..n {
         for j in 0..n {
-            vd_data[i * n + j] = v.data()[i * n + j] * exp_neg_i_w[j];
+            vd_data[i * n + j] = v_data[i * n + j] * exp_neg_i_w[j];
         }
     }
     let v_scaled = DenseTensor::from_data(vd_data, vec![n, n]);
@@ -128,7 +137,7 @@ pub fn expm_antihermitian<T: Scalar>(
     let mut vh_data = vec![T::zero(); n * n];
     for i in 0..n {
         for j in 0..n {
-            vh_data[i * n + j] = v.data()[j * n + i].conj();
+            vh_data[i * n + j] = v_data[j * n + i].conj();
         }
     }
     let v_dagger = DenseTensor::from_data(vh_data, vec![n, n]);
@@ -140,7 +149,7 @@ pub fn expm_antihermitian<T: Scalar>(
 // General matrix exponential via Scaling and Squaring + Padé approximation
 // ---------------------------------------------------------------------------
 
-/// 1-norm of an n×n matrix (maximum absolute column sum).
+/// 1-norm of an n×n row-major matrix (maximum absolute column sum).
 fn norm_1<T: Scalar>(data: &[T], n: usize) -> T::Real {
     let mut max_col_sum = <T::Real as Zero>::zero();
     for j in 0..n {
@@ -166,11 +175,8 @@ fn matmul<T: Scalar>(
 
 /// Scale each element of a tensor by a real factor.
 fn scale_real<T: Scalar>(tensor: &DenseTensor<T>, factor: T::Real) -> DenseTensor<T> {
-    let data: Vec<T> = tensor
-        .data()
-        .iter()
-        .map(|&x| x.scale_real(factor))
-        .collect();
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let data: Vec<T> = rm.data().iter().map(|&x| x.scale_real(factor)).collect();
     DenseTensor::from_data(data, tensor.shape().to_vec())
 }
 
@@ -408,8 +414,9 @@ pub fn expm<T: Scalar>(
 
     let n = m_dim;
 
-    // Flatten to n×n for internal computation
-    let a = DenseTensor::from_data(tensor.data().to_vec(), vec![n, n]);
+    // Flatten to n×n row-major for internal computation
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let a = DenseTensor::from_data(rm.data().to_vec(), vec![n, n]);
 
     let norm = norm_1::<T>(a.data(), n);
 
@@ -429,8 +436,9 @@ pub fn expm<T: Scalar>(
         if norm <= thresh_real {
             let (u, v) = pade_uv_small(backend, &a, n, order)?;
             let result = solve_pade(backend, &u, &v)?;
+            let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
             return Ok(DenseTensor::from_data(
-                result.data().to_vec(),
+                result_rm.data().to_vec(),
                 shape.to_vec(),
             ));
         }
@@ -471,8 +479,9 @@ pub fn expm<T: Scalar>(
         result = matmul(backend, &result, &result)?;
     }
 
+    let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
     Ok(DenseTensor::from_data(
-        result.data().to_vec(),
+        result_rm.data().to_vec(),
         shape.to_vec(),
     ))
 }

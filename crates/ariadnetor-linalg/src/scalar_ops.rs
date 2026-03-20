@@ -1,5 +1,5 @@
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 use num_traits::{Float, One, Zero};
 use std::ops::{Add, Mul};
 
@@ -21,7 +21,8 @@ pub fn scale<T>(tensor: &DenseTensor<T>, factor: T) -> DenseTensor<T>
 where
     T: Clone + Mul<Output = T>,
 {
-    let data: Vec<T> = tensor
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let data: Vec<T> = rm
         .data()
         .iter()
         .map(|x| x.clone() * factor.clone())
@@ -44,7 +45,8 @@ where
 /// assert!((n - 2.0).abs() < 1e-10);
 /// ```
 pub fn norm<T: Scalar>(tensor: &DenseTensor<T>) -> T::Real {
-    let sum_sq = tensor
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let sum_sq = rm
         .data()
         .iter()
         .map(|&x| {
@@ -75,11 +77,8 @@ pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real
     let n = norm(tensor);
     assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
     let inv_norm = T::Real::one() / n;
-    let data: Vec<T> = tensor
-        .data()
-        .iter()
-        .map(|&x| x.scale_real(inv_norm))
-        .collect();
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let data: Vec<T> = rm.data().iter().map(|&x| x.scale_real(inv_norm)).collect();
     (DenseTensor::from_data(data, tensor.shape().to_vec()), n)
 }
 
@@ -128,7 +127,8 @@ where
     let len = tensors[0].len();
     let mut result = vec![T::zero(); len];
     for (tensor, coef) in tensors.iter().zip(coefs) {
-        for (r, val) in result.iter_mut().zip(tensor.data()) {
+        let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+        for (r, val) in result.iter_mut().zip(rm.data()) {
             *r = r.clone() + coef.clone() * val.clone();
         }
     }
@@ -203,6 +203,9 @@ pub fn trace<T: Scalar>(
         trace_dims.push(shape[a]);
     }
 
+    // Ensure row-major for direct indexing
+    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+
     // Free indices: those not in any pair, in original order
     let free_indices: Vec<usize> = (0..rank).filter(|i| !used[*i]).collect();
     let output_shape: Vec<usize> = if free_indices.is_empty() {
@@ -226,6 +229,7 @@ pub fn trace<T: Scalar>(
     // Iterate over each output element
     let mut out_coords = vec![0usize; free_indices.len()];
     let mut trace_coords = vec![0usize; pairs.len()];
+    let rm_data = rm.data();
     for (out_idx, res) in result.iter_mut().enumerate() {
         // Decode output flat index to coordinates
         if !free_indices.is_empty() {
@@ -249,7 +253,7 @@ pub fn trace<T: Scalar>(
                 flat += t * input_strides[a] + t * input_strides[b];
             }
 
-            sum = sum + tensor.data()[flat];
+            sum = sum + rm_data[flat];
         }
 
         *res = sum;
@@ -290,7 +294,7 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
     let shape = tensor.shape();
     match shape.len() {
         1 => {
-            // Vector → diagonal matrix
+            // Vector → diagonal matrix (1D tensors are unambiguous)
             let n = shape[0];
             let mut data = vec![T::zero(); n * n];
             for i in 0..n {
@@ -299,12 +303,12 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
             Ok(DenseTensor::from_data(data, vec![n, n]))
         }
         2 => {
-            // Matrix → diagonal vector
+            // Matrix → diagonal vector: use get() for layout-agnostic access
             let (m, n) = (shape[0], shape[1]);
             if m != n {
                 return Err(format!("diag requires a square matrix, got {m}×{n}"));
             }
-            let data: Vec<T> = (0..n).map(|i| tensor.data()[i * n + i]).collect();
+            let data: Vec<T> = (0..n).map(|i| tensor.get(&[i, i])).collect();
             Ok(DenseTensor::from_data(data, vec![n]))
         }
         r => Err(format!("diag requires rank 1 or 2, got rank {r}")),

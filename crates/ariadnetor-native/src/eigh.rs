@@ -8,7 +8,7 @@ use num_complex::Complex;
 pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError> {
     let EighDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
         BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
     })?;
@@ -19,11 +19,11 @@ pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError
         w[i] = s_diag[i];
     }
 
-    // Eigenvectors (n*n, row-major)
+    // Eigenvectors (n×n, column-major)
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 
@@ -34,7 +34,7 @@ pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError
 pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError> {
     let EighDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
         BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
     })?;
@@ -47,7 +47,7 @@ pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 
@@ -58,7 +58,7 @@ pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError
 pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
     let EighDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
         BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
     })?;
@@ -72,7 +72,7 @@ pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), Bac
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 
@@ -83,7 +83,7 @@ pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), Bac
 pub(crate) fn eigh_c32(desc: EighDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
     let EighDescriptor { n, a, w, v } = desc;
 
-    let mat = MatRef::from_row_major_slice(a, n, n).to_owned();
+    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
         BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
     })?;
@@ -96,7 +96,7 @@ pub(crate) fn eigh_c32(desc: EighDescriptor<'_, Complex<f32>>) -> Result<(), Bac
     let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
-            v[i * n + j] = u_mat[(i, j)];
+            v[j * n + i] = u_mat[(i, j)];
         }
     }
 

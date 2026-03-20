@@ -1,4 +1,4 @@
-use arnet_core::backend::{BackendError, ComputeBackend, GemmDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, GemmDescriptor, MemoryOrder};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
@@ -57,13 +57,13 @@ pub fn contract<T: Scalar>(
     let lhs_permuted = if let Some(perm) = lhs_perm {
         transpose(backend, lhs, &perm)?
     } else {
-        lhs.clone()
+        lhs.to_contiguous(arnet_tensor::MemoryOrder::RowMajor)
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
         transpose(backend, rhs, &perm)?
     } else {
-        rhs.clone()
+        rhs.to_contiguous(arnet_tensor::MemoryOrder::RowMajor)
     };
 
     // Compute dimensions for each index category
@@ -127,6 +127,7 @@ pub fn contract<T: Scalar>(
                 c: &mut c_data[b * mn..(b + 1) * mn],
                 trans_a: false,
                 trans_b: false,
+                order: MemoryOrder::RowMajor,
             };
             backend.gemm(desc)?;
         }
