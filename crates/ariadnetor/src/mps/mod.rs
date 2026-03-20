@@ -18,7 +18,7 @@ mod types;
 
 pub use apply::apply;
 pub use chain::TensorChain;
-pub use inner::{expect, inner, norm};
+pub use inner::{braket, inner, norm};
 pub use orthogonalize::orthogonalize;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use truncate::truncate;

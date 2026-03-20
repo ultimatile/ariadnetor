@@ -64,14 +64,15 @@ where
     overlap.re().sqrt()
 }
 
-/// Compute the expectation value ⟨ψ|A|φ⟩ (MPO sandwich).
+/// Compute ⟨ψ|A|φ⟩ — the MPO-inserted inner product (bra-ket with operator).
 ///
 /// Contracts left-to-right with a (χ_ψ × χ_A × χ_φ) environment tensor.
+/// When `psi == phi`, this is the expectation value of `A`.
 ///
 /// # Panics
 ///
 /// Panics if the MPS/MPO lengths differ or any is empty.
-pub fn expect<T, B>(psi: &Mps<T, B>, op: &Mpo<T, B>, phi: &Mps<T, B>) -> T
+pub fn braket<T, B>(psi: &Mps<T, B>, op: &Mpo<T, B>, phi: &Mps<T, B>) -> T
 where
     T: Scalar,
     B: ComputeBackend,

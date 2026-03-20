@@ -488,7 +488,7 @@ fn test_expect_identity_mpo() {
     let psi = Mps::from_storages(storages);
 
     // ⟨ψ|I|ψ⟩ = ⟨ψ|ψ⟩ = 1.0
-    let result = mps::expect(&psi, &identity, &psi);
+    let result = mps::braket(&psi, &identity, &psi);
     assert_abs_diff_eq!(result, 1.0, epsilon = 1e-12);
 }
 
@@ -505,14 +505,14 @@ fn test_expect_sz_product_state() {
         vec![1.0, 0.0],
         vec![1, 2, 1],
     )]);
-    assert_abs_diff_eq!(mps::expect(&up, &sz_mpo, &up), 0.5, epsilon = 1e-12);
+    assert_abs_diff_eq!(mps::braket(&up, &sz_mpo, &up), 0.5, epsilon = 1e-12);
 
     // |1⟩ (spin down): ⟨1|Sz|1⟩ = -0.5
     let dn = Mps::from_storages(vec![TensorStorage::from_data(
         vec![0.0, 1.0],
         vec![1, 2, 1],
     )]);
-    assert_abs_diff_eq!(mps::expect(&dn, &sz_mpo, &dn), -0.5, epsilon = 1e-12);
+    assert_abs_diff_eq!(mps::braket(&dn, &sz_mpo, &dn), -0.5, epsilon = 1e-12);
 }
 
 #[test]
@@ -525,7 +525,7 @@ fn test_expect_identity_equals_inner() {
     let identity = Mpo::from_storages(id_storages);
 
     let inner_val = mps::inner(&mps, &mps);
-    let expect_val = mps::expect(&mps, &identity, &mps);
+    let expect_val = mps::braket(&mps, &identity, &mps);
 
     assert_abs_diff_eq!(inner_val, expect_val, epsilon = 1e-10);
 }
@@ -797,7 +797,7 @@ fn test_apply_matches_expect() {
     let identity = make_identity_mpo(4, 2);
 
     // ⟨ψ|I|ψ⟩ via expect
-    let expect_val = mps::expect(&psi, &identity, &psi);
+    let expect_val = mps::braket(&psi, &identity, &psi);
 
     // ⟨ψ|I|ψ⟩ via apply + inner: inner(ψ, I·ψ)
     let i_psi = mps::apply(&identity, &psi, None);
