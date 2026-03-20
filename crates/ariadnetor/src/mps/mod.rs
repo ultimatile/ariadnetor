@@ -11,9 +11,14 @@
 mod chain;
 mod inner;
 mod orthogonalize;
+mod truncate;
 mod types;
 
 pub use chain::TensorChain;
 pub use inner::{expect, inner, norm};
 pub use orthogonalize::orthogonalize;
+pub use truncate::truncate;
 pub use types::{CanonicalForm, Mpo, Mps};
+
+// Re-export TruncSvdParams for convenience
+pub use arnet_linalg::TruncSvdParams;
