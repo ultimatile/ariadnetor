@@ -1,6 +1,9 @@
 //! Scalar trait for tensor element types
 //!
 //! Provides `Scalar` trait unifying real and complex floating-point types.
+//! This auxiliary trait resolves E0592 (inherent impl overlap) that prevents
+//! separate generic impls for `TensorStorage<T: Float>` and
+//! `TensorStorage<Complex<T: Float>>`.
 
 use num_complex::Complex;
 use num_traits::{One, Zero};
