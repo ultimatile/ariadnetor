@@ -13,6 +13,7 @@
 //! ```
 
 pub mod expr;
+pub mod mps;
 pub mod ops;
 pub mod runtime;
 pub mod tensor;
