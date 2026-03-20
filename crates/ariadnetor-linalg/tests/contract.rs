@@ -89,3 +89,73 @@ fn test_contract_rank_mismatch() {
     let result = contract(&backend, &a, &b, "ijk,kl->ijl");
     assert!(result.is_err());
 }
+
+// ============================================================================
+// Output index reordering tests
+// ============================================================================
+
+#[test]
+fn test_contract_output_reorder_swap() {
+    let backend = NativeBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
+
+    let normal = contract(&backend, &a, &b, "ik,kj->ij").unwrap();
+    let swapped = contract(&backend, &a, &b, "ik,kj->ji").unwrap();
+
+    assert_eq!(normal.shape(), &[2, 4]);
+    assert_eq!(swapped.shape(), &[4, 2]);
+
+    for i in 0..2 {
+        for j in 0..4 {
+            assert_eq!(swapped.get(&[j, i]), normal.get(&[i, j]));
+        }
+    }
+}
+
+#[test]
+fn test_contract_output_reorder_3d() {
+    let backend = NativeBackend::new();
+    // A[a,b,c] (2×3×2) × B[c,d] (2×4) → reorder to [d,b,a]
+    let a = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![2, 3, 2]);
+    let b = DenseTensor::from_data((1..=8).map(|x| x as f64).collect(), vec![2, 4]);
+
+    let normal = contract(&backend, &a, &b, "abc,cd->abd").unwrap();
+    let reordered = contract(&backend, &a, &b, "abc,cd->dba").unwrap();
+
+    assert_eq!(normal.shape(), &[2, 3, 4]);
+    assert_eq!(reordered.shape(), &[4, 3, 2]);
+
+    for a_idx in 0..2 {
+        for b_idx in 0..3 {
+            for d in 0..4 {
+                assert_eq!(
+                    reordered.get(&[d, b_idx, a_idx]),
+                    normal.get(&[a_idx, b_idx, d]),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_contract_output_reorder_with_batch() {
+    let backend = NativeBackend::new();
+    // Batched matmul with swapped free indices
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+
+    let normal = contract(&backend, &a, &b, "bik,bkj->bij").unwrap();
+    let swapped = contract(&backend, &a, &b, "bik,bkj->bji").unwrap();
+
+    assert_eq!(normal.shape(), &[2, 2, 2]);
+    assert_eq!(swapped.shape(), &[2, 2, 2]);
+
+    for batch in 0..2 {
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_eq!(swapped.get(&[batch, j, i]), normal.get(&[batch, i, j]));
+            }
+        }
+    }
+}

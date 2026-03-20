@@ -302,3 +302,44 @@ fn test_einsum_reduction_unsupported() {
     let err = format!("{:?}", result.unwrap_err());
     assert!(err.contains("reduction"));
 }
+
+// ============================================================================
+// Output index reordering (via einsum → contract)
+// ============================================================================
+
+#[test]
+fn test_einsum_output_reorder_matmul() {
+    let backend = NativeBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+
+    // "ij,jk->ki" should transpose the matmul result
+    let normal = einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap();
+    let swapped = einsum(&backend, &[&a, &b], "ij,jk->ki").unwrap();
+
+    assert_eq!(swapped.shape(), &[2, 2]);
+    for i in 0..2 {
+        for k in 0..2 {
+            assert_eq!(swapped.get(&[k, i]), normal.get(&[i, k]));
+        }
+    }
+}
+
+#[test]
+fn test_einsum_output_reorder_rectangular() {
+    let backend = NativeBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
+
+    let normal = einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap();
+    let swapped = einsum(&backend, &[&a, &b], "ij,jk->ki").unwrap();
+
+    assert_eq!(normal.shape(), &[2, 4]);
+    assert_eq!(swapped.shape(), &[4, 2]);
+
+    for i in 0..2 {
+        for k in 0..4 {
+            assert_eq!(swapped.get(&[k, i]), normal.get(&[i, k]));
+        }
+    }
+}

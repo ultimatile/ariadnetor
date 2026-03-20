@@ -1,5 +1,5 @@
 use arnet_core::backend::{BackendError, ComputeBackend, GemmDescriptor};
-use arnet_core::einsum::{ContractionPlan, EinsumExpr};
+use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
 
@@ -99,7 +99,7 @@ pub fn contract<T: Scalar>(
     let rhs_data = rhs_permuted.data();
     let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
 
-    if m == 1 && n == 1 && k == 1 {
+    let result = if m == 1 && n == 1 && k == 1 {
         // Pure element-wise multiplication (Hadamard product):
         // all indices are batch, no free or contracted dimensions
         let c_data: Vec<T> = lhs_data
@@ -107,7 +107,7 @@ pub fn contract<T: Scalar>(
             .zip(rhs_data.iter())
             .map(|(&a, &b)| a * b)
             .collect();
-        Ok(DenseTensor::from_data(c_data, output_shape))
+        DenseTensor::from_data(c_data, output_shape)
     } else {
         // Batched GEMM: loop over batch dimensions, GEMM per slice
         let mk = m * k;
@@ -131,8 +131,12 @@ pub fn contract<T: Scalar>(
             backend.gemm(desc)?;
         }
 
-        Ok(DenseTensor::from_data(c_data, output_shape))
-    }
+        DenseTensor::from_data(c_data, output_shape)
+    };
+
+    // Reorder output dimensions to match the requested output index order.
+    // GEMM produces [batch, free_lhs, free_rhs]; the notation may request a different order.
+    reorder_output(backend, result, &plan, &expr)
 }
 
 /// Look up the dimension of an index in the given index list and shape.
@@ -142,6 +146,31 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
         .position(|&x| x == idx)
         .expect("Index not found in tensor");
     shape[pos]
+}
+
+/// Reorder output dimensions from [batch, free_lhs, free_rhs] to the requested output order.
+fn reorder_output<T: Scalar>(
+    backend: &impl ComputeBackend,
+    result: DenseTensor<T>,
+    plan: &ContractionPlan,
+    expr: &EinsumExpr,
+) -> Result<DenseTensor<T>, BackendError> {
+    let out = expr.out_indices();
+    if out.is_empty() {
+        // Scalar result — no reordering needed
+        return Ok(result);
+    }
+
+    // Actual output index order produced by GEMM
+    let mut actual: Vec<u8> = Vec::with_capacity(out.len());
+    actual.extend(&plan.batch);
+    actual.extend(&plan.free_lhs);
+    actual.extend(&plan.free_rhs);
+
+    match compute_permutation(&actual, out) {
+        Some(perm) => transpose(backend, &result, &perm),
+        None => Ok(result),
+    }
 }
 
 /// Derive output tensor shape from contraction plan and original input shapes.
