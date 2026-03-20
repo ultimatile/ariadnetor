@@ -9,9 +9,11 @@
 //! - **MPO**: `(χ_L, d_ket, d_bra, χ_R)` — left-bond, ket, bra, right-bond
 
 mod chain;
+mod inner;
 mod orthogonalize;
 mod types;
 
 pub use chain::TensorChain;
+pub use inner::{expect, inner, norm};
 pub use orthogonalize::orthogonalize;
 pub use types::{CanonicalForm, Mpo, Mps};
