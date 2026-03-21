@@ -132,20 +132,22 @@ fn hadamard<T: Scalar>(
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
+    let order = backend.preferred_order();
+
     let lhs_ordered = if let Some(perm) = lhs_perm {
         transpose(backend, lhs, &perm)?
     } else {
-        lhs.to_contiguous(MemoryOrder::RowMajor)
+        lhs.to_contiguous(order)
     };
 
     let rhs_ordered = if let Some(perm) = rhs_perm {
         transpose(backend, rhs, &perm)?
     } else {
-        rhs.to_contiguous(MemoryOrder::RowMajor)
+        rhs.to_contiguous(order)
     };
 
-    let lhs_data = lhs_ordered.data();
-    let rhs_data = rhs_ordered.data();
+    let lhs_data = lhs_ordered.data_contiguous();
+    let rhs_data = rhs_ordered.data_contiguous();
 
     let c_data: Vec<T> = lhs_data
         .iter()
@@ -153,13 +155,13 @@ fn hadamard<T: Scalar>(
         .map(|(&a, &b)| a * b)
         .collect();
 
-    // Output shape in canonical [batch...] order
+    // Output shape in canonical [batch...] order, same layout as operands
     let output_shape: Vec<usize> = plan
         .batch
         .iter()
         .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
         .collect();
-    let result = DenseTensor::from_data(c_data, output_shape);
+    let result = crate::decomposition::make_tensor(c_data, output_shape, order);
 
     // Reorder to requested output index order
     reorder_batched_output(backend, result, &plan.batch, &[], &[], expr.out_indices())
