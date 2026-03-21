@@ -22,7 +22,8 @@ pub fn transpose<T: Scalar>(
     let total = tensor.len();
 
     if total == 0 {
-        return Ok(DenseTensor::from_data(vec![], new_shape));
+        let empty = DenseTensor::from_data(vec![], new_shape);
+        return Ok(empty.to_contiguous(backend.preferred_order()));
     }
 
     // Ensure row-major contiguous input for the transpose backend
@@ -38,5 +39,6 @@ pub fn transpose<T: Scalar>(
 
     backend.transpose(desc)?;
 
-    Ok(DenseTensor::from_data(output, new_shape))
+    let result = DenseTensor::from_data(output, new_shape);
+    Ok(result.to_contiguous(backend.preferred_order()))
 }

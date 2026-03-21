@@ -158,7 +158,11 @@ fn test_contract_output_memory_order() {
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
+    // No reorder case
     let c = contract(&backend, &a, &b, "ik,kj->ij").unwrap();
-
     assert_eq!(c.memory_order(), backend.preferred_order());
+
+    // Reorder case — must also be preferred_order
+    let c_reordered = contract(&backend, &a, &b, "ik,kj->ji").unwrap();
+    assert_eq!(c_reordered.memory_order(), backend.preferred_order());
 }
