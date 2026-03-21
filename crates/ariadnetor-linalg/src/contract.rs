@@ -3,14 +3,15 @@ use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
 
+use crate::decomposition::make_tensor;
 use crate::transpose::transpose;
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
 ///
-/// Handles three cases:
-/// 1. **Pure element-wise** (Hadamard product): all indices are batch, no contracted/free
-/// 2. **Batched GEMM**: batch indices iterated, GEMM on remaining free/contracted dims
-/// 3. **Standard GEMM**: no batch indices, single GEMM call
+/// Performs a pure tensor contraction: all shared indices between the two inputs
+/// must be contracted (summed over). Batch indices (shared but not contracted)
+/// are not supported — use [`crate::einsum::einsum`] for expressions with batch
+/// or Hadamard patterns.
 ///
 /// # Arguments
 ///
@@ -22,7 +23,7 @@ use crate::transpose::transpose;
 /// # Errors
 ///
 /// Returns `BackendError` if notation is invalid, dimensions mismatch,
-/// or the backend fails to execute transpose/GEMM.
+/// batch indices are present, or the backend fails to execute transpose/GEMM.
 pub fn contract<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &DenseTensor<T>,
@@ -50,29 +51,29 @@ pub fn contract<T: Scalar>(
 
     let plan = ContractionPlan::from_expr(&expr);
 
-    // Permute operands so indices are in [batch, free, contracted] order
+    // Reject batch indices — batch/Hadamard belongs in the einsum layer
+    if !plan.batch.is_empty() {
+        return Err(BackendError::ExecutionFailed(format!(
+            "contract() does not support batch indices {:?}; use einsum() instead",
+            plan.batch.iter().map(|&b| b as char).collect::<String>()
+        )));
+    }
+
+    // Permute operands so indices are in [free, contracted] order
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
         transpose(backend, lhs, &perm)?
     } else {
-        lhs.to_contiguous(arnet_tensor::MemoryOrder::RowMajor)
+        lhs.to_contiguous(MemoryOrder::RowMajor)
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
         transpose(backend, rhs, &perm)?
     } else {
-        rhs.to_contiguous(arnet_tensor::MemoryOrder::RowMajor)
+        rhs.to_contiguous(MemoryOrder::RowMajor)
     };
-
-    // Compute dimensions for each index category
-    let batch_size: usize = plan
-        .batch
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .product::<usize>()
-        .max(1);
 
     let m: usize = plan
         .free_lhs
@@ -95,48 +96,43 @@ pub fn contract<T: Scalar>(
         .product::<usize>()
         .max(1);
 
-    let lhs_data = lhs_permuted.data();
-    let rhs_data = rhs_permuted.data();
-    let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
+    let order = backend.preferred_order();
 
-    let result = if m == 1 && n == 1 && k == 1 {
-        // Pure element-wise multiplication (Hadamard product):
-        // all indices are batch, no free or contracted dimensions
-        let c_data: Vec<T> = lhs_data
-            .iter()
-            .zip(rhs_data.iter())
-            .map(|(&a, &b)| a * b)
-            .collect();
-        DenseTensor::from_data(c_data, output_shape)
-    } else {
-        // Batched GEMM: loop over batch dimensions, GEMM per slice
-        let mk = m * k;
-        let kn = k * n;
-        let mn = m * n;
-        let mut c_data = vec![T::zero(); batch_size * mn];
+    // Ensure RowMajor axis merge semantics, then convert to backend preferred order
+    let lhs_rm = lhs_permuted.to_contiguous(MemoryOrder::RowMajor);
+    let lhs_2d = DenseTensor::from_data(lhs_rm.data().to_vec(), vec![m, k]);
+    let lhs_ready = lhs_2d.to_contiguous(order);
 
-        for b in 0..batch_size {
-            let desc = GemmDescriptor {
-                m,
-                n,
-                k,
-                alpha: T::one(),
-                a: &lhs_data[b * mk..(b + 1) * mk],
-                b: &rhs_data[b * kn..(b + 1) * kn],
-                beta: T::zero(),
-                c: &mut c_data[b * mn..(b + 1) * mn],
-                trans_a: false,
-                trans_b: false,
-                order: MemoryOrder::RowMajor,
-            };
-            backend.gemm(desc)?;
-        }
+    let rhs_rm = rhs_permuted.to_contiguous(MemoryOrder::RowMajor);
+    let rhs_2d = DenseTensor::from_data(rhs_rm.data().to_vec(), vec![k, n]);
+    let rhs_ready = rhs_2d.to_contiguous(order);
 
-        DenseTensor::from_data(c_data, output_shape)
+    let mut c_data = vec![T::zero(); m * n];
+
+    let desc = GemmDescriptor {
+        m,
+        n,
+        k,
+        alpha: T::one(),
+        a: lhs_ready.data_contiguous(),
+        b: rhs_ready.data_contiguous(),
+        beta: T::zero(),
+        c: &mut c_data,
+        trans_a: false,
+        trans_b: false,
+        order,
     };
+    backend.gemm(desc)?;
+
+    let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
+    // GEMM output is a 2D m×n buffer in preferred_order.
+    // Convert to RowMajor 2D first, then reshape to multi-dimensional output.
+    let result_2d = make_tensor(c_data, vec![m, n], order);
+    let result_2d_rm = result_2d.to_contiguous(MemoryOrder::RowMajor);
+    let result = DenseTensor::from_data(result_2d_rm.data().to_vec(), output_shape);
 
     // Reorder output dimensions to match the requested output index order.
-    // GEMM produces [batch, free_lhs, free_rhs]; the notation may request a different order.
+    // GEMM produces [free_lhs, free_rhs]; the notation may request a different order.
     reorder_output(backend, result, &plan, &expr)
 }
 
@@ -149,7 +145,7 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
     shape[pos]
 }
 
-/// Reorder output dimensions from [batch, free_lhs, free_rhs] to the requested output order.
+/// Reorder output dimensions from [free_lhs, free_rhs] to the requested output order.
 fn reorder_output<T: Scalar>(
     backend: &impl ComputeBackend,
     result: DenseTensor<T>,
@@ -162,9 +158,8 @@ fn reorder_output<T: Scalar>(
         return Ok(result);
     }
 
-    // Actual output index order produced by GEMM
+    // Actual output index order produced by GEMM (no batch)
     let mut actual: Vec<u8> = Vec::with_capacity(out.len());
-    actual.extend(&plan.batch);
     actual.extend(&plan.free_lhs);
     actual.extend(&plan.free_rhs);
 
@@ -182,11 +177,6 @@ fn compute_output_shape(
     rhs_shape: &[usize],
 ) -> Vec<usize> {
     let mut output_shape = Vec::new();
-
-    // Batch dimensions (shared between both inputs, use lhs for lookup)
-    for &idx in &plan.batch {
-        output_shape.push(dim_of(idx, expr.lhs_indices(), lhs_shape));
-    }
 
     for &idx in &plan.free_lhs {
         output_shape.push(dim_of(idx, expr.lhs_indices(), lhs_shape));

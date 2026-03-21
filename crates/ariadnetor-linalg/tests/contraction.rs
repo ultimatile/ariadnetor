@@ -3,7 +3,7 @@
 //! Migrated from ariadnetor-tensor integration tests after moving
 //! contraction logic to the linalg crate.
 
-use arnet_linalg::{contract, transpose};
+use arnet_linalg::{contract, einsum, transpose};
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
@@ -86,18 +86,30 @@ fn test_identity_multiplication() {
 }
 
 #[test]
-fn test_hadamard_product() {
+fn test_hadamard_product_via_einsum() {
     let backend = NativeBackend::new();
     let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = DenseTensor::from_data(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2]);
 
-    let c = contract(&backend, &a, &b, "ij,ij->ij").unwrap();
+    // Hadamard product routes through einsum_pair, not contract
+    let c = einsum(&backend, &[&a, &b], "ij,ij->ij").unwrap();
 
     assert_eq!(c.shape(), &[2, 2]);
     assert_eq!(c.get(&[0, 0]), 2.0);
     assert_eq!(c.get(&[0, 1]), 6.0);
     assert_eq!(c.get(&[1, 0]), 12.0);
     assert_eq!(c.get(&[1, 1]), 20.0);
+}
+
+#[test]
+fn test_hadamard_contract_rejects() {
+    let backend = NativeBackend::new();
+    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::<f64>::from_data(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2]);
+
+    // contract() should reject Hadamard (all batch, no contraction)
+    let result = contract(&backend, &a, &b, "ij,ij->ij");
+    assert!(result.is_err());
 }
 
 // ============================================================================

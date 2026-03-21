@@ -2,15 +2,15 @@
 //!
 //! Dispatches to:
 //! - [`crate::scalar_ops::trace`] + [`crate::transpose::transpose`] for single-tensor ops
-//! - [`crate::contract::contract`] for two-tensor contractions
+//! - [`einsum_pair`] for two-tensor operations (pure contraction, Hadamard, or batched)
 //! - Sequential pairwise contraction for 3+ tensor chains
 
 use std::collections::{HashMap, HashSet};
 
 use arnet_core::backend::{BackendError, ComputeBackend};
-use arnet_core::einsum::EinsumExpr;
+use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 use crate::contract::contract;
 use crate::scalar_ops::trace;
@@ -20,8 +20,8 @@ use crate::transpose::transpose;
 ///
 /// Parses the notation and dispatches:
 /// - **1 input**: trace (repeated indices not in output) + transpose (reorder)
-/// - **2 inputs**: delegates to [`contract`] (supports Hadamard, batched GEMM)
-/// - **N inputs** (N > 2): sequential left-to-right pairwise contraction
+/// - **2 inputs**: delegates to [`einsum_pair`] (handles pure contraction, Hadamard, batched)
+/// - **N inputs** (N > 2): sequential left-to-right pairwise contraction via [`einsum_pair`]
 ///
 /// # Examples
 ///
@@ -63,9 +63,254 @@ pub fn einsum<T: Scalar>(
             "einsum requires at least 1 input".to_string(),
         )),
         1 => einsum_single(backend, tensors[0], &expr),
-        2 => contract(backend, tensors[0], tensors[1], notation),
+        2 => einsum_pair(backend, tensors[0], tensors[1], notation),
         _ => einsum_multi(backend, tensors, &expr),
     }
+}
+
+/// Dispatch a 2-input einsum to the appropriate path.
+///
+/// - Pure contraction (no batch indices) → [`contract`]
+/// - Hadamard product (all batch, no free/contracted) → element-wise multiply
+/// - Batched contraction → slice-and-loop over [`contract`]
+fn einsum_pair<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &DenseTensor<T>,
+    rhs: &DenseTensor<T>,
+    notation: &str,
+) -> Result<DenseTensor<T>, BackendError> {
+    let expr = EinsumExpr::parse(notation)
+        .map_err(|e| BackendError::ExecutionFailed(format!("Failed to parse einsum: {e}")))?;
+
+    let plan = ContractionPlan::from_expr(&expr);
+
+    if plan.batch.is_empty() {
+        // Pure contraction — delegate to contract() (GEMM path)
+        return contract(backend, lhs, rhs, notation);
+    }
+
+    // Compute dimension sizes for each category
+    let m: usize = plan
+        .free_lhs
+        .iter()
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .product::<usize>()
+        .max(1);
+
+    let n: usize = plan
+        .free_rhs
+        .iter()
+        .map(|&idx| dim_of(idx, expr.rhs_indices(), rhs.shape()))
+        .product::<usize>()
+        .max(1);
+
+    let k: usize = plan
+        .contracted
+        .iter()
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .product::<usize>()
+        .max(1);
+
+    if m == 1 && n == 1 && k == 1 {
+        // Hadamard product: all indices are batch, no free or contracted
+        hadamard(backend, lhs, rhs, &expr, &plan)
+    } else {
+        // Batched contraction: slice over batch dims, contract per slice
+        batched_contract(backend, lhs, rhs, &expr, &plan)
+    }
+}
+
+/// Element-wise (Hadamard) product: all indices are batch.
+fn hadamard<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &DenseTensor<T>,
+    rhs: &DenseTensor<T>,
+    expr: &EinsumExpr,
+    plan: &ContractionPlan,
+) -> Result<DenseTensor<T>, BackendError> {
+    // Permute both operands to [batch...] order (= output order for Hadamard)
+    let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
+    let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
+
+    let lhs_ordered = if let Some(perm) = lhs_perm {
+        transpose(backend, lhs, &perm)?
+    } else {
+        lhs.to_contiguous(MemoryOrder::RowMajor)
+    };
+
+    let rhs_ordered = if let Some(perm) = rhs_perm {
+        transpose(backend, rhs, &perm)?
+    } else {
+        rhs.to_contiguous(MemoryOrder::RowMajor)
+    };
+
+    let lhs_data = lhs_ordered.data();
+    let rhs_data = rhs_ordered.data();
+
+    let c_data: Vec<T> = lhs_data
+        .iter()
+        .zip(rhs_data.iter())
+        .map(|(&a, &b)| a * b)
+        .collect();
+
+    // Output shape in canonical [batch...] order
+    let output_shape: Vec<usize> = plan
+        .batch
+        .iter()
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .collect();
+    let result = DenseTensor::from_data(c_data, output_shape);
+
+    // Reorder to requested output index order
+    reorder_batched_output(backend, result, &plan.batch, &[], &[], expr.out_indices())
+}
+
+/// Batched contraction: loop over batch dimensions, call contract() per slice.
+fn batched_contract<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &DenseTensor<T>,
+    rhs: &DenseTensor<T>,
+    expr: &EinsumExpr,
+    plan: &ContractionPlan,
+) -> Result<DenseTensor<T>, BackendError> {
+    // Compute batch dimensions
+    let batch_dims: Vec<usize> = plan
+        .batch
+        .iter()
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .collect();
+    let batch_size: usize = batch_dims.iter().product::<usize>().max(1);
+
+    // Build permutations to [batch..., free/contracted...] order
+    let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
+    let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
+
+    let lhs_permuted = if let Some(perm) = lhs_perm {
+        transpose(backend, lhs, &perm)?
+    } else {
+        lhs.clone()
+    };
+
+    let rhs_permuted = if let Some(perm) = rhs_perm {
+        transpose(backend, rhs, &perm)?
+    } else {
+        rhs.clone()
+    };
+
+    // to_contiguous(RowMajor) so batch slices are contiguous memory ranges
+    let lhs_rm = lhs_permuted.to_contiguous(MemoryOrder::RowMajor);
+    let rhs_rm = rhs_permuted.to_contiguous(MemoryOrder::RowMajor);
+
+    // Per-slice sizes (after removing batch dimensions)
+    let lhs_slice_size = lhs_rm.len() / batch_size;
+    let rhs_slice_size = rhs_rm.len() / batch_size;
+
+    // Slice shape: drop batch dims from the permuted shape
+    let n_batch = plan.batch.len();
+    let lhs_slice_shape: Vec<usize> = lhs_rm.shape()[n_batch..].to_vec();
+    let rhs_slice_shape: Vec<usize> = rhs_rm.shape()[n_batch..].to_vec();
+
+    // Build batch-free notation with canonical [free_lhs, free_rhs] output order
+    let batch_free_notation = build_batch_free_notation(plan);
+
+    let lhs_data = lhs_rm.data();
+    let rhs_data = rhs_rm.data();
+
+    // Contract each batch slice
+    let mut result_slices: Vec<DenseTensor<T>> = Vec::with_capacity(batch_size);
+    for b in 0..batch_size {
+        let lhs_slice_data = &lhs_data[b * lhs_slice_size..(b + 1) * lhs_slice_size];
+        let rhs_slice_data = &rhs_data[b * rhs_slice_size..(b + 1) * rhs_slice_size];
+
+        let lhs_slice = DenseTensor::from_data(lhs_slice_data.to_vec(), lhs_slice_shape.clone());
+        let rhs_slice = DenseTensor::from_data(rhs_slice_data.to_vec(), rhs_slice_shape.clone());
+
+        let slice_result = contract(backend, &lhs_slice, &rhs_slice, &batch_free_notation)?;
+        result_slices.push(slice_result);
+    }
+
+    // Stack results into canonical shape [batch..., free_lhs..., free_rhs...]
+    let slice_shape = result_slices[0].shape().to_vec();
+    let slice_size: usize = slice_shape.iter().product();
+    let mut stacked_data: Vec<T> = Vec::with_capacity(batch_size * slice_size);
+    for slice in &result_slices {
+        let rm = slice.to_contiguous(MemoryOrder::RowMajor);
+        stacked_data.extend_from_slice(rm.data());
+    }
+
+    let mut output_shape = batch_dims;
+    output_shape.extend_from_slice(&slice_shape);
+    let stacked = DenseTensor::from_data(stacked_data, output_shape);
+
+    // Reorder to requested output index order
+    reorder_batched_output(
+        backend,
+        stacked,
+        &plan.batch,
+        &plan.free_lhs,
+        &plan.free_rhs,
+        expr.out_indices(),
+    )
+}
+
+/// Build notation string with batch indices removed.
+///
+/// Output is always in canonical [free_lhs, free_rhs] order so that per-slice
+/// contract() results stack consistently. The final reorder to the user's
+/// requested output order happens after stacking.
+fn build_batch_free_notation(plan: &ContractionPlan) -> String {
+    let lhs_s: String = plan
+        .free_lhs
+        .iter()
+        .chain(plan.contracted.iter())
+        .map(|&b| b as char)
+        .collect();
+    let rhs_s: String = plan
+        .contracted
+        .iter()
+        .chain(plan.free_rhs.iter())
+        .map(|&b| b as char)
+        .collect();
+    let out_s: String = plan
+        .free_lhs
+        .iter()
+        .chain(plan.free_rhs.iter())
+        .map(|&b| b as char)
+        .collect();
+    format!("{lhs_s},{rhs_s}->{out_s}")
+}
+
+/// Reorder output from canonical [batch..., free_lhs..., free_rhs...] to requested order.
+fn reorder_batched_output<T: Scalar>(
+    backend: &impl ComputeBackend,
+    result: DenseTensor<T>,
+    batch: &[u8],
+    free_lhs: &[u8],
+    free_rhs: &[u8],
+    out: &[u8],
+) -> Result<DenseTensor<T>, BackendError> {
+    if out.is_empty() {
+        return Ok(result);
+    }
+
+    let mut actual: Vec<u8> = Vec::with_capacity(out.len());
+    actual.extend(batch);
+    actual.extend(free_lhs);
+    actual.extend(free_rhs);
+
+    match compute_permutation(&actual, out) {
+        Some(perm) => transpose(backend, &result, &perm),
+        None => Ok(result),
+    }
+}
+
+/// Look up the dimension of an index in the given index list and shape.
+fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
+    let pos = indices
+        .iter()
+        .position(|&x| x == idx)
+        .expect("Index not found in tensor");
+    shape[pos]
 }
 
 /// Sequential left-to-right pairwise contraction for 3+ tensors.
@@ -85,7 +330,7 @@ fn einsum_multi<T: Scalar>(
     let intermediate_out =
         compute_intermediate_output(&inputs[0], &inputs[1], &inputs[2..], final_output);
     let notation = build_notation(&inputs[0], &inputs[1], &intermediate_out);
-    let mut accumulated = contract(backend, tensors[0], tensors[1], &notation)?;
+    let mut accumulated = einsum_pair(backend, tensors[0], tensors[1], &notation)?;
     let mut acc_indices = intermediate_out;
 
     // Subsequent contractions: accumulated with tensors[i]
@@ -94,7 +339,7 @@ fn einsum_multi<T: Scalar>(
         let intermediate_out =
             compute_intermediate_output(&acc_indices, &inputs[i], remaining, final_output);
         let notation = build_notation(&acc_indices, &inputs[i], &intermediate_out);
-        accumulated = contract(backend, &accumulated, tensors[i], &notation)?;
+        accumulated = einsum_pair(backend, &accumulated, tensors[i], &notation)?;
         acc_indices = intermediate_out;
     }
 

@@ -139,23 +139,14 @@ fn test_contract_output_reorder_3d() {
 }
 
 #[test]
-fn test_contract_output_reorder_with_batch() {
+fn test_contract_rejects_batch_indices() {
     let backend = NativeBackend::new();
-    // Batched matmul with swapped free indices
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
-    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+    let a =
+        DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b =
+        DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
 
-    let normal = contract(&backend, &a, &b, "bik,bkj->bij").unwrap();
-    let swapped = contract(&backend, &a, &b, "bik,bkj->bji").unwrap();
-
-    assert_eq!(normal.shape(), &[2, 2, 2]);
-    assert_eq!(swapped.shape(), &[2, 2, 2]);
-
-    for batch in 0..2 {
-        for i in 0..2 {
-            for j in 0..2 {
-                assert_eq!(swapped.get(&[batch, j, i]), normal.get(&[batch, i, j]));
-            }
-        }
-    }
+    // Batch index 'b' appears in both inputs and output — contract() should reject
+    let result = contract(&backend, &a, &b, "bik,bkj->bij");
+    assert!(result.is_err());
 }

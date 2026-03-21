@@ -343,3 +343,96 @@ fn test_einsum_output_reorder_rectangular() {
         }
     }
 }
+
+// ============================================================================
+// Batch and Hadamard routing (einsum_pair dispatcher)
+// ============================================================================
+
+#[test]
+fn test_einsum_batched_matmul() {
+    let backend = NativeBackend::new();
+    // Batched matmul: 2 batches of 2×2 matrices
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+
+    let normal = einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap();
+
+    assert_eq!(normal.shape(), &[2, 2, 2]);
+    // Batch 0: [[1,2],[3,4]] × I = [[1,2],[3,4]]
+    assert_eq!(normal.get(&[0, 0, 0]), 1.0);
+    assert_eq!(normal.get(&[0, 0, 1]), 2.0);
+    assert_eq!(normal.get(&[0, 1, 0]), 3.0);
+    assert_eq!(normal.get(&[0, 1, 1]), 4.0);
+    // Batch 1: [[5,6],[7,8]] × 2I = [[10,12],[14,16]]
+    assert_eq!(normal.get(&[1, 0, 0]), 10.0);
+    assert_eq!(normal.get(&[1, 0, 1]), 12.0);
+    assert_eq!(normal.get(&[1, 1, 0]), 14.0);
+    assert_eq!(normal.get(&[1, 1, 1]), 16.0);
+}
+
+#[test]
+fn test_einsum_batched_output_reorder_bji() {
+    let backend = NativeBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+
+    let normal = einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap();
+    let swapped = einsum(&backend, &[&a, &b], "bik,bkj->bji").unwrap();
+
+    assert_eq!(swapped.shape(), &[2, 2, 2]);
+    for batch in 0..2 {
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_eq!(swapped.get(&[batch, j, i]), normal.get(&[batch, i, j]));
+            }
+        }
+    }
+}
+
+#[test]
+fn test_einsum_batched_output_reorder_jbi() {
+    let backend = NativeBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+
+    let normal = einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap();
+    let reordered = einsum(&backend, &[&a, &b], "bik,bkj->jbi").unwrap();
+
+    assert_eq!(reordered.shape(), &[2, 2, 2]);
+    for batch in 0..2 {
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_eq!(reordered.get(&[j, batch, i]), normal.get(&[batch, i, j]));
+            }
+        }
+    }
+}
+
+#[test]
+fn test_einsum_multi_with_intermediate_batch() {
+    let backend = NativeBackend::new();
+    // "aij,ajk,ak->ai" with left-to-right generates intermediate "aij,ajk->aik" (batch on a)
+    let t1 = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![2, 2, 3]);
+    let t2 = DenseTensor::from_data((1..=18).map(|x| x as f64).collect(), vec![2, 3, 3]);
+    let t3 = DenseTensor::from_data((1..=6).map(|x| x as f64).collect(), vec![2, 3]);
+
+    let result = einsum(&backend, &[&t1, &t2, &t3], "aij,ajk,ak->ai").unwrap();
+
+    assert_eq!(result.shape(), &[2, 2]);
+    // Verify by manual contraction: sum_j sum_k t1[a,i,j] * t2[a,j,k] * t3[a,k]
+    for a in 0..2 {
+        for i in 0..2 {
+            let mut expected = 0.0;
+            for j in 0..3 {
+                for k in 0..3 {
+                    expected += t1.get(&[a, i, j]) * t2.get(&[a, j, k]) * t3.get(&[a, k]);
+                }
+            }
+            assert!(
+                (result.get(&[a, i]) - expected).abs() < 1e-10,
+                "mismatch at [{a},{i}]: got {} expected {expected}",
+                result.get(&[a, i])
+            );
+        }
+    }
+}
