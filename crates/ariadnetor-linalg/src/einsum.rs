@@ -210,8 +210,17 @@ fn batched_contract<T: Scalar>(
     let lhs_slice_shape: Vec<usize> = lhs_rm.shape()[n_batch..].to_vec();
     let rhs_slice_shape: Vec<usize> = rhs_rm.shape()[n_batch..].to_vec();
 
+    // Contracted indices in RHS occurrence order (matching permutation order)
+    let contracted_set: HashSet<u8> = plan.contracted.iter().copied().collect();
+    let contracted_rhs_order: Vec<u8> = expr
+        .rhs_indices()
+        .iter()
+        .filter(|idx| contracted_set.contains(idx))
+        .copied()
+        .collect();
+
     // Build batch-free notation with canonical [free_lhs, free_rhs] output order
-    let batch_free_notation = build_batch_free_notation(plan);
+    let batch_free_notation = build_batch_free_notation(plan, &contracted_rhs_order);
 
     let lhs_data = lhs_rm.data();
     let rhs_data = rhs_rm.data();
@@ -230,16 +239,23 @@ fn batched_contract<T: Scalar>(
     }
 
     // Stack results into canonical shape [batch..., free_lhs..., free_rhs...]
-    let slice_shape = result_slices[0].shape().to_vec();
-    let slice_size: usize = slice_shape.iter().product();
-    let mut stacked_data: Vec<T> = Vec::with_capacity(batch_size * slice_size);
+    // Compute output shape from plan, not from contract() output (which adds a
+    // dummy [1] for scalar results).
+    let mut output_shape = batch_dims;
+    for &idx in &plan.free_lhs {
+        output_shape.push(dim_of(idx, expr.lhs_indices(), lhs.shape()));
+    }
+    for &idx in &plan.free_rhs {
+        output_shape.push(dim_of(idx, expr.rhs_indices(), rhs.shape()));
+    }
+    let total_size: usize = output_shape.iter().product();
+
+    let mut stacked_data: Vec<T> = Vec::with_capacity(total_size);
     for slice in &result_slices {
         let rm = slice.to_contiguous(MemoryOrder::RowMajor);
         stacked_data.extend_from_slice(rm.data());
     }
 
-    let mut output_shape = batch_dims;
-    output_shape.extend_from_slice(&slice_shape);
     let stacked = DenseTensor::from_data(stacked_data, output_shape);
 
     // Reorder to requested output index order
@@ -255,18 +271,21 @@ fn batched_contract<T: Scalar>(
 
 /// Build notation string with batch indices removed.
 ///
+/// Uses `contracted_rhs_order` (contracted indices in RHS occurrence order) to
+/// match the axis order produced by `lhs_permutation`/`rhs_permutation`, which
+/// both place contracted indices in RHS occurrence order.
+///
 /// Output is always in canonical [free_lhs, free_rhs] order so that per-slice
 /// contract() results stack consistently. The final reorder to the user's
 /// requested output order happens after stacking.
-fn build_batch_free_notation(plan: &ContractionPlan) -> String {
+fn build_batch_free_notation(plan: &ContractionPlan, contracted_rhs_order: &[u8]) -> String {
     let lhs_s: String = plan
         .free_lhs
         .iter()
-        .chain(plan.contracted.iter())
+        .chain(contracted_rhs_order.iter())
         .map(|&b| b as char)
         .collect();
-    let rhs_s: String = plan
-        .contracted
+    let rhs_s: String = contracted_rhs_order
         .iter()
         .chain(plan.free_rhs.iter())
         .map(|&b| b as char)

@@ -436,3 +436,56 @@ fn test_einsum_multi_with_intermediate_batch() {
         }
     }
 }
+
+#[test]
+fn test_einsum_batched_scalar_reduction() {
+    let backend = NativeBackend::new();
+    // "bi,bi->b": dot product per batch, output should be shape [batch], not [batch, 1]
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+
+    let result = einsum(&backend, &[&a, &b], "bi,bi->b").unwrap();
+
+    assert_eq!(result.shape(), &[2]);
+    // Batch 0: 1*5 + 2*6 = 17
+    assert_eq!(result.get(&[0]), 17.0);
+    // Batch 1: 3*7 + 4*8 = 53
+    assert_eq!(result.get(&[1]), 53.0);
+}
+
+#[test]
+fn test_einsum_batched_multi_contracted_different_order() {
+    let backend = NativeBackend::new();
+    // Contracted indices k,l appear in different order in LHS vs RHS
+    // "bkli,bjlk->bij": LHS has [k,l], RHS has [l,k]
+    let a = DenseTensor::from_data(
+        (1..=24).map(|x| x as f64).collect(),
+        vec![2, 2, 3, 2], // b=2, k=2, l=3, i=2
+    );
+    let b_tensor = DenseTensor::from_data(
+        (1..=24).map(|x| x as f64).collect(),
+        vec![2, 2, 3, 2], // b=2, j=2, l=3, k=2
+    );
+
+    let result = einsum(&backend, &[&a, &b_tensor], "bkli,bjlk->bij").unwrap();
+
+    assert_eq!(result.shape(), &[2, 2, 2]);
+    // Verify: result[b,i,j] = sum_{k,l} a[b,k,l,i] * b[b,j,l,k]
+    for bi in 0..2 {
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut expected = 0.0;
+                for k in 0..2 {
+                    for l in 0..3 {
+                        expected += a.get(&[bi, k, l, i]) * b_tensor.get(&[bi, j, l, k]);
+                    }
+                }
+                assert!(
+                    (result.get(&[bi, i, j]) - expected).abs() < 1e-10,
+                    "mismatch at [{bi},{i},{j}]: got {} expected {expected}",
+                    result.get(&[bi, i, j])
+                );
+            }
+        }
+    }
+}
