@@ -258,6 +258,8 @@ fn mps_to_dense(mps: &Mps<f64>) -> DenseTensor<f64> {
         let contracted =
             arnet_linalg::contract(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
 
+        // Convert to row-major so reshape uses standard axis merge order.
+        let contracted = contracted.to_contiguous(MemoryOrder::RowMajor);
         let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
         new_shape.extend_from_slice(&site.shape()[1..]);
         result = contracted.reshape(new_shape);

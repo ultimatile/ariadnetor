@@ -163,7 +163,7 @@ fn test_expm_antihermitian_unitarity_c64() {
     let mut uh_data = vec![Complex::<f64>::zero(); 4];
     for i in 0..2 {
         for j in 0..2 {
-            uh_data[i * 2 + j] = u.data()[j * 2 + i].conj();
+            uh_data[i * 2 + j] = u.get(&[j, i]).conj();
         }
     }
     let u_dagger = DenseTensor::from_data(uh_data, vec![2, 2]);

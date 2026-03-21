@@ -13,6 +13,10 @@ use crate::transpose::transpose;
 /// are not supported — use [`crate::einsum::einsum`] for expressions with batch
 /// or Hadamard patterns.
 ///
+/// Output is returned in `backend.preferred_order()`, consistent with
+/// decomposition functions. Callers that need RowMajor (e.g., for reshape
+/// with correct axis merge semantics) should call `to_contiguous(RowMajor)`.
+///
 /// # Arguments
 ///
 /// * `backend` - Compute backend for transpose and GEMM operations
@@ -66,13 +70,13 @@ pub fn contract<T: Scalar>(
     let lhs_permuted = if let Some(perm) = lhs_perm {
         transpose(backend, lhs, &perm)?
     } else {
-        lhs.to_contiguous(MemoryOrder::RowMajor)
+        lhs.clone()
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
         transpose(backend, rhs, &perm)?
     } else {
-        rhs.to_contiguous(MemoryOrder::RowMajor)
+        rhs.clone()
     };
 
     let m: usize = plan
@@ -98,14 +102,11 @@ pub fn contract<T: Scalar>(
 
     let order = backend.preferred_order();
 
-    // Ensure RowMajor axis merge semantics, then convert to backend preferred order
-    let lhs_rm = lhs_permuted.to_contiguous(MemoryOrder::RowMajor);
-    let lhs_2d = DenseTensor::from_data(lhs_rm.data().to_vec(), vec![m, k]);
-    let lhs_ready = lhs_2d.to_contiguous(order);
-
-    let rhs_rm = rhs_permuted.to_contiguous(MemoryOrder::RowMajor);
-    let rhs_2d = DenseTensor::from_data(rhs_rm.data().to_vec(), vec![k, n]);
-    let rhs_ready = rhs_2d.to_contiguous(order);
+    // Prepare operands for GEMM: reshape to 2D and convert to preferred_order.
+    // rank <= 2: no axis merge needed, go directly to preferred_order.
+    // rank > 2: RowMajor reshape (correct axis merge semantics), then preferred_order.
+    let lhs_ready = prepare_for_gemm(&lhs_permuted, m, k, order);
+    let rhs_ready = prepare_for_gemm(&rhs_permuted, k, n, order);
 
     let mut c_data = vec![T::zero(); m * n];
 
@@ -124,16 +125,42 @@ pub fn contract<T: Scalar>(
     };
     backend.gemm(desc)?;
 
+    // Output in preferred_order. For rank > 2, reconstruct multi-dimensional shape
+    // via RowMajor 2D intermediate (correct axis split semantics).
     let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
-    // GEMM output is a 2D m×n buffer in preferred_order.
-    // Convert to RowMajor 2D first, then reshape to multi-dimensional output.
-    let result_2d = make_tensor(c_data, vec![m, n], order);
-    let result_2d_rm = result_2d.to_contiguous(MemoryOrder::RowMajor);
-    let result = DenseTensor::from_data(result_2d_rm.data().to_vec(), output_shape);
+    let result = if output_shape.len() <= 2 {
+        make_tensor(c_data, output_shape, order)
+    } else {
+        // 2D preferred_order → RowMajor 2D → reshape to multi-dim → preferred_order
+        let result_2d = make_tensor(c_data, vec![m, n], order);
+        let result_rm = result_2d.to_contiguous(MemoryOrder::RowMajor);
+        DenseTensor::from_data(result_rm.data().to_vec(), output_shape).to_contiguous(order)
+    };
 
     // Reorder output dimensions to match the requested output index order.
     // GEMM produces [free_lhs, free_rhs]; the notation may request a different order.
     reorder_output(backend, result, &plan, &expr)
+}
+
+/// Reshape a permuted operand to 2D and convert to the target memory order.
+///
+/// For rank <= 2, no axis merge is needed — directly convert to target order.
+/// For rank > 2, RowMajor reshape ensures correct axis merge semantics.
+fn prepare_for_gemm<T: Scalar>(
+    tensor: &DenseTensor<T>,
+    rows: usize,
+    cols: usize,
+    order: MemoryOrder,
+) -> DenseTensor<T> {
+    if tensor.rank() <= 2 {
+        // No axis merge: directly convert to preferred_order (zero-copy if already correct)
+        tensor.to_contiguous(order)
+    } else {
+        // Axis merge requires RowMajor reshape, then convert to preferred_order
+        let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+        let reshaped = rm.reshape(vec![rows, cols]);
+        reshaped.to_contiguous(order)
+    }
 }
 
 /// Look up the dimension of an index in the given index list and shape.

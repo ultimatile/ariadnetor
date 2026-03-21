@@ -134,6 +134,8 @@ fn absorb_from_left<T: Scalar>(
     let result_2d = contract(backend, r, &next_2d, "ab,bc->ac")
         .expect("R absorption into next site failed during orthogonalize");
 
+    // Convert to row-major before rank-restoring reshape (axis split semantics).
+    let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);
     let k = r.shape()[0];
     let mut new_shape = next_shape;
     new_shape[0] = k;
@@ -157,6 +159,8 @@ fn absorb_from_right<T: Scalar>(
     let result_2d = contract(backend, &prev_2d, l, "ab,bc->ac")
         .expect("L absorption into previous site failed during orthogonalize");
 
+    // Convert to row-major before rank-restoring reshape (axis split semantics).
+    let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);
     let k = l.shape()[1];
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;

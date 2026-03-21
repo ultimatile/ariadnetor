@@ -1,3 +1,4 @@
+use arnet_core::backend::ComputeBackend;
 use arnet_linalg::contract;
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
@@ -149,4 +150,15 @@ fn test_contract_rejects_batch_indices() {
     // Batch index 'b' appears in both inputs and output — contract() should reject
     let result = contract(&backend, &a, &b, "bik,bkj->bij");
     assert!(result.is_err());
+}
+
+#[test]
+fn test_contract_output_memory_order() {
+    let backend = NativeBackend::new();
+    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+
+    let c = contract(&backend, &a, &b, "ik,kj->ij").unwrap();
+
+    assert_eq!(c.memory_order(), backend.preferred_order());
 }

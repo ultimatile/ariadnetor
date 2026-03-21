@@ -186,7 +186,11 @@ fn test_einsum_3_tensor_chain() {
     use arnet_linalg::contract;
     let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
     let expected = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
-    assert_eq!(d.data(), expected.data());
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_eq!(d.get(&[i, j]), expected.get(&[i, j]));
+        }
+    }
 }
 
 #[test]
@@ -201,7 +205,9 @@ fn test_einsum_3_tensor_implicit_output() {
     let d_explicit = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il").unwrap();
 
     assert_eq!(d.shape(), d_explicit.shape());
-    assert_eq!(d.data(), d_explicit.data());
+    for i in 0..d.len() {
+        assert_eq!(d.get(&[i / 2, i % 2]), d_explicit.get(&[i / 2, i % 2]));
+    }
 }
 
 #[test]
@@ -221,7 +227,11 @@ fn test_einsum_4_tensor_chain() {
     let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
     let abc = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
     let expected = contract(&backend, &abc, &d, "il,lm->im").unwrap();
-    assert_eq!(result.data(), expected.data());
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_eq!(result.get(&[i, j]), expected.get(&[i, j]));
+        }
+    }
 }
 
 #[test]

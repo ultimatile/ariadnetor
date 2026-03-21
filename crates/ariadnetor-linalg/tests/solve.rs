@@ -51,11 +51,13 @@ fn test_solve_f64_multiple_rhs() {
 
     // Verify by computing A * X and comparing with B
     let ax = contract(&backend, &a, &x, "ij,jk->ik").unwrap();
-    for i in 0..4 {
-        assert!(
-            (ax.data()[i] - b.data()[i]).abs() < 1e-10,
-            "A*X != B at index {i}"
-        );
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!(
+                (ax.get(&[i, j]) - b.get(&[i, j])).abs() < 1e-10,
+                "A*X != B at [{i},{j}]"
+            );
+        }
     }
 }
 
@@ -85,8 +87,8 @@ fn test_solve_c64() {
     // Verify A * X = B
     let ax = contract(&backend, &a, &x, "ij,jk->ik").unwrap();
     for i in 0..2 {
-        let diff = (ax.data()[i] - b.data()[i]).norm();
-        assert!(diff < 1e-10, "A*X != B at index {i}, diff={diff}");
+        let diff = (ax.get(&[i, 0]) - b.get(&[i, 0])).norm();
+        assert!(diff < 1e-10, "A*X != B at [{i},0], diff={diff}");
     }
 }
 
