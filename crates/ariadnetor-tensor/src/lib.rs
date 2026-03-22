@@ -23,13 +23,46 @@ pub use tensor_storage::TensorStorage;
 
 /// Extension trait for backend-aware tensor construction.
 ///
-/// Provides `make_tensor` on any `ComputeBackend`, hiding `MemoryOrder`
+/// Provides tensor constructors on any `ComputeBackend`, hiding `MemoryOrder`
 /// from callers and allowing future backend properties to influence
 /// tensor construction without changing call sites.
 pub trait ComputeBackendTensorExt: ComputeBackend {
-    /// Construct a `DenseTensor` in this backend's preferred memory order.
+    /// Construct a `DenseTensor` from data in this backend's preferred memory order.
     fn make_tensor<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
         DenseTensor::from_data_with_order(data, shape, self.preferred_order())
+    }
+
+    /// Create a zero-filled tensor in this backend's preferred memory order.
+    fn zeros<T: Clone + num_traits::Zero>(&self, shape: Vec<usize>) -> DenseTensor<T> {
+        let total: usize = shape.iter().product();
+        DenseTensor::from_data_with_order(vec![T::zero(); total], shape, self.preferred_order())
+    }
+
+    /// Create a ones-filled tensor in this backend's preferred memory order.
+    fn ones<T: Clone + num_traits::Zero + num_traits::One>(
+        &self,
+        shape: Vec<usize>,
+    ) -> DenseTensor<T> {
+        let total: usize = shape.iter().product();
+        DenseTensor::from_data_with_order(vec![T::one(); total], shape, self.preferred_order())
+    }
+
+    /// Create a constant-filled tensor in this backend's preferred memory order.
+    fn constant<T: Clone>(&self, shape: Vec<usize>, value: T) -> DenseTensor<T> {
+        let total: usize = shape.iter().product();
+        DenseTensor::from_data_with_order(vec![value; total], shape, self.preferred_order())
+    }
+
+    /// Create an identity matrix in this backend's preferred memory order.
+    ///
+    /// The identity matrix is symmetric, so its flat data layout is the same
+    /// regardless of memory order.
+    fn eye<T: Clone + num_traits::Zero + num_traits::One>(&self, n: usize) -> DenseTensor<T> {
+        let mut data = vec![T::zero(); n * n];
+        for i in 0..n {
+            data[i * (n + 1)] = T::one();
+        }
+        DenseTensor::from_data_with_order(data, vec![n, n], self.preferred_order())
     }
 }
 

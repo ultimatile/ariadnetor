@@ -206,7 +206,7 @@ where
         }
     }
 
-    /// Create an n×n identity matrix.
+    /// Create an n×n identity matrix in row-major order.
     pub fn eye(n: usize) -> Self
     where
         T: Zero + One,
@@ -215,7 +215,7 @@ where
         for i in 0..n {
             data[i * n + i] = T::one();
         }
-        Self::from_data(data, vec![n, n])
+        Self::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor)
     }
 
     /// Create a tensor from existing data in row-major order.
@@ -315,20 +315,18 @@ where
 
     /// Create a tensor from existing data with the specified memory order.
     ///
-    /// Automatically computes strides based on the memory order.
-    /// For row-major, this is equivalent to [`from_data`](Self::from_data).
+    /// This is the primary order-explicit constructor. Strides are computed
+    /// automatically based on the memory order.
     ///
     /// # Panics
     ///
     /// Panics if data length doesn't match the shape.
     pub fn from_data_with_order(data: Vec<T>, shape: Vec<usize>, order: MemoryOrder) -> Self {
-        match order {
-            MemoryOrder::RowMajor => Self::from_data(data, shape),
-            MemoryOrder::ColumnMajor => {
-                let strides = column_major_strides(&shape);
-                Self::from_data_with_strides(data, shape, strides, 0, order)
-            }
-        }
+        let strides = match order {
+            MemoryOrder::RowMajor => row_major_strides(&shape),
+            MemoryOrder::ColumnMajor => column_major_strides(&shape),
+        };
+        Self::from_data_with_strides(data, shape, strides, 0, order)
     }
 
     /// Create a tensor filled with random values from the standard distribution.
@@ -339,7 +337,7 @@ where
     {
         let total: usize = shape.iter().product();
         let data: Vec<T> = (0..total).map(|_| rng.random()).collect();
-        Self::from_data(data, shape)
+        Self::from_data_with_order(data, shape, MemoryOrder::RowMajor)
     }
 
     // ========================================================================
