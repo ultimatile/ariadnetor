@@ -289,11 +289,24 @@ impl ExpressionComputeGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::NativeBackend;
+    use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+
+    fn tensor_from_data(data: Vec<f64>, shape: Vec<usize>) -> Tensor<f64> {
+        Tensor::with_backend(
+            TensorStorage::Dense(DenseTensor::from_data_with_order(
+                data,
+                shape,
+                MemoryOrder::RowMajor,
+            )),
+            NativeBackend::shared(),
+        )
+    }
 
     #[test]
     #[ignore] // TODO: Implement JIT compilation
     fn test_from_tensor() {
-        let tensor = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let tensor = tensor_from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
         let expr = ExpressionComputeGraph::from_tensor(tensor.clone());
 
         let result = expr.evaluate().unwrap();
@@ -303,7 +316,7 @@ mod tests {
     #[test]
     #[ignore] // TODO: Implement JIT compilation
     fn test_scale() {
-        let tensor = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let tensor = tensor_from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
         let expr = ExpressionComputeGraph::from_tensor(tensor);
 
         let scaled = expr.scale(2.0);
@@ -315,8 +328,8 @@ mod tests {
     #[test]
     #[ignore] // TODO: Implement JIT compilation
     fn test_add() {
-        let a = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-        let b = Tensor::from_data(vec![10.0, 20.0, 30.0, 40.0], vec![2, 2]);
+        let a = tensor_from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let b = tensor_from_data(vec![10.0, 20.0, 30.0, 40.0], vec![2, 2]);
 
         let expr_a = ExpressionComputeGraph::from_tensor(a);
         let expr_b = ExpressionComputeGraph::from_tensor(b);
@@ -330,8 +343,8 @@ mod tests {
     #[test]
     #[ignore] // TODO: Implement JIT compilation
     fn test_chained_operations() {
-        let a = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-        let b = Tensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+        let a = tensor_from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let b = tensor_from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
         let expr = ExpressionComputeGraph::from_tensor(a)
             .scale(2.0)
@@ -346,9 +359,9 @@ mod tests {
     #[test]
     #[ignore] // TODO: Implement JIT compilation
     fn test_linear_combine() {
-        let a = Tensor::from_data(vec![1.0, 2.0], vec![2]);
-        let b = Tensor::from_data(vec![3.0, 4.0], vec![2]);
-        let c = Tensor::from_data(vec![5.0, 6.0], vec![2]);
+        let a = tensor_from_data(vec![1.0, 2.0], vec![2]);
+        let b = tensor_from_data(vec![3.0, 4.0], vec![2]);
+        let c = tensor_from_data(vec![5.0, 6.0], vec![2]);
 
         let expr = ExpressionComputeGraph::linear_combine(
             vec![
@@ -369,8 +382,8 @@ mod tests {
     #[test]
     #[ignore] // TODO: Implement JIT compilation
     fn test_contract() {
-        let a = Tensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-        let b = Tensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+        let a = tensor_from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let b = tensor_from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
         let expr_a = ExpressionComputeGraph::from_tensor(a);
         let expr_b = ExpressionComputeGraph::from_tensor(b);

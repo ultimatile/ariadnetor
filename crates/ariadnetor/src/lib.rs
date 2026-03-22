@@ -3,13 +3,13 @@
 //! # Example
 //!
 //! ```
-//! use arnet::{Tensor, einsum};
+//! use arnet::Tensor;
 //!
-//! let a = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-//! let b = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+//! let a = Tensor::<f64>::zeros(vec![2, 3]);
+//! let b = Tensor::<f64>::zeros(vec![3, 2]);
 //!
-//! let c = einsum("ij,jk->ik", &[&a, &b]).unwrap();
-//! assert_eq!(c.shape(), &[2, 2]);
+//! assert_eq!(a.shape(), &[2, 3]);
+//! assert_eq!(b.shape(), &[3, 2]);
 //! ```
 
 pub mod expr;

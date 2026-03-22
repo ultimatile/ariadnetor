@@ -28,7 +28,7 @@ use std::ops::{Add, Mul};
 /// use arnet::Tensor;
 ///
 /// // CPU tensor (NativeBackend is implicit)
-/// let a = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+/// let a = Tensor::<f64>::zeros(vec![2, 2]);
 /// assert_eq!(a.shape(), &[2, 2]);
 /// ```
 #[derive(Debug, Clone)]
@@ -103,14 +103,6 @@ where
     pub fn constant(shape: Vec<usize>, value: T) -> Self {
         Self::with_backend(
             TensorStorage::constant(shape, value),
-            NativeBackend::shared(),
-        )
-    }
-
-    /// Create a tensor from existing data (default: NativeBackend).
-    pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
-        Self::with_backend(
-            TensorStorage::from_data(data, shape),
             NativeBackend::shared(),
         )
     }

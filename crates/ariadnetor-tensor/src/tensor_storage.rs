@@ -86,11 +86,6 @@ where
         Self::Dense(DenseTensor::constant(shape, value))
     }
 
-    /// Create a dense tensor from existing data
-    pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
-        Self::Dense(DenseTensor::from_data(data, shape))
-    }
-
     /// Get a reference to the underlying data (only for Dense)
     ///
     /// Returns None for non-dense storage formats

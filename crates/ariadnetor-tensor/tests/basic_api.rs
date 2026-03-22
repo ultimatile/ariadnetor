@@ -2,7 +2,7 @@
 //!
 //! Tests the public API usage patterns from design documentation.
 
-use arnet_tensor::{DenseTensor, TensorStorage};
+use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 #[test]
 fn test_tensor_storage_creation() {
@@ -18,7 +18,11 @@ fn test_tensor_storage_creation() {
         assert_eq!(data[24], 1.0);
     }
 
-    let from_data = TensorStorage::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let from_data = TensorStorage::Dense(DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    ));
     assert_eq!(from_data.shape(), &[2, 2]);
     assert_eq!(from_data.get(&[0, 0]), 1.0);
     assert_eq!(from_data.get(&[1, 1]), 4.0);
