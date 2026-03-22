@@ -154,7 +154,7 @@ fn scale_rows_by_sv<T: Scalar>(s: &DenseTensor<T::Real>, mat: &DenseTensor<T>) -
         }
     }
 
-    DenseTensor::from_data(result, vec![chi, n])
+    DenseTensor::from_data_with_order(result, vec![chi, n], MemoryOrder::RowMajor)
 }
 
 /// Scale each column j of mat by s[j], producing mat·S.
@@ -171,7 +171,7 @@ fn scale_cols_by_sv<T: Scalar>(mat: &DenseTensor<T>, s: &DenseTensor<T::Real>) -
         }
     }
 
-    DenseTensor::from_data(result, vec![m, chi])
+    DenseTensor::from_data_with_order(result, vec![m, chi], MemoryOrder::RowMajor)
 }
 
 /// Multiply a 2D matrix into the next site tensor from the left.
