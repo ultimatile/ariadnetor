@@ -9,6 +9,7 @@ use crate::contract::contract;
 use crate::eigen::eigh;
 use crate::scalar_ops::linear_combine;
 use crate::solve::solve;
+use crate::transpose::conjugate_transpose;
 
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
 ///
@@ -51,14 +52,8 @@ pub fn expm_hermitian<T: Scalar>(
     }
     let v_scaled = DenseTensor::from_data_with_order(vd_data, vec![n, n], MemoryOrder::RowMajor);
 
-    // V†[i,j] = V[j,i].conj()
-    let mut vh_data = vec![T::zero(); n * n];
-    for i in 0..n {
-        for j in 0..n {
-            vh_data[i * n + j] = v_data[j * n + i].conj();
-        }
-    }
-    let v_dagger = DenseTensor::from_data_with_order(vh_data, vec![n, n], MemoryOrder::RowMajor);
+    // V† = conjugate transpose of V
+    let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
 
     contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }
@@ -133,14 +128,8 @@ pub fn expm_antihermitian<T: Scalar>(
     }
     let v_scaled = DenseTensor::from_data_with_order(vd_data, vec![n, n], MemoryOrder::RowMajor);
 
-    // V†[i,j] = V[j,i].conj()
-    let mut vh_data = vec![T::zero(); n * n];
-    for i in 0..n {
-        for j in 0..n {
-            vh_data[i * n + j] = v_data[j * n + i].conj();
-        }
-    }
-    let v_dagger = DenseTensor::from_data_with_order(vh_data, vec![n, n], MemoryOrder::RowMajor);
+    // V† = conjugate transpose of V
+    let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
 
     contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }

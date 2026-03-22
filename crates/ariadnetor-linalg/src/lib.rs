@@ -47,4 +47,4 @@ pub use einsum::einsum;
 pub use expm::{expm, expm_antihermitian, expm_hermitian};
 pub use scalar_ops::{diag, linear_combine, norm, normalize, scale, trace};
 pub use solve::{inverse, solve};
-pub use transpose::transpose;
+pub use transpose::{conjugate_transpose, transpose};

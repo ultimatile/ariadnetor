@@ -45,6 +45,9 @@ pub struct TransposeDescriptor<'a, T> {
     pub shape: &'a [usize],
     pub perm: &'a [usize],
     pub order: MemoryOrder,
+    /// Apply element-wise complex conjugation during transpose.
+    /// No-op for real types.
+    pub conj: bool,
 }
 
 /// Thin SVD operation descriptor: A = U * diag(S) * Vt

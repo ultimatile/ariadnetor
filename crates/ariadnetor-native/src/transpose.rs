@@ -67,6 +67,7 @@ unsafe fn reinterpret_transpose_desc<'a, T, U>(
         shape,
         perm,
         order,
+        conj,
     } = desc;
     unsafe {
         TransposeDescriptor {
@@ -75,6 +76,7 @@ unsafe fn reinterpret_transpose_desc<'a, T, U>(
             shape,
             perm,
             order,
+            conj,
         }
     }
 }
@@ -127,7 +129,7 @@ fn hptt_c64(desc: TransposeDescriptor<'_, num_complex::Complex<f64>>) -> Result<
         beta,
         desc.output,
         1,
-        false,
+        desc.conj,
         to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c64: {e}")))?;
@@ -146,7 +148,7 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
         beta,
         desc.output,
         1,
-        false,
+        desc.conj,
         to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c32: {e}")))?;
@@ -168,6 +170,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
         shape,
         perm,
         order,
+        conj,
     } = desc;
 
     let rank = shape.len();
@@ -187,7 +190,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
         for (axis, &p) in perm.iter().enumerate() {
             new_idx += old_coords[p] * new_strides[axis];
         }
-        output[new_idx] = val;
+        output[new_idx] = if conj { val.conj() } else { val };
     }
 
     Ok(())
