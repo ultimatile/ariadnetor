@@ -1,6 +1,6 @@
 use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
 use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 // --- EIGH tests ---
 
@@ -8,7 +8,11 @@ use arnet_tensor::DenseTensor;
 fn test_eigh_f64_2x2_symmetric() {
     // [[2, 1], [1, 2]] → eigenvalues [1, 3]
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![2.0, 1.0, 1.0, 2.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (w, v) = eigh(&backend, &tensor, 1).unwrap();
 
@@ -32,9 +36,10 @@ fn test_eigh_f64_2x2_symmetric() {
 fn test_eigh_f64_3x3_diagonal() {
     // Diagonal matrix: eigenvalues = diagonal elements (sorted ascending)
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(
+    let tensor = DenseTensor::<f64>::from_data_with_order(
         vec![3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0],
         vec![3, 3],
+        MemoryOrder::RowMajor,
     );
 
     let (w, _v) = eigh(&backend, &tensor, 1).unwrap();
@@ -51,7 +56,7 @@ fn test_eigh_c64_hermitian() {
 
     // Hermitian: [[2, 1-i], [1+i, 3]]
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::from_data(
+    let tensor = DenseTensor::from_data_with_order(
         vec![
             Complex::new(2.0, 0.0),
             Complex::new(1.0, -1.0),
@@ -59,6 +64,7 @@ fn test_eigh_c64_hermitian() {
             Complex::new(3.0, 0.0),
         ],
         vec![2, 2],
+        MemoryOrder::RowMajor,
     );
 
     let (w, v) = eigh(&backend, &tensor, 1).unwrap();
@@ -85,7 +91,11 @@ fn test_eigh_c64_hermitian() {
 #[test]
 fn test_eigvalsh_f64() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![2.0, 1.0, 1.0, 2.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let w = eigvalsh(&backend, &tensor, 1).unwrap();
 
@@ -98,7 +108,11 @@ fn test_eigvalsh_f64() {
 fn test_eigh_non_square_error() {
     let backend = NativeBackend::new();
     // 2×3 matrix → non-square → error
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let result = eigh(&backend, &tensor, 1);
     assert!(result.is_err());
@@ -107,7 +121,11 @@ fn test_eigh_non_square_error() {
 #[test]
 fn test_eigh_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+    let tensor = DenseTensor::<f32>::from_data_with_order(
+        vec![2.0, 1.0, 1.0, 2.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (w, _v) = eigh(&backend, &tensor, 1).unwrap();
 
@@ -119,7 +137,11 @@ fn test_eigh_f32() {
 #[test]
 fn test_eigh_invalid_nrow() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     assert!(eigh(&backend, &tensor, 0).is_err());
     assert!(eigh(&backend, &tensor, 2).is_err());
@@ -133,7 +155,11 @@ fn test_eig_f64_2x2_trace_det() {
     // trace = 5, det = -2
     // eigenvalues satisfy: λ² - 5λ - 2 = 0
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (w, v) = eig(&backend, &tensor, 1).unwrap();
 
@@ -156,7 +182,11 @@ fn test_eig_f64_diagonal() {
     // Diagonal: [[3, 0], [0, 7]]
     // eigenvalues = {3, 7}
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![3.0, 0.0, 0.0, 7.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![3.0, 0.0, 0.0, 7.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (w, _v) = eig(&backend, &tensor, 1).unwrap();
 
@@ -173,7 +203,7 @@ fn test_eig_c64_complex_input() {
     // Complex matrix: [[1+i, 2], [0, 3-i]]
     // Upper triangular → eigenvalues = diagonal = {1+i, 3-i}
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::from_data(
+    let tensor = DenseTensor::from_data_with_order(
         vec![
             Complex::new(1.0, 1.0),
             Complex::new(2.0, 0.0),
@@ -181,6 +211,7 @@ fn test_eig_c64_complex_input() {
             Complex::new(3.0, -1.0),
         ],
         vec![2, 2],
+        MemoryOrder::RowMajor,
     );
 
     let (w, _v) = eig(&backend, &tensor, 1).unwrap();
@@ -200,7 +231,11 @@ fn test_eig_c64_complex_input() {
 #[test]
 fn test_eigvals_f64() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let w = eigvals(&backend, &tensor, 1).unwrap();
 
@@ -213,7 +248,11 @@ fn test_eigvals_f64() {
 #[test]
 fn test_eig_non_square_error() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     assert!(eig(&backend, &tensor, 1).is_err());
 }
@@ -221,7 +260,11 @@ fn test_eig_non_square_error() {
 #[test]
 fn test_eig_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f32>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (w, _v) = eig(&backend, &tensor, 1).unwrap();
 
@@ -235,7 +278,11 @@ fn test_eig_f32() {
 #[test]
 fn test_eig_invalid_nrow() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     assert!(eig(&backend, &tensor, 0).is_err());
     assert!(eig(&backend, &tensor, 2).is_err());

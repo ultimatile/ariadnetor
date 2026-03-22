@@ -2,7 +2,7 @@
 
 use arnet_linalg::einsum;
 use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 // ============================================================================
 // Transpose / permutation (no repeated indices)
@@ -12,7 +12,11 @@ use arnet_tensor::DenseTensor;
 fn test_einsum_transpose_2d() {
     let backend = NativeBackend::new();
     // 2×3 matrix
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let b = einsum(&backend, &[&a], "ij->ji").unwrap();
 
@@ -31,7 +35,7 @@ fn test_einsum_permutation_3d() {
     let backend = NativeBackend::new();
     // 2×3×4 tensor
     let data: Vec<f64> = (1..=24).map(|x| x as f64).collect();
-    let a = DenseTensor::from_data(data, vec![2, 3, 4]);
+    let a = DenseTensor::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
 
     let b = einsum(&backend, &[&a], "ijk->kji").unwrap();
 
@@ -47,7 +51,11 @@ fn test_einsum_permutation_3d() {
 #[test]
 fn test_einsum_identity_permutation() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // Identity permutation: no actual transpose needed
     let b = einsum(&backend, &[&a], "ij->ij").unwrap();
@@ -64,9 +72,10 @@ fn test_einsum_identity_permutation() {
 fn test_einsum_full_trace() {
     let backend = NativeBackend::new();
     // 3×3 matrix
-    let a = DenseTensor::from_data(
+    let a = DenseTensor::from_data_with_order(
         vec![1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0],
         vec![3, 3],
+        MemoryOrder::RowMajor,
     );
 
     let b = einsum(&backend, &[&a], "ii->").unwrap();
@@ -80,7 +89,7 @@ fn test_einsum_full_trace() {
 fn test_einsum_partial_trace() {
     let backend = NativeBackend::new();
     // 2×2×3 tensor: A[i,i,j] → sum over diagonal of i, keep j
-    let a = DenseTensor::from_data(
+    let a = DenseTensor::from_data_with_order(
         vec![
             1.0, 2.0, 3.0, // [0,0,:]
             4.0, 5.0, 6.0, // [0,1,:]
@@ -88,6 +97,7 @@ fn test_einsum_partial_trace() {
             10.0, 11.0, 12.0, // [1,1,:]
         ],
         vec![2, 2, 3],
+        MemoryOrder::RowMajor,
     );
 
     let b = einsum(&backend, &[&a], "iij->j").unwrap();
@@ -112,7 +122,7 @@ fn test_einsum_trace_then_transpose() {
     // 2×3×2 tensor: "iji->j" traces i (positions 0,2), keeps j
     // This is a valid trace+result case
     let data: Vec<f64> = (1..=12).map(|x| x as f64).collect();
-    let a = DenseTensor::from_data(data, vec![2, 3, 2]);
+    let a = DenseTensor::from_data_with_order(data, vec![2, 3, 2], MemoryOrder::RowMajor);
 
     let b = einsum(&backend, &[&a], "iji->j").unwrap();
 
@@ -131,7 +141,7 @@ fn test_einsum_trace_and_permute() {
     let backend = NativeBackend::new();
     // 2×3×4×2 tensor: "ijki->kj" traces i (positions 0,3), keeps j,k → permute to k,j
     let data: Vec<f64> = (1..=48).map(|x| x as f64).collect();
-    let a = DenseTensor::from_data(data, vec![2, 3, 4, 2]);
+    let a = DenseTensor::from_data_with_order(data, vec![2, 3, 4, 2], MemoryOrder::RowMajor);
 
     let b = einsum(&backend, &[&a], "ijki->kj").unwrap();
 
@@ -154,8 +164,16 @@ fn test_einsum_trace_and_permute() {
 #[test]
 fn test_einsum_two_input_matmul() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let c = einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap();
 
@@ -174,9 +192,21 @@ fn test_einsum_two_input_matmul() {
 fn test_einsum_3_tensor_chain() {
     let backend = NativeBackend::new();
     // A(2×3) · B(3×4) · C(4×2) = D(2×2)
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
-    let c = DenseTensor::from_data((1..=8).map(|x| x as f64).collect(), vec![4, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        (1..=12).map(|x| x as f64).collect(),
+        vec![3, 4],
+        MemoryOrder::RowMajor,
+    );
+    let c = DenseTensor::from_data_with_order(
+        (1..=8).map(|x| x as f64).collect(),
+        vec![4, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il").unwrap();
 
@@ -196,9 +226,21 @@ fn test_einsum_3_tensor_chain() {
 #[test]
 fn test_einsum_3_tensor_implicit_output() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
-    let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let c = DenseTensor::from_data_with_order(
+        vec![1.0, 0.0, 0.0, 1.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // Implicit output: "ij,jk,kl" → free indices i,l → "ij,jk,kl->il"
     let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl").unwrap();
@@ -213,10 +255,26 @@ fn test_einsum_3_tensor_implicit_output() {
 #[test]
 fn test_einsum_4_tensor_chain() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
-    let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
-    let d = DenseTensor::from_data(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let c = DenseTensor::from_data_with_order(
+        vec![1.0, 0.0, 0.0, 1.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let d = DenseTensor::from_data_with_order(
+        vec![2.0, 1.0, 1.0, 2.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let result = einsum(&backend, &[&a, &b, &c, &d], "ij,jk,kl,lm->im").unwrap();
 
@@ -238,9 +296,21 @@ fn test_einsum_4_tensor_chain() {
 fn test_einsum_3_tensor_trace_of_product() {
     let backend = NativeBackend::new();
     // tr(A · B · C) = "ij,jk,ki->"
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
-    let c = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let c = DenseTensor::from_data_with_order(
+        vec![1.0, 0.0, 0.0, 1.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let result = einsum(&backend, &[&a, &b, &c], "ij,jk,ki->").unwrap();
 
@@ -253,8 +323,16 @@ fn test_einsum_3_tensor_trace_of_product() {
 #[test]
 fn test_einsum_2_tensor_hadamard() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![2.0, 3.0, 4.0, 5.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let c = einsum(&backend, &[&a, &b], "ij,ij->ij").unwrap();
 
@@ -272,7 +350,11 @@ fn test_einsum_2_tensor_hadamard() {
 #[test]
 fn test_einsum_wrong_tensor_count() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // Notation expects 2 inputs but only 1 given
     let result = einsum(&backend, &[&a], "ij,jk->ik");
@@ -282,7 +364,11 @@ fn test_einsum_wrong_tensor_count() {
 #[test]
 fn test_einsum_rank_mismatch() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // 3-index notation with rank-2 tensor
     let result = einsum(&backend, &[&a], "ijk->kji");
@@ -292,7 +378,11 @@ fn test_einsum_rank_mismatch() {
 #[test]
 fn test_einsum_diagonal_extraction_unsupported() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // "ii->i" is diagonal extraction, not yet supported
     let result = einsum(&backend, &[&a], "ii->i");
@@ -304,7 +394,11 @@ fn test_einsum_diagonal_extraction_unsupported() {
 #[test]
 fn test_einsum_reduction_unsupported() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // "ij->i" is a sum over j, not supported as single-tensor einsum
     let result = einsum(&backend, &[&a], "ij->i");
@@ -320,8 +414,16 @@ fn test_einsum_reduction_unsupported() {
 #[test]
 fn test_einsum_output_reorder_matmul() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // "ij,jk->ki" should transpose the matmul result
     let normal = einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap();
@@ -338,8 +440,16 @@ fn test_einsum_output_reorder_matmul() {
 #[test]
 fn test_einsum_output_reorder_rectangular() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        (1..=12).map(|x| x as f64).collect(),
+        vec![3, 4],
+        MemoryOrder::RowMajor,
+    );
 
     let normal = einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap();
     let swapped = einsum(&backend, &[&a, &b], "ij,jk->ki").unwrap();
@@ -362,8 +472,16 @@ fn test_einsum_output_reorder_rectangular() {
 fn test_einsum_batched_matmul() {
     let backend = NativeBackend::new();
     // Batched matmul: 2 batches of 2×2 matrices
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
-    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let normal = einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap();
 
@@ -383,8 +501,16 @@ fn test_einsum_batched_matmul() {
 #[test]
 fn test_einsum_batched_output_reorder_bji() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
-    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let normal = einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap();
     let swapped = einsum(&backend, &[&a, &b], "bik,bkj->bji").unwrap();
@@ -402,8 +528,16 @@ fn test_einsum_batched_output_reorder_bji() {
 #[test]
 fn test_einsum_batched_output_reorder_jbi() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
-    let b = DenseTensor::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let normal = einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap();
     let reordered = einsum(&backend, &[&a, &b], "bik,bkj->jbi").unwrap();
@@ -422,9 +556,21 @@ fn test_einsum_batched_output_reorder_jbi() {
 fn test_einsum_multi_with_intermediate_batch() {
     let backend = NativeBackend::new();
     // "aij,ajk,ak->ai" with left-to-right generates intermediate "aij,ajk->aik" (batch on a)
-    let t1 = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![2, 2, 3]);
-    let t2 = DenseTensor::from_data((1..=18).map(|x| x as f64).collect(), vec![2, 3, 3]);
-    let t3 = DenseTensor::from_data((1..=6).map(|x| x as f64).collect(), vec![2, 3]);
+    let t1 = DenseTensor::from_data_with_order(
+        (1..=12).map(|x| x as f64).collect(),
+        vec![2, 2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let t2 = DenseTensor::from_data_with_order(
+        (1..=18).map(|x| x as f64).collect(),
+        vec![2, 3, 3],
+        MemoryOrder::RowMajor,
+    );
+    let t3 = DenseTensor::from_data_with_order(
+        (1..=6).map(|x| x as f64).collect(),
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let result = einsum(&backend, &[&t1, &t2, &t3], "aij,ajk,ak->ai").unwrap();
 
@@ -451,8 +597,16 @@ fn test_einsum_multi_with_intermediate_batch() {
 fn test_einsum_batched_scalar_reduction() {
     let backend = NativeBackend::new();
     // "bi,bi->b": dot product per batch, output should be shape [batch], not [batch, 1]
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let result = einsum(&backend, &[&a, &b], "bi,bi->b").unwrap();
 
@@ -468,13 +622,15 @@ fn test_einsum_batched_multi_contracted_different_order() {
     let backend = NativeBackend::new();
     // Contracted indices k,l appear in different order in LHS vs RHS
     // "bkli,bjlk->bij": LHS has [k,l], RHS has [l,k]
-    let a = DenseTensor::from_data(
+    let a = DenseTensor::from_data_with_order(
         (1..=24).map(|x| x as f64).collect(),
         vec![2, 2, 3, 2], // b=2, k=2, l=3, i=2
+        MemoryOrder::RowMajor,
     );
-    let b_tensor = DenseTensor::from_data(
+    let b_tensor = DenseTensor::from_data_with_order(
         (1..=24).map(|x| x as f64).collect(),
         vec![2, 2, 3, 2], // b=2, j=2, l=3, k=2
+        MemoryOrder::RowMajor,
     );
 
     let result = einsum(&backend, &[&a, &b_tensor], "bkli,bjlk->bij").unwrap();

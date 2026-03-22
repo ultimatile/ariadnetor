@@ -218,37 +218,6 @@ where
         Self::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor)
     }
 
-    /// Create a tensor from existing data in row-major order.
-    ///
-    /// # Panics
-    ///
-    /// Panics if data length doesn't match the shape.
-    pub fn from_data(data: Vec<T>, shape: Vec<usize>) -> Self {
-        let total_elements: usize = shape.iter().product();
-        assert_eq!(
-            data.len(),
-            total_elements,
-            "Data length {} doesn't match shape {:?} (expected {})",
-            data.len(),
-            shape,
-            total_elements
-        );
-
-        let mut aligned_data: AVec<T, Align64> = AVec::with_capacity(64, total_elements);
-        for elem in data {
-            aligned_data.push(elem);
-        }
-        let strides = row_major_strides(&shape);
-
-        Self {
-            data: Arc::new(aligned_data),
-            strides,
-            shape,
-            offset: 0,
-            order: MemoryOrder::RowMajor,
-        }
-    }
-
     /// Create a tensor from data with explicit strides and offset.
     ///
     /// Used by backends to produce tensors in non-row-major layouts.

@@ -1,6 +1,6 @@
 use arnet_linalg::{TruncSvdParams, lq, qr, svd, trunc_svd};
 use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 // --- SVD tests ---
 
@@ -8,7 +8,11 @@ use arnet_tensor::DenseTensor;
 fn test_svd_f64_2d() {
     let backend = NativeBackend::new();
     // A = [[1, 2], [3, 4]] shape [2, 2], nrow=1 → 2×2 matrix
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
 
@@ -39,7 +43,11 @@ fn test_svd_f64_2d() {
 fn test_svd_f64_rectangular() {
     let backend = NativeBackend::new();
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
 
@@ -68,7 +76,7 @@ fn test_svd_f64_higher_rank() {
     let backend = NativeBackend::new();
     // shape [2, 3, 4], nrow=2 → m=6, n=4, k=4
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
-    let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+    let tensor = DenseTensor::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
 
     let (u, s, vt) = svd(&backend, &tensor, 2).unwrap();
 
@@ -96,7 +104,11 @@ fn test_svd_f64_higher_rank() {
 #[test]
 fn test_svd_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f32>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (u, s, vt) = svd(&backend, &tensor, 1).unwrap();
 
@@ -121,7 +133,11 @@ fn test_svd_f32() {
 #[test]
 fn test_svd_invalid_nrow() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // nrow=0 is invalid
     assert!(svd(&backend, &tensor, 0).is_err());
@@ -135,11 +151,12 @@ fn test_svd_invalid_nrow() {
 fn test_trunc_svd_chi_max() {
     let backend = NativeBackend::new();
     // 3×4 matrix with rank > 1
-    let tensor = DenseTensor::<f64>::from_data(
+    let tensor = DenseTensor::<f64>::from_data_with_order(
         vec![
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
         ],
         vec![3, 4],
+        MemoryOrder::RowMajor,
     );
 
     let params = TruncSvdParams {
@@ -181,7 +198,11 @@ fn test_trunc_svd_chi_max() {
 #[test]
 fn test_trunc_svd_chi_max_zero_is_error() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let params = TruncSvdParams {
         chi_max: Some(0),
@@ -193,7 +214,11 @@ fn test_trunc_svd_chi_max_zero_is_error() {
 #[test]
 fn test_trunc_svd_chi_max_no_truncation() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // chi_max >= k=2 means no truncation
     let params = TruncSvdParams {
@@ -213,7 +238,7 @@ fn test_trunc_svd_target_trunc_err() {
     let backend = NativeBackend::new();
     // 4×4 matrix
     let data: Vec<f64> = (1..=16).map(|i| i as f64).collect();
-    let tensor = DenseTensor::from_data(data, vec![4, 4]);
+    let tensor = DenseTensor::from_data_with_order(data, vec![4, 4], MemoryOrder::RowMajor);
 
     // Full SVD first to know the singular values
     let (_, s_full, _, _) = trunc_svd(
@@ -246,7 +271,7 @@ fn test_trunc_svd_both_params() {
     let backend = NativeBackend::new();
     // 4×4 matrix
     let data: Vec<f64> = (1..=16).map(|i| i as f64).collect();
-    let tensor = DenseTensor::from_data(data, vec![4, 4]);
+    let tensor = DenseTensor::from_data_with_order(data, vec![4, 4], MemoryOrder::RowMajor);
 
     // Full SVD to get singular values
     let (_, s_full, _, _) = trunc_svd(
@@ -293,7 +318,11 @@ fn test_trunc_svd_both_params() {
 #[test]
 fn test_trunc_svd_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f32>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let params = TruncSvdParams {
         chi_max: Some(1),
@@ -311,11 +340,12 @@ fn test_trunc_svd_f32() {
 fn test_trunc_svd_reconstruction() {
     let backend = NativeBackend::new();
     // Verify that truncated reconstruction is a valid low-rank approximation
-    let tensor = DenseTensor::<f64>::from_data(
+    let tensor = DenseTensor::<f64>::from_data_with_order(
         vec![
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
         ],
         vec![3, 4],
+        MemoryOrder::RowMajor,
     );
 
     let params = TruncSvdParams {
@@ -353,7 +383,11 @@ fn test_trunc_svd_reconstruction() {
 #[test]
 fn test_qr_f64_2d() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (q, r) = qr(&backend, &tensor, 1).unwrap();
 
@@ -379,7 +413,11 @@ fn test_qr_f64_2d() {
 fn test_qr_f64_rectangular() {
     let backend = NativeBackend::new();
     // shape [3, 2], nrow=1 → 3×2 matrix, k=2
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![3, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (q, r) = qr(&backend, &tensor, 1).unwrap();
 
@@ -405,7 +443,11 @@ fn test_qr_f64_rectangular() {
 #[test]
 fn test_qr_f64_orthogonality() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![3, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (q, _r) = qr(&backend, &tensor, 1).unwrap();
 
@@ -431,7 +473,7 @@ fn test_qr_f64_higher_rank() {
     let backend = NativeBackend::new();
     // shape [2, 3, 4], nrow=2 → m=6, n=4, k=4
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
-    let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+    let tensor = DenseTensor::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
 
     let (q, r) = qr(&backend, &tensor, 2).unwrap();
 
@@ -458,7 +500,11 @@ fn test_qr_f64_higher_rank() {
 #[test]
 fn test_qr_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f32>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (q, r) = qr(&backend, &tensor, 1).unwrap();
 
@@ -482,7 +528,11 @@ fn test_qr_f32() {
 #[test]
 fn test_qr_invalid_nrow() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     assert!(qr(&backend, &tensor, 0).is_err());
     assert!(qr(&backend, &tensor, 2).is_err());
@@ -493,7 +543,11 @@ fn test_qr_invalid_nrow() {
 #[test]
 fn test_lq_f64_2d() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (l, q) = lq(&backend, &tensor, 1).unwrap();
 
@@ -519,7 +573,11 @@ fn test_lq_f64_2d() {
 fn test_lq_f64_rectangular() {
     let backend = NativeBackend::new();
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let (l, q) = lq(&backend, &tensor, 1).unwrap();
 
@@ -545,7 +603,11 @@ fn test_lq_f64_rectangular() {
 #[test]
 fn test_lq_f64_orthogonality() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let (_l, q) = lq(&backend, &tensor, 1).unwrap();
 
@@ -571,7 +633,7 @@ fn test_lq_f64_higher_rank() {
     let backend = NativeBackend::new();
     // shape [2, 3, 4], nrow=1 → m=2, n=12, k=2
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
-    let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+    let tensor = DenseTensor::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
 
     let (l, q) = lq(&backend, &tensor, 1).unwrap();
 
@@ -598,7 +660,11 @@ fn test_lq_f64_higher_rank() {
 #[test]
 fn test_lq_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f32>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let (l, q) = lq(&backend, &tensor, 1).unwrap();
 
@@ -622,7 +688,11 @@ fn test_lq_f32() {
 #[test]
 fn test_lq_invalid_nrow() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     assert!(lq(&backend, &tensor, 0).is_err());
     assert!(lq(&backend, &tensor, 2).is_err());

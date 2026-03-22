@@ -164,10 +164,10 @@ where
 ///
 /// ```
 /// use arnet_linalg::trace;
-/// use arnet_tensor::DenseTensor;
+/// use arnet_tensor::{DenseTensor, MemoryOrder};
 ///
 /// // Matrix trace: tr([[1,2],[3,4]]) = 1 + 4 = 5
-/// let mat = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+/// let mat = DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
 /// let result = trace(&mat, &[(0, 1)]).unwrap();
 /// assert_eq!(result.shape(), &[1]);
 /// assert_eq!(result.get(&[0]), 5.0);

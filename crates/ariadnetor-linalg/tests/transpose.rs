@@ -1,11 +1,15 @@
 use arnet_linalg::transpose;
 use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 #[test]
 fn test_transpose_f64_2d() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let result = transpose(&backend, &tensor, &[1, 0]).unwrap();
 
@@ -23,7 +27,7 @@ fn test_transpose_f64_2d() {
 fn test_transpose_f64_3d() {
     let backend = NativeBackend::new();
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
-    let tensor = DenseTensor::from_data(data, vec![2, 3, 4]);
+    let tensor = DenseTensor::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
 
     let result = transpose(&backend, &tensor, &[2, 0, 1]).unwrap();
 
@@ -38,7 +42,11 @@ fn test_transpose_f64_3d() {
 #[test]
 fn test_transpose_f32_2d() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::<f32>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let result = transpose(&backend, &tensor, &[1, 0]).unwrap();
 
@@ -61,7 +69,7 @@ fn test_transpose_complex_f64_2d() {
         Complex::new(9.0, 10.0),
         Complex::new(11.0, 12.0),
     ];
-    let tensor = DenseTensor::from_data(input, vec![2, 3]);
+    let tensor = DenseTensor::from_data_with_order(input, vec![2, 3], MemoryOrder::RowMajor);
 
     let result = transpose(&backend, &tensor, &[1, 0]).unwrap();
 
@@ -75,7 +83,8 @@ fn test_transpose_complex_f64_2d() {
 #[test]
 fn test_transpose_empty_tensor() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data(vec![], vec![0, 3]);
+    let tensor =
+        DenseTensor::<f64>::from_data_with_order(vec![], vec![0, 3], MemoryOrder::RowMajor);
 
     let result = transpose(&backend, &tensor, &[1, 0]).unwrap();
 

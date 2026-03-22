@@ -1,4 +1,4 @@
-use arnet_tensor::TensorStorage;
+use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 #[test]
 fn test_tensor_storage_zeros() {
@@ -18,9 +18,10 @@ fn test_tensor_storage_ones() {
 }
 
 #[test]
-fn test_tensor_storage_from_data() {
+fn test_tensor_storage_from_dense() {
     let data = vec![1.0, 2.0, 3.0, 4.0];
-    let tensor = TensorStorage::<f64>::from_data(data.clone(), vec![2, 2]);
+    let dense = DenseTensor::from_data_with_order(data.clone(), vec![2, 2], MemoryOrder::RowMajor);
+    let tensor = TensorStorage::Dense(dense);
     assert_eq!(tensor.shape(), &[2, 2]);
     assert_eq!(tensor.data().unwrap(), &data[..]);
 }

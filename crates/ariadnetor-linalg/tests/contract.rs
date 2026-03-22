@@ -1,13 +1,21 @@
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::contract;
 use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 #[test]
 fn test_contract_matmul() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let c = contract(&backend, &a, &b, "ik,kj->ij").unwrap();
 
@@ -23,8 +31,16 @@ fn test_contract_matmul() {
 fn test_contract_tensor_contraction() {
     let backend = NativeBackend::new();
     // C[i,l] = Σ_{j,k} A[i,j,k] × B[j,k,l]
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
-    let b = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let c = contract(&backend, &a, &b, "ijk,jkl->il").unwrap();
 
@@ -35,8 +51,16 @@ fn test_contract_tensor_contraction() {
 #[test]
 fn test_contract_f32() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0f32, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0f32, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0f32, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0f32, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let c = contract(&backend, &a, &b, "ik,kj->ij").unwrap();
 
@@ -48,8 +72,16 @@ fn test_contract_f32() {
 fn test_contract_with_permutation() {
     let backend = NativeBackend::new();
     // A[i,k,j] × B[k,j] → C[i] requires permutation of LHS
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
-    let b = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let c = contract(&backend, &a, &b, "ikj,kj->i").unwrap();
 
@@ -61,8 +93,16 @@ fn test_contract_with_permutation() {
 fn test_contract_rectangular() {
     let backend = NativeBackend::new();
     // A (2×2) × B (2×3) → C (2×3)
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0, 9.0, 10.0], vec![2, 3]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     let c = contract(&backend, &a, &b, "ik,kj->ij").unwrap();
 
@@ -72,8 +112,16 @@ fn test_contract_rectangular() {
 #[test]
 fn test_contract_invalid_notation() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::<f64>::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // Invalid: output index 'm' not in any input
     let result = contract(&backend, &a, &b, "ik,kj->im");
@@ -83,8 +131,16 @@ fn test_contract_invalid_notation() {
 #[test]
 fn test_contract_rank_mismatch() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::<f64>::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // 3-index notation with rank-2 tensor
     let result = contract(&backend, &a, &b, "ijk,kl->ijl");
@@ -98,8 +154,16 @@ fn test_contract_rank_mismatch() {
 #[test]
 fn test_contract_output_reorder_swap() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        (1..=12).map(|x| x as f64).collect(),
+        vec![3, 4],
+        MemoryOrder::RowMajor,
+    );
 
     let normal = contract(&backend, &a, &b, "ik,kj->ij").unwrap();
     let swapped = contract(&backend, &a, &b, "ik,kj->ji").unwrap();
@@ -118,8 +182,16 @@ fn test_contract_output_reorder_swap() {
 fn test_contract_output_reorder_3d() {
     let backend = NativeBackend::new();
     // A[a,b,c] (2×3×2) × B[c,d] (2×4) → reorder to [d,b,a]
-    let a = DenseTensor::from_data((1..=12).map(|x| x as f64).collect(), vec![2, 3, 2]);
-    let b = DenseTensor::from_data((1..=8).map(|x| x as f64).collect(), vec![2, 4]);
+    let a = DenseTensor::from_data_with_order(
+        (1..=12).map(|x| x as f64).collect(),
+        vec![2, 3, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        (1..=8).map(|x| x as f64).collect(),
+        vec![2, 4],
+        MemoryOrder::RowMajor,
+    );
 
     let normal = contract(&backend, &a, &b, "abc,cd->abd").unwrap();
     let reordered = contract(&backend, &a, &b, "abc,cd->dba").unwrap();
@@ -142,10 +214,16 @@ fn test_contract_output_reorder_3d() {
 #[test]
 fn test_contract_rejects_batch_indices() {
     let backend = NativeBackend::new();
-    let a =
-        DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
-    let b =
-        DenseTensor::<f64>::from_data(vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0], vec![2, 2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0],
+        vec![2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // Batch index 'b' appears in both inputs and output — contract() should reject
     let result = contract(&backend, &a, &b, "bik,bkj->bij");
@@ -155,8 +233,16 @@ fn test_contract_rejects_batch_indices() {
 #[test]
 fn test_contract_output_memory_order() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     // No reorder case
     let c = contract(&backend, &a, &b, "ik,kj->ij").unwrap();

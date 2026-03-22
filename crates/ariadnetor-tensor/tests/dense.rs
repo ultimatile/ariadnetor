@@ -1,4 +1,4 @@
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, MemoryOrder};
 use num_complex::Complex;
 
 #[test]
@@ -11,7 +11,8 @@ fn test_tensor_creation() {
 #[test]
 fn test_tensor_from_data() {
     let data = vec![1.0, 2.0, 3.0, 4.0];
-    let tensor = DenseTensor::<f64>::from_data(data.clone(), vec![2, 2]);
+    let tensor =
+        DenseTensor::<f64>::from_data_with_order(data.clone(), vec![2, 2], MemoryOrder::RowMajor);
     assert_eq!(tensor.shape(), &[2, 2]);
     assert_eq!(tensor.data(), &data[..]);
 }
@@ -42,7 +43,11 @@ fn test_ones() {
 
 #[test]
 fn test_copy_on_write() {
-    let tensor1 = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor1 = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let mut tensor2 = tensor1.clone(); // Share data
 
     // Modification triggers CoW
@@ -145,7 +150,11 @@ fn test_eye_1x1() {
 
 #[test]
 fn test_reshape_2x3_to_3x2() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let r = t.reshape(vec![3, 2]);
     assert_eq!(r.shape(), &[3, 2]);
     assert_eq!(r.data(), t.data());
@@ -153,7 +162,11 @@ fn test_reshape_2x3_to_3x2() {
 
 #[test]
 fn test_reshape_chain() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let r1 = t.reshape(vec![6]);
     assert_eq!(r1.shape(), &[6]);
     let r2 = r1.reshape(vec![1, 6]);
@@ -163,7 +176,11 @@ fn test_reshape_chain() {
 
 #[test]
 fn test_reshape_preserves_cow() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let r = t.reshape(vec![4]);
     // Both share the same underlying Arc — modifying one triggers CoW
     assert_eq!(t.as_ptr(), r.as_ptr());
@@ -172,22 +189,31 @@ fn test_reshape_preserves_cow() {
 #[test]
 #[should_panic(expected = "total elements must match")]
 fn test_reshape_mismatch_panics() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let _r = t.reshape(vec![2, 2]);
 }
 
 #[test]
 fn test_conj_real() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, -2.0, 3.0, -4.0], vec![2, 2]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, -2.0, 3.0, -4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let c = t.conj();
     assert_eq!(c.data(), t.data());
 }
 
 #[test]
 fn test_conj_complex() {
-    let t = DenseTensor::from_data(
+    let t = DenseTensor::from_data_with_order(
         vec![Complex::new(1.0, 2.0), Complex::new(3.0, -4.0)],
         vec![2],
+        MemoryOrder::RowMajor,
     );
     let c = t.conj();
     assert_eq!(c.get(&[0]), Complex::new(1.0, -2.0));
@@ -196,7 +222,8 @@ fn test_conj_complex() {
 
 #[test]
 fn test_to_complex_from_real() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let t =
+        DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
     let c = t.to_complex();
     assert_eq!(c.shape(), &[2]);
     assert_eq!(c.get(&[0]), Complex::new(1.0, 0.0));
@@ -205,9 +232,10 @@ fn test_to_complex_from_real() {
 
 #[test]
 fn test_to_complex_from_complex() {
-    let t = DenseTensor::from_data(
+    let t = DenseTensor::from_data_with_order(
         vec![Complex::new(1.0, 2.0), Complex::new(3.0, 4.0)],
         vec![2],
+        MemoryOrder::RowMajor,
     );
     let c = t.to_complex();
     assert_eq!(c.data(), t.data());
@@ -215,9 +243,10 @@ fn test_to_complex_from_complex() {
 
 #[test]
 fn test_real_complex() {
-    let t = DenseTensor::from_data(
+    let t = DenseTensor::from_data_with_order(
         vec![Complex::new(1.0, 2.0), Complex::new(3.0, -4.0)],
         vec![2],
+        MemoryOrder::RowMajor,
     );
     let r = t.real();
     assert_eq!(r.shape(), &[2]);
@@ -227,9 +256,10 @@ fn test_real_complex() {
 
 #[test]
 fn test_imag_complex() {
-    let t = DenseTensor::from_data(
+    let t = DenseTensor::from_data_with_order(
         vec![Complex::new(1.0, 2.0), Complex::new(3.0, -4.0)],
         vec![2],
+        MemoryOrder::RowMajor,
     );
     let im = t.imag();
     assert_eq!(im.shape(), &[2]);
@@ -239,7 +269,8 @@ fn test_imag_complex() {
 
 #[test]
 fn test_real_imag_real_type() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let t =
+        DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
     let r = t.real();
     assert_eq!(r.data(), t.data());
     let im = t.imag();
@@ -249,7 +280,11 @@ fn test_real_imag_real_type() {
 
 #[test]
 fn test_map_double() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let r = t.map(|&x| x * 2.0);
     assert_eq!(r.shape(), &[2, 2]);
     assert_eq!(r.data(), &[2.0, 4.0, 6.0, 8.0]);
@@ -257,7 +292,8 @@ fn test_map_double() {
 
 #[test]
 fn test_map_type_conversion() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let t =
+        DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
     let c = t.map(|&x| Complex::new(x, 0.0));
     assert_eq!(c.shape(), &[2]);
     assert_eq!(c.get(&[0]), Complex::new(1.0, 0.0));
@@ -266,14 +302,19 @@ fn test_map_type_conversion() {
 
 #[test]
 fn test_map_mut_negate() {
-    let mut t = DenseTensor::<f64>::from_data(vec![1.0, -2.0, 3.0], vec![3]);
+    let mut t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, -2.0, 3.0],
+        vec![3],
+        MemoryOrder::RowMajor,
+    );
     t.map_mut(|&x| -x);
     assert_eq!(t.data(), &[-1.0, 2.0, -3.0]);
 }
 
 #[test]
 fn test_map_mut_cow() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let t =
+        DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
     let mut t2 = t.clone(); // shares Arc
     assert_eq!(t.as_ptr(), t2.as_ptr()); // same underlying data
     t2.map_mut(|&x| x * 10.0);
@@ -284,7 +325,8 @@ fn test_map_mut_cow() {
 
 #[test]
 fn test_map_with_index_sum_of_indices() {
-    let t = DenseTensor::<f64>::from_data(vec![0.0; 6], vec![2, 3]);
+    let t =
+        DenseTensor::<f64>::from_data_with_order(vec![0.0; 6], vec![2, 3], MemoryOrder::RowMajor);
     let r = t.map_with_index(|coords, _| (coords[0] + coords[1]) as f64);
     assert_eq!(r.shape(), &[2, 3]);
     // [0+0, 0+1, 0+2, 1+0, 1+1, 1+2] = [0, 1, 2, 1, 2, 3]
@@ -296,9 +338,10 @@ fn test_map_with_index_sum_of_indices() {
 #[test]
 fn test_slice_2x2_from_3x3() {
     // [[1,2,3],[4,5,6],[7,8,9]] → slice rows 0..2, cols 1..3 → [[2,3],[5,6]]
-    let t = DenseTensor::<f64>::from_data(
+    let t = DenseTensor::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
         vec![3, 3],
+        MemoryOrder::RowMajor,
     );
     let s = t.slice(&[(0, 2), (1, 3)]);
     assert_eq!(s.shape(), &[2, 2]);
@@ -307,7 +350,11 @@ fn test_slice_2x2_from_3x3() {
 
 #[test]
 fn test_slice_row() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     // Extract second row
     let s = t.slice(&[(1, 2), (0, 3)]);
     assert_eq!(s.shape(), &[1, 3]);
@@ -317,7 +364,7 @@ fn test_slice_row() {
 #[test]
 fn test_slice_3d() {
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
-    let t = DenseTensor::from_data(data, vec![2, 3, 4]);
+    let t = DenseTensor::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
     let s = t.slice(&[(0, 1), (1, 3), (2, 4)]);
     assert_eq!(s.shape(), &[1, 2, 2]);
     // Elements: t[0,1,2]=6, t[0,1,3]=7, t[0,2,2]=10, t[0,2,3]=11
@@ -327,14 +374,22 @@ fn test_slice_3d() {
 #[test]
 #[should_panic(expected = "out of bounds")]
 fn test_slice_out_of_bounds() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let _s = t.slice(&[(0, 3), (0, 2)]);
 }
 
 #[test]
 fn test_expand_symmetric() {
     // [[1,2],[3,4]] with padding (1,1) on each axis → 4×4
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let e = t.expand(&[(1, 1), (1, 1)]);
     assert_eq!(e.shape(), &[4, 4]);
     // Row 0: all zeros
@@ -354,7 +409,8 @@ fn test_expand_symmetric() {
 
 #[test]
 fn test_expand_asymmetric() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let t =
+        DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
     let e = t.expand(&[(2, 1)]);
     assert_eq!(e.shape(), &[5]);
     assert_eq!(e.data(), &[0.0, 0.0, 1.0, 2.0, 0.0]);
@@ -363,8 +419,13 @@ fn test_expand_asymmetric() {
 #[test]
 fn test_replace_slice_center() {
     // 3×3 zeros, write [[5,6],[7,8]] at position (0,1)
-    let mut t = DenseTensor::<f64>::from_data(vec![0.0; 9], vec![3, 3]);
-    let sub = DenseTensor::<f64>::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let mut t =
+        DenseTensor::<f64>::from_data_with_order(vec![0.0; 9], vec![3, 3], MemoryOrder::RowMajor);
+    let sub = DenseTensor::<f64>::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     t.replace_slice(&sub, &[0, 1]);
     assert_eq!(t.get(&[0, 1]), 5.0);
     assert_eq!(t.get(&[0, 2]), 6.0);
@@ -378,14 +439,23 @@ fn test_replace_slice_center() {
 #[test]
 #[should_panic(expected = "exceeds boundary")]
 fn test_replace_slice_out_of_bounds() {
-    let mut t = DenseTensor::<f64>::from_data(vec![0.0; 4], vec![2, 2]);
-    let sub = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let mut t =
+        DenseTensor::<f64>::from_data_with_order(vec![0.0; 4], vec![2, 2], MemoryOrder::RowMajor);
+    let sub = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     t.replace_slice(&sub, &[1, 1]); // 1+2 > 2
 }
 
 #[test]
 fn test_slice_expand_round_trip() {
-    let t = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let expanded = t.expand(&[(1, 1), (1, 1)]); // 4×4
     let recovered = expanded.slice(&[(1, 3), (1, 3)]); // back to 2×2
     assert_eq!(recovered.data(), t.data());
@@ -395,8 +465,16 @@ fn test_slice_expand_round_trip() {
 
 #[test]
 fn test_concatenate_axis0() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = DenseTensor::<f64>::from_data(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![2, 3]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let c = DenseTensor::concatenate(&[&a, &b], 0);
     assert_eq!(c.shape(), &[4, 3]);
     assert_eq!(
@@ -409,8 +487,16 @@ fn test_concatenate_axis0() {
 
 #[test]
 fn test_concatenate_axis1() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::<f64>::from_data(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let c = DenseTensor::concatenate(&[&a, &b], 1);
     assert_eq!(c.shape(), &[2, 4]);
     assert_eq!(c.data(), &[1.0, 2.0, 5.0, 6.0, 3.0, 4.0, 7.0, 8.0]);
@@ -418,7 +504,11 @@ fn test_concatenate_axis1() {
 
 #[test]
 fn test_concatenate_single() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0], vec![3]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0],
+        vec![3],
+        MemoryOrder::RowMajor,
+    );
     let c = DenseTensor::concatenate(&[&a], 0);
     assert_eq!(c.data(), a.data());
 }
@@ -426,15 +516,31 @@ fn test_concatenate_single() {
 #[test]
 #[should_panic(expected = "concatenate")]
 fn test_concatenate_shape_mismatch() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-    let b = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let _c = DenseTensor::concatenate(&[&a, &b], 0);
 }
 
 #[test]
 fn test_stack_axis0() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = DenseTensor::<f64>::from_data(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![2, 3]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let s = DenseTensor::stack(&[&a, &b], 0);
     assert_eq!(s.shape(), &[2, 2, 3]);
     assert_eq!(
@@ -447,8 +553,16 @@ fn test_stack_axis0() {
 
 #[test]
 fn test_stack_axis2() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = DenseTensor::<f64>::from_data(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![2, 3]);
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let s = DenseTensor::stack(&[&a, &b], 2);
     assert_eq!(s.shape(), &[2, 3, 2]);
     // [0,0,:] = [1,7], [0,1,:] = [2,8], [0,2,:] = [3,9]
@@ -463,7 +577,8 @@ fn test_stack_axis2() {
 
 #[test]
 fn test_stack_single() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
+    let a =
+        DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
     let s = DenseTensor::stack(&[&a], 0);
     assert_eq!(s.shape(), &[1, 2]);
     assert_eq!(s.data(), &[1.0, 2.0]);
@@ -472,8 +587,13 @@ fn test_stack_single() {
 #[test]
 #[should_panic(expected = "stack")]
 fn test_stack_shape_mismatch() {
-    let a = DenseTensor::<f64>::from_data(vec![1.0, 2.0], vec![2]);
-    let b = DenseTensor::<f64>::from_data(vec![1.0, 2.0, 3.0], vec![3]);
+    let a =
+        DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0],
+        vec![3],
+        MemoryOrder::RowMajor,
+    );
     let _s = DenseTensor::stack(&[&a, &b], 0);
 }
 

@@ -32,7 +32,11 @@ fn test_row_major_strides_scalar() {
 
 #[test]
 fn test_from_data_is_row_major() {
-    let t = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let t = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     assert!(t.is_row_major());
     assert!(t.is_contiguous());
     assert!(!t.is_column_major());
@@ -119,7 +123,11 @@ fn test_get_with_offset() {
 
 #[test]
 fn test_to_contiguous_row_major_noop() {
-    let t = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let c = t.to_contiguous(MemoryOrder::RowMajor);
     assert!(c.is_row_major());
     assert_eq!(c.data(), t.data());
@@ -143,7 +151,11 @@ fn test_to_contiguous_col_to_row() {
 
 #[test]
 fn test_to_contiguous_row_to_col() {
-    let t = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let c = t.to_contiguous(MemoryOrder::ColumnMajor);
     assert!(c.is_column_major());
     assert_eq!(c.get(&[0, 0]), 1.0);
@@ -160,7 +172,11 @@ fn test_to_contiguous_row_to_col() {
 
 #[test]
 fn test_reshape_view_contiguous() {
-    let t = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let t = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let r = t.reshape_view(vec![3, 2]);
     assert!(r.is_some());
     let r = r.unwrap();
@@ -241,7 +257,11 @@ fn test_column_major_reshape_roundtrip() {
 
 #[test]
 fn test_reshape_preserves_data_order() {
-    let t = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let t = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
     let r = t.reshape(vec![3, 2]);
     assert_eq!(r.data(), &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
 }
@@ -328,9 +348,10 @@ fn test_from_data_with_strides_empty_tensor_bad_offset() {
 
 #[test]
 fn test_slice_with_strides() {
-    let t = DenseTensor::from_data(
+    let t = DenseTensor::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
         vec![3, 3],
+        MemoryOrder::RowMajor,
     );
     let s = t.slice(&[(0, 2), (1, 3)]);
     assert_eq!(s.shape(), &[2, 2]);

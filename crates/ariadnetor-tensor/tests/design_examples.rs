@@ -2,7 +2,7 @@
 //!
 //! Validates that usage examples from two_layer_tensor_architecture.md actually work.
 
-use arnet_tensor::{DenseTensor, TensorStorage};
+use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 #[test]
 fn test_design_doc_example_dense_tensor() {
@@ -34,7 +34,11 @@ fn test_design_doc_arc_cow() {
 #[test]
 fn test_design_doc_dense_storage() {
     // DenseTensor basic usage
-    let tensor = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     assert_eq!(tensor.shape(), &[2, 3]);
     assert_eq!(tensor.get(&[0, 0]), 1.0);
@@ -51,7 +55,11 @@ fn test_design_doc_row_major_layout() {
     // [[a, b, c],
     //  [d, e, f]]
     // → [a, b, c, d, e, f]
-    let tensor = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let tensor = DenseTensor::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
 
     // Verify row-major ordering
     let data = tensor.data();
