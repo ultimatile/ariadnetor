@@ -1,6 +1,6 @@
 //! Transpose dispatch: HPTT for supported types, naive fallback otherwise
 
-use arnet_core::backend::{BackendError, TransposeDescriptor};
+use arnet_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 
 /// Dispatch transpose to the best available implementation.
@@ -37,6 +37,18 @@ pub(crate) fn dispatch<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<()
 }
 
 // ---------------------------------------------------------------------------
+// MemoryOrder conversion
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "hptt")]
+fn to_hptt_order(order: MemoryOrder) -> hptt::MemoryOrder {
+    match order {
+        MemoryOrder::RowMajor => hptt::MemoryOrder::RowMajor,
+        MemoryOrder::ColumnMajor => hptt::MemoryOrder::ColumnMajor,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Generic → concrete type reinterpretation
 // ---------------------------------------------------------------------------
 
@@ -54,6 +66,7 @@ unsafe fn reinterpret_transpose_desc<'a, T, U>(
         output,
         shape,
         perm,
+        order,
     } = desc;
     unsafe {
         TransposeDescriptor {
@@ -61,6 +74,7 @@ unsafe fn reinterpret_transpose_desc<'a, T, U>(
             output: std::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut U, output.len()),
             shape,
             perm,
+            order,
         }
     }
 }
@@ -79,7 +93,7 @@ fn hptt_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
         0.0,
         desc.output,
         1,
-        hptt::MemoryOrder::RowMajor,
+        to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f64: {e}")))?;
     Ok(())
@@ -95,7 +109,7 @@ fn hptt_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
         0.0,
         desc.output,
         1,
-        hptt::MemoryOrder::RowMajor,
+        to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f32: {e}")))?;
     Ok(())
@@ -114,7 +128,7 @@ fn hptt_c64(desc: TransposeDescriptor<'_, num_complex::Complex<f64>>) -> Result<
         desc.output,
         1,
         false,
-        hptt::MemoryOrder::RowMajor,
+        to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c64: {e}")))?;
     Ok(())
@@ -133,7 +147,7 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
         desc.output,
         1,
         false,
-        hptt::MemoryOrder::RowMajor,
+        to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c32: {e}")))?;
     Ok(())
@@ -153,6 +167,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
         output,
         shape,
         perm,
+        order,
     } = desc;
 
     let rank = shape.len();
@@ -162,12 +177,12 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
         return Ok(());
     }
 
-    let old_strides = compute_strides(shape);
+    let old_strides = compute_strides(shape, order);
     let new_shape: Vec<usize> = perm.iter().map(|&i| shape[i]).collect();
-    let new_strides = compute_strides(&new_shape);
+    let new_strides = compute_strides(&new_shape, order);
 
     for (old_idx, &val) in input.iter().enumerate() {
-        let old_coords = linear_to_coords(old_idx, &old_strides, rank);
+        let old_coords = linear_to_coords(old_idx, &old_strides, rank, order);
         let mut new_idx = 0;
         for (axis, &p) in perm.iter().enumerate() {
             new_idx += old_coords[p] * new_strides[axis];
@@ -178,21 +193,48 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
     Ok(())
 }
 
-/// Row-major strides for a given shape.
-fn compute_strides(shape: &[usize]) -> Vec<usize> {
+/// Compute strides for a given shape and memory order.
+fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
     let mut strides = vec![1; shape.len()];
-    for i in (0..shape.len().saturating_sub(1)).rev() {
-        strides[i] = strides[i + 1] * shape[i + 1];
+    match order {
+        MemoryOrder::RowMajor => {
+            for i in (0..shape.len().saturating_sub(1)).rev() {
+                strides[i] = strides[i + 1] * shape[i + 1];
+            }
+        }
+        MemoryOrder::ColumnMajor => {
+            for i in 1..shape.len() {
+                strides[i] = strides[i - 1] * shape[i - 1];
+            }
+        }
     }
     strides
 }
 
-/// Convert a flat index to multi-dimensional coordinates (row-major).
-fn linear_to_coords(mut idx: usize, strides: &[usize], rank: usize) -> Vec<usize> {
+/// Convert a flat index to multi-dimensional coordinates.
+///
+/// Processes dimensions from largest stride to smallest:
+/// row-major iterates forward, column-major iterates backward.
+fn linear_to_coords(
+    mut idx: usize,
+    strides: &[usize],
+    rank: usize,
+    order: MemoryOrder,
+) -> Vec<usize> {
     let mut coords = vec![0; rank];
-    for i in 0..rank {
-        coords[i] = idx / strides[i];
-        idx %= strides[i];
+    match order {
+        MemoryOrder::RowMajor => {
+            for i in 0..rank {
+                coords[i] = idx / strides[i];
+                idx %= strides[i];
+            }
+        }
+        MemoryOrder::ColumnMajor => {
+            for i in (0..rank).rev() {
+                coords[i] = idx / strides[i];
+                idx %= strides[i];
+            }
+        }
     }
     coords
 }

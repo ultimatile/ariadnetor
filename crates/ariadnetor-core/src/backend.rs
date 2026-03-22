@@ -44,6 +44,7 @@ pub struct TransposeDescriptor<'a, T> {
     pub output: &'a mut [T],
     pub shape: &'a [usize],
     pub perm: &'a [usize],
+    pub order: MemoryOrder,
 }
 
 /// Thin SVD operation descriptor: A = U * diag(S) * Vt

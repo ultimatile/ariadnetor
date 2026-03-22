@@ -18,27 +18,26 @@ pub fn transpose<T: Scalar>(
     tensor: &DenseTensor<T>,
     perm: &[usize],
 ) -> Result<DenseTensor<T>, BackendError> {
+    let order = backend.preferred_order();
     let new_shape: Vec<usize> = perm.iter().map(|&i| tensor.shape()[i]).collect();
     let total = tensor.len();
 
     if total == 0 {
-        let empty = DenseTensor::from_data_with_order(vec![], new_shape, MemoryOrder::RowMajor);
-        return Ok(empty.to_contiguous(backend.preferred_order()));
+        return Ok(DenseTensor::from_data_with_order(vec![], new_shape, order));
     }
 
-    // Ensure row-major contiguous input for the transpose backend
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let contiguous = tensor.to_contiguous(order);
     let mut output = vec![T::zero(); total];
 
     let desc = TransposeDescriptor {
-        input: rm.data(),
+        input: contiguous.data(),
         output: &mut output,
         shape: tensor.shape(),
         perm,
+        order,
     };
 
     backend.transpose(desc)?;
 
-    let result = DenseTensor::from_data_with_order(output, new_shape, MemoryOrder::RowMajor);
-    Ok(result.to_contiguous(backend.preferred_order()))
+    Ok(DenseTensor::from_data_with_order(output, new_shape, order))
 }
