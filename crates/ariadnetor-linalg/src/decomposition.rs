@@ -2,7 +2,7 @@ use arnet_core::backend::{
     BackendError, ComputeBackend, LqDescriptor, QrDescriptor, SvdDescriptor,
 };
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{DenseTensor, MemoryOrder, column_major_strides};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, MemoryOrder};
 use num_traits::{Float, ToPrimitive, Zero};
 
 /// Result of a thin SVD decomposition: `(U, S, Vt)`.
@@ -60,21 +60,6 @@ fn reshape_for_backend<T: Scalar>(
     let mat_2d = DenseTensor::from_data(rm.data().to_vec(), vec![m, n]);
     // Convert to backend's preferred order
     mat_2d.to_contiguous(order)
-}
-
-/// Construct a DenseTensor in the specified memory order.
-pub(crate) fn make_tensor<T: Clone>(
-    data: Vec<T>,
-    shape: Vec<usize>,
-    order: MemoryOrder,
-) -> DenseTensor<T> {
-    match order {
-        MemoryOrder::RowMajor => DenseTensor::from_data(data, shape),
-        MemoryOrder::ColumnMajor => {
-            let strides = column_major_strides(&shape);
-            DenseTensor::from_data_with_strides(data, shape, strides, 0, order)
-        }
-    }
 }
 
 /// Compute thin SVD of a tensor reshaped as a matrix.
@@ -136,9 +121,9 @@ pub fn svd<T: Scalar>(
 
     backend.svd(desc)?;
 
-    let u_tensor = make_tensor(u_data, vec![m, k], order);
+    let u_tensor = backend.make_tensor(u_data, vec![m, k]);
     let s_tensor = DenseTensor::from_data(s_data, vec![k]);
-    let vt_tensor = make_tensor(vt_data, vec![k, n], order);
+    let vt_tensor = backend.make_tensor(vt_data, vec![k, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor))
 }
@@ -263,9 +248,9 @@ pub fn trunc_svd<T: Scalar>(
         }
     };
 
-    let u_tensor = make_tensor(u_trunc, vec![m, chi], order);
+    let u_tensor = backend.make_tensor(u_trunc, vec![m, chi]);
     let s_tensor = DenseTensor::from_data(s_trunc, vec![chi]);
-    let vt_tensor = make_tensor(vt_trunc, vec![chi, n], order);
+    let vt_tensor = backend.make_tensor(vt_trunc, vec![chi, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor, trunc_err))
 }
@@ -336,8 +321,8 @@ pub fn qr<T: Scalar>(
 
     backend.qr(desc)?;
 
-    let q_tensor = make_tensor(q_data, vec![m, k], order);
-    let r_tensor = make_tensor(r_data, vec![k, n], order);
+    let q_tensor = backend.make_tensor(q_data, vec![m, k]);
+    let r_tensor = backend.make_tensor(r_data, vec![k, n]);
 
     Ok((q_tensor, r_tensor))
 }
@@ -396,8 +381,8 @@ pub fn lq<T: Scalar>(
 
     backend.lq(desc)?;
 
-    let l_tensor = make_tensor(l_data, vec![m, k], order);
-    let q_tensor = make_tensor(q_data, vec![k, n], order);
+    let l_tensor = backend.make_tensor(l_data, vec![m, k]);
+    let q_tensor = backend.make_tensor(q_data, vec![k, n]);
 
     Ok((l_tensor, q_tensor))
 }

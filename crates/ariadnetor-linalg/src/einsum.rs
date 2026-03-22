@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use arnet_core::backend::{BackendError, ComputeBackend};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, MemoryOrder};
 
 use crate::contract::contract;
 use crate::scalar_ops::trace;
@@ -161,7 +161,7 @@ fn hadamard<T: Scalar>(
         .iter()
         .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
         .collect();
-    let result = crate::decomposition::make_tensor(c_data, output_shape, order);
+    let result = backend.make_tensor(c_data, output_shape);
 
     // Reorder to requested output index order
     reorder_batched_output(backend, result, &plan.batch, &[], &[], expr.out_indices())

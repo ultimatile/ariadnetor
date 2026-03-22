@@ -2,10 +2,8 @@ use arnet_core::backend::{
     BackendError, ComputeBackend, EigDescriptor, EighDescriptor, MemoryOrder,
 };
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
 use num_traits::Zero;
-
-use crate::decomposition::make_tensor;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
@@ -76,7 +74,7 @@ pub fn eigh<T: Scalar>(
     backend.eigh(desc)?;
 
     let w_tensor = DenseTensor::from_data(w_data, vec![n]);
-    let v_tensor = make_tensor(v_data, vec![n, n], order);
+    let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))
 }
@@ -179,7 +177,7 @@ pub fn eig<T: Scalar>(
     backend.eig(desc)?;
 
     let w_tensor = DenseTensor::from_data(w_data, vec![n]);
-    let v_tensor = make_tensor(v_data, vec![n, n], order);
+    let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))
 }

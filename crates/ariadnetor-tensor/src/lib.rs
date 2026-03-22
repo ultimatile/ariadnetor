@@ -14,12 +14,26 @@ pub mod tensor_storage;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{
-    Complex, ContractionError, ContractionPlan, EinsumExpr, FloatCompute, Scalar,
+    Complex, ComputeBackend, ContractionError, ContractionPlan, EinsumExpr, FloatCompute, Scalar,
     compute_permutation, contraction_error, einsum, scalar,
 };
 
 pub use dense::{DenseTensor, MemoryOrder, column_major_strides, row_major_strides};
 pub use tensor_storage::TensorStorage;
+
+/// Extension trait for backend-aware tensor construction.
+///
+/// Provides `make_tensor` on any `ComputeBackend`, hiding `MemoryOrder`
+/// from callers and allowing future backend properties to influence
+/// tensor construction without changing call sites.
+pub trait ComputeBackendTensorExt: ComputeBackend {
+    /// Construct a `DenseTensor` in this backend's preferred memory order.
+    fn make_tensor<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
+        DenseTensor::from_data_with_order(data, shape, self.preferred_order())
+    }
+}
+
+impl<B: ComputeBackend> ComputeBackendTensorExt for B {}
 
 // Convenient type aliases for common numeric types
 pub type DenseTensor64 = DenseTensor<f64>;

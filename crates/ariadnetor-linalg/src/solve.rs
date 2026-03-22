@@ -1,8 +1,6 @@
 use arnet_core::backend::{BackendError, ComputeBackend, MemoryOrder, SolveDescriptor};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
-
-use crate::decomposition::make_tensor;
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
 
 /// Solve the linear system AX = B via LU decomposition.
 ///
@@ -85,7 +83,7 @@ pub fn solve<T: Scalar>(
     // x_data is a column-major n×nrhs 2D buffer.
     // Convert to row-major 2D first, then reshape to b's original shape
     // to preserve standard unflatten semantics for higher-rank RHS.
-    let x_2d = make_tensor(x_data, vec![n, nrhs], order);
+    let x_2d = backend.make_tensor(x_data, vec![n, nrhs]);
     let x_rm = x_2d.to_contiguous(MemoryOrder::RowMajor);
     Ok(DenseTensor::from_data(
         x_rm.data().to_vec(),

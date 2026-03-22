@@ -1,9 +1,8 @@
 use arnet_core::backend::{BackendError, ComputeBackend, GemmDescriptor, MemoryOrder};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
 
-use crate::decomposition::make_tensor;
 use crate::transpose::transpose;
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
@@ -129,10 +128,10 @@ pub fn contract<T: Scalar>(
     // via RowMajor 2D intermediate (correct axis split semantics).
     let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
     let result = if output_shape.len() <= 2 {
-        make_tensor(c_data, output_shape, order)
+        backend.make_tensor(c_data, output_shape)
     } else {
         // 2D preferred_order → RowMajor 2D → reshape to multi-dim → preferred_order
-        let result_2d = make_tensor(c_data, vec![m, n], order);
+        let result_2d = backend.make_tensor(c_data, vec![m, n]);
         let result_rm = result_2d.to_contiguous(MemoryOrder::RowMajor);
         DenseTensor::from_data(result_rm.data().to_vec(), output_shape).to_contiguous(order)
     };

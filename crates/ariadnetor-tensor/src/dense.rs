@@ -312,6 +312,24 @@ where
         }
     }
 
+    /// Create a tensor from existing data with the specified memory order.
+    ///
+    /// Automatically computes strides based on the memory order.
+    /// For row-major, this is equivalent to [`from_data`](Self::from_data).
+    ///
+    /// # Panics
+    ///
+    /// Panics if data length doesn't match the shape.
+    pub fn from_data_with_order(data: Vec<T>, shape: Vec<usize>, order: MemoryOrder) -> Self {
+        match order {
+            MemoryOrder::RowMajor => Self::from_data(data, shape),
+            MemoryOrder::ColumnMajor => {
+                let strides = column_major_strides(&shape);
+                Self::from_data_with_strides(data, shape, strides, 0, order)
+            }
+        }
+    }
+
     /// Create a tensor filled with random values from the standard distribution.
     #[cfg(feature = "random")]
     pub fn random<R: rand::Rng>(shape: Vec<usize>, rng: &mut R) -> Self
