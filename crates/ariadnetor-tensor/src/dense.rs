@@ -438,11 +438,12 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the tensor is not row-major contiguous.
+    /// Panics if the tensor is not contiguous.
     pub fn fill(&mut self, value: T) {
         assert!(
-            self.is_row_major(),
-            "fill() requires row-major contiguous tensor"
+            self.is_contiguous(),
+            "fill() requires contiguous tensor; \
+             call to_contiguous() first"
         );
         let len = self.len();
         let offset = self.offset;
@@ -593,56 +594,42 @@ where
     // Element-wise operations
     // ========================================================================
 
-    /// Apply a function to each element, producing a new row-major tensor.
+    /// Apply a function to each element, preserving the tensor's memory order.
     ///
-    /// Iterates in logical (row-major) order regardless of this tensor's layout.
+    /// Iterates over contiguous data directly for efficiency.
     pub fn map<U, F>(&self, f: F) -> DenseTensor<U>
     where
         F: Fn(&T) -> U,
         U: Clone + 'static,
     {
-        let shape = self.shape();
-        let rank = shape.len();
-        let total = self.len();
-        let mut coords = vec![0usize; rank];
-        let mut result = Vec::with_capacity(total);
-
-        for _ in 0..total {
-            let val = self.get(&coords);
-            result.push(f(&val));
-
-            for d in (0..rank).rev() {
-                coords[d] += 1;
-                if coords[d] < shape[d] {
-                    break;
-                }
-                coords[d] = 0;
-            }
-        }
-
-        DenseTensor::from_data(result, shape.to_vec())
+        let order = self.memory_order();
+        let contiguous = self.to_contiguous(order);
+        let result: Vec<U> = contiguous.data_contiguous().iter().map(f).collect();
+        DenseTensor::from_data_with_order(result, self.shape().to_vec(), order)
     }
 
     /// Apply a function to each element in place (triggers CoW if shared).
     ///
     /// # Panics
     ///
-    /// Panics if the tensor is not row-major contiguous.
+    /// Panics if the tensor is not contiguous.
     pub fn map_mut<F>(&mut self, f: F)
     where
         F: Fn(&T) -> T,
     {
         assert!(
-            self.is_row_major(),
-            "map_mut() requires row-major contiguous tensor"
+            self.is_contiguous(),
+            "map_mut() requires contiguous tensor; \
+             call to_contiguous() first"
         );
-        let data = self.data_mut();
+        let data = self.data_contiguous_mut();
         for x in data.iter_mut() {
             *x = f(x);
         }
     }
 
-    /// Apply a function with multi-dimensional coordinates to each element.
+    /// Apply a function with multi-dimensional coordinates to each element,
+    /// preserving the tensor's memory order.
     pub fn map_with_index<U, F>(&self, f: F) -> DenseTensor<U>
     where
         F: Fn(&[usize], &T) -> U,
@@ -651,15 +638,20 @@ where
         let shape = self.shape();
         let rank = shape.len();
         let total = self.len();
+        let order = self.memory_order();
         let mut coords = vec![0usize; rank];
         let mut result = Vec::with_capacity(total);
+
+        let axis_order: Vec<usize> = match order {
+            MemoryOrder::RowMajor => (0..rank).collect(),
+            MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+        };
 
         for _ in 0..total {
             let val = self.get(&coords);
             result.push(f(&coords, &val));
 
-            // Increment in row-major order
-            for d in (0..rank).rev() {
+            for &d in axis_order.iter().rev() {
                 coords[d] += 1;
                 if coords[d] < shape[d] {
                     break;
@@ -668,7 +660,7 @@ where
             }
         }
 
-        DenseTensor::from_data(result, shape.to_vec())
+        DenseTensor::from_data_with_order(result, shape.to_vec(), order)
     }
 
     // ========================================================================

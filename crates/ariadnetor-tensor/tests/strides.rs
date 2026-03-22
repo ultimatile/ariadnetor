@@ -256,8 +256,14 @@ fn test_map_preserves_logical_order_for_column_major() {
         MemoryOrder::ColumnMajor,
     );
     let mapped = t.map(|x| *x);
-    assert!(mapped.is_row_major());
-    assert_eq!(mapped.data(), &[1.0, 2.0, 3.0, 4.0]);
+    // map preserves memory order: ColumnMajor input → ColumnMajor output
+    assert!(mapped.is_column_major());
+    assert_eq!(mapped.memory_order(), MemoryOrder::ColumnMajor);
+    // Logical values are preserved
+    assert_eq!(mapped.get(&[0, 0]), 1.0);
+    assert_eq!(mapped.get(&[0, 1]), 2.0);
+    assert_eq!(mapped.get(&[1, 0]), 3.0);
+    assert_eq!(mapped.get(&[1, 1]), 4.0);
 }
 
 #[test]
