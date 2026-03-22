@@ -71,15 +71,33 @@ unsafe fn reinterpret_transpose_desc<'a, T, U>(
 
 #[cfg(feature = "hptt")]
 fn hptt_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
-    hptt::transpose_f64(desc.perm, 1.0, desc.input, desc.shape, 0.0, desc.output, 1)
-        .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f64: {e}")))?;
+    hptt::transpose_f64(
+        desc.perm,
+        1.0,
+        desc.input,
+        desc.shape,
+        0.0,
+        desc.output,
+        1,
+        hptt::MemoryOrder::RowMajor,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f64: {e}")))?;
     Ok(())
 }
 
 #[cfg(feature = "hptt")]
 fn hptt_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
-    hptt::transpose_f32(desc.perm, 1.0, desc.input, desc.shape, 0.0, desc.output, 1)
-        .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f32: {e}")))?;
+    hptt::transpose_f32(
+        desc.perm,
+        1.0,
+        desc.input,
+        desc.shape,
+        0.0,
+        desc.output,
+        1,
+        hptt::MemoryOrder::RowMajor,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f32: {e}")))?;
     Ok(())
 }
 
@@ -95,6 +113,8 @@ fn hptt_c64(desc: TransposeDescriptor<'_, num_complex::Complex<f64>>) -> Result<
         beta,
         desc.output,
         1,
+        false,
+        hptt::MemoryOrder::RowMajor,
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c64: {e}")))?;
     Ok(())
@@ -112,6 +132,8 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
         beta,
         desc.output,
         1,
+        false,
+        hptt::MemoryOrder::RowMajor,
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_c32: {e}")))?;
     Ok(())
