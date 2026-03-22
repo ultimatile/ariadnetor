@@ -693,10 +693,15 @@ where
 
         let new_shape: Vec<usize> = ranges.iter().map(|&(s, e)| e - s).collect();
         let new_total: usize = new_shape.iter().product();
+        let order = self.memory_order();
         let mut data = Vec::with_capacity(new_total);
 
         let rank = shape.len();
         let mut coords = vec![0usize; rank];
+        let axis_order: Vec<usize> = match order {
+            MemoryOrder::RowMajor => (0..rank).collect(),
+            MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+        };
 
         for _ in 0..new_total {
             let src_coords: Vec<usize> = coords
@@ -706,7 +711,7 @@ where
                 .collect();
             data.push(self.get(&src_coords));
 
-            for d in (0..rank).rev() {
+            for &d in axis_order.iter().rev() {
                 coords[d] += 1;
                 if coords[d] < new_shape[d] {
                     break;
@@ -715,7 +720,7 @@ where
             }
         }
 
-        Self::from_data(data, new_shape)
+        Self::from_data_with_order(data, new_shape, order)
     }
 
     /// Expand tensor by adding zero-padding at the boundaries.
@@ -738,10 +743,18 @@ where
             .map(|(&s, &(before, after))| s + before + after)
             .collect();
         let new_total: usize = new_shape.iter().product();
-        let dst_strides = compute_strides_usize(&new_shape);
+        let order = self.memory_order();
+        let dst_strides = match order {
+            MemoryOrder::RowMajor => compute_strides_usize(&new_shape),
+            MemoryOrder::ColumnMajor => compute_strides_column_usize(&new_shape),
+        };
         let rank = shape.len();
         let mut data = vec![T::zero(); new_total];
         let mut coords = vec![0usize; rank];
+        let axis_order: Vec<usize> = match order {
+            MemoryOrder::RowMajor => (0..rank).collect(),
+            MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+        };
 
         let src_total = self.len();
         for _ in 0..src_total {
@@ -751,7 +764,7 @@ where
                 .sum();
             data[dst_flat] = val;
 
-            for d in (0..rank).rev() {
+            for &d in axis_order.iter().rev() {
                 coords[d] += 1;
                 if coords[d] < shape[d] {
                     break;
@@ -760,7 +773,7 @@ where
             }
         }
 
-        Self::from_data(data, new_shape)
+        Self::from_data_with_order(data, new_shape, order)
     }
 
     /// Write a sub-tensor into this tensor starting at the given position.
@@ -807,7 +820,8 @@ where
 
     /// Concatenate tensors along an existing axis.
     ///
-    /// Output is always row-major. Inputs may be any layout.
+    /// Output memory order matches the first tensor's order.
+    /// Inputs may be any layout.
     pub fn concatenate(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "concatenate: empty tensor list");
         let rank = tensors[0].rank();
@@ -817,6 +831,7 @@ where
         );
 
         let base_shape = tensors[0].shape();
+        let order = tensors[0].memory_order();
         for (i, t) in tensors.iter().enumerate().skip(1) {
             assert_eq!(
                 t.rank(),
@@ -837,10 +852,13 @@ where
         let mut out_shape: Vec<usize> = base_shape.to_vec();
         out_shape[axis] = tensors.iter().map(|t| t.shape()[axis]).sum();
 
-        // Build output by iterating in logical row-major order
         let out_total: usize = out_shape.iter().product();
         let mut data = Vec::with_capacity(out_total);
         let mut coords = vec![0usize; rank];
+        let axis_order: Vec<usize> = match order {
+            MemoryOrder::RowMajor => (0..rank).collect(),
+            MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+        };
 
         for _ in 0..out_total {
             // Determine which input tensor and local coordinate for the concat axis
@@ -859,7 +877,7 @@ where
             src_coords[axis] = axis_pos;
             data.push(t.get(&src_coords));
 
-            for d in (0..rank).rev() {
+            for &d in axis_order.iter().rev() {
                 coords[d] += 1;
                 if coords[d] < out_shape[d] {
                     break;
@@ -868,16 +886,18 @@ where
             }
         }
 
-        Self::from_data(data, out_shape)
+        Self::from_data_with_order(data, out_shape, order)
     }
 
     /// Stack tensors along a new axis.
     ///
-    /// Output is always row-major. Inputs may be any layout.
+    /// Output memory order matches the first tensor's order.
+    /// Inputs may be any layout.
     pub fn stack(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "stack: empty tensor list");
         let base_shape = tensors[0].shape();
         let rank = tensors[0].rank();
+        let order = tensors[0].memory_order();
         assert!(
             axis <= rank,
             "stack: axis {axis} out of range for rank {rank} (max {rank})"
@@ -902,6 +922,10 @@ where
         let out_rank = out_shape.len();
         let mut data = Vec::with_capacity(out_total);
         let mut coords = vec![0usize; out_rank];
+        let axis_order: Vec<usize> = match order {
+            MemoryOrder::RowMajor => (0..out_rank).collect(),
+            MemoryOrder::ColumnMajor => (0..out_rank).rev().collect(),
+        };
 
         for _ in 0..out_total {
             // The stacked axis at position `axis` indexes into tensors
@@ -910,7 +934,7 @@ where
             src_coords.extend_from_slice(&coords[axis + 1..]);
             data.push(tensors[t_idx].get(&src_coords));
 
-            for d in (0..out_rank).rev() {
+            for &d in axis_order.iter().rev() {
                 coords[d] += 1;
                 if coords[d] < out_shape[d] {
                     break;
@@ -919,7 +943,7 @@ where
             }
         }
 
-        Self::from_data(data, out_shape)
+        Self::from_data_with_order(data, out_shape, order)
     }
 
     // ========================================================================
@@ -1011,6 +1035,15 @@ fn compute_strides_usize(shape: &[usize]) -> Vec<usize> {
     let mut strides = vec![1usize; shape.len()];
     for i in (0..shape.len().saturating_sub(1)).rev() {
         strides[i] = strides[i + 1] * shape[i + 1];
+    }
+    strides
+}
+
+/// Compute column-major strides as usize (for internal use in expand).
+fn compute_strides_column_usize(shape: &[usize]) -> Vec<usize> {
+    let mut strides = vec![1usize; shape.len()];
+    for i in 1..shape.len() {
+        strides[i] = strides[i - 1] * shape[i - 1];
     }
     strides
 }
