@@ -57,7 +57,8 @@ fn reshape_for_backend<T: Scalar>(
 ) -> DenseTensor<T> {
     // Row-major reshape to 2D (standard mathematical convention)
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d = DenseTensor::from_data(rm.data().to_vec(), vec![m, n]);
+    let mat_2d =
+        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![m, n], MemoryOrder::RowMajor);
     // Convert to backend's preferred order
     mat_2d.to_contiguous(order)
 }
@@ -122,7 +123,7 @@ pub fn svd<T: Scalar>(
     backend.svd(desc)?;
 
     let u_tensor = backend.make_tensor(u_data, vec![m, k]);
-    let s_tensor = DenseTensor::from_data(s_data, vec![k]);
+    let s_tensor = DenseTensor::from_data_with_order(s_data, vec![k], MemoryOrder::RowMajor);
     let vt_tensor = backend.make_tensor(vt_data, vec![k, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor))
@@ -249,7 +250,7 @@ pub fn trunc_svd<T: Scalar>(
     };
 
     let u_tensor = backend.make_tensor(u_trunc, vec![m, chi]);
-    let s_tensor = DenseTensor::from_data(s_trunc, vec![chi]);
+    let s_tensor = DenseTensor::from_data_with_order(s_trunc, vec![chi], MemoryOrder::RowMajor);
     let vt_tensor = backend.make_tensor(vt_trunc, vec![chi, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor, trunc_err))

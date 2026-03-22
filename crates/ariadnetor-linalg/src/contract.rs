@@ -133,7 +133,12 @@ pub fn contract<T: Scalar>(
         // 2D preferred_order → RowMajor 2D → reshape to multi-dim → preferred_order
         let result_2d = backend.make_tensor(c_data, vec![m, n]);
         let result_rm = result_2d.to_contiguous(MemoryOrder::RowMajor);
-        DenseTensor::from_data(result_rm.data().to_vec(), output_shape).to_contiguous(order)
+        DenseTensor::from_data_with_order(
+            result_rm.data().to_vec(),
+            output_shape,
+            MemoryOrder::RowMajor,
+        )
+        .to_contiguous(order)
     };
 
     // Reorder output dimensions to match the requested output index order.

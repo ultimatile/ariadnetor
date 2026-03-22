@@ -22,7 +22,7 @@ pub fn transpose<T: Scalar>(
     let total = tensor.len();
 
     if total == 0 {
-        let empty = DenseTensor::from_data(vec![], new_shape);
+        let empty = DenseTensor::from_data_with_order(vec![], new_shape, MemoryOrder::RowMajor);
         return Ok(empty.to_contiguous(backend.preferred_order()));
     }
 
@@ -39,6 +39,6 @@ pub fn transpose<T: Scalar>(
 
     backend.transpose(desc)?;
 
-    let result = DenseTensor::from_data(output, new_shape);
+    let result = DenseTensor::from_data_with_order(output, new_shape, MemoryOrder::RowMajor);
     Ok(result.to_contiguous(backend.preferred_order()))
 }

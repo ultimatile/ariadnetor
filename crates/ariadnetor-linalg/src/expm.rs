@@ -49,7 +49,7 @@ pub fn expm_hermitian<T: Scalar>(
             vd_data[i * n + j] = v_data[i * n + j].scale_real(exp_w[j]);
         }
     }
-    let v_scaled = DenseTensor::from_data(vd_data, vec![n, n]);
+    let v_scaled = DenseTensor::from_data_with_order(vd_data, vec![n, n], MemoryOrder::RowMajor);
 
     // V†[i,j] = V[j,i].conj()
     let mut vh_data = vec![T::zero(); n * n];
@@ -58,7 +58,7 @@ pub fn expm_hermitian<T: Scalar>(
             vh_data[i * n + j] = v_data[j * n + i].conj();
         }
     }
-    let v_dagger = DenseTensor::from_data(vh_data, vec![n, n]);
+    let v_dagger = DenseTensor::from_data_with_order(vh_data, vec![n, n], MemoryOrder::RowMajor);
 
     contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }
@@ -107,7 +107,7 @@ pub fn expm_antihermitian<T: Scalar>(
         .iter()
         .map(|&x| T::from_real_imag(-x.im(), x.re()))
         .collect();
-    let ia = DenseTensor::from_data(ia_data, shape.to_vec());
+    let ia = DenseTensor::from_data_with_order(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
 
     // eigh(iA) → real eigenvalues λ, eigenvectors V
     let (w, v_orig) = eigh(backend, &ia, nrow)?;
@@ -131,7 +131,7 @@ pub fn expm_antihermitian<T: Scalar>(
             vd_data[i * n + j] = v_data[i * n + j] * exp_neg_i_w[j];
         }
     }
-    let v_scaled = DenseTensor::from_data(vd_data, vec![n, n]);
+    let v_scaled = DenseTensor::from_data_with_order(vd_data, vec![n, n], MemoryOrder::RowMajor);
 
     // V†[i,j] = V[j,i].conj()
     let mut vh_data = vec![T::zero(); n * n];
@@ -140,7 +140,7 @@ pub fn expm_antihermitian<T: Scalar>(
             vh_data[i * n + j] = v_data[j * n + i].conj();
         }
     }
-    let v_dagger = DenseTensor::from_data(vh_data, vec![n, n]);
+    let v_dagger = DenseTensor::from_data_with_order(vh_data, vec![n, n], MemoryOrder::RowMajor);
 
     contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }
@@ -177,7 +177,7 @@ fn matmul<T: Scalar>(
 fn scale_real<T: Scalar>(tensor: &DenseTensor<T>, factor: T::Real) -> DenseTensor<T> {
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
     let data: Vec<T> = rm.data().iter().map(|&x| x.scale_real(factor)).collect();
-    DenseTensor::from_data(data, tensor.shape().to_vec())
+    DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor)
 }
 
 /// Padé approximant coefficients b_0..b_m for [m/m] approximant.
@@ -416,7 +416,8 @@ pub fn expm<T: Scalar>(
 
     // Flatten to n×n row-major for internal computation
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let a = DenseTensor::from_data(rm.data().to_vec(), vec![n, n]);
+    let a =
+        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
 
     let norm = norm_1::<T>(a.data(), n);
 
@@ -437,9 +438,10 @@ pub fn expm<T: Scalar>(
             let (u, v) = pade_uv_small(backend, &a, n, order)?;
             let result = solve_pade(backend, &u, &v)?;
             let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-            return Ok(DenseTensor::from_data(
+            return Ok(DenseTensor::from_data_with_order(
                 result_rm.data().to_vec(),
                 shape.to_vec(),
+                MemoryOrder::RowMajor,
             ));
         }
     }
@@ -480,9 +482,10 @@ pub fn expm<T: Scalar>(
     }
 
     let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-    Ok(DenseTensor::from_data(
+    Ok(DenseTensor::from_data_with_order(
         result_rm.data().to_vec(),
         shape.to_vec(),
+        MemoryOrder::RowMajor,
     ))
 }
 

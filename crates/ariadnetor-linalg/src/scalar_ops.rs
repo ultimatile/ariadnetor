@@ -27,7 +27,7 @@ where
         .iter()
         .map(|x| x.clone() * factor.clone())
         .collect();
-    DenseTensor::from_data(data, tensor.shape().to_vec())
+    DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor)
 }
 
 /// Compute the Frobenius norm of a tensor.
@@ -79,7 +79,10 @@ pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real
     let inv_norm = T::Real::one() / n;
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
     let data: Vec<T> = rm.data().iter().map(|&x| x.scale_real(inv_norm)).collect();
-    (DenseTensor::from_data(data, tensor.shape().to_vec()), n)
+    (
+        DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor),
+        n,
+    )
 }
 
 /// Linear combination of tensors: Σ coefs\[i\] * tensors\[i\].
@@ -132,7 +135,11 @@ where
             *r = r.clone() + coef.clone() * val.clone();
         }
     }
-    Ok(DenseTensor::from_data(result, shape.to_vec()))
+    Ok(DenseTensor::from_data_with_order(
+        result,
+        shape.to_vec(),
+        MemoryOrder::RowMajor,
+    ))
 }
 
 /// Partial trace over matched bond index pairs.
@@ -259,7 +266,11 @@ pub fn trace<T: Scalar>(
         *res = sum;
     }
 
-    Ok(DenseTensor::from_data(result, output_shape))
+    Ok(DenseTensor::from_data_with_order(
+        result,
+        output_shape,
+        MemoryOrder::RowMajor,
+    ))
 }
 
 /// Compute row-major strides from shape.
@@ -300,7 +311,11 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
             for i in 0..n {
                 data[i * n + i] = tensor.data()[i];
             }
-            Ok(DenseTensor::from_data(data, vec![n, n]))
+            Ok(DenseTensor::from_data_with_order(
+                data,
+                vec![n, n],
+                MemoryOrder::RowMajor,
+            ))
         }
         2 => {
             // Matrix → diagonal vector: use get() for layout-agnostic access
@@ -309,7 +324,11 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
                 return Err(format!("diag requires a square matrix, got {m}×{n}"));
             }
             let data: Vec<T> = (0..n).map(|i| tensor.get(&[i, i])).collect();
-            Ok(DenseTensor::from_data(data, vec![n]))
+            Ok(DenseTensor::from_data_with_order(
+                data,
+                vec![n],
+                MemoryOrder::RowMajor,
+            ))
         }
         r => Err(format!("diag requires rank 1 or 2, got rank {r}")),
     }

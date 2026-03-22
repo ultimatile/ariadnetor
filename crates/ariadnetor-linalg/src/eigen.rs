@@ -58,7 +58,8 @@ pub fn eigh<T: Scalar>(
     let order = backend.preferred_order();
     // Ensure row-major reshape to 2D, then convert to backend order
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d = DenseTensor::from_data(rm.data().to_vec(), vec![n, n]);
+    let mat_2d =
+        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let contiguous = mat_2d.to_contiguous(order);
 
     let mut w_data = vec![T::Real::zero(); n];
@@ -73,7 +74,7 @@ pub fn eigh<T: Scalar>(
 
     backend.eigh(desc)?;
 
-    let w_tensor = DenseTensor::from_data(w_data, vec![n]);
+    let w_tensor = DenseTensor::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))
@@ -161,7 +162,8 @@ pub fn eig<T: Scalar>(
 
     let order = backend.preferred_order();
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d = DenseTensor::from_data(rm.data().to_vec(), vec![n, n]);
+    let mat_2d =
+        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let contiguous = mat_2d.to_contiguous(order);
 
     let mut w_data = vec![T::Complex::zero(); n];
@@ -176,7 +178,7 @@ pub fn eig<T: Scalar>(
 
     backend.eig(desc)?;
 
-    let w_tensor = DenseTensor::from_data(w_data, vec![n]);
+    let w_tensor = DenseTensor::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))

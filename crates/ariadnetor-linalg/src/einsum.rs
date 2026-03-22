@@ -233,8 +233,16 @@ fn batched_contract<T: Scalar>(
         let lhs_slice_data = &lhs_data[b * lhs_slice_size..(b + 1) * lhs_slice_size];
         let rhs_slice_data = &rhs_data[b * rhs_slice_size..(b + 1) * rhs_slice_size];
 
-        let lhs_slice = DenseTensor::from_data(lhs_slice_data.to_vec(), lhs_slice_shape.clone());
-        let rhs_slice = DenseTensor::from_data(rhs_slice_data.to_vec(), rhs_slice_shape.clone());
+        let lhs_slice = DenseTensor::from_data_with_order(
+            lhs_slice_data.to_vec(),
+            lhs_slice_shape.clone(),
+            MemoryOrder::RowMajor,
+        );
+        let rhs_slice = DenseTensor::from_data_with_order(
+            rhs_slice_data.to_vec(),
+            rhs_slice_shape.clone(),
+            MemoryOrder::RowMajor,
+        );
 
         let slice_result = contract(backend, &lhs_slice, &rhs_slice, &batch_free_notation)?;
         result_slices.push(slice_result);
@@ -258,7 +266,8 @@ fn batched_contract<T: Scalar>(
         stacked_data.extend_from_slice(rm.data());
     }
 
-    let stacked = DenseTensor::from_data(stacked_data, output_shape);
+    let stacked =
+        DenseTensor::from_data_with_order(stacked_data, output_shape, MemoryOrder::RowMajor);
 
     // Reorder to requested output index order
     reorder_batched_output(
