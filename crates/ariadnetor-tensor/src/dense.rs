@@ -5,8 +5,9 @@
 //! assume row-major or column-major without checking.
 
 use aligned_vec::{AVec, ConstAlign};
-use num_traits::{One, Zero};
+use num_traits::{Float, One, Zero};
 use std::fmt;
+use std::ops::{Add, Mul};
 use std::sync::Arc;
 
 /// 64-byte alignment for SIMD (AVX-512)
@@ -664,6 +665,72 @@ where
     }
 
     // ========================================================================
+    // Arithmetic operations
+    // ========================================================================
+
+    /// Scale all elements by a scalar factor (in-place).
+    ///
+    /// Preserves the tensor's memory order.
+    pub fn scale<S>(&mut self, factor: S)
+    where
+        T: Mul<S, Output = T>,
+        S: Clone,
+    {
+        *self = self.to_contiguous(self.memory_order());
+        let data = self.data_contiguous_mut();
+        for elem in data.iter_mut() {
+            *elem = elem.clone() * factor.clone();
+        }
+    }
+
+    /// Linear combination: Σ coefs\[i\] * tensors\[i\].
+    ///
+    /// Output memory order matches the first tensor's order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if tensors have different shapes, the list is empty,
+    /// or tensors and coefficients have different lengths.
+    pub fn linear_combine(
+        tensors: &[&DenseTensor<T>],
+        coefs: &[T],
+    ) -> Result<DenseTensor<T>, String>
+    where
+        T: Zero + Add<Output = T> + Mul<Output = T>,
+    {
+        if tensors.is_empty() {
+            return Err("Cannot combine empty tensor list".to_string());
+        }
+        if tensors.len() != coefs.len() {
+            return Err(format!(
+                "Mismatched lengths: {} tensors vs {} coefficients",
+                tensors.len(),
+                coefs.len()
+            ));
+        }
+        let shape = tensors[0].shape();
+        for t in &tensors[1..] {
+            if t.shape() != shape {
+                return Err("All tensors must have the same shape".to_string());
+            }
+        }
+        let order = tensors[0].memory_order();
+        let len = tensors[0].len();
+        let mut result = vec![T::zero(); len];
+        for (tensor, coef) in tensors.iter().zip(coefs) {
+            let c = tensor.to_contiguous(order);
+            for (r, val) in result.iter_mut().zip(c.data_contiguous()) {
+                *r = r.clone() + coef.clone() * val.clone();
+            }
+        }
+        Ok(DenseTensor::from_data_with_order(
+            result,
+            shape.to_vec(),
+            order,
+        ))
+    }
+
+    // ========================================================================
     // Slice / expand / replace
     // ========================================================================
 
@@ -1004,6 +1071,39 @@ where
     /// Extract the imaginary part of each element.
     pub fn imag(&self) -> DenseTensor<T::Real> {
         self.map(|x| x.im())
+    }
+
+    /// Compute squared Frobenius norm: Σ |element|².
+    fn norm_squared(&self) -> T::Real {
+        let c = self.to_contiguous(self.memory_order());
+        c.data_contiguous()
+            .iter()
+            .map(|&x| {
+                let a = x.abs();
+                a * a
+            })
+            .fold(T::Real::zero(), |acc, x| acc + x)
+    }
+
+    /// Compute Frobenius norm: √(Σ |element|²).
+    pub fn norm_frobenius(&self) -> T::Real {
+        self.norm_squared().sqrt()
+    }
+
+    /// Normalize to unit Frobenius norm (in-place).
+    ///
+    /// Returns the norm before normalization.
+    /// Panics if the tensor has zero norm.
+    pub fn normalize_in_place(&mut self) -> T::Real {
+        let norm = self.norm_frobenius();
+        assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
+        let inv_norm = T::Real::one() / norm;
+        *self = self.to_contiguous(self.memory_order());
+        let data = self.data_contiguous_mut();
+        for elem in data.iter_mut() {
+            *elem = elem.scale_real(inv_norm);
+        }
+        norm
     }
 }
 

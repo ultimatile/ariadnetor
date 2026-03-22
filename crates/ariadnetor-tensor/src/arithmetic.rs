@@ -6,7 +6,7 @@
 //! - `norm`: Frobenius norm
 //! - `normalize`: Normalize to unit norm
 
-use crate::dense::MemoryOrder;
+use crate::dense::DenseTensor;
 use crate::tensor_storage::TensorStorage;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
@@ -36,12 +36,7 @@ where
     /// ```
     pub fn scale(&mut self, factor: T) {
         match self {
-            Self::Dense(d) => {
-                *d = d.to_contiguous(MemoryOrder::RowMajor);
-                for elem in d.data_mut() {
-                    *elem = elem.clone() * factor.clone();
-                }
-            }
+            Self::Dense(d) => d.scale(factor),
         }
     }
 
@@ -102,37 +97,15 @@ where
         if tensors.is_empty() {
             return Err("Cannot combine empty tensor list".to_string());
         }
-        if tensors.len() != coefs.len() {
-            return Err(format!(
-                "Mismatched lengths: {} tensors vs {} coefficients",
-                tensors.len(),
-                coefs.len()
-            ));
-        }
-
-        // Check shape consistency
-        let shape = tensors[0].shape();
-        for t in &tensors[1..] {
-            if t.shape() != shape {
-                return Err("All tensors must have the same shape".to_string());
-            }
-        }
-
-        // Compute sum
-        match tensors[0] {
-            Self::Dense(_) => {
-                let mut result = Self::zeros(shape.to_vec());
-                let Self::Dense(result_dense) = &mut result;
-                for (tensor, coef) in tensors.iter().zip(coefs) {
-                    let Self::Dense(t) = tensor;
-                    let t_rm = t.to_contiguous(MemoryOrder::RowMajor);
-                    for (res, val) in result_dense.data_mut().iter_mut().zip(t_rm.data()) {
-                        *res = res.clone() + coef.clone() * val.clone();
-                    }
-                }
-                Ok(result)
-            }
-        }
+        // Extract DenseTensor references
+        let dense_refs: Vec<&DenseTensor<T>> = tensors
+            .iter()
+            .map(|t| match t {
+                TensorStorage::Dense(d) => d,
+            })
+            .collect();
+        let result = DenseTensor::linear_combine(&dense_refs, coefs)?;
+        Ok(TensorStorage::Dense(result))
     }
 
     /// Add all tensors (coefficients all = 1)
@@ -166,7 +139,6 @@ where
 // ============================================================================
 
 use crate::Scalar;
-use num_traits::Float;
 
 impl<T> TensorStorage<T>
 where
@@ -191,22 +163,8 @@ where
     /// assert!((norm - 2.0).abs() < 1e-10);
     /// ```
     pub fn norm(&self) -> T::Real {
-        self.norm_squared().sqrt()
-    }
-
-    /// Compute squared Frobenius norm
-    fn norm_squared(&self) -> T::Real {
         match self {
-            Self::Dense(d) => {
-                let rm = d.to_contiguous(MemoryOrder::RowMajor);
-                rm.data()
-                    .iter()
-                    .map(|&x| {
-                        let abs_val = x.abs();
-                        abs_val * abs_val
-                    })
-                    .fold(T::Real::zero(), |acc, x| acc + x)
-            }
+            Self::Dense(d) => d.norm_frobenius(),
         }
     }
 
@@ -228,21 +186,9 @@ where
     /// assert!((tensor.norm() - 1.0).abs() < 1e-10);
     /// ```
     pub fn normalize(&mut self) -> T::Real {
-        let norm = self.norm();
-        if norm == T::Real::zero() {
-            panic!("Cannot normalize zero tensor");
-        }
-        let inv_norm = T::Real::one() / norm;
-
         match self {
-            Self::Dense(d) => {
-                *d = d.to_contiguous(MemoryOrder::RowMajor);
-                for elem in d.data_mut() {
-                    *elem = elem.scale_real(inv_norm);
-                }
-            }
+            Self::Dense(d) => d.normalize_in_place(),
         }
-        norm
     }
 
     /// Normalize tensor and return new tensor (out-of-place)
