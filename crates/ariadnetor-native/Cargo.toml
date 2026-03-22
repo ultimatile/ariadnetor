@@ -12,7 +12,7 @@ hptt = ["dep:hptt"]
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
 faer = { workspace = true }
-hptt = { path = "../../../hptt-rs", optional = true }
+hptt = { workspace = true, optional = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 
