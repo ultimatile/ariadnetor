@@ -333,3 +333,56 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
         r => Err(format!("diag requires rank 1 or 2, got rank {r}")),
     }
 }
+
+/// Scale each slice along `axis` by the corresponding weight.
+///
+/// Equivalent to multiplying by a diagonal matrix along the given axis:
+/// `result[..., i, ...] = tensor[..., i, ...] * weights[i]` where `i`
+/// is the index along `axis`.
+///
+/// # Errors
+///
+/// Returns an error if `axis` is out of range or `weights.len()` does not
+/// match the dimension along `axis`.
+///
+/// # Examples
+///
+/// ```
+/// use arnet_linalg::diagonal_scale;
+/// use arnet_tensor::{DenseTensor, MemoryOrder};
+///
+/// // 2×3 matrix, scale columns by [1, 2, 3]
+/// let m = DenseTensor::from_data_with_order(
+///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+///     vec![2, 3],
+///     MemoryOrder::RowMajor,
+/// );
+/// let scaled = diagonal_scale(&m, &[1.0, 2.0, 3.0], 1).unwrap();
+/// assert_eq!(scaled.get(&[0, 0]), 1.0);
+/// assert_eq!(scaled.get(&[0, 1]), 4.0);
+/// assert_eq!(scaled.get(&[1, 2]), 18.0);
+/// ```
+pub fn diagonal_scale<T, S>(
+    tensor: &DenseTensor<T>,
+    weights: &[S],
+    axis: usize,
+) -> Result<DenseTensor<T>, String>
+where
+    T: Clone + Mul<S, Output = T> + 'static,
+    S: Clone,
+{
+    if axis >= tensor.rank() {
+        return Err(format!(
+            "axis {axis} out of range for rank {}",
+            tensor.rank()
+        ));
+    }
+    if weights.len() != tensor.shape()[axis] {
+        return Err(format!(
+            "weights length {} doesn't match axis {axis} dimension {}",
+            weights.len(),
+            tensor.shape()[axis]
+        ));
+    }
+    Ok(tensor.map_with_index(|idx, val| val.clone() * weights[idx[axis]].clone()))
+}

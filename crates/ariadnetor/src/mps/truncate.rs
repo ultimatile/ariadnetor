@@ -2,7 +2,7 @@
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
+use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, trunc_svd};
 use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 use num_traits::{Float, Zero};
 
@@ -80,7 +80,7 @@ where
         u_shape.push(chi);
 
         // S·Vt: scale each row of Vt by corresponding singular value
-        let svt = scale_rows_by_sv::<T>(&s, &vt);
+        let svt = diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
 
         (TensorStorage::Dense(u_rm.reshape(u_shape)), svt, err)
     };
@@ -121,7 +121,7 @@ where
         vt_shape.extend_from_slice(&orig_shape[1..]);
 
         // U·S: scale each column of U by corresponding singular value
-        let us = scale_cols_by_sv::<T>(&u, &s);
+        let us = diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
 
         (TensorStorage::Dense(vt_rm.reshape(vt_shape)), us, err)
     };
@@ -137,41 +137,6 @@ where
     *chain.storage_mut(j - 1) = TensorStorage::Dense(new_prev);
 
     err * err
-}
-
-/// Scale each row i of mat by s[i], producing S·mat.
-/// S is real-valued (from SVD), mat may be complex.
-fn scale_rows_by_sv<T: Scalar>(s: &DenseTensor<T::Real>, mat: &DenseTensor<T>) -> DenseTensor<T> {
-    let chi = s.len();
-    let n = mat.shape()[1];
-    let s_data = s.data();
-    let mut result = vec![T::zero(); chi * n];
-
-    for i in 0..chi {
-        let si = s_data[i];
-        for j in 0..n {
-            result[i * n + j] = mat.get(&[i, j]).scale_real(si);
-        }
-    }
-
-    DenseTensor::from_data_with_order(result, vec![chi, n], MemoryOrder::RowMajor)
-}
-
-/// Scale each column j of mat by s[j], producing mat·S.
-/// S is real-valued (from SVD), mat may be complex.
-fn scale_cols_by_sv<T: Scalar>(mat: &DenseTensor<T>, s: &DenseTensor<T::Real>) -> DenseTensor<T> {
-    let m = mat.shape()[0];
-    let chi = s.len();
-    let s_data = s.data();
-    let mut result = vec![T::zero(); m * chi];
-
-    for i in 0..m {
-        for j in 0..chi {
-            result[i * chi + j] = mat.get(&[i, j]).scale_real(s_data[j]);
-        }
-    }
-
-    DenseTensor::from_data_with_order(result, vec![m, chi], MemoryOrder::RowMajor)
 }
 
 /// Multiply a 2D matrix into the next site tensor from the left.

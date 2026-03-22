@@ -7,7 +7,7 @@ use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract;
 use crate::eigen::eigh;
-use crate::scalar_ops::linear_combine;
+use crate::scalar_ops::{diagonal_scale, linear_combine};
 use crate::solve::solve;
 use crate::transpose::conjugate_transpose;
 
@@ -35,22 +35,11 @@ pub fn expm_hermitian<T: Scalar>(
     tensor: &DenseTensor<T>,
     nrow: usize,
 ) -> Result<DenseTensor<T>, BackendError> {
-    let (w, v_orig) = eigh(backend, tensor, nrow)?;
-    let n = w.data().len();
-
-    // Convert eigenvectors to row-major for direct indexing
-    let v = v_orig.to_contiguous(MemoryOrder::RowMajor);
-    let v_data = v.data();
+    let (w, v) = eigh(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(λ_j)
     let exp_w: Vec<T::Real> = w.data().iter().map(|&lam| lam.exp()).collect();
-    let mut vd_data = vec![T::zero(); n * n];
-    for i in 0..n {
-        for j in 0..n {
-            vd_data[i * n + j] = v_data[i * n + j].scale_real(exp_w[j]);
-        }
-    }
-    let v_scaled = DenseTensor::from_data_with_order(vd_data, vec![n, n], MemoryOrder::RowMajor);
+    let v_scaled = diagonal_scale(&v, &exp_w, 1).map_err(BackendError::ExecutionFailed)?;
 
     // V† = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
@@ -106,11 +95,6 @@ pub fn expm_antihermitian<T: Scalar>(
 
     // eigh(iA) → real eigenvalues λ, eigenvectors V
     let (w, v_orig) = eigh(backend, &ia, nrow)?;
-    let n = w.data().len();
-
-    // Convert eigenvectors to row-major for direct indexing
-    let v = v_orig.to_contiguous(MemoryOrder::RowMajor);
-    let v_data = v.data();
 
     // V_scaled[i,j] = V[i,j] * exp(-iλ_j)
     // exp(-iλ) = cos(λ) - i*sin(λ)
@@ -120,16 +104,11 @@ pub fn expm_antihermitian<T: Scalar>(
         .map(|&lam| T::from_real_imag(lam.cos(), -lam.sin()))
         .collect();
 
-    let mut vd_data = vec![T::zero(); n * n];
-    for i in 0..n {
-        for j in 0..n {
-            vd_data[i * n + j] = v_data[i * n + j] * exp_neg_i_w[j];
-        }
-    }
-    let v_scaled = DenseTensor::from_data_with_order(vd_data, vec![n, n], MemoryOrder::RowMajor);
+    let v_scaled =
+        diagonal_scale(&v_orig, &exp_neg_i_w, 1).map_err(BackendError::ExecutionFailed)?;
 
     // V† = conjugate transpose of V
-    let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
+    let v_dagger = conjugate_transpose(backend, &v_orig, &[1, 0])?;
 
     contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }

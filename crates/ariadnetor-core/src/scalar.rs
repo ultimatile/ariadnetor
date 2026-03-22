@@ -35,6 +35,7 @@ pub trait Scalar:
     + One
     + std::ops::Add<Output = Self>
     + std::ops::Mul<Output = Self>
+    + std::ops::Mul<Self::Real, Output = Self>
 {
     type Real: FloatCompute;
     type Complex: Scalar;
