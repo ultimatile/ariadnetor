@@ -146,8 +146,8 @@ fn hadamard<T: Scalar>(
         rhs.to_contiguous(order)
     };
 
-    let lhs_data = lhs_ordered.data_contiguous();
-    let rhs_data = rhs_ordered.data_contiguous();
+    let lhs_data = lhs_ordered.data();
+    let rhs_data = rhs_ordered.data();
 
     let c_data: Vec<T> = lhs_data
         .iter()

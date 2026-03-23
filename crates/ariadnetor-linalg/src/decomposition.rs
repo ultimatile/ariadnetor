@@ -114,7 +114,7 @@ pub fn svd<T: Scalar>(
     let desc = SvdDescriptor {
         m,
         n,
-        a: mat_2d.data_contiguous(),
+        a: mat_2d.data(),
         u: &mut u_data,
         s: &mut s_data,
         vt: &mut vt_data,
@@ -221,8 +221,8 @@ pub fn trunc_svd<T: Scalar>(
 
     // Layout-aware truncation of U and Vt
     let order = backend.preferred_order();
-    let u_raw = u_full.data_contiguous();
-    let vt_raw = vt_full.data_contiguous();
+    let u_raw = u_full.data();
+    let vt_raw = vt_full.data();
 
     let (u_trunc, vt_trunc) = match order {
         MemoryOrder::RowMajor => {
@@ -315,7 +315,7 @@ pub fn qr<T: Scalar>(
     let desc = QrDescriptor {
         m,
         n,
-        a: mat_2d.data_contiguous(),
+        a: mat_2d.data(),
         q: &mut q_data,
         r: &mut r_data,
     };
@@ -375,7 +375,7 @@ pub fn lq<T: Scalar>(
     let desc = LqDescriptor {
         m,
         n,
-        a: mat_2d.data_contiguous(),
+        a: mat_2d.data(),
         l: &mut l_data,
         q: &mut q_data,
     };

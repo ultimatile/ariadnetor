@@ -78,8 +78,8 @@ pub fn solve<T: Scalar>(
     let desc = SolveDescriptor {
         n,
         nrhs,
-        a: a_contiguous.data_contiguous(),
-        b: b_contiguous.data_contiguous(),
+        a: a_contiguous.data(),
+        b: b_contiguous.data(),
         x: &mut x_data,
     };
 

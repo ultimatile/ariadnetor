@@ -135,7 +135,7 @@ where
     {
         let order = self.memory_order();
         let contiguous = self.to_contiguous(order);
-        let result: Vec<U> = contiguous.data_contiguous().iter().map(f).collect();
+        let result: Vec<U> = contiguous.data().iter().map(f).collect();
         DenseTensor::from_data_with_order(result, self.shape().to_vec(), order)
     }
 
@@ -153,7 +153,7 @@ where
             "map_mut() requires contiguous tensor; \
              call to_contiguous() first"
         );
-        let data = self.data_contiguous_mut();
+        let data = self.data_mut();
         for x in data.iter_mut() {
             *x = f(x);
         }
@@ -207,7 +207,7 @@ where
         S: Clone,
     {
         *self = self.to_contiguous(self.memory_order());
-        let data = self.data_contiguous_mut();
+        let data = self.data_mut();
         for elem in data.iter_mut() {
             *elem = elem.clone() * factor.clone();
         }
@@ -249,7 +249,7 @@ where
         let mut result = vec![T::zero(); len];
         for (tensor, coef) in tensors.iter().zip(coefs) {
             let c = tensor.to_contiguous(order);
-            for (r, val) in result.iter_mut().zip(c.data_contiguous()) {
+            for (r, val) in result.iter_mut().zip(c.data()) {
                 *r = r.clone() + coef.clone() * val.clone();
             }
         }

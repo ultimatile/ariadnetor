@@ -8,68 +8,33 @@ impl<T> DenseTensor<T>
 where
     T: Clone,
 {
-    /// Get a reference to the underlying data as a row-major contiguous slice.
+    /// Get a reference to the underlying contiguous data.
     ///
-    /// Existing callers (linalg, transpose, scalar_ops) index this slice
-    /// assuming row-major layout. Returning non-row-major data would silently
-    /// produce wrong results in those paths.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the tensor is not row-major contiguous.
-    pub fn data(&self) -> &[T] {
-        assert!(
-            self.is_row_major(),
-            "data() requires row-major contiguous tensor; \
-             call to_contiguous(MemoryOrder::RowMajor) first"
-        );
-        &self.data[self.offset..self.offset + self.len()]
-    }
-
-    /// Get a mutable reference to the underlying data (triggers CoW if shared).
-    ///
-    /// # Panics
-    ///
-    /// Panics if the tensor is not row-major contiguous.
-    pub fn data_mut(&mut self) -> &mut [T] {
-        assert!(
-            self.is_row_major(),
-            "data_mut() requires row-major contiguous tensor; \
-             call to_contiguous(MemoryOrder::RowMajor) first"
-        );
-        let len = self.len();
-        let offset = self.offset;
-        &mut Arc::make_mut(&mut self.data).as_mut_slice()[offset..offset + len]
-    }
-
-    /// Get a reference to the underlying data for any contiguous layout.
-    ///
-    /// Unlike [`data()`](Self::data) which requires row-major, this accepts
-    /// any contiguous tensor (row-major or column-major). The caller must
-    /// know the tensor's layout to interpret the data correctly.
+    /// The caller must check [`memory_order()`](super::DenseTensor::memory_order)
+    /// to interpret the layout correctly.
     ///
     /// # Panics
     ///
     /// Panics if the tensor is not contiguous.
-    pub fn data_contiguous(&self) -> &[T] {
+    pub fn data(&self) -> &[T] {
         assert!(
             self.is_contiguous(),
-            "data_contiguous() requires contiguous tensor; \
+            "data() requires contiguous tensor; \
              call to_contiguous() first"
         );
         &self.data[self.offset..self.offset + self.len()]
     }
 
-    /// Get a mutable reference to the underlying data for any contiguous layout
+    /// Get a mutable reference to the underlying contiguous data
     /// (triggers CoW if shared).
     ///
     /// # Panics
     ///
     /// Panics if the tensor is not contiguous.
-    pub fn data_contiguous_mut(&mut self) -> &mut [T] {
+    pub fn data_mut(&mut self) -> &mut [T] {
         assert!(
             self.is_contiguous(),
-            "data_contiguous_mut() requires contiguous tensor; \
+            "data_mut() requires contiguous tensor; \
              call to_contiguous() first"
         );
         let len = self.len();

@@ -67,7 +67,7 @@ pub fn eigh<T: Scalar>(
 
     let desc = EighDescriptor {
         n,
-        a: contiguous.data_contiguous(),
+        a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
     };
@@ -171,7 +171,7 @@ pub fn eig<T: Scalar>(
 
     let desc = EigDescriptor {
         n,
-        a: contiguous.data_contiguous(),
+        a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
     };
