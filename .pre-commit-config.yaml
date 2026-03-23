@@ -15,3 +15,9 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+      - id: check-file-lines
+        name: check file line count
+        description: Reject files exceeding line limits (src 600, tests 800)
+        entry: scripts/check-file-lines.sh
+        language: script
+        types: [rust]
