@@ -12,6 +12,7 @@
 //! assert_eq!(b.shape(), &[3, 2]);
 //! ```
 
+pub mod diag_tensor;
 pub mod expr;
 #[cfg(feature = "mps")]
 pub mod mps;
@@ -20,6 +21,7 @@ pub mod runtime;
 pub mod tensor;
 
 // Main types
+pub use diag_tensor::DiagTensor;
 pub use expr::ExpressionComputeGraph;
 pub use tensor::{DenseTensor, Tensor, TensorStorage};
 

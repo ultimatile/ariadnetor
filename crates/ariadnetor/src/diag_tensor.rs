@@ -1,0 +1,261 @@
+//! Diagonal tensor type
+//!
+//! `DiagTensor<T, B>` is a newtype wrapping a rank-1 `Tensor<T, B>` that
+//! represents an n×n diagonal matrix by storing only the n diagonal elements.
+
+use std::fmt;
+use std::ops::Deref;
+use std::sync::Arc;
+
+use arnet_core::backend::ComputeBackend;
+use arnet_core::scalar::Scalar;
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+
+use crate::Tensor;
+
+/// Diagonal matrix represented as a rank-1 tensor of diagonal elements.
+///
+/// Wraps a rank-1 [`Tensor<T, B>`] and interprets it as an n×n diagonal matrix
+/// where only the n diagonal entries are stored (O(n) instead of O(n²)).
+///
+/// # Examples
+///
+/// ```
+/// use arnet::DiagTensor;
+///
+/// let d = DiagTensor::from_vec(vec![1.0, 2.0, 3.0]);
+/// assert_eq!(d.len(), 3);
+/// assert_eq!(d.matrix_size(), [3, 3]);
+/// assert_eq!(d.data(), &[1.0, 2.0, 3.0]);
+/// ```
+#[derive(Debug, Clone)]
+pub struct DiagTensor<T = f64, B: ComputeBackend = NativeBackend>(Tensor<T, B>);
+
+impl<T, B: ComputeBackend> DiagTensor<T, B> {
+    /// Create a `DiagTensor` from a rank-1 tensor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tensor is not rank 1.
+    pub fn from_tensor(tensor: Tensor<T, B>) -> Result<Self, String> {
+        if tensor.rank() != 1 {
+            return Err(format!(
+                "DiagTensor requires a rank-1 tensor, got rank {}",
+                tensor.rank()
+            ));
+        }
+        Ok(Self(tensor))
+    }
+
+    /// Number of diagonal elements (= n for an n×n matrix).
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Check if diagonal has zero elements.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Matrix dimensions `[n, n]` that this diagonal represents.
+    pub fn matrix_size(&self) -> [usize; 2] {
+        let n = self.len();
+        [n, n]
+    }
+
+    /// Get a reference to the underlying rank-1 tensor.
+    pub fn as_tensor(&self) -> &Tensor<T, B> {
+        &self.0
+    }
+
+    /// Consume the `DiagTensor` and return the underlying tensor.
+    pub fn into_tensor(self) -> Tensor<T, B> {
+        self.0
+    }
+}
+
+impl<T: Clone, B: ComputeBackend> DiagTensor<T, B> {
+    /// Create a `DiagTensor` from a vector and an explicit backend.
+    pub fn from_vec_with_backend(diag: Vec<T>, backend: Arc<B>) -> Self {
+        let n = diag.len();
+        let storage = TensorStorage::Dense(DenseTensor::from_data_with_order(
+            diag,
+            vec![n],
+            MemoryOrder::RowMajor,
+        ));
+        Self(Tensor::with_backend(storage, backend))
+    }
+
+    /// Get diagonal elements as a slice.
+    pub fn data(&self) -> &[T] {
+        self.0.data().expect("DiagTensor storage is always Dense")
+    }
+}
+
+impl<T: Scalar, B: ComputeBackend> DiagTensor<T, B> {
+    /// Expand to a full n×n dense matrix.
+    ///
+    /// Off-diagonal elements are zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use arnet::DiagTensor;
+    ///
+    /// let d = DiagTensor::from_vec(vec![2.0, 3.0]);
+    /// let dense = d.to_dense();
+    /// assert_eq!(dense.shape(), &[2, 2]);
+    /// assert_eq!(dense.get(&[0, 0]), 2.0);
+    /// assert_eq!(dense.get(&[0, 1]), 0.0);
+    /// assert_eq!(dense.get(&[1, 0]), 0.0);
+    /// assert_eq!(dense.get(&[1, 1]), 3.0);
+    /// ```
+    pub fn to_dense(&self) -> Tensor<T, B> {
+        let diag = self.data();
+        let n = diag.len();
+        let mut data = vec![T::zero(); n * n];
+        for i in 0..n {
+            data[i * n + i] = diag[i];
+        }
+        let dense = DenseTensor::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor);
+        Tensor::with_backend(
+            TensorStorage::Dense(dense),
+            Arc::clone(self.0.backend_arc()),
+        )
+    }
+}
+
+impl<T: Clone> DiagTensor<T, NativeBackend> {
+    /// Create a `DiagTensor` from a vector (default: NativeBackend).
+    pub fn from_vec(diag: Vec<T>) -> Self {
+        Self::from_vec_with_backend(diag, NativeBackend::shared())
+    }
+}
+
+impl<T, B: ComputeBackend> Deref for DiagTensor<T, B> {
+    type Target = Tensor<T, B>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T, B: ComputeBackend> fmt::Display for DiagTensor<T, B>
+where
+    T: fmt::Display + Clone,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DiagTensor(")?;
+        let data = self.data();
+        for (i, val) in data.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{val}")?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_vec_basic() {
+        let d = DiagTensor::from_vec(vec![1.0, 2.0, 3.0]);
+        assert_eq!(d.len(), 3);
+        assert!(!d.is_empty());
+        assert_eq!(d.matrix_size(), [3, 3]);
+        assert_eq!(d.data(), &[1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn from_vec_empty() {
+        let d = DiagTensor::<f64>::from_vec(vec![]);
+        assert_eq!(d.len(), 0);
+        assert!(d.is_empty());
+        assert_eq!(d.matrix_size(), [0, 0]);
+    }
+
+    #[test]
+    fn from_tensor_rank1() {
+        let t = Tensor::<f64>::constant(vec![3], 5.0);
+        let d = DiagTensor::from_tensor(t).unwrap();
+        assert_eq!(d.len(), 3);
+        assert_eq!(d.data(), &[5.0, 5.0, 5.0]);
+    }
+
+    #[test]
+    fn from_tensor_rejects_rank2() {
+        let t = Tensor::<f64>::zeros(vec![2, 2]);
+        let err = DiagTensor::from_tensor(t).unwrap_err();
+        assert!(err.contains("rank-1"));
+    }
+
+    #[test]
+    fn to_dense_identity_like() {
+        let d = DiagTensor::from_vec(vec![1.0, 1.0, 1.0]);
+        let dense = d.to_dense();
+        assert_eq!(dense.shape(), &[3, 3]);
+        for i in 0..3 {
+            for j in 0..3 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert_eq!(dense.get(&[i, j]), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn to_dense_values() {
+        let d = DiagTensor::from_vec(vec![2.0, 3.0, 5.0]);
+        let dense = d.to_dense();
+        assert_eq!(dense.get(&[0, 0]), 2.0);
+        assert_eq!(dense.get(&[1, 1]), 3.0);
+        assert_eq!(dense.get(&[2, 2]), 5.0);
+        assert_eq!(dense.get(&[0, 1]), 0.0);
+        assert_eq!(dense.get(&[1, 0]), 0.0);
+    }
+
+    #[test]
+    fn to_dense_empty() {
+        let d = DiagTensor::<f64>::from_vec(vec![]);
+        let dense = d.to_dense();
+        assert_eq!(dense.shape(), &[0, 0]);
+    }
+
+    #[test]
+    fn roundtrip_diag_to_dense_to_diag() {
+        let original = vec![1.0, 4.0, 9.0];
+        let d = DiagTensor::from_vec(original.clone());
+        let dense = d.to_dense();
+
+        // Extract diagonal back using get
+        let extracted: Vec<f64> = (0..3).map(|i| dense.get(&[i, i])).collect();
+        assert_eq!(extracted, original);
+    }
+
+    #[test]
+    fn deref_to_tensor() {
+        let d = DiagTensor::from_vec(vec![1.0, 2.0]);
+        // Deref allows calling Tensor methods directly
+        assert_eq!(d.shape(), &[2]);
+        assert_eq!(d.rank(), 1);
+    }
+
+    #[test]
+    fn display() {
+        let d = DiagTensor::from_vec(vec![1.0, 2.0, 3.0]);
+        let s = format!("{d}");
+        assert_eq!(s, "DiagTensor(1, 2, 3)");
+    }
+
+    #[test]
+    fn into_tensor() {
+        let d = DiagTensor::from_vec(vec![1.0, 2.0]);
+        let t = d.into_tensor();
+        assert_eq!(t.shape(), &[2]);
+        assert_eq!(t.data().unwrap(), &[1.0, 2.0]);
+    }
+}
