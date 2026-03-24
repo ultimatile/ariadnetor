@@ -278,6 +278,16 @@ pub fn diag<T: Scalar, B: ComputeBackend>(tensor: &Tensor<T, B>) -> Result<Tenso
     Ok(wrap(result, tensor.backend_arc()))
 }
 
+/// Extract the diagonal of a square matrix as a [`DiagTensor`].
+///
+/// Unlike [`diag`] which returns a plain `Tensor`, this preserves
+/// the diagonal semantics in the type system.
+pub fn diag_extract<T: Scalar, B: ComputeBackend>(
+    tensor: &Tensor<T, B>,
+) -> Result<crate::DiagTensor<T, B>, String> {
+    crate::DiagTensor::from_matrix(tensor)
+}
+
 /// Linear combination of tensors.
 pub fn linear_combine<T, B: ComputeBackend>(
     tensors: &[&Tensor<T, B>],

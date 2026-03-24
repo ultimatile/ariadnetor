@@ -94,6 +94,54 @@ impl<T: Clone, B: ComputeBackend> DiagTensor<T, B> {
 }
 
 impl<T: Scalar, B: ComputeBackend> DiagTensor<T, B> {
+    /// Extract the diagonal of a square matrix as a `DiagTensor`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the input is not a rank-2 square matrix.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use arnet::{DiagTensor, Tensor};
+    /// use arnet_tensor::{DenseTensor, TensorStorage, MemoryOrder};
+    /// use arnet_native::NativeBackend;
+    ///
+    /// let dense = DenseTensor::from_data_with_order(
+    ///     vec![1.0, 0.0, 0.0, 2.0],
+    ///     vec![2, 2],
+    ///     MemoryOrder::RowMajor,
+    /// );
+    /// let t = Tensor::with_backend(
+    ///     TensorStorage::Dense(dense),
+    ///     NativeBackend::shared(),
+    /// );
+    /// let d = DiagTensor::from_matrix(&t).unwrap();
+    /// assert_eq!(d.data(), &[1.0, 2.0]);
+    /// ```
+    pub fn from_matrix(tensor: &Tensor<T, B>) -> Result<Self, String> {
+        let shape = tensor.shape();
+        if shape.len() != 2 {
+            return Err(format!(
+                "from_matrix requires a rank-2 tensor, got rank {}",
+                shape.len()
+            ));
+        }
+        if shape[0] != shape[1] {
+            return Err(format!(
+                "from_matrix requires a square matrix, got {}×{}",
+                shape[0], shape[1]
+            ));
+        }
+        let TensorStorage::Dense(dense) = &tensor.storage;
+        let result = arnet_linalg::diag(dense)?;
+        let storage = TensorStorage::Dense(result);
+        Ok(Self(Tensor::with_backend(
+            storage,
+            Arc::clone(tensor.backend_arc()),
+        )))
+    }
+
     /// Expand to a full n×n dense matrix.
     ///
     /// Off-diagonal elements are zero.
@@ -257,5 +305,42 @@ mod tests {
         let t = d.into_tensor();
         assert_eq!(t.shape(), &[2]);
         assert_eq!(t.data().unwrap(), &[1.0, 2.0]);
+    }
+
+    #[test]
+    fn from_matrix_extracts_diagonal() {
+        let dense = DenseTensor::from_data_with_order(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+            vec![3, 3],
+            MemoryOrder::RowMajor,
+        );
+        let t = Tensor::with_backend(TensorStorage::Dense(dense), NativeBackend::shared());
+        let d = DiagTensor::from_matrix(&t).unwrap();
+        assert_eq!(d.data(), &[1.0, 5.0, 9.0]);
+    }
+
+    #[test]
+    fn from_matrix_rejects_non_square() {
+        let dense = DenseTensor::from_data_with_order(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+            MemoryOrder::RowMajor,
+        );
+        let t = Tensor::with_backend(TensorStorage::Dense(dense), NativeBackend::shared());
+        assert!(DiagTensor::<f64>::from_matrix(&t).is_err());
+    }
+
+    #[test]
+    fn from_matrix_rejects_rank1() {
+        let t = Tensor::<f64>::constant(vec![3], 1.0);
+        assert!(DiagTensor::from_matrix(&t).is_err());
+    }
+
+    #[test]
+    fn roundtrip_from_matrix_to_dense() {
+        let original = DiagTensor::from_vec(vec![2.0, 7.0, 11.0]);
+        let dense = original.to_dense();
+        let extracted = DiagTensor::from_matrix(&dense).unwrap();
+        assert_eq!(extracted.data(), original.data());
     }
 }
