@@ -35,10 +35,9 @@ pub use ops::{
     transpose, trunc_svd,
 };
 
-// Re-export result types from linalg
-pub use arnet_linalg::{
-    EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult,
-};
+// Re-export result types (ops-level with DiagTensor for SVD)
+pub use arnet_linalg::TruncSvdParams;
+pub use ops::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
 
 // Re-export the native backend
 pub use arnet_native::NativeBackend;

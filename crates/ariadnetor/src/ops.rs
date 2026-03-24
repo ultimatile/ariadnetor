@@ -11,19 +11,23 @@ use arnet_core::scalar::Scalar;
 use arnet_tensor::{DenseTensor, TensorStorage};
 use num_traits::Zero;
 
-use crate::Tensor;
+use crate::{DiagTensor, Tensor};
 
 // ============================================================================
 // Result type aliases
 // ============================================================================
 
-/// SVD result: `(U, S, Vt)` as Tensors.
-pub type SvdResult<T, B> = (Tensor<T, B>, Tensor<<T as Scalar>::Real, B>, Tensor<T, B>);
+/// SVD result: `(U, S, Vt)` where S is a [`DiagTensor`].
+pub type SvdResult<T, B> = (
+    Tensor<T, B>,
+    DiagTensor<<T as Scalar>::Real, B>,
+    Tensor<T, B>,
+);
 
-/// Truncated SVD result: `(U, S, Vt, truncation_error)`.
+/// Truncated SVD result: `(U, S, Vt, truncation_error)` where S is a [`DiagTensor`].
 pub type TruncSvdResult<T, B> = (
     Tensor<T, B>,
-    Tensor<<T as Scalar>::Real, B>,
+    DiagTensor<<T as Scalar>::Real, B>,
     Tensor<T, B>,
     <T as Scalar>::Real,
 );
@@ -57,6 +61,14 @@ fn dense<T: Clone, B: ComputeBackend>(tensor: &Tensor<T, B>) -> &DenseTensor<T> 
 /// Wrap a DenseTensor result back into a Tensor with the given backend.
 fn wrap<T, B: ComputeBackend>(dense: DenseTensor<T>, backend: &Arc<B>) -> Tensor<T, B> {
     Tensor::with_backend(TensorStorage::Dense(dense), Arc::clone(backend))
+}
+
+/// Wrap a 1D DenseTensor as a DiagTensor with the given backend.
+fn wrap_diag<T: Clone, B: ComputeBackend>(
+    dense: DenseTensor<T>,
+    backend: &Arc<B>,
+) -> DiagTensor<T, B> {
+    DiagTensor::from_vec_with_backend(dense.data().to_vec(), Arc::clone(backend))
 }
 
 // ============================================================================
@@ -103,16 +115,20 @@ pub fn transpose<T: Scalar, B: ComputeBackend>(
 // ============================================================================
 
 /// Thin SVD: A = U * diag(S) * Vt.
+///
+/// Returns singular values as a [`DiagTensor`], making their diagonal nature explicit.
 pub fn svd<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
 ) -> Result<SvdResult<T, B>, BackendError> {
     let (u, s, vt) = arnet_linalg::svd(tensor.backend(), dense(tensor), nrow)?;
     let ba = tensor.backend_arc();
-    Ok((wrap(u, ba), wrap(s, ba), wrap(vt, ba)))
+    Ok((wrap(u, ba), wrap_diag(s, ba), wrap(vt, ba)))
 }
 
 /// Truncated SVD with bond dimension control.
+///
+/// Returns singular values as a [`DiagTensor`], making their diagonal nature explicit.
 pub fn trunc_svd<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
@@ -120,7 +136,7 @@ pub fn trunc_svd<T: Scalar, B: ComputeBackend>(
 ) -> Result<TruncSvdResult<T, B>, BackendError> {
     let (u, s, vt, err) = arnet_linalg::trunc_svd(tensor.backend(), dense(tensor), nrow, params)?;
     let ba = tensor.backend_arc();
-    Ok((wrap(u, ba), wrap(s, ba), wrap(vt, ba), err))
+    Ok((wrap(u, ba), wrap_diag(s, ba), wrap(vt, ba), err))
 }
 
 /// Thin QR: A = Q * R.
