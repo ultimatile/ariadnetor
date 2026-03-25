@@ -76,7 +76,7 @@ pub fn expm_antihermitian<T: Scalar>(
     // Reject real types — multiplication by i is not representable
     let tid = TypeId::of::<T>();
     if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
-        return Err(BackendError::InvalidDimension(
+        return Err(BackendError::InvalidArgument(
             "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
         ));
     }
@@ -366,7 +366,7 @@ pub fn expm<T: Scalar>(
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -375,7 +375,7 @@ pub fn expm<T: Scalar>(
     let n_dim: usize = shape[nrow..].iter().product();
 
     if m_dim != n_dim {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "expm requires a square matrix, got {m_dim}×{n_dim}"
         )));
     }

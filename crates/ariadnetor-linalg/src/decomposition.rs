@@ -93,7 +93,7 @@ pub fn svd<T: Scalar>(
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -172,7 +172,7 @@ pub fn trunc_svd<T: Scalar>(
     // Apply chi_max bound
     if let Some(chi_max) = params.chi_max {
         if chi_max == 0 {
-            return Err(BackendError::InvalidDimension(
+            return Err(BackendError::InvalidArgument(
                 "chi_max must be at least 1".into(),
             ));
         }
@@ -297,7 +297,7 @@ pub fn qr<T: Scalar>(
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -357,7 +357,7 @@ pub fn lq<T: Scalar>(
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }

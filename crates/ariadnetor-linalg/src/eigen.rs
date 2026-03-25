@@ -41,7 +41,7 @@ pub fn eigh<T: Scalar>(
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -50,7 +50,7 @@ pub fn eigh<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
 
     if m != n {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "eigh requires a square matrix, got {m}×{n}"
         )));
     }
@@ -146,7 +146,7 @@ pub fn eig<T: Scalar>(
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -155,7 +155,7 @@ pub fn eig<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
 
     if m != n {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "eig requires a square matrix, got {m}×{n}"
         )));
     }

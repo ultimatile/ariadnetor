@@ -51,7 +51,7 @@ pub fn einsum<T: Scalar>(
         .map_err(|e| BackendError::ExecutionFailed(format!("Failed to parse einsum: {e}")))?;
 
     if tensors.len() != expr.num_inputs() {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "Notation requires {} input(s), got {}",
             expr.num_inputs(),
             tensors.len()
@@ -421,7 +421,7 @@ fn einsum_single<T: Scalar>(
     let output = expr.out_indices();
 
     if tensor.rank() != input.len() {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "Tensor rank {} doesn't match notation {}",
             tensor.rank(),
             input.len()

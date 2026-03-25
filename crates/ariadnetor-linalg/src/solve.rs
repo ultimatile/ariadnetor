@@ -33,7 +33,7 @@ pub fn solve<T: Scalar>(
     let a_rank = a.rank();
 
     if nrow_a == 0 || nrow_a >= a_rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow_a must be in 1..rank, got nrow_a={nrow_a} for rank={a_rank}"
         )));
     }
@@ -42,7 +42,7 @@ pub fn solve<T: Scalar>(
     let n_a: usize = a_shape[nrow_a..].iter().product();
 
     if m != n_a {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "solve requires a square coefficient matrix, got {m}×{n_a}"
         )));
     }
@@ -59,7 +59,7 @@ pub fn solve<T: Scalar>(
     let b_total = b_rm.len();
 
     if !b_total.is_multiple_of(n) {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "B total elements ({b_total}) must be divisible by n ({n})"
         )));
     }
@@ -124,7 +124,7 @@ pub fn inverse<T: Scalar>(
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -133,7 +133,7 @@ pub fn inverse<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
 
     if m != n {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "inverse requires a square matrix, got {m}×{n}"
         )));
     }

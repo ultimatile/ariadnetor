@@ -38,14 +38,14 @@ pub fn contract<T: Scalar>(
 
     // Validate tensor ranks against notation
     if lhs.rank() != expr.lhs_indices().len() {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "LHS tensor rank {} doesn't match notation {}",
             lhs.rank(),
             expr.lhs_indices().len()
         )));
     }
     if rhs.rank() != expr.rhs_indices().len() {
-        return Err(BackendError::InvalidDimension(format!(
+        return Err(BackendError::InvalidArgument(format!(
             "RHS tensor rank {} doesn't match notation {}",
             rhs.rank(),
             expr.rhs_indices().len()

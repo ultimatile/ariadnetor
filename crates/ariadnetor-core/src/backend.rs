@@ -186,20 +186,41 @@ pub trait ComputeBackend: Send + Sync {
     }
 }
 
-/// Backend error
+/// Error originating from a compute backend.
+///
+/// All variants represent conditions detected by or attributed to the backend.
+/// Linalg-layer validation (nrow range, square matrix checks, etc.) should use
+/// a separate error mechanism, not `BackendError`.
 #[derive(Debug)]
 pub enum BackendError {
+    /// The backend does not support this operation.
+    ///
+    /// Returned when an operation is fundamentally unavailable on this backend
+    /// (e.g., a GPU backend that lacks an eigenvalue solver). Upper layers
+    /// should consider fallback strategies or alternative computation paths.
     NotSupported(String),
-    InvalidDimension(String),
+
+    /// The descriptor passed to the backend violates its contract.
+    ///
+    /// This indicates a bug in the calling layer (typically linalg), not a user
+    /// error. For example, buffer sizes inconsistent with declared dimensions.
+    /// Callers should treat this as a panic-worthy condition in debug builds.
+    InvalidArgument(String),
+
+    /// The computation failed at runtime.
+    ///
+    /// The operation was supported and the arguments were valid, but execution
+    /// failed due to numerical issues, resource exhaustion, or other runtime
+    /// conditions (e.g., a matrix factorization that fails to converge).
     ExecutionFailed(String),
 }
 
 impl std::fmt::Display for BackendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotSupported(msg) => write!(f, "Not supported: {}", msg),
-            Self::InvalidDimension(msg) => write!(f, "Invalid dimension: {}", msg),
-            Self::ExecutionFailed(msg) => write!(f, "Execution failed: {}", msg),
+            Self::NotSupported(msg) => write!(f, "Not supported: {msg}"),
+            Self::InvalidArgument(msg) => write!(f, "Invalid argument: {msg}"),
+            Self::ExecutionFailed(msg) => write!(f, "Execution failed: {msg}"),
         }
     }
 }
