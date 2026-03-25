@@ -36,7 +36,7 @@ pub use ops::{
 };
 
 // Re-export result types (ops-level with DiagTensor for SVD)
-pub use arnet_linalg::TruncSvdParams;
+pub use arnet_linalg::{LinalgError, TruncSvdParams};
 pub use ops::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
 
 // Re-export the native backend

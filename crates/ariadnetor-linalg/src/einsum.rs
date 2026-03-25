@@ -7,12 +7,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use arnet_core::backend::{BackendError, ComputeBackend};
+use arnet_core::backend::ComputeBackend;
 use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, MemoryOrder};
 
 use crate::contract::contract;
+use crate::error::LinalgError;
 use crate::scalar_ops::trace;
 use crate::transpose::transpose;
 
@@ -40,18 +41,18 @@ use crate::transpose::transpose;
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if notation is invalid, tensor count mismatches,
+/// Returns `LinalgError` if notation is invalid, tensor count mismatches,
 /// or any sub-operation fails.
 pub fn einsum<T: Scalar>(
     backend: &impl ComputeBackend,
     tensors: &[&DenseTensor<T>],
     notation: &str,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
-        .map_err(|e| BackendError::ExecutionFailed(format!("Failed to parse einsum: {e}")))?;
+        .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
     if tensors.len() != expr.num_inputs() {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "Notation requires {} input(s), got {}",
             expr.num_inputs(),
             tensors.len()
@@ -59,7 +60,7 @@ pub fn einsum<T: Scalar>(
     }
 
     match expr.num_inputs() {
-        0 => Err(BackendError::ExecutionFailed(
+        0 => Err(LinalgError::InvalidArgument(
             "einsum requires at least 1 input".to_string(),
         )),
         1 => einsum_single(backend, tensors[0], &expr),
@@ -78,9 +79,9 @@ fn einsum_pair<T: Scalar>(
     lhs: &DenseTensor<T>,
     rhs: &DenseTensor<T>,
     notation: &str,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
-        .map_err(|e| BackendError::ExecutionFailed(format!("Failed to parse einsum: {e}")))?;
+        .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
     let plan = ContractionPlan::from_expr(&expr);
 
@@ -127,7 +128,7 @@ fn hadamard<T: Scalar>(
     rhs: &DenseTensor<T>,
     expr: &EinsumExpr,
     plan: &ContractionPlan,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     // Permute both operands to [batch...] order (= output order for Hadamard)
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
@@ -174,7 +175,7 @@ fn batched_contract<T: Scalar>(
     rhs: &DenseTensor<T>,
     expr: &EinsumExpr,
     plan: &ContractionPlan,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     // Compute batch dimensions
     let batch_dims: Vec<usize> = plan
         .batch
@@ -318,7 +319,7 @@ fn reorder_batched_output<T: Scalar>(
     free_lhs: &[u8],
     free_rhs: &[u8],
     out: &[u8],
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     if out.is_empty() {
         return Ok(result);
     }
@@ -351,7 +352,7 @@ fn einsum_multi<T: Scalar>(
     backend: &impl ComputeBackend,
     tensors: &[&DenseTensor<T>],
     expr: &EinsumExpr,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let inputs = expr.inputs();
     let final_output = expr.out_indices();
     let n = inputs.len();
@@ -416,12 +417,12 @@ fn einsum_single<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     expr: &EinsumExpr,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let input = expr.lhs_indices();
     let output = expr.out_indices();
 
     if tensor.rank() != input.len() {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "Tensor rank {} doesn't match notation {}",
             tensor.rank(),
             input.len()
@@ -444,7 +445,7 @@ fn einsum_single<T: Scalar>(
                 if output_set.contains(&idx) {
                     free_positions.push((pos[0], idx));
                 } else {
-                    return Err(BackendError::ExecutionFailed(format!(
+                    return Err(LinalgError::InvalidArgument(format!(
                         "Index '{}' appears once in input but not in output \
                          (general reduction not supported, use explicit trace pairs)",
                         idx as char
@@ -453,7 +454,7 @@ fn einsum_single<T: Scalar>(
             }
             2 => {
                 if output_set.contains(&idx) {
-                    return Err(BackendError::ExecutionFailed(format!(
+                    return Err(LinalgError::InvalidArgument(format!(
                         "Index '{}' appears twice in input and in output \
                          (diagonal extraction not yet supported)",
                         idx as char
@@ -462,7 +463,7 @@ fn einsum_single<T: Scalar>(
                 trace_pairs.push((pos[0], pos[1]));
             }
             n => {
-                return Err(BackendError::ExecutionFailed(format!(
+                return Err(LinalgError::InvalidArgument(format!(
                     "Index '{}' appears {} times in input (max 2 allowed)",
                     idx as char, n
                 )));
@@ -475,7 +476,7 @@ fn einsum_single<T: Scalar>(
         tensor.clone()
     } else {
         trace(tensor, &trace_pairs)
-            .map_err(|e| BackendError::ExecutionFailed(format!("Trace failed: {e}")))?
+            .map_err(|e| LinalgError::InvalidArgument(format!("Trace failed: {e}")))?
     };
 
     // Scalar result → done

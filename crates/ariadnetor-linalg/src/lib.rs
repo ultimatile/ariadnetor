@@ -31,12 +31,14 @@ mod contract;
 mod decomposition;
 mod eigen;
 mod einsum;
+mod error;
 mod expm;
 mod scalar_ops;
 mod solve;
 mod transpose;
 
 pub use arnet_core::backend::ComputeBackend;
+pub use error::LinalgError;
 
 pub use contract::contract;
 pub use decomposition::{

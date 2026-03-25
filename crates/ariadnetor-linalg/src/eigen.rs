@@ -1,9 +1,9 @@
-use arnet_core::backend::{
-    BackendError, ComputeBackend, EigDescriptor, EighDescriptor, MemoryOrder,
-};
+use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, MemoryOrder};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
 use num_traits::Zero;
+
+use crate::error::LinalgError;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
@@ -30,18 +30,18 @@ pub type EighResult<T> = (DenseTensor<<T as Scalar>::Real>, DenseTensor<T>);
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
 pub fn eigh<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<EighResult<T>, BackendError> {
+) -> Result<EighResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -50,7 +50,7 @@ pub fn eigh<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
 
     if m != n {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "eigh requires a square matrix, got {m}×{n}"
         )));
     }
@@ -96,13 +96,13 @@ pub fn eigh<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
 pub fn eigvalsh<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<DenseTensor<T::Real>, BackendError> {
+) -> Result<DenseTensor<T::Real>, LinalgError> {
     let (w, _v) = eigh(backend, tensor, nrow)?;
     Ok(w)
 }
@@ -135,18 +135,18 @@ pub type EigResult<T> = (
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
 pub fn eig<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<EigResult<T>, BackendError> {
+) -> Result<EigResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -155,7 +155,7 @@ pub fn eig<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
 
     if m != n {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "eig requires a square matrix, got {m}×{n}"
         )));
     }
@@ -200,13 +200,13 @@ pub fn eig<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
 pub fn eigvals<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<DenseTensor<T::Complex>, BackendError> {
+) -> Result<DenseTensor<T::Complex>, LinalgError> {
     let (w, _v) = eig(backend, tensor, nrow)?;
     Ok(w)
 }

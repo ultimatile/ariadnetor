@@ -1,8 +1,9 @@
-use arnet_core::backend::{BackendError, ComputeBackend, GemmDescriptor, MemoryOrder};
+use arnet_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
 
+use crate::error::LinalgError;
 use crate::transpose::transpose;
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
@@ -25,27 +26,27 @@ use crate::transpose::transpose;
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if notation is invalid, dimensions mismatch,
+/// Returns `LinalgError` if notation is invalid, dimensions mismatch,
 /// batch indices are present, or the backend fails to execute transpose/GEMM.
 pub fn contract<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &DenseTensor<T>,
     rhs: &DenseTensor<T>,
     notation: &str,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
-        .map_err(|e| BackendError::ExecutionFailed(format!("Failed to parse einsum: {e}")))?;
+        .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
     // Validate tensor ranks against notation
     if lhs.rank() != expr.lhs_indices().len() {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "LHS tensor rank {} doesn't match notation {}",
             lhs.rank(),
             expr.lhs_indices().len()
         )));
     }
     if rhs.rank() != expr.rhs_indices().len() {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "RHS tensor rank {} doesn't match notation {}",
             rhs.rank(),
             expr.rhs_indices().len()
@@ -56,7 +57,7 @@ pub fn contract<T: Scalar>(
 
     // Reject batch indices — batch/Hadamard belongs in the einsum layer
     if !plan.batch.is_empty() {
-        return Err(BackendError::ExecutionFailed(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "contract() does not support batch indices {:?}; use einsum() instead",
             plan.batch.iter().map(|&b| b as char).collect::<String>()
         )));
@@ -182,7 +183,7 @@ fn reorder_output<T: Scalar>(
     result: DenseTensor<T>,
     plan: &ContractionPlan,
     expr: &EinsumExpr,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let out = expr.out_indices();
     if out.is_empty() {
         // Scalar result — no reordering needed

@@ -6,8 +6,9 @@
 use std::ops::Mul;
 use std::sync::Arc;
 
-use arnet_core::backend::{BackendError, ComputeBackend};
+use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
+use arnet_linalg::LinalgError;
 use arnet_tensor::{DenseTensor, TensorStorage};
 use num_traits::Zero;
 
@@ -80,7 +81,7 @@ pub fn contract<T: Scalar, B: ComputeBackend>(
     lhs: &Tensor<T, B>,
     rhs: &Tensor<T, B>,
     notation: &str,
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     let result = arnet_linalg::contract(lhs.backend(), dense(lhs), dense(rhs), notation)?;
     Ok(wrap(result, lhs.backend_arc()))
 }
@@ -89,7 +90,7 @@ pub fn contract<T: Scalar, B: ComputeBackend>(
 pub fn einsum<T: Scalar, B: ComputeBackend>(
     notation: &str,
     tensors: &[&Tensor<T, B>],
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     assert!(!tensors.is_empty(), "einsum requires at least one tensor");
     let backend_arc = tensors[0].backend_arc();
     let dense_refs: Vec<&DenseTensor<T>> = tensors.iter().map(|t| dense(t)).collect();
@@ -105,7 +106,7 @@ pub fn einsum<T: Scalar, B: ComputeBackend>(
 pub fn transpose<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     perm: &[usize],
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     let result = arnet_linalg::transpose(tensor.backend(), dense(tensor), perm)?;
     Ok(wrap(result, tensor.backend_arc()))
 }
@@ -120,7 +121,7 @@ pub fn transpose<T: Scalar, B: ComputeBackend>(
 pub fn svd<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<SvdResult<T, B>, BackendError> {
+) -> Result<SvdResult<T, B>, LinalgError> {
     let (u, s, vt) = arnet_linalg::svd(tensor.backend(), dense(tensor), nrow)?;
     let ba = tensor.backend_arc();
     Ok((wrap(u, ba), wrap_diag(s, ba), wrap(vt, ba)))
@@ -133,7 +134,7 @@ pub fn trunc_svd<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
     params: &arnet_linalg::TruncSvdParams,
-) -> Result<TruncSvdResult<T, B>, BackendError> {
+) -> Result<TruncSvdResult<T, B>, LinalgError> {
     let (u, s, vt, err) = arnet_linalg::trunc_svd(tensor.backend(), dense(tensor), nrow, params)?;
     let ba = tensor.backend_arc();
     Ok((wrap(u, ba), wrap_diag(s, ba), wrap(vt, ba), err))
@@ -143,7 +144,7 @@ pub fn trunc_svd<T: Scalar, B: ComputeBackend>(
 pub fn qr<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<QrResult<T, B>, BackendError> {
+) -> Result<QrResult<T, B>, LinalgError> {
     let (q, r) = arnet_linalg::qr(tensor.backend(), dense(tensor), nrow)?;
     let ba = tensor.backend_arc();
     Ok((wrap(q, ba), wrap(r, ba)))
@@ -153,7 +154,7 @@ pub fn qr<T: Scalar, B: ComputeBackend>(
 pub fn lq<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<LqResult<T, B>, BackendError> {
+) -> Result<LqResult<T, B>, LinalgError> {
     let (l, q) = arnet_linalg::lq(tensor.backend(), dense(tensor), nrow)?;
     let ba = tensor.backend_arc();
     Ok((wrap(l, ba), wrap(q, ba)))
@@ -167,7 +168,7 @@ pub fn lq<T: Scalar, B: ComputeBackend>(
 pub fn eigh<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<EighResult<T, B>, BackendError> {
+) -> Result<EighResult<T, B>, LinalgError> {
     let (w, v) = arnet_linalg::eigh(tensor.backend(), dense(tensor), nrow)?;
     let ba = tensor.backend_arc();
     Ok((wrap(w, ba), wrap(v, ba)))
@@ -177,7 +178,7 @@ pub fn eigh<T: Scalar, B: ComputeBackend>(
 pub fn eigvalsh<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<Tensor<T::Real, B>, BackendError> {
+) -> Result<Tensor<T::Real, B>, LinalgError> {
     let w = arnet_linalg::eigvalsh(tensor.backend(), dense(tensor), nrow)?;
     Ok(wrap(w, tensor.backend_arc()))
 }
@@ -186,7 +187,7 @@ pub fn eigvalsh<T: Scalar, B: ComputeBackend>(
 pub fn eig<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<EigResult<T, B>, BackendError> {
+) -> Result<EigResult<T, B>, LinalgError> {
     let (w, v) = arnet_linalg::eig(tensor.backend(), dense(tensor), nrow)?;
     let ba = tensor.backend_arc();
     Ok((wrap(w, ba), wrap(v, ba)))
@@ -196,7 +197,7 @@ pub fn eig<T: Scalar, B: ComputeBackend>(
 pub fn eigvals<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<Tensor<T::Complex, B>, BackendError> {
+) -> Result<Tensor<T::Complex, B>, LinalgError> {
     let w = arnet_linalg::eigvals(tensor.backend(), dense(tensor), nrow)?;
     Ok(wrap(w, tensor.backend_arc()))
 }
@@ -209,7 +210,7 @@ pub fn eigvals<T: Scalar, B: ComputeBackend>(
 pub fn expm_hermitian<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     let result = arnet_linalg::expm_hermitian(tensor.backend(), dense(tensor), nrow)?;
     Ok(wrap(result, tensor.backend_arc()))
 }
@@ -218,7 +219,7 @@ pub fn expm_hermitian<T: Scalar, B: ComputeBackend>(
 pub fn expm_antihermitian<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     let result = arnet_linalg::expm_antihermitian(tensor.backend(), dense(tensor), nrow)?;
     Ok(wrap(result, tensor.backend_arc()))
 }
@@ -227,7 +228,7 @@ pub fn expm_antihermitian<T: Scalar, B: ComputeBackend>(
 pub fn expm<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     let result = arnet_linalg::expm(tensor.backend(), dense(tensor), nrow)?;
     Ok(wrap(result, tensor.backend_arc()))
 }
@@ -241,7 +242,7 @@ pub fn solve<T: Scalar, B: ComputeBackend>(
     a: &Tensor<T, B>,
     b: &Tensor<T, B>,
     nrow_a: usize,
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     let result = arnet_linalg::solve(a.backend(), dense(a), dense(b), nrow_a)?;
     Ok(wrap(result, a.backend_arc()))
 }
@@ -250,7 +251,7 @@ pub fn solve<T: Scalar, B: ComputeBackend>(
 pub fn inverse<T: Scalar, B: ComputeBackend>(
     tensor: &Tensor<T, B>,
     nrow: usize,
-) -> Result<Tensor<T, B>, BackendError> {
+) -> Result<Tensor<T, B>, LinalgError> {
     let result = arnet_linalg::inverse(tensor.backend(), dense(tensor), nrow)?;
     Ok(wrap(result, tensor.backend_arc()))
 }

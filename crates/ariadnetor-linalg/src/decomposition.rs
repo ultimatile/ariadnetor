@@ -1,9 +1,9 @@
-use arnet_core::backend::{
-    BackendError, ComputeBackend, LqDescriptor, QrDescriptor, SvdDescriptor,
-};
+use arnet_core::backend::{ComputeBackend, LqDescriptor, QrDescriptor, SvdDescriptor};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, MemoryOrder};
 use num_traits::{Float, ToPrimitive, Zero};
+
+use crate::error::LinalgError;
 
 /// Result of a thin SVD decomposition: `(U, S, Vt)`.
 ///
@@ -83,17 +83,17 @@ fn reshape_for_backend<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range or the backend fails.
+/// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn svd<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<SvdResult<T>, BackendError> {
+) -> Result<SvdResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -152,13 +152,13 @@ pub fn svd<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range or the backend fails.
+/// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn trunc_svd<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
     params: &TruncSvdParams,
-) -> Result<TruncSvdResult<T>, BackendError> {
+) -> Result<TruncSvdResult<T>, LinalgError> {
     let (u_full, s_full, vt_full) = svd(backend, tensor, nrow)?;
 
     let shape = tensor.shape();
@@ -172,7 +172,7 @@ pub fn trunc_svd<T: Scalar>(
     // Apply chi_max bound
     if let Some(chi_max) = params.chi_max {
         if chi_max == 0 {
-            return Err(BackendError::InvalidArgument(
+            return Err(LinalgError::InvalidArgument(
                 "chi_max must be at least 1".into(),
             ));
         }
@@ -287,17 +287,17 @@ pub type LqResult<T> = (DenseTensor<T>, DenseTensor<T>);
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range or the backend fails.
+/// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn qr<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<QrResult<T>, BackendError> {
+) -> Result<QrResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -347,17 +347,17 @@ pub fn qr<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range or the backend fails.
+/// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn lq<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<LqResult<T>, BackendError> {
+) -> Result<LqResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }

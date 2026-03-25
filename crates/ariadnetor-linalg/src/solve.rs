@@ -1,6 +1,8 @@
-use arnet_core::backend::{BackendError, ComputeBackend, MemoryOrder, SolveDescriptor};
+use arnet_core::backend::{ComputeBackend, MemoryOrder, SolveDescriptor};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
+
+use crate::error::LinalgError;
 
 /// Solve the linear system AX = B via LU decomposition.
 ///
@@ -21,19 +23,19 @@ use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow_a` is out of range, the matrix A is non-square,
+/// Returns `LinalgError` if `nrow_a` is out of range, the matrix A is non-square,
 /// dimensions are incompatible, or the backend fails.
 pub fn solve<T: Scalar>(
     backend: &impl ComputeBackend,
     a: &DenseTensor<T>,
     b: &DenseTensor<T>,
     nrow_a: usize,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let a_shape = a.shape();
     let a_rank = a.rank();
 
     if nrow_a == 0 || nrow_a >= a_rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow_a must be in 1..rank, got nrow_a={nrow_a} for rank={a_rank}"
         )));
     }
@@ -42,7 +44,7 @@ pub fn solve<T: Scalar>(
     let n_a: usize = a_shape[nrow_a..].iter().product();
 
     if m != n_a {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "solve requires a square coefficient matrix, got {m}×{n_a}"
         )));
     }
@@ -59,7 +61,7 @@ pub fn solve<T: Scalar>(
     let b_total = b_rm.len();
 
     if !b_total.is_multiple_of(n) {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "B total elements ({b_total}) must be divisible by n ({n})"
         )));
     }
@@ -113,18 +115,18 @@ pub fn solve<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// singular, or the backend fails.
 pub fn inverse<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -133,7 +135,7 @@ pub fn inverse<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
 
     if m != n {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "inverse requires a square matrix, got {m}×{n}"
         )));
     }

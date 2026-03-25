@@ -1,12 +1,13 @@
 use std::any::TypeId;
 
-use arnet_core::backend::{BackendError, ComputeBackend};
+use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_tensor::{DenseTensor, MemoryOrder};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract;
 use crate::eigen::eigh;
+use crate::error::LinalgError;
 use crate::scalar_ops::{diagonal_scale, linear_combine};
 use crate::solve::solve;
 use crate::transpose::conjugate_transpose;
@@ -28,18 +29,18 @@ use crate::transpose::conjugate_transpose;
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
 pub fn expm_hermitian<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let (w, v) = eigh(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(λ_j)
     let exp_w: Vec<T::Real> = w.data().iter().map(|&lam| lam.exp()).collect();
-    let v_scaled = diagonal_scale(&v, &exp_w, 1).map_err(BackendError::ExecutionFailed)?;
+    let v_scaled = diagonal_scale(&v, &exp_w, 1).map_err(LinalgError::InvalidArgument)?;
 
     // V† = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
@@ -66,17 +67,17 @@ pub fn expm_hermitian<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if the input is a real type (f32/f64), `nrow` is out of range,
+/// Returns `LinalgError` if the input is a real type (f32/f64), `nrow` is out of range,
 /// the matrix is non-square, or the backend fails.
 pub fn expm_antihermitian<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     // Reject real types — multiplication by i is not representable
     let tid = TypeId::of::<T>();
     if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
-        return Err(BackendError::InvalidArgument(
+        return Err(LinalgError::InvalidArgument(
             "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
         ));
     }
@@ -105,7 +106,7 @@ pub fn expm_antihermitian<T: Scalar>(
         .collect();
 
     let v_scaled =
-        diagonal_scale(&v_orig, &exp_neg_i_w, 1).map_err(BackendError::ExecutionFailed)?;
+        diagonal_scale(&v_orig, &exp_neg_i_w, 1).map_err(LinalgError::InvalidArgument)?;
 
     // V† = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v_orig, &[1, 0])?;
@@ -137,7 +138,7 @@ fn matmul<T: Scalar>(
     backend: &impl ComputeBackend,
     a: &DenseTensor<T>,
     b: &DenseTensor<T>,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     contract(backend, a, b, "ij,jk->ik")
 }
 
@@ -172,7 +173,7 @@ fn pade_uv_small<T: Scalar>(
     a: &DenseTensor<T>,
     n: usize,
     m: usize,
-) -> Result<(DenseTensor<T>, DenseTensor<T>), BackendError> {
+) -> Result<(DenseTensor<T>, DenseTensor<T>), LinalgError> {
     let b = pade_coefficients(m);
     let id = DenseTensor::<T>::eye(n);
 
@@ -187,9 +188,9 @@ fn pade_uv_small<T: Scalar>(
             // V = b_0 I + b_2 A²
             // U = A(b_1 I + b_3 A²)
             let v = linear_combine(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])
-                .map_err(BackendError::ExecutionFailed)?;
+                .map_err(LinalgError::InvalidArgument)?;
             let u_inner = linear_combine(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])
-                .map_err(BackendError::ExecutionFailed)?;
+                .map_err(LinalgError::InvalidArgument)?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -199,12 +200,12 @@ fn pade_uv_small<T: Scalar>(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[0]), coeff::<T>(b[2]), coeff::<T>(b[4])],
             )
-            .map_err(BackendError::ExecutionFailed)?;
+            .map_err(LinalgError::InvalidArgument)?;
             let u_inner = linear_combine(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[1]), coeff::<T>(b[3]), coeff::<T>(b[5])],
             )
-            .map_err(BackendError::ExecutionFailed)?;
+            .map_err(LinalgError::InvalidArgument)?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -220,7 +221,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[6]),
                 ],
             )
-            .map_err(BackendError::ExecutionFailed)?;
+            .map_err(LinalgError::InvalidArgument)?;
             let u_inner = linear_combine(
                 &[&id, &a2, &a4, &a6],
                 &[
@@ -230,7 +231,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[7]),
                 ],
             )
-            .map_err(BackendError::ExecutionFailed)?;
+            .map_err(LinalgError::InvalidArgument)?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -248,7 +249,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[8]),
                 ],
             )
-            .map_err(BackendError::ExecutionFailed)?;
+            .map_err(LinalgError::InvalidArgument)?;
             let u_inner = linear_combine(
                 &[&id, &a2, &a4, &a6, &a8],
                 &[
@@ -259,11 +260,11 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[9]),
                 ],
             )
-            .map_err(BackendError::ExecutionFailed)?;
+            .map_err(LinalgError::InvalidArgument)?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
-        _ => Err(BackendError::ExecutionFailed(format!(
+        _ => Err(LinalgError::InvalidArgument(format!(
             "pade_uv_small: unsupported order m={m}"
         ))),
     }
@@ -277,7 +278,7 @@ fn pade_uv_13<T: Scalar>(
     backend: &impl ComputeBackend,
     a: &DenseTensor<T>,
     n: usize,
-) -> Result<(DenseTensor<T>, DenseTensor<T>), BackendError> {
+) -> Result<(DenseTensor<T>, DenseTensor<T>), LinalgError> {
     let b = pade_coefficients(13);
     let id = DenseTensor::<T>::eye(n);
 
@@ -290,7 +291,7 @@ fn pade_uv_13<T: Scalar>(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[13]), coeff::<T>(b[11]), coeff::<T>(b[9])],
     )
-    .map_err(BackendError::ExecutionFailed)?;
+    .map_err(LinalgError::InvalidArgument)?;
 
     // W₂ = b₇ A⁶ + b₅ A⁴ + b₃ A² + b₁ I
     let w2 = linear_combine(
@@ -302,12 +303,12 @@ fn pade_uv_13<T: Scalar>(
             coeff::<T>(b[1]),
         ],
     )
-    .map_err(BackendError::ExecutionFailed)?;
+    .map_err(LinalgError::InvalidArgument)?;
 
     // U = A (A⁶ W₁ + W₂)
     let a6w1 = matmul(backend, &a6, &w1)?;
     let u_inner = linear_combine(&[&a6w1, &w2], &[T::one(), T::one()])
-        .map_err(BackendError::ExecutionFailed)?;
+        .map_err(LinalgError::InvalidArgument)?;
     let u = matmul(backend, a, &u_inner)?;
 
     // W₃ = b₁₂ A⁶ + b₁₀ A⁴ + b₈ A²
@@ -315,7 +316,7 @@ fn pade_uv_13<T: Scalar>(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[12]), coeff::<T>(b[10]), coeff::<T>(b[8])],
     )
-    .map_err(BackendError::ExecutionFailed)?;
+    .map_err(LinalgError::InvalidArgument)?;
 
     // W₄ = b₆ A⁶ + b₄ A⁴ + b₂ A² + b₀ I
     let w4 = linear_combine(
@@ -327,12 +328,12 @@ fn pade_uv_13<T: Scalar>(
             coeff::<T>(b[0]),
         ],
     )
-    .map_err(BackendError::ExecutionFailed)?;
+    .map_err(LinalgError::InvalidArgument)?;
 
     // V = A⁶ W₃ + W₄
     let a6w3 = matmul(backend, &a6, &w3)?;
     let v = linear_combine(&[&a6w3, &w4], &[T::one(), T::one()])
-        .map_err(BackendError::ExecutionFailed)?;
+        .map_err(LinalgError::InvalidArgument)?;
 
     Ok((u, v))
 }
@@ -355,18 +356,18 @@ fn pade_uv_13<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if `nrow` is out of range, the matrix is non-square,
+/// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
 pub fn expm<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
     if nrow == 0 || nrow >= rank {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
         )));
     }
@@ -375,7 +376,7 @@ pub fn expm<T: Scalar>(
     let n_dim: usize = shape[nrow..].iter().product();
 
     if m_dim != n_dim {
-        return Err(BackendError::InvalidArgument(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "expm requires a square matrix, got {m_dim}×{n_dim}"
         )));
     }
@@ -462,15 +463,15 @@ fn solve_pade<T: Scalar>(
     backend: &impl ComputeBackend,
     u: &DenseTensor<T>,
     v: &DenseTensor<T>,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     // V - U
     let neg_one: T = coeff::<T>(-1.0);
     let lhs =
-        linear_combine(&[v, u], &[T::one(), neg_one]).map_err(BackendError::ExecutionFailed)?;
+        linear_combine(&[v, u], &[T::one(), neg_one]).map_err(LinalgError::InvalidArgument)?;
 
     // V + U
     let rhs =
-        linear_combine(&[v, u], &[T::one(), T::one()]).map_err(BackendError::ExecutionFailed)?;
+        linear_combine(&[v, u], &[T::one(), T::one()]).map_err(LinalgError::InvalidArgument)?;
 
     // Reshape rhs to n×n for solve (nrow_a=1 since shape is [n, n])
     solve(backend, &lhs, &rhs, 1)

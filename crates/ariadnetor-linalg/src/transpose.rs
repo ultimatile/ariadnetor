@@ -1,6 +1,8 @@
-use arnet_core::backend::{BackendError, ComputeBackend, TransposeDescriptor};
+use arnet_core::backend::{ComputeBackend, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::DenseTensor;
+
+use crate::error::LinalgError;
 
 /// Transpose (permute axes) of a dense tensor using the provided backend.
 ///
@@ -12,12 +14,12 @@ use arnet_tensor::DenseTensor;
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if the backend fails to execute the transpose.
+/// Returns `LinalgError` if the backend fails to execute the transpose.
 pub fn transpose<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     perm: &[usize],
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     transpose_inner(backend, tensor, perm, false)
 }
 
@@ -29,12 +31,12 @@ pub fn transpose<T: Scalar>(
 ///
 /// # Errors
 ///
-/// Returns `BackendError` if the backend fails to execute the transpose.
+/// Returns `LinalgError` if the backend fails to execute the transpose.
 pub fn conjugate_transpose<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensor<T>,
     perm: &[usize],
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     transpose_inner(backend, tensor, perm, true)
 }
 
@@ -44,7 +46,7 @@ fn transpose_inner<T: Scalar>(
     tensor: &DenseTensor<T>,
     perm: &[usize],
     conj: bool,
-) -> Result<DenseTensor<T>, BackendError> {
+) -> Result<DenseTensor<T>, LinalgError> {
     let order = backend.preferred_order();
     let new_shape: Vec<usize> = perm.iter().map(|&i| tensor.shape()[i]).collect();
     let total = tensor.len();
