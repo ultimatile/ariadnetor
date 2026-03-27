@@ -26,7 +26,8 @@ use super::types::{Mpo, Mps, TruncateParams};
 ///
 /// # Panics
 ///
-/// Panics if the MPO and MPS have different lengths or either is empty.
+/// Panics if the MPO and MPS have different lengths, either is empty,
+/// or `params.center` is `Some(c)` with `c >= psi.len()`.
 pub fn apply<T, B>(op: &Mpo<T, B>, psi: &Mps<T, B>, params: Option<&TruncateParams>) -> Mps<T, B>
 where
     T: Scalar,

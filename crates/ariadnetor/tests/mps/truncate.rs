@@ -168,7 +168,6 @@ fn test_truncate_canonical_form_after() {
 fn test_truncate_absorb_left() {
     let mut mps = make_4site_mps();
     mps::orthogonalize(&mut mps, 1);
-    let dense_before = mps_to_dense(&mps);
 
     let params = TruncateParams {
         svd: TruncSvdParams {

@@ -24,7 +24,8 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 ///
 /// # Panics
 ///
-/// Panics if the chain is empty.
+/// Panics if the chain is empty, or if `params.center` is `Some(c)` with
+/// `c >= chain.len()`.
 pub fn truncate<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
