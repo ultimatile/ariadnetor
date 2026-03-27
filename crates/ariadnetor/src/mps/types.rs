@@ -3,6 +3,8 @@
 use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
+use arnet_core::scalar::Scalar;
+use arnet_linalg::TruncSvdParams;
 use arnet_native::NativeBackend;
 use arnet_tensor::TensorStorage;
 
@@ -11,12 +13,58 @@ use arnet_tensor::TensorStorage;
 pub enum CanonicalForm {
     /// No canonicalization guarantees.
     Unknown,
-    /// 0..llim left-canonical, rlim..N right-canonical.
-    /// Non-canonical region spans multiple sites (rlim - llim > 1).
-    PartiallyCanonicalized { llim: usize, rlim: usize },
+    /// All sites are left-isometric (A-form). The state is normalized.
+    Left,
+    /// All sites are right-isometric (B-form). The state is normalized.
+    Right,
+    /// 0..left_end left-canonical, right_start..N right-canonical.
+    /// Non-canonical region spans multiple sites (right_start - left_end > 1).
+    Partial { left_end: usize, right_start: usize },
     /// Single-site orthogonality center at `center`.
     /// 0..center left-canonical, center+1..N right-canonical.
-    Canonicalized { center: usize },
+    Mixed { center: usize },
+}
+
+/// Which side absorbs singular values after SVD.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SvdAbsorb {
+    /// U·S absorbed left, Vt stays right-isometric.
+    Left,
+    /// S·Vt absorbed right, U stays left-isometric.
+    #[default]
+    Right,
+    /// √S applied to both sides (symmetric split).
+    Both,
+}
+
+/// Parameters for MPS/MPO truncation.
+#[derive(Debug, Clone)]
+pub struct TruncateParams {
+    /// SVD truncation parameters (chi_max, target_trunc_err).
+    pub svd: TruncSvdParams,
+    /// How to absorb singular values at each step.
+    pub absorb: SvdAbsorb,
+    /// Target orthogonality center for auto-orthogonalization.
+    /// Used when the chain is not already in Mixed canonical form.
+    /// Defaults to 0 if None.
+    pub center: Option<usize>,
+}
+
+impl From<TruncSvdParams> for TruncateParams {
+    fn from(svd: TruncSvdParams) -> Self {
+        Self {
+            svd,
+            absorb: SvdAbsorb::default(),
+            center: None,
+        }
+    }
+}
+
+/// Result of a truncation operation.
+#[derive(Debug, Clone)]
+pub struct TruncResult<T: Scalar> {
+    /// Total truncation error (Frobenius norm of discarded SVs).
+    pub error: T::Real,
 }
 
 /// Internal data container for MPS/MPO tensor chains.

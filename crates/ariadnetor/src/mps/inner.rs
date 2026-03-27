@@ -5,7 +5,7 @@ use arnet_core::scalar::Scalar;
 use arnet_linalg::contract;
 use arnet_tensor::ComputeBackendTensorExt;
 use arnet_tensor::{DenseTensor, TensorStorage};
-use num_traits::Float;
+use num_traits::{Float, One};
 
 use super::chain::TensorChain;
 use super::types::{CanonicalForm, Mpo, Mps};
@@ -49,20 +49,24 @@ where
 
 /// Compute the norm ‖ψ‖ = √⟨ψ|ψ⟩.
 ///
-/// If the MPS is canonicalized, returns the Frobenius norm of the
-/// orthogonality center tensor in O(1). Otherwise computes the full
-/// inner product.
+/// If the MPS is in canonical form, exploits the structure for O(1) computation:
+/// - `Left`/`Right`: returns 1.0 (normalized by construction).
+/// - `Mixed`: returns Frobenius norm of the orthogonality center tensor.
+///
+/// Otherwise computes the full inner product.
 pub fn norm<T, B>(psi: &Mps<T, B>) -> T::Real
 where
     T: Scalar,
     B: ComputeBackend,
 {
-    if let CanonicalForm::Canonicalized { center } = psi.canonical_form() {
-        return psi.storage(*center).norm();
+    match psi.canonical_form() {
+        CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
+        CanonicalForm::Mixed { center } => psi.storage(*center).norm(),
+        _ => {
+            let overlap = inner(psi, psi);
+            overlap.re().sqrt()
+        }
     }
-
-    let overlap = inner(psi, psi);
-    overlap.re().sqrt()
 }
 
 /// Compute ⟨ψ|A|φ⟩ — the MPO-inserted inner product (bra-ket with operator).

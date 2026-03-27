@@ -1,7 +1,7 @@
 //! Column-major MPS integration tests.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{self, CanonicalForm, Mps, TensorChain};
+use arnet::mps::{self, CanonicalForm, Mps, TensorChain, TruncSvdParams, TruncateParams};
 use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
@@ -71,14 +71,18 @@ fn test_col_major_truncate_preserves_state() {
     let norm_before = mps::norm(&mps_rm);
 
     mps::orthogonalize(&mut mps_cm, 1);
-    let params = mps::TruncSvdParams {
+    let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(3),
         target_trunc_err: None,
-    };
-    let err = mps::truncate(&mut mps_cm, &params);
+    });
+    let result = mps::truncate(&mut mps_cm, &params);
 
     // Truncation error should be small relative to norm
-    assert!(err / norm_before < 0.5, "truncation error too large: {err}");
+    assert!(
+        result.error / norm_before < 0.5,
+        "truncation error too large: {}",
+        result.error
+    );
 
     // Inner product with original should be close to norm squared
     let overlap = mps::inner(&mps_rm, &mps_cm);
@@ -109,20 +113,17 @@ fn test_col_major_apply_with_truncation() {
     let mps_cm = make_4site_mps_col_major();
     let identity = make_identity_mpo(4, 2);
 
-    let params = mps::TruncSvdParams {
+    let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(3),
         target_trunc_err: None,
-    };
+    });
     let result = mps::apply(&identity, &mps_cm, Some(&params));
 
     // Bond dims should be capped
     for d in result.bond_dims() {
         assert!(d <= 3, "bond dim {d} exceeds chi_max=3");
     }
-    assert_eq!(
-        *result.canonical_form(),
-        CanonicalForm::Canonicalized { center: 0 }
-    );
+    assert_eq!(*result.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 
 #[test]

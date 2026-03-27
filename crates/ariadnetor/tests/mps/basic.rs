@@ -78,16 +78,19 @@ fn test_canonical_form_initial_unknown() {
 fn test_canonical_form_set_and_get() {
     let mut mps = make_3site_mps();
 
-    mps.set_canonical_form(CanonicalForm::Canonicalized { center: 1 });
-    assert_eq!(
-        *mps.canonical_form(),
-        CanonicalForm::Canonicalized { center: 1 }
-    );
+    mps.set_canonical_form(CanonicalForm::Mixed { center: 1 });
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
-    mps.set_canonical_form(CanonicalForm::PartiallyCanonicalized { llim: 2, rlim: 4 });
+    mps.set_canonical_form(CanonicalForm::Partial {
+        left_end: 2,
+        right_start: 4,
+    });
     assert_eq!(
         *mps.canonical_form(),
-        CanonicalForm::PartiallyCanonicalized { llim: 2, rlim: 4 }
+        CanonicalForm::Partial {
+            left_end: 2,
+            right_start: 4
+        }
     );
 }
 
@@ -95,11 +98,8 @@ fn test_canonical_form_set_and_get() {
 fn test_storage_mut_resets_canonical_form() {
     let mut mps = make_3site_mps();
 
-    mps.set_canonical_form(CanonicalForm::Canonicalized { center: 1 });
-    assert_eq!(
-        *mps.canonical_form(),
-        CanonicalForm::Canonicalized { center: 1 }
-    );
+    mps.set_canonical_form(CanonicalForm::Mixed { center: 1 });
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
     // Accessing storage_mut should reset to Unknown
     let _ = mps.storage_mut(0);

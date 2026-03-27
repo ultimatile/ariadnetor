@@ -12,10 +12,7 @@ fn test_orthogonalize_center_0() {
 
     mps::orthogonalize(&mut mps, 0);
 
-    assert_eq!(
-        *mps.canonical_form(),
-        CanonicalForm::Canonicalized { center: 0 }
-    );
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
     // Sites 1..3 should be right-canonical
     let tol = 1e-10;
@@ -52,10 +49,7 @@ fn test_orthogonalize_center_middle() {
 
     mps::orthogonalize(&mut mps, 2);
 
-    assert_eq!(
-        *mps.canonical_form(),
-        CanonicalForm::Canonicalized { center: 2 }
-    );
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 
     let tol = 1e-10;
     // Sites 0, 1 should be left-canonical
@@ -86,10 +80,7 @@ fn test_orthogonalize_center_last() {
 
     mps::orthogonalize(&mut mps, 3);
 
-    assert_eq!(
-        *mps.canonical_form(),
-        CanonicalForm::Canonicalized { center: 3 }
-    );
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
     let tol = 1e-10;
     for j in 0..3 {
@@ -111,10 +102,7 @@ fn test_orthogonalize_single_site() {
 
     mps::orthogonalize(&mut mps, 0);
 
-    assert_eq!(
-        *mps.canonical_form(),
-        CanonicalForm::Canonicalized { center: 0 }
-    );
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 
 #[test]

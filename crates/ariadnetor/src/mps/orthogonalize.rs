@@ -12,7 +12,7 @@ use super::types::CanonicalForm;
 ///
 /// Performs left-to-right QR sweeps (sites 0..center) and right-to-left LQ
 /// sweeps (sites N-1..center+1). After completion, the canonical form is
-/// `Canonicalized { center }`.
+/// `Mixed { center }`.
 ///
 /// Works for both MPS (rank-3) and MPO (rank-4) tensor chains.
 ///
@@ -41,7 +41,7 @@ where
         right_lq_step(chain, j);
     }
 
-    chain.set_canonical_form(CanonicalForm::Canonicalized { center });
+    chain.set_canonical_form(CanonicalForm::Mixed { center });
 }
 
 /// QR step: decompose site j, replace with Q, absorb R into site j+1.

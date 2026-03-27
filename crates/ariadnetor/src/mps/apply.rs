@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::{TruncSvdParams, contract};
+use arnet_linalg::contract;
 use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 use super::chain::TensorChain;
-use super::types::{Mpo, Mps};
+use super::types::{Mpo, Mps, TruncateParams};
 
 /// Apply an MPO to an MPS, producing a new MPS.
 ///
@@ -27,7 +27,7 @@ use super::types::{Mpo, Mps};
 /// # Panics
 ///
 /// Panics if the MPO and MPS have different lengths or either is empty.
-pub fn apply<T, B>(op: &Mpo<T, B>, psi: &Mps<T, B>, params: Option<&TruncSvdParams>) -> Mps<T, B>
+pub fn apply<T, B>(op: &Mpo<T, B>, psi: &Mps<T, B>, params: Option<&TruncateParams>) -> Mps<T, B>
 where
     T: Scalar,
     B: ComputeBackend,

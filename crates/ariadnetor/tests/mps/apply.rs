@@ -1,7 +1,7 @@
 //! MPO-MPS apply operation tests.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{self, CanonicalForm, Mpo, Mps, TensorChain};
+use arnet::mps::{self, CanonicalForm, Mpo, Mps, TensorChain, TruncSvdParams, TruncateParams};
 use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
@@ -102,10 +102,10 @@ fn test_apply_with_truncation() {
     ]);
     let identity = make_identity_mpo(3, 2);
 
-    let params = mps::TruncSvdParams {
+    let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
-    };
+    });
     let result = mps::apply(&identity, &psi, Some(&params));
 
     // Bond dims should be capped at 2
@@ -113,10 +113,7 @@ fn test_apply_with_truncation() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
     }
     // Should be canonicalized (orthogonalize + truncate was called)
-    assert_eq!(
-        *result.canonical_form(),
-        CanonicalForm::Canonicalized { center: 0 }
-    );
+    assert_eq!(*result.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 
 #[test]
