@@ -22,7 +22,7 @@ pub use inner::{braket, inner, norm};
 pub use orthogonalize::orthogonalize;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use truncate::truncate;
-pub use types::{CanonicalForm, Mpo, Mps};
+pub use types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
 // Re-export TruncSvdParams for convenience
 pub use arnet_linalg::TruncSvdParams;

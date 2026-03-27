@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::{TruncSvdParams, contract};
+use arnet_linalg::contract;
 use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 use super::chain::TensorChain;
-use super::types::{Mpo, Mps};
+use super::types::{Mpo, Mps, TruncateParams};
 
 /// Apply an MPO to an MPS, producing a new MPS.
 ///
@@ -26,8 +26,9 @@ use super::types::{Mpo, Mps};
 ///
 /// # Panics
 ///
-/// Panics if the MPO and MPS have different lengths or either is empty.
-pub fn apply<T, B>(op: &Mpo<T, B>, psi: &Mps<T, B>, params: Option<&TruncSvdParams>) -> Mps<T, B>
+/// Panics if the MPO and MPS have different lengths, either is empty,
+/// or `params.center` is `Some(c)` with `c >= psi.len()`.
+pub fn apply<T, B>(op: &Mpo<T, B>, psi: &Mps<T, B>, params: Option<&TruncateParams>) -> Mps<T, B>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -67,7 +68,8 @@ where
     let mut result_mps = Mps::with_backend(storages, Arc::clone(psi.backend_arc()));
 
     if let Some(trunc_params) = params {
-        super::orthogonalize(&mut result_mps, 0);
+        let center = trunc_params.center.unwrap_or(0);
+        super::orthogonalize(&mut result_mps, center);
         super::truncate(&mut result_mps, trunc_params);
     }
 

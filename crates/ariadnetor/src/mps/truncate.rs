@@ -7,64 +7,95 @@ use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 use num_traits::{Float, Zero};
 
 use super::chain::TensorChain;
-use super::types::CanonicalForm;
+use super::orthogonalize::orthogonalize;
+use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
-/// Truncate bond dimensions of a canonicalized tensor chain.
+/// Truncate bond dimensions of a tensor chain via SVD sweeps.
 ///
 /// Performs SVD sweeps from the orthogonality center outward in both
 /// directions, applying truncation at each bond. Returns the total
 /// truncation error (Frobenius norm of discarded singular values).
 ///
+/// If the chain is not in `Mixed` canonical form, auto-orthogonalizes first:
+/// - `Mixed`: uses existing center (no extra work).
+/// - `Left`: treats the last site as center.
+/// - `Right`: treats site 0 as center.
+/// - `Partial` / `Unknown`: orthogonalizes to `params.center` (default 0).
+///
 /// # Panics
 ///
-/// Panics if the chain is not in `Canonicalized` state.
-pub fn truncate<T, B, C>(chain: &mut C, params: &TruncSvdParams) -> T::Real
+/// Panics if the chain is empty, or if `params.center` is `Some(c)` with
+/// `c >= chain.len()`.
+pub fn truncate<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     B: ComputeBackend,
     C: TensorChain<T, B>,
 {
-    let center = match chain.canonical_form() {
-        CanonicalForm::Canonicalized { center } => *center,
-        _ => panic!("truncate requires Canonicalized state; call orthogonalize first"),
-    };
-
     let n = chain.len();
+    assert!(n > 0, "truncate requires a non-empty chain");
+
+    let center = match chain.canonical_form() {
+        CanonicalForm::Mixed { center } => *center,
+        CanonicalForm::Left => n - 1,
+        CanonicalForm::Right => 0,
+        _ => {
+            let c = params.center.unwrap_or(0);
+            orthogonalize(chain, c);
+            c
+        }
+    };
     if n <= 1 {
-        chain.set_canonical_form(CanonicalForm::Canonicalized { center });
-        return T::Real::zero();
+        chain.set_canonical_form(CanonicalForm::Mixed { center });
+        return TruncResult {
+            error: T::Real::zero(),
+        };
     }
 
+    let svd_params = &params.svd;
+    let absorb = params.absorb;
     let mut total_err_sq = T::Real::zero();
 
     // Right sweep from center to N-2: truncate bonds, center moves to N-1
     for j in center..n - 1 {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, params);
+        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
     }
 
     // Left sweep from N-1 to 1: truncate all bonds, center moves to 0
     for j in (1..n).rev() {
-        total_err_sq = total_err_sq + left_trunc_step(chain, j, params);
+        total_err_sq = total_err_sq + left_trunc_step(chain, j, svd_params, absorb);
     }
 
     // Right sweep from 0 to center-1: restore center position
     for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, params);
+        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
     }
 
-    chain.set_canonical_form(CanonicalForm::Canonicalized { center });
-    total_err_sq.sqrt()
+    // SvdAbsorb::Both leaves √S on both sides, so the result is not mixed-canonical.
+    let form = match absorb {
+        SvdAbsorb::Both => CanonicalForm::Unknown,
+        _ => CanonicalForm::Mixed { center },
+    };
+    chain.set_canonical_form(form);
+    TruncResult {
+        error: total_err_sq.sqrt(),
+    }
 }
 
-/// Right SVD step at site j: U → left-canonical at j, S·Vt → absorbed into j+1.
+/// Right SVD step at site j: decompose, absorb into j+1 based on absorb mode.
 /// Returns squared truncation error.
-fn right_trunc_step<T, B, C>(chain: &mut C, j: usize, params: &TruncSvdParams) -> T::Real
+fn right_trunc_step<T, B, C>(
+    chain: &mut C,
+    j: usize,
+    params: &TruncSvdParams,
+    absorb: SvdAbsorb,
+) -> T::Real
 where
     T: Scalar,
     B: ComputeBackend,
     C: TensorChain<T, B>,
 {
-    let (u_storage, svt, err) = {
+    let (left_storage, right_factor, err) = {
         let dense = as_dense(chain.storage(j));
         let rank = dense.rank();
         let orig_shape = dense.shape().to_vec();
@@ -72,25 +103,48 @@ where
         let (u, s, vt, err) = trunc_svd(chain.backend(), dense, rank - 1, params)
             .expect("trunc_svd failed during truncate");
 
-        // Reshape U from (m, chi) to (*orig[..rank-1], chi).
-        // Convert to row-major first so reshape uses standard axis merge order.
         let u_rm = u.to_contiguous(MemoryOrder::RowMajor);
         let chi = u_rm.shape()[1];
         let mut u_shape = orig_shape[..rank - 1].to_vec();
         u_shape.push(chi);
 
-        // S·Vt: scale each row of Vt by corresponding singular value
-        let svt = diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
-
-        (TensorStorage::Dense(u_rm.reshape(u_shape)), svt, err)
+        match absorb {
+            SvdAbsorb::Right => {
+                // U stays at j (left-canonical), S·Vt absorbed into j+1
+                let svt =
+                    diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
+                (TensorStorage::Dense(u_rm.reshape(u_shape)), svt, err)
+            }
+            SvdAbsorb::Left => {
+                // U·S stays at j, Vt absorbed into j+1 (right-canonical Vt)
+                let us =
+                    diagonal_scale(&u_rm, s.data(), 1).expect("U·S scaling failed during truncate");
+                let us = us.to_contiguous(MemoryOrder::RowMajor);
+                let us_reshaped = us.reshape(u_shape);
+                (TensorStorage::Dense(us_reshaped), vt, err)
+            }
+            SvdAbsorb::Both => {
+                // √S applied to both sides
+                let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
+                let u_scaled =
+                    diagonal_scale(&u_rm, &sqrt_s, 1).expect("√S·U scaling failed during truncate");
+                let u_scaled = u_scaled.to_contiguous(MemoryOrder::RowMajor);
+                let vt_scaled =
+                    diagonal_scale(&vt, &sqrt_s, 0).expect("√S·Vt scaling failed during truncate");
+                (
+                    TensorStorage::Dense(u_scaled.reshape(u_shape)),
+                    vt_scaled,
+                    err,
+                )
+            }
+        }
     };
 
-    *chain.storage_mut(j) = u_storage;
+    *chain.storage_mut(j) = left_storage;
 
-    // Absorb S·Vt into site j+1
     let new_next = {
         let next = as_dense(chain.storage(j + 1));
-        absorb_from_left(&svt, next, chain.backend())
+        absorb_from_left(&right_factor, next, chain.backend())
     };
 
     *chain.storage_mut(j + 1) = TensorStorage::Dense(new_next);
@@ -98,40 +152,68 @@ where
     err * err
 }
 
-/// Left SVD step at site j: Vt → right-canonical at j, U·S → absorbed into j-1.
+/// Left SVD step at site j: decompose, absorb into j-1 based on absorb mode.
 /// Returns squared truncation error.
-fn left_trunc_step<T, B, C>(chain: &mut C, j: usize, params: &TruncSvdParams) -> T::Real
+fn left_trunc_step<T, B, C>(
+    chain: &mut C,
+    j: usize,
+    params: &TruncSvdParams,
+    absorb: SvdAbsorb,
+) -> T::Real
 where
     T: Scalar,
     B: ComputeBackend,
     C: TensorChain<T, B>,
 {
-    let (vt_storage, us, err) = {
+    let (right_storage, left_factor, err) = {
         let dense = as_dense(chain.storage(j));
         let orig_shape = dense.shape().to_vec();
 
         let (u, s, vt, err) =
             trunc_svd(chain.backend(), dense, 1, params).expect("trunc_svd failed during truncate");
 
-        // Reshape Vt from (chi, n) to (chi, *orig[1..]).
-        // Convert to row-major first so reshape uses standard axis merge order.
         let vt_rm = vt.to_contiguous(MemoryOrder::RowMajor);
         let chi = vt_rm.shape()[0];
         let mut vt_shape = vec![chi];
         vt_shape.extend_from_slice(&orig_shape[1..]);
 
-        // U·S: scale each column of U by corresponding singular value
-        let us = diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
-
-        (TensorStorage::Dense(vt_rm.reshape(vt_shape)), us, err)
+        match absorb {
+            SvdAbsorb::Right => {
+                // Vt stays at j (right-canonical), U·S absorbed into j-1
+                let us =
+                    diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
+                (TensorStorage::Dense(vt_rm.reshape(vt_shape)), us, err)
+            }
+            SvdAbsorb::Left => {
+                // S·Vt stays at j, U absorbed into j-1 (left-canonical U)
+                let svt = diagonal_scale(&vt_rm, s.data(), 0)
+                    .expect("S·Vt scaling failed during truncate");
+                let svt = svt.to_contiguous(MemoryOrder::RowMajor);
+                let svt_reshaped = svt.reshape(vt_shape);
+                (TensorStorage::Dense(svt_reshaped), u, err)
+            }
+            SvdAbsorb::Both => {
+                // √S applied to both sides
+                let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
+                let vt_scaled = diagonal_scale(&vt_rm, &sqrt_s, 0)
+                    .expect("√S·Vt scaling failed during truncate");
+                let vt_scaled = vt_scaled.to_contiguous(MemoryOrder::RowMajor);
+                let u_scaled =
+                    diagonal_scale(&u, &sqrt_s, 1).expect("√S·U scaling failed during truncate");
+                (
+                    TensorStorage::Dense(vt_scaled.reshape(vt_shape)),
+                    u_scaled,
+                    err,
+                )
+            }
+        }
     };
 
-    *chain.storage_mut(j) = vt_storage;
+    *chain.storage_mut(j) = right_storage;
 
-    // Absorb U·S into site j-1
     let new_prev = {
         let prev = as_dense(chain.storage(j - 1));
-        absorb_from_right(prev, &us, chain.backend())
+        absorb_from_right(prev, &left_factor, chain.backend())
     };
 
     *chain.storage_mut(j - 1) = TensorStorage::Dense(new_prev);
