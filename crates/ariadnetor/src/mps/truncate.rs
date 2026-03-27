@@ -10,7 +10,7 @@ use super::chain::TensorChain;
 use super::orthogonalize::orthogonalize;
 use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
-/// Truncate bond dimensions of a canonicalized tensor chain.
+/// Truncate bond dimensions of a tensor chain via SVD sweeps.
 ///
 /// Performs SVD sweeps from the orthogonality center outward in both
 /// directions, applying truncation at each bond. Returns the total
@@ -21,15 +21,22 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 /// - `Left`: treats the last site as center.
 /// - `Right`: treats site 0 as center.
 /// - `Partial` / `Unknown`: orthogonalizes to `params.center` (default 0).
+///
+/// # Panics
+///
+/// Panics if the chain is empty.
 pub fn truncate<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     B: ComputeBackend,
     C: TensorChain<T, B>,
 {
+    let n = chain.len();
+    assert!(n > 0, "truncate requires a non-empty chain");
+
     let center = match chain.canonical_form() {
         CanonicalForm::Mixed { center } => *center,
-        CanonicalForm::Left => chain.len() - 1,
+        CanonicalForm::Left => n - 1,
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
@@ -37,8 +44,6 @@ where
             c
         }
     };
-
-    let n = chain.len();
     if n <= 1 {
         chain.set_canonical_form(CanonicalForm::Mixed { center });
         return TruncResult {
