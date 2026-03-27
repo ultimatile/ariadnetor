@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, DeviceType, TransposeDescriptor};
+use arnet_core::backend::{ComputeBackend, DeviceType, MemoryOrder, TransposeDescriptor};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -25,6 +25,8 @@ fn test_transpose_f64_2d() {
         output: &mut output,
         shape: &[2, 3],
         perm: &[1, 0],
+        order: MemoryOrder::RowMajor,
+        conj: false,
     };
     backend.transpose(desc).unwrap();
     // [[1,2,3],[4,5,6]] transposed = [[1,4],[2,5],[3,6]]
@@ -44,6 +46,8 @@ fn test_transpose_f64_3d() {
         output: &mut output,
         shape: &[2, 3, 4],
         perm: &[1, 0, 2],
+        order: MemoryOrder::RowMajor,
+        conj: false,
     };
     backend.transpose(desc).unwrap();
 
@@ -66,6 +70,8 @@ fn test_transpose_f32_2d() {
         output: &mut output,
         shape: &[2, 3],
         perm: &[1, 0],
+        order: MemoryOrder::RowMajor,
+        conj: false,
     };
     backend.transpose(desc).unwrap();
     assert_eq!(output, [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
@@ -90,6 +96,8 @@ fn test_transpose_complex_f64_2d() {
         output: &mut output,
         shape: &[2, 3],
         perm: &[1, 0],
+        order: MemoryOrder::RowMajor,
+        conj: false,
     };
     backend.transpose(desc).unwrap();
     assert_eq!(output[0], Complex::new(1.0, 2.0));
