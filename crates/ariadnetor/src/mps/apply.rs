@@ -67,7 +67,8 @@ where
     let mut result_mps = Mps::with_backend(storages, Arc::clone(psi.backend_arc()));
 
     if let Some(trunc_params) = params {
-        super::orthogonalize(&mut result_mps, 0);
+        let center = trunc_params.center.unwrap_or(0);
+        super::orthogonalize(&mut result_mps, center);
         super::truncate(&mut result_mps, trunc_params);
     }
 

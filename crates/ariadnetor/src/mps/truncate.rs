@@ -65,7 +65,12 @@ where
         total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
     }
 
-    chain.set_canonical_form(CanonicalForm::Mixed { center });
+    // SvdAbsorb::Both leaves √S on both sides, so the result is not mixed-canonical.
+    let form = match absorb {
+        SvdAbsorb::Both => CanonicalForm::Unknown,
+        _ => CanonicalForm::Mixed { center },
+    };
+    chain.set_canonical_form(form);
     TruncResult {
         error: total_err_sq.sqrt(),
     }
