@@ -344,3 +344,43 @@ fn test_truncate_error_accumulates_correctly() {
         norm = norm_before
     );
 }
+
+#[test]
+fn test_absorb_left_differs_from_right() {
+    let mut mps_l = make_4site_mps();
+    mps::orthogonalize(&mut mps_l, 1);
+    let mut mps_r = mps_l.clone();
+
+    let params_l = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(2),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::Left,
+        center: None,
+    };
+    let params_r = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    mps::truncate(&mut mps_l, &params_l);
+    mps::truncate(&mut mps_r, &params_r);
+
+    // Center tensors should differ between Left and Right
+    let center_l = match mps_l.storage(1) {
+        TensorStorage::Dense(d) => d,
+    };
+    let center_r = match mps_r.storage(1) {
+        TensorStorage::Dense(d) => d,
+    };
+    let max_diff = center_l
+        .data()
+        .iter()
+        .zip(center_r.data())
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        max_diff > 1e-10,
+        "Left and Right should produce different center tensors"
+    );
+}
