@@ -1,7 +1,7 @@
 //! Inner product, norm, and expectation value tests.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{self, Mpo, Mps};
+use arnet::mps::{self, CanonicalForm, Mpo, Mps, TensorChain};
 use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
 
 use super::helpers::make_4site_mps;
@@ -93,6 +93,52 @@ fn test_norm_product_state() {
     let psi = Mps::from_storages(storages);
 
     assert_abs_diff_eq!(mps::norm(&psi), 1.0, epsilon = 1e-12);
+}
+
+#[test]
+fn test_norm_left_canonical_returns_one() {
+    let mut mps = make_4site_mps();
+    let norm_full = mps::norm(&mps);
+
+    // Orthogonalize to make all sites left-isometric, then mark as Left
+    mps::orthogonalize(&mut mps, 3);
+    mps.set_canonical_form(CanonicalForm::Left);
+
+    let norm_left = mps::norm(&mps);
+    // Left canonical means normalized → norm should be 1.0
+    assert_abs_diff_eq!(norm_left, 1.0, epsilon = 1e-12);
+    // This should differ from the full norm (which is not 1.0 for make_4site_mps)
+    assert!(
+        (norm_full - 1.0).abs() > 0.01,
+        "test setup: full norm should not be 1.0"
+    );
+}
+
+#[test]
+fn test_norm_right_canonical_returns_one() {
+    let mut mps = make_4site_mps();
+
+    mps::orthogonalize(&mut mps, 0);
+    mps.set_canonical_form(CanonicalForm::Right);
+
+    let norm_right = mps::norm(&mps);
+    assert_abs_diff_eq!(norm_right, 1.0, epsilon = 1e-12);
+}
+
+#[test]
+fn test_norm_mixed_uses_center_tensor() {
+    let mut mps = make_4site_mps();
+    let norm_full = mps::norm(&mps);
+
+    mps::orthogonalize(&mut mps, 2);
+    // canonical_form is Mixed { center: 2 } after orthogonalize
+    let norm_mixed = mps::norm(&mps);
+
+    // Both should agree
+    assert_abs_diff_eq!(norm_full, norm_mixed, epsilon = 1e-10);
+    // And the result should equal the Frobenius norm of the center tensor
+    let center_norm = mps.storage(2).norm();
+    assert_abs_diff_eq!(norm_mixed, center_norm, epsilon = 1e-12);
 }
 
 #[test]

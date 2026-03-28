@@ -270,3 +270,74 @@ fn test_truncate_unknown_default_center() {
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
+
+#[test]
+fn test_truncate_left_canonical_auto() {
+    // Left canonical: all sites left-isometric, center should be last site
+    let mut mps = make_4site_mps();
+    mps::orthogonalize(&mut mps, 3);
+    mps.set_canonical_form(CanonicalForm::Left);
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let result = mps::truncate(&mut mps, &params);
+
+    assert!(result.error >= 0.0);
+    // Left → center = N-1 = 3
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
+    for d in mps.bond_dims() {
+        assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
+    }
+}
+
+#[test]
+fn test_truncate_right_canonical_auto() {
+    // Right canonical: all sites right-isometric, center should be site 0
+    let mut mps = make_4site_mps();
+    mps::orthogonalize(&mut mps, 0);
+    mps.set_canonical_form(CanonicalForm::Right);
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let result = mps::truncate(&mut mps, &params);
+
+    assert!(result.error >= 0.0);
+    // Right → center = 0
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
+    for d in mps.bond_dims() {
+        assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
+    }
+}
+
+#[test]
+fn test_truncate_error_accumulates_correctly() {
+    // Verify truncation error is positive and consistent across sweeps.
+    // Truncating to chi_max=1 forces maximal truncation, so error must be
+    // strictly positive and the squared-error accumulation (err*err) matters.
+    let mut mps = make_4site_mps();
+    mps::orthogonalize(&mut mps, 1);
+    let norm_before = mps::norm(&mps);
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+    let result = mps::truncate(&mut mps, &params);
+
+    // With chi_max=1, truncation error must be strictly positive
+    assert!(
+        result.error > 0.0,
+        "expected positive truncation error with chi_max=1"
+    );
+    // Error should be less than the original norm (we didn't discard everything)
+    assert!(
+        result.error < norm_before,
+        "truncation error {err} exceeds norm {norm}",
+        err = result.error,
+        norm = norm_before
+    );
+}
