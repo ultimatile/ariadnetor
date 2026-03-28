@@ -183,11 +183,14 @@ fn test_truncate_absorb_left() {
     for d in mps.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
     }
-    // SvdAbsorb::Left still produces Mixed canonical form
+    // SvdAbsorb::Left still produces mixed-canonical form
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
-    // Right sites should be right-canonical (absorb left means Vt is right-canonical)
     let tol = 1e-10;
+    assert!(
+        is_left_canonical(mps.storage(0), tol),
+        "site 0 not left-canonical with SvdAbsorb::Left"
+    );
     for j in 2..4 {
         assert!(
             is_right_canonical(mps.storage(j), tol),

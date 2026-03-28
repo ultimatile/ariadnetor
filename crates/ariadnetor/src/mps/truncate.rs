@@ -71,7 +71,7 @@ where
         total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
     }
 
-    // SvdAbsorb::Both leaves √S on both sides, so the result is not mixed-canonical.
+    // Both distributes √S to both sides, breaking isometry on all sites.
     let form = match absorb {
         SvdAbsorb::Both => CanonicalForm::Unknown,
         _ => CanonicalForm::Mixed { center },
@@ -179,13 +179,15 @@ where
 
         match absorb {
             SvdAbsorb::Right => {
-                // Vt stays at j (right-canonical), U·S absorbed into j-1
+                // Vt stays at j (right-isometric), U·S absorbed into j-1
+                // S accompanies the sweep direction (leftward), producing mixed-canonical form.
                 let us =
                     diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
                 (TensorStorage::Dense(vt_rm.reshape(vt_shape)), us, err)
             }
             SvdAbsorb::Left => {
-                // S·Vt stays at j, U absorbed into j-1 (left-canonical U)
+                // S·Vt stays at j, bare U absorbed into j-1
+                // S stays against the sweep direction.
                 let svt = diagonal_scale(&vt_rm, s.data(), 0)
                     .expect("S·Vt scaling failed during truncate");
                 let svt = svt.to_contiguous(MemoryOrder::RowMajor);

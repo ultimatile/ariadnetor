@@ -25,15 +25,21 @@ pub enum CanonicalForm {
     Mixed { center: usize },
 }
 
-/// Which side absorbs singular values after SVD.
+/// How singular values are distributed during truncation sweeps.
+///
+/// `Right` (default) and `Left` both produce mixed-canonical form after the
+/// three-sweep truncation. They differ in which intermediate tensors carry S,
+/// but the final isometry structure is the same. `Both` distributes √S to
+/// both sides, so the result is not mixed-canonical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SvdAbsorb {
-    /// U·S absorbed left, Vt stays right-isometric.
+    /// S stays at the current site (against sweep direction).
     Left,
-    /// S·Vt absorbed right, U stays left-isometric.
+    /// S accompanies the sweep direction (standard algorithm).
     #[default]
     Right,
     /// √S applied to both sides (symmetric split).
+    /// Result is not mixed-canonical.
     Both,
 }
 
