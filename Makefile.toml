@@ -142,6 +142,24 @@ command = "cargo"
 args = ["doc", "--workspace", "--features", "mlir", "--no-deps", "--open"]
 
 # ============================================================================
+# Benchmark tasks
+# ============================================================================
+
+[tasks.bench]
+description = "Run all benchmarks"
+dependencies = ["bench-tensor", "bench-linalg"]
+
+[tasks.bench-tensor]
+description = "Run DenseTensor benchmarks"
+command = "cargo"
+args = ["bench", "-p", "ariadnetor-tensor", "--features", "ariadnetor-tensor/random"]
+
+[tasks.bench-linalg]
+description = "Run linalg scalar_ops benchmarks"
+command = "cargo"
+args = ["bench", "-p", "ariadnetor-linalg"]
+
+# ============================================================================
 # Composite tasks
 # ============================================================================
 

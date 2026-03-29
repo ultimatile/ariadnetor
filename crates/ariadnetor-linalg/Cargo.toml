@@ -13,7 +13,14 @@ num-traits = { workspace = true }
 
 [dev-dependencies]
 ariadnetor-native = { path = "../ariadnetor-native" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["random"] }
 approx = { workspace = true }
+criterion = { workspace = true }
+rand = { workspace = true }
+
+[[bench]]
+name = "scalar_ops"
+harness = false
 
 [lib]
 name = "arnet_linalg"

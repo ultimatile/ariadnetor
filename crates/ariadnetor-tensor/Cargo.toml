@@ -18,7 +18,13 @@ rand = { workspace = true, optional = true }
 
 [dev-dependencies]
 approx = { workspace = true }
+criterion = { workspace = true }
 rand = { workspace = true }
+
+[[bench]]
+name = "dense_ops"
+harness = false
+required-features = ["random"]
 
 [lib]
 name = "arnet_tensor"
