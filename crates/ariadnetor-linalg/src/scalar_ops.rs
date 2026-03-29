@@ -21,13 +21,8 @@ pub fn scale<T>(tensor: &DenseTensor<T>, factor: T) -> DenseTensor<T>
 where
     T: Clone + Mul<Output = T>,
 {
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let data: Vec<T> = rm
-        .data()
-        .iter()
-        .map(|x| x.clone() * factor.clone())
-        .collect();
-    DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor)
+    let data: Vec<T> = tensor.iter().map(|x| x.clone() * factor.clone()).collect();
+    DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order())
 }
 
 /// Compute the Frobenius norm of a tensor.
@@ -45,9 +40,7 @@ where
 /// assert!((n - 2.0).abs() < 1e-10);
 /// ```
 pub fn norm<T: Scalar>(tensor: &DenseTensor<T>) -> T::Real {
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let sum_sq = rm
-        .data()
+    let sum_sq = tensor
         .iter()
         .map(|&x| {
             let a = x.abs();
@@ -77,10 +70,9 @@ pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real
     let n = norm(tensor);
     assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
     let inv_norm = T::Real::one() / n;
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let data: Vec<T> = rm.data().iter().map(|&x| x.scale_real(inv_norm)).collect();
+    let data: Vec<T> = tensor.iter().map(|&x| x.scale_real(inv_norm)).collect();
     (
-        DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor),
+        DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order()),
         n,
     )
 }
@@ -129,16 +121,17 @@ where
     }
     let len = tensors[0].len();
     let mut result = vec![T::zero(); len];
+    let order = tensors[0].memory_order();
     for (tensor, coef) in tensors.iter().zip(coefs) {
-        let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-        for (r, val) in result.iter_mut().zip(rm.data()) {
+        let t = tensor.to_contiguous(order);
+        for (r, val) in result.iter_mut().zip(t.data()) {
             *r = r.clone() + coef.clone() * val.clone();
         }
     }
     Ok(DenseTensor::from_data_with_order(
         result,
         shape.to_vec(),
-        MemoryOrder::RowMajor,
+        order,
     ))
 }
 
