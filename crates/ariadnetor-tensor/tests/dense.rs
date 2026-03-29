@@ -656,6 +656,85 @@ fn test_iter_scalar() {
     assert_eq!(elems, vec![42.0]);
 }
 
+#[test]
+fn test_iter_non_contiguous_row_major() {
+    // Shape [2,2] with strides [4,1] (gap between rows) — non-contiguous RowMajor
+    // Buffer: [1, 2, _, _, 3, 4] where _ is padding
+    let t = DenseTensor::<f64>::from_data_with_strides(
+        vec![1.0, 2.0, 0.0, 0.0, 3.0, 4.0],
+        vec![2, 2],
+        vec![4, 1],
+        0,
+        MemoryOrder::RowMajor,
+    );
+    assert!(!t.is_contiguous());
+    // RowMajor stride walk: (0,0)=1, (0,1)=2, (1,0)=3, (1,1)=4
+    let elems: Vec<f64> = t.iter().copied().collect();
+    assert_eq!(elems, vec![1.0, 2.0, 3.0, 4.0]);
+}
+
+#[test]
+fn test_iter_non_contiguous_column_major() {
+    // Shape [2,2] with strides [1,4] (gap between columns) — non-contiguous ColumnMajor
+    // Buffer: [1, 3, _, _, 2, 4] where _ is padding
+    let t = DenseTensor::<f64>::from_data_with_strides(
+        vec![1.0, 3.0, 0.0, 0.0, 2.0, 4.0],
+        vec![2, 2],
+        vec![1, 4],
+        0,
+        MemoryOrder::ColumnMajor,
+    );
+    assert!(!t.is_contiguous());
+    // ColumnMajor stride walk: (0,0)=1, (1,0)=3, (0,1)=2, (1,1)=4
+    let elems: Vec<f64> = t.iter().copied().collect();
+    assert_eq!(elems, vec![1.0, 3.0, 2.0, 4.0]);
+}
+
+#[test]
+fn test_iter_non_contiguous_matches_to_contiguous() {
+    // Verify iter() matches to_contiguous().data() for both orders
+    let rm = DenseTensor::<f64>::from_data_with_strides(
+        vec![1.0, 2.0, 0.0, 0.0, 3.0, 4.0],
+        vec![2, 2],
+        vec![4, 1],
+        0,
+        MemoryOrder::RowMajor,
+    );
+    let rm_materialized: Vec<f64> = rm.to_contiguous(MemoryOrder::RowMajor).data().to_vec();
+    let rm_iter: Vec<f64> = rm.iter().copied().collect();
+    assert_eq!(rm_iter, rm_materialized);
+
+    let cm = DenseTensor::<f64>::from_data_with_strides(
+        vec![1.0, 3.0, 0.0, 0.0, 2.0, 4.0],
+        vec![2, 2],
+        vec![1, 4],
+        0,
+        MemoryOrder::ColumnMajor,
+    );
+    let cm_materialized: Vec<f64> = cm.to_contiguous(MemoryOrder::ColumnMajor).data().to_vec();
+    let cm_iter: Vec<f64> = cm.iter().copied().collect();
+    assert_eq!(cm_iter, cm_materialized);
+}
+
+#[test]
+fn test_iter_non_contiguous_stride_order_mismatch() {
+    // strides=[1,4] with order=RowMajor — stride order differs from MemoryOrder label.
+    // Axis 0 has stride 1 (fastest), axis 1 has stride 4 (slowest).
+    // Buffer: [1, 3, _, _, 2, 4]
+    // iter() must follow actual strides: axis 0 fastest → (0,0)=1, (1,0)=3, (0,1)=2, (1,1)=4
+    let t = DenseTensor::<f64>::from_data_with_strides(
+        vec![1.0, 3.0, 0.0, 0.0, 2.0, 4.0],
+        vec![2, 2],
+        vec![1, 4],
+        0,
+        MemoryOrder::RowMajor, // label says RowMajor but strides say ColumnMajor
+    );
+    assert!(!t.is_contiguous());
+    let elems: Vec<f64> = t.iter().copied().collect();
+    // Should follow stride order (axis 0 fastest), not MemoryOrder label
+    assert_eq!(elems, vec![1.0, 3.0, 2.0, 4.0]);
+}
+
 // --- random tests (require "random" feature) ---
 
 #[cfg(feature = "random")]

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use super::{DenseTensor, MemoryOrder};
+use super::DenseTensor;
 
 impl<T> DenseTensor<T>
 where
@@ -155,9 +155,10 @@ impl<T: Clone> ExactSizeIterator for DenseTensorIter<'_, T> {}
 
 /// Stride-walking iterator for non-contiguous tensors.
 ///
-/// Walks all logical elements by incrementing a multi-index counter
-/// in the tensor's memory order and computing the flat offset via strides.
-/// RowMajor: last axis fastest. ColumnMajor: first axis fastest.
+/// Walks all logical elements in storage order by incrementing a multi-index
+/// counter along axes sorted by ascending absolute stride (smallest stride =
+/// fastest-varying axis). This matches the true memory layout regardless of
+/// the tensor's `MemoryOrder` label.
 pub struct StridedIter<'a, T> {
     data: &'a [T],
     shape: &'a [usize],
@@ -165,12 +166,16 @@ pub struct StridedIter<'a, T> {
     offset: usize,
     indices: Vec<usize>,
     remaining: usize,
-    order: MemoryOrder,
+    /// Axes sorted by ascending |stride| — fastest-varying first.
+    axis_order: Vec<usize>,
 }
 
 impl<'a, T> StridedIter<'a, T> {
     fn new(tensor: &'a DenseTensor<T>) -> Self {
         let total = tensor.len();
+        let mut axis_order: Vec<usize> = (0..tensor.rank()).collect();
+        let strides = tensor.strides();
+        axis_order.sort_by_key(|&ax| strides[ax].unsigned_abs());
         Self {
             data: &tensor.data,
             shape: &tensor.shape,
@@ -178,7 +183,7 @@ impl<'a, T> StridedIter<'a, T> {
             offset: tensor.offset,
             indices: vec![0; tensor.rank()],
             remaining: total,
-            order: tensor.memory_order(),
+            axis_order,
         }
     }
 
@@ -192,27 +197,14 @@ impl<'a, T> StridedIter<'a, T> {
         (self.offset as isize + raw) as usize
     }
 
-    /// Increment multi-index in the tensor's memory order.
+    /// Increment multi-index along axes from fastest to slowest stride.
     fn advance(&mut self) {
-        match self.order {
-            MemoryOrder::RowMajor => {
-                for i in (0..self.indices.len()).rev() {
-                    self.indices[i] += 1;
-                    if self.indices[i] < self.shape[i] {
-                        return;
-                    }
-                    self.indices[i] = 0;
-                }
+        for &ax in &self.axis_order {
+            self.indices[ax] += 1;
+            if self.indices[ax] < self.shape[ax] {
+                return;
             }
-            MemoryOrder::ColumnMajor => {
-                for i in 0..self.indices.len() {
-                    self.indices[i] += 1;
-                    if self.indices[i] < self.shape[i] {
-                        return;
-                    }
-                    self.indices[i] = 0;
-                }
-            }
+            self.indices[ax] = 0;
         }
     }
 }
