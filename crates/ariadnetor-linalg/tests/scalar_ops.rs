@@ -34,6 +34,38 @@ fn test_scale_complex() {
     assert_eq!(scaled.get(&[1]), Complex::new(-3.0, 2.0));
 }
 
+#[test]
+fn test_scale_column_major() {
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 3.0, 2.0, 4.0], // ColumnMajor layout: col0=[1,3], col1=[2,4]
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let scaled = scale(&tensor, 2.0);
+    assert_eq!(scaled.memory_order(), MemoryOrder::ColumnMajor);
+    assert_eq!(scaled.get(&[0, 0]), 2.0);
+    assert_eq!(scaled.get(&[0, 1]), 4.0);
+    assert_eq!(scaled.get(&[1, 0]), 6.0);
+    assert_eq!(scaled.get(&[1, 1]), 8.0);
+}
+
+#[test]
+fn test_scale_non_contiguous() {
+    // Shape [2,2] with stride gap — non-contiguous
+    let tensor = DenseTensor::<f64>::from_data_with_strides(
+        vec![1.0, 2.0, 0.0, 0.0, 3.0, 4.0],
+        vec![2, 2],
+        vec![4, 1],
+        0,
+        MemoryOrder::RowMajor,
+    );
+    let scaled = scale(&tensor, 3.0);
+    assert_eq!(scaled.get(&[0, 0]), 3.0);
+    assert_eq!(scaled.get(&[0, 1]), 6.0);
+    assert_eq!(scaled.get(&[1, 0]), 9.0);
+    assert_eq!(scaled.get(&[1, 1]), 12.0);
+}
+
 // --- Norm tests ---
 
 #[test]
@@ -56,6 +88,18 @@ fn test_norm_complex() {
     assert!((n - 5.0).abs() < 1e-10);
 }
 
+#[test]
+fn test_norm_column_major() {
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 3.0, 2.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    // norm = sqrt(1+4+9+16) = sqrt(30)
+    let n = norm(&tensor);
+    assert!((n - 30.0_f64.sqrt()).abs() < 1e-10);
+}
+
 // --- Normalize tests ---
 
 #[test]
@@ -73,6 +117,22 @@ fn test_normalize_f64() {
 fn test_normalize_zero_panics() {
     let tensor = DenseTensor::<f64>::zeros(vec![2, 2]);
     let _ = normalize(&tensor);
+}
+
+#[test]
+fn test_normalize_column_major() {
+    let tensor = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 3.0, 2.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let (normalized, n) = normalize(&tensor);
+    assert_eq!(normalized.memory_order(), MemoryOrder::ColumnMajor);
+    assert!((norm(&normalized) - 1.0).abs() < 1e-10);
+    // Verify logical values are preserved (just scaled)
+    let expected_scale = 1.0 / n;
+    assert!((normalized.get(&[0, 0]) - 1.0 * expected_scale).abs() < 1e-10);
+    assert!((normalized.get(&[1, 0]) - 3.0 * expected_scale).abs() < 1e-10);
 }
 
 // --- Linear combine tests ---
@@ -103,6 +163,26 @@ fn test_linear_combine_empty() {
 fn test_linear_combine_length_mismatch() {
     let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
     assert!(linear_combine(&[&a], &[1.0, 2.0]).is_err());
+}
+
+#[test]
+fn test_linear_combine_column_major() {
+    let a = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 3.0, 2.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let b = DenseTensor::<f64>::from_data_with_order(
+        vec![10.0, 30.0, 20.0, 40.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let result = linear_combine(&[&a, &b], &[1.0, 0.1]).unwrap();
+    assert_eq!(result.memory_order(), MemoryOrder::ColumnMajor);
+    // a[0,0]=1 + 0.1*b[0,0]=10 → 2.0
+    assert!((result.get(&[0, 0]) - 2.0).abs() < 1e-10);
+    // a[1,1]=4 + 0.1*b[1,1]=40 → 8.0
+    assert!((result.get(&[1, 1]) - 8.0).abs() < 1e-10);
 }
 
 // --- Trace tests ---

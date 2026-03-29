@@ -21,7 +21,12 @@ pub fn scale<T>(tensor: &DenseTensor<T>, factor: T) -> DenseTensor<T>
 where
     T: Clone + Mul<Output = T>,
 {
-    let data: Vec<T> = tensor.iter().map(|x| x.clone() * factor.clone()).collect();
+    let c = tensor.to_contiguous(tensor.memory_order());
+    let data: Vec<T> = c
+        .data()
+        .iter()
+        .map(|x| x.clone() * factor.clone())
+        .collect();
     DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order())
 }
 
@@ -70,7 +75,8 @@ pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real
     let n = norm(tensor);
     assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
     let inv_norm = T::Real::one() / n;
-    let data: Vec<T> = tensor.iter().map(|&x| x.scale_real(inv_norm)).collect();
+    let c = tensor.to_contiguous(tensor.memory_order());
+    let data: Vec<T> = c.data().iter().map(|&x| x.scale_real(inv_norm)).collect();
     (
         DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order()),
         n,
