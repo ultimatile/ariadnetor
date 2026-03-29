@@ -13,16 +13,13 @@
 //! ```
 
 pub mod diag_tensor;
-pub mod expr;
 #[cfg(feature = "mps")]
 pub mod mps;
 pub mod ops;
-pub mod runtime;
 pub mod tensor;
 
 // Main types
 pub use diag_tensor::DiagTensor;
-pub use expr::ExpressionComputeGraph;
 pub use tensor::{DenseTensor, Tensor, TensorStorage};
 
 // Re-export from ariadnetor-core

@@ -56,7 +56,7 @@ Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
 
 ### `ariadnetor`
 
-Main library crate (`arnet`). Re-exports + `ExpressionComputeGraph` (evaluate not yet implemented).
+Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
 
 ## Usage
 
