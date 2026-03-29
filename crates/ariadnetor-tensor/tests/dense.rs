@@ -597,6 +597,65 @@ fn test_stack_shape_mismatch() {
     let _s = DenseTensor::stack(&[&a, &b], 0);
 }
 
+// --- iter tests ---
+
+#[test]
+fn test_iter_contiguous_row_major() {
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let elems: Vec<f64> = t.iter().copied().collect();
+    assert_eq!(elems, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+}
+
+#[test]
+fn test_iter_contiguous_column_major() {
+    let t = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::ColumnMajor,
+    );
+    // iter() walks storage order, not logical order
+    let elems: Vec<f64> = t.iter().copied().collect();
+    assert_eq!(elems, vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+}
+
+#[test]
+fn test_iter_element_sum_order_independent() {
+    // Same logical tensor in RowMajor and ColumnMajor — sum must match
+    let rm = DenseTensor::<f64>::from_data_with_order(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let cm = rm.to_contiguous(MemoryOrder::ColumnMajor);
+
+    let sum_rm: f64 = rm.iter().sum();
+    let sum_cm: f64 = cm.iter().sum();
+    assert_eq!(sum_rm, sum_cm);
+}
+
+#[test]
+fn test_iter_exact_size() {
+    let t = DenseTensor::<f64>::zeros(vec![3, 4]);
+    assert_eq!(t.iter().len(), 12);
+}
+
+#[test]
+fn test_iter_empty() {
+    let t = DenseTensor::<f64>::zeros(vec![0]);
+    assert_eq!(t.iter().count(), 0);
+}
+
+#[test]
+fn test_iter_scalar() {
+    let t = DenseTensor::<f64>::from_data_with_order(vec![42.0], vec![1], MemoryOrder::RowMajor);
+    let elems: Vec<f64> = t.iter().copied().collect();
+    assert_eq!(elems, vec![42.0]);
+}
+
 // --- random tests (require "random" feature) ---
 
 #[cfg(feature = "random")]

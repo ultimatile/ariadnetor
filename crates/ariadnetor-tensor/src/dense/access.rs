@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use super::DenseTensor;
+use super::{DenseTensor, MemoryOrder};
 
 impl<T> DenseTensor<T>
 where
@@ -78,6 +78,22 @@ where
         Arc::make_mut(&mut self.data).as_mut_slice()[offset..offset + len].fill(value);
     }
 
+    /// Iterate over all elements in storage order.
+    ///
+    /// If the tensor is contiguous, this iterates the underlying data slice
+    /// directly (zero-cost). Otherwise, it walks elements via stride arithmetic.
+    ///
+    /// Element ordering depends on the memory layout and is not guaranteed to
+    /// follow any particular index order. Use this for order-independent
+    /// operations such as norm, scale, and element-wise maps.
+    pub fn iter(&self) -> DenseTensorIter<'_, T> {
+        if self.is_contiguous() {
+            DenseTensorIter::Contiguous(self.data[self.offset..self.offset + self.len()].iter())
+        } else {
+            DenseTensorIter::Strided(StridedIter::new(self))
+        }
+    }
+
     /// Get pointer to the underlying data for FFI.
     ///
     /// Returns a pointer to the first logical element (accounting for offset).
@@ -107,3 +123,116 @@ where
         unsafe { Arc::make_mut(&mut self.data).as_mut_ptr().add(offset) }
     }
 }
+
+/// Iterator over `DenseTensor` elements.
+///
+/// Dispatches between a direct slice iterator (contiguous case) and
+/// a stride-walking iterator (non-contiguous case).
+pub enum DenseTensorIter<'a, T> {
+    Contiguous(std::slice::Iter<'a, T>),
+    Strided(StridedIter<'a, T>),
+}
+
+impl<'a, T: Clone> Iterator for DenseTensorIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Contiguous(it) => it.next(),
+            Self::Strided(it) => it.next(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::Contiguous(it) => it.size_hint(),
+            Self::Strided(it) => it.size_hint(),
+        }
+    }
+}
+
+impl<T: Clone> ExactSizeIterator for DenseTensorIter<'_, T> {}
+
+/// Stride-walking iterator for non-contiguous tensors.
+///
+/// Walks all logical elements by incrementing a multi-index counter
+/// in the tensor's memory order and computing the flat offset via strides.
+/// RowMajor: last axis fastest. ColumnMajor: first axis fastest.
+pub struct StridedIter<'a, T> {
+    data: &'a [T],
+    shape: &'a [usize],
+    strides: &'a [isize],
+    offset: usize,
+    indices: Vec<usize>,
+    remaining: usize,
+    order: MemoryOrder,
+}
+
+impl<'a, T> StridedIter<'a, T> {
+    fn new(tensor: &'a DenseTensor<T>) -> Self {
+        let total = tensor.len();
+        Self {
+            data: &tensor.data,
+            shape: &tensor.shape,
+            strides: &tensor.strides,
+            offset: tensor.offset,
+            indices: vec![0; tensor.rank()],
+            remaining: total,
+            order: tensor.memory_order(),
+        }
+    }
+
+    fn flat_offset(&self) -> usize {
+        let raw: isize = self
+            .indices
+            .iter()
+            .zip(self.strides)
+            .map(|(&idx, &stride)| idx as isize * stride)
+            .sum();
+        (self.offset as isize + raw) as usize
+    }
+
+    /// Increment multi-index in the tensor's memory order.
+    fn advance(&mut self) {
+        match self.order {
+            MemoryOrder::RowMajor => {
+                for i in (0..self.indices.len()).rev() {
+                    self.indices[i] += 1;
+                    if self.indices[i] < self.shape[i] {
+                        return;
+                    }
+                    self.indices[i] = 0;
+                }
+            }
+            MemoryOrder::ColumnMajor => {
+                for i in 0..self.indices.len() {
+                    self.indices[i] += 1;
+                    if self.indices[i] < self.shape[i] {
+                        return;
+                    }
+                    self.indices[i] = 0;
+                }
+            }
+        }
+    }
+}
+
+impl<'a, T: Clone> Iterator for StridedIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let idx = self.flat_offset();
+        self.advance();
+        self.remaining -= 1;
+        Some(&self.data[idx])
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl<T: Clone> ExactSizeIterator for StridedIter<'_, T> {}

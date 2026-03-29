@@ -18,6 +18,7 @@ use std::sync::Arc;
 /// 64-byte alignment for SIMD (AVX-512)
 type Align64 = ConstAlign<64>;
 
+pub use access::{DenseTensorIter, StridedIter};
 pub use arnet_core::MemoryOrder;
 
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
