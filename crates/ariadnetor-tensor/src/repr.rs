@@ -30,7 +30,7 @@ pub trait TensorRepr: Clone {
     }
 }
 
-impl<T: Clone> TensorRepr for Dense<T> {
+impl<T> TensorRepr for Dense<T> {
     type Elem = T;
 
     fn shape(&self) -> &[usize] {

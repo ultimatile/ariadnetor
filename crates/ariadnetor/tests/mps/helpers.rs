@@ -32,10 +32,7 @@ pub fn make_4site_mps() -> Mps<f64> {
 
 /// Check that a site tensor is left-canonical: Q^H Q ≈ I.
 /// Reshape to (m, k) where m = product(shape[..rank-1]), k = shape[rank-1].
-pub fn is_left_canonical(storage: &Dense<f64>, tol: f64) -> bool {
-    let dense = match storage {
-        d => d,
-    };
+pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let shape = dense.shape();
     let rank = shape.len();
     let k = shape[rank - 1];
@@ -58,10 +55,7 @@ pub fn is_left_canonical(storage: &Dense<f64>, tol: f64) -> bool {
 
 /// Check that a site tensor is right-canonical: Q Q^H ≈ I.
 /// Reshape to (k, n) where k = shape[0], n = product(shape[1..]).
-pub fn is_right_canonical(storage: &Dense<f64>, tol: f64) -> bool {
-    let dense = match storage {
-        d => d,
-    };
+pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let shape = dense.shape();
     let k = shape[0];
     let n: usize = shape[1..].iter().product();
@@ -86,15 +80,10 @@ pub fn mps_to_dense(mps: &Mps<f64>) -> Dense<f64> {
     let backend = arnet_native::NativeBackend::new();
     let n = mps.len();
 
-    let first = match mps.storage(0) {
-        d => d.clone(),
-    };
-    let mut result = first;
+    let mut result = mps.storage(0).clone();
 
     for j in 1..n {
-        let site = match mps.storage(j) {
-            d => d,
-        };
+        let site = mps.storage(j);
         let r_rank = result.rank();
         let r_last: usize = *result.shape().last().unwrap();
         let r_rest: usize = result.shape()[..r_rank - 1].iter().product();

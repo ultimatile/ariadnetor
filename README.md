@@ -61,19 +61,17 @@ Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
 ## Usage
 
 ```rust
-use arnet::{Dense, Tensor, NativeBackend};
-use arnet_linalg::{contract, svd, transpose};
+use arnet::{Dense, Tensor, contract, svd};
 
 // Create tensors
-let a = Tensor::<Dense<f64>>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-let b = Tensor::<Dense<f64>>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+let a = Tensor::<Dense<f64>>::zeros(vec![2, 3]);
+let b = Tensor::<Dense<f64>>::zeros(vec![3, 2]);
 
-// Tensor contraction via ComputeBackend
-let backend = NativeBackend::new();
-let c = contract(&a.storage, &b.storage, "ij,jk->ik", &backend).unwrap();
+// Tensor contraction
+let c = contract(&a, &b, "ij,jk->ik").unwrap();
 
 // SVD decomposition
-let result = svd(&a.storage, 0, &backend).unwrap();
+let (u, s, vt) = svd(&a, 1).unwrap();
 ```
 
 ## Building
