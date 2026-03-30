@@ -148,17 +148,22 @@ where
 // Dense-specific arithmetic operations (all backends)
 // ============================================================================
 
-impl<S, B: ComputeBackend> Tensor<Dense<S>, B>
-where
-    S: Clone + Mul<Output = S>,
-{
+impl<S: Clone, B: ComputeBackend> Tensor<Dense<S>, B> {
     /// Scale tensor by a scalar factor (in-place).
-    pub fn scale(&mut self, factor: S) {
+    pub fn scale<F>(&mut self, factor: F)
+    where
+        S: Mul<F, Output = S>,
+        F: Clone,
+    {
         self.storage.scale(factor);
     }
 
     /// Scale tensor and return new tensor (out-of-place).
-    pub fn scaled(&self, factor: S) -> Self {
+    pub fn scaled<F>(&self, factor: F) -> Self
+    where
+        S: Mul<F, Output = S>,
+        F: Clone,
+    {
         Self {
             storage: self.storage.scaled(factor),
             backend: Arc::clone(&self.backend),

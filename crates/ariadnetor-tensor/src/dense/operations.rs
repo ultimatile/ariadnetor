@@ -214,9 +214,10 @@ where
     }
 
     /// Scale all elements and return a new tensor (out-of-place).
-    pub fn scaled(&self, factor: T) -> Self
+    pub fn scaled<S>(&self, factor: S) -> Self
     where
-        T: Mul<Output = T>,
+        T: Mul<S, Output = T>,
+        S: Clone,
     {
         let mut result = self.clone();
         result.scale(factor);
