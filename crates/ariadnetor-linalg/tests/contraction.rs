@@ -5,7 +5,7 @@
 
 use arnet_linalg::{contract, einsum, transpose};
 use arnet_native::NativeBackend;
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use arnet_tensor::{Dense, MemoryOrder};
 
 // ============================================================================
 // Basic contractions
@@ -14,16 +14,10 @@ use arnet_tensor::{DenseTensor, MemoryOrder};
 #[test]
 fn test_matrix_multiplication() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let b = DenseTensor::from_data_with_order(
-        vec![5.0, 6.0, 7.0, 8.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a =
+        Dense::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let b =
+        Dense::from_data_with_order(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
 
     let c = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
 
@@ -37,8 +31,8 @@ fn test_matrix_multiplication() {
 #[test]
 fn test_inner_product() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::RowMajor);
-    let b = DenseTensor::from_data_with_order(vec![4.0, 5.0, 6.0], vec![3], MemoryOrder::RowMajor);
+    let a = Dense::from_data_with_order(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::RowMajor);
+    let b = Dense::from_data_with_order(vec![4.0, 5.0, 6.0], vec![3], MemoryOrder::RowMajor);
 
     let c = contract(&backend, &a, &b, "i,i->").unwrap();
 
@@ -51,8 +45,8 @@ fn test_inner_product() {
 #[test]
 fn test_outer_product() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(vec![2.0, 3.0], vec![2], MemoryOrder::RowMajor);
-    let b = DenseTensor::from_data_with_order(vec![4.0, 5.0, 6.0], vec![3], MemoryOrder::RowMajor);
+    let a = Dense::from_data_with_order(vec![2.0, 3.0], vec![2], MemoryOrder::RowMajor);
+    let b = Dense::from_data_with_order(vec![4.0, 5.0, 6.0], vec![3], MemoryOrder::RowMajor);
 
     let c = contract(&backend, &a, &b, "i,j->ij").unwrap();
 
@@ -65,16 +59,10 @@ fn test_outer_product() {
 #[test]
 fn test_double_contraction() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let b = DenseTensor::from_data_with_order(
-        vec![5.0, 6.0, 7.0, 8.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a =
+        Dense::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let b =
+        Dense::from_data_with_order(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
 
     let c = contract(&backend, &a, &b, "ij,ij->").unwrap();
 
@@ -90,16 +78,10 @@ fn test_double_contraction() {
 #[test]
 fn test_identity_multiplication() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let b = DenseTensor::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 1.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a =
+        Dense::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let b =
+        Dense::from_data_with_order(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2], MemoryOrder::RowMajor);
 
     let c = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
 
@@ -112,16 +94,10 @@ fn test_identity_multiplication() {
 #[test]
 fn test_hadamard_product_via_einsum() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let b = DenseTensor::from_data_with_order(
-        vec![2.0, 3.0, 4.0, 5.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a =
+        Dense::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let b =
+        Dense::from_data_with_order(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2], MemoryOrder::RowMajor);
 
     // Hadamard product routes through einsum_pair, not contract
     let c = einsum(&backend, &[&a, &b], "ij,ij->ij").unwrap();
@@ -136,12 +112,12 @@ fn test_hadamard_product_via_einsum() {
 #[test]
 fn test_hadamard_contract_rejects() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::<f64>::from_data_with_order(
+    let a = Dense::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
     );
-    let b = DenseTensor::<f64>::from_data_with_order(
+    let b = Dense::<f64>::from_data_with_order(
         vec![2.0, 3.0, 4.0, 5.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -159,8 +135,8 @@ fn test_hadamard_contract_rejects() {
 #[test]
 fn test_scalar_contraction() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(vec![5.0], vec![], MemoryOrder::RowMajor);
-    let b = DenseTensor::from_data_with_order(vec![3.0], vec![], MemoryOrder::RowMajor);
+    let a = Dense::from_data_with_order(vec![5.0], vec![], MemoryOrder::RowMajor);
+    let b = Dense::from_data_with_order(vec![3.0], vec![], MemoryOrder::RowMajor);
 
     let c = contract(&backend, &a, &b, ",->").unwrap();
 
@@ -171,8 +147,8 @@ fn test_scalar_contraction() {
 #[test]
 fn test_vector_matrix_contraction() {
     let backend = NativeBackend::new();
-    let v = DenseTensor::from_data_with_order(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::RowMajor);
-    let m = DenseTensor::from_data_with_order(
+    let v = Dense::from_data_with_order(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::RowMajor);
+    let m = Dense::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![3, 2],
         MemoryOrder::RowMajor,
@@ -193,12 +169,12 @@ fn test_vector_matrix_contraction() {
 #[test]
 fn test_actual_contraction_with_reordered_indices() {
     let backend = NativeBackend::new();
-    let a = DenseTensor::from_data_with_order(
+    let a = Dense::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         vec![2, 2, 2],
         MemoryOrder::RowMajor,
     );
-    let b = DenseTensor::from_data_with_order(
+    let b = Dense::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         vec![2, 2, 2],
         MemoryOrder::RowMajor,
@@ -212,12 +188,12 @@ fn test_actual_contraction_with_reordered_indices() {
 #[test]
 fn test_consistency_between_ijk_and_ikj_layouts() {
     let backend = NativeBackend::new();
-    let a_ijk = DenseTensor::from_data_with_order(
+    let a_ijk = Dense::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         vec![2, 2, 2],
         MemoryOrder::RowMajor,
     );
-    let b = DenseTensor::from_data_with_order(
+    let b = Dense::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         vec![2, 2, 2],
         MemoryOrder::RowMajor,

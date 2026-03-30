@@ -1,5 +1,5 @@
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{Float, One, Zero};
 use std::ops::{Add, Mul};
 
@@ -11,13 +11,13 @@ use std::ops::{Add, Mul};
 ///
 /// ```
 /// use arnet_linalg::scale;
-/// use arnet_tensor::DenseTensor;
+/// use arnet_tensor::Dense;
 ///
-/// let tensor = DenseTensor::<f64>::ones(vec![2, 3]);
+/// let tensor = Dense::<f64>::ones(vec![2, 3]);
 /// let scaled = scale(&tensor, 2.5);
 /// assert_eq!(scaled.get(&[0, 0]), 2.5);
 /// ```
-pub fn scale<T>(tensor: &DenseTensor<T>, factor: T) -> DenseTensor<T>
+pub fn scale<T>(tensor: &Dense<T>, factor: T) -> Dense<T>
 where
     T: Clone + Mul<Output = T>,
 {
@@ -27,7 +27,7 @@ where
         .iter()
         .map(|x| x.clone() * factor.clone())
         .collect();
-    DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order())
+    Dense::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order())
 }
 
 /// Compute the Frobenius norm of a tensor.
@@ -38,13 +38,13 @@ where
 ///
 /// ```
 /// use arnet_linalg::norm;
-/// use arnet_tensor::DenseTensor;
+/// use arnet_tensor::Dense;
 ///
-/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+/// let tensor = Dense::<f64>::ones(vec![2, 2]);
 /// let n = norm(&tensor);
 /// assert!((n - 2.0).abs() < 1e-10);
 /// ```
-pub fn norm<T: Scalar>(tensor: &DenseTensor<T>) -> T::Real {
+pub fn norm<T: Scalar>(tensor: &Dense<T>) -> T::Real {
     let sum_sq = tensor
         .iter()
         .map(|&x| {
@@ -64,21 +64,21 @@ pub fn norm<T: Scalar>(tensor: &DenseTensor<T>) -> T::Real {
 ///
 /// ```
 /// use arnet_linalg::normalize;
-/// use arnet_tensor::DenseTensor;
+/// use arnet_tensor::Dense;
 ///
-/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
+/// let tensor = Dense::<f64>::ones(vec![2, 2]);
 /// let (normalized, n) = normalize(&tensor);
 /// assert!((n - 2.0).abs() < 1e-10);
 /// assert!((arnet_linalg::norm(&normalized) - 1.0).abs() < 1e-10);
 /// ```
-pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real) {
+pub fn normalize<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
     let n = norm(tensor);
     assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
     let inv_norm = T::Real::one() / n;
     let c = tensor.to_contiguous(tensor.memory_order());
     let data: Vec<T> = c.data().iter().map(|&x| x.scale_real(inv_norm)).collect();
     (
-        DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order()),
+        Dense::from_data_with_order(data, tensor.shape().to_vec(), tensor.memory_order()),
         n,
     )
 }
@@ -96,16 +96,16 @@ pub fn normalize<T: Scalar>(tensor: &DenseTensor<T>) -> (DenseTensor<T>, T::Real
 ///
 /// ```
 /// use arnet_linalg::linear_combine;
-/// use arnet_tensor::DenseTensor;
+/// use arnet_tensor::Dense;
 ///
-/// let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
-/// let b = DenseTensor::<f64>::constant(vec![2, 2], 2.0);
+/// let a = Dense::<f64>::constant(vec![2, 2], 1.0);
+/// let b = Dense::<f64>::constant(vec![2, 2], 2.0);
 ///
 /// // 2*a + 3*b = 2*1 + 3*2 = 8
 /// let result = linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
 /// assert_eq!(result.get(&[0, 0]), 8.0);
 /// ```
-pub fn linear_combine<T>(tensors: &[&DenseTensor<T>], coefs: &[T]) -> Result<DenseTensor<T>, String>
+pub fn linear_combine<T>(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, String>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
@@ -134,11 +134,7 @@ where
             *r = r.clone() + coef.clone() * val.clone();
         }
     }
-    Ok(DenseTensor::from_data_with_order(
-        result,
-        shape.to_vec(),
-        order,
-    ))
+    Ok(Dense::from_data_with_order(result, shape.to_vec(), order))
 }
 
 /// Partial trace over matched bond index pairs.
@@ -163,18 +159,15 @@ where
 ///
 /// ```
 /// use arnet_linalg::trace;
-/// use arnet_tensor::{DenseTensor, MemoryOrder};
+/// use arnet_tensor::{Dense, MemoryOrder};
 ///
 /// // Matrix trace: tr([[1,2],[3,4]]) = 1 + 4 = 5
-/// let mat = DenseTensor::<f64>::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+/// let mat = Dense::<f64>::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
 /// let result = trace(&mat, &[(0, 1)]).unwrap();
 /// assert_eq!(result.shape(), &[1]);
 /// assert_eq!(result.get(&[0]), 5.0);
 /// ```
-pub fn trace<T: Scalar>(
-    tensor: &DenseTensor<T>,
-    pairs: &[(usize, usize)],
-) -> Result<DenseTensor<T>, String> {
+pub fn trace<T: Scalar>(tensor: &Dense<T>, pairs: &[(usize, usize)]) -> Result<Dense<T>, String> {
     let rank = tensor.rank();
     let shape = tensor.shape();
 
@@ -265,7 +258,7 @@ pub fn trace<T: Scalar>(
         *res = sum;
     }
 
-    Ok(DenseTensor::from_data_with_order(
+    Ok(Dense::from_data_with_order(
         result,
         output_shape,
         MemoryOrder::RowMajor,
@@ -300,7 +293,7 @@ pub(crate) fn decode_coords(mut flat: usize, shape: &[usize], coords: &mut [usiz
 ///
 /// Returns an error if the input is a non-square matrix (rank 2 with mismatched dimensions)
 /// or has rank > 2.
-pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String> {
+pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, String> {
     let shape = tensor.shape();
     match shape.len() {
         1 => {
@@ -310,7 +303,7 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
             for i in 0..n {
                 data[i * n + i] = tensor.data()[i];
             }
-            Ok(DenseTensor::from_data_with_order(
+            Ok(Dense::from_data_with_order(
                 data,
                 vec![n, n],
                 MemoryOrder::RowMajor,
@@ -323,7 +316,7 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
                 return Err(format!("diag requires a square matrix, got {m}×{n}"));
             }
             let data: Vec<T> = (0..n).map(|i| tensor.get(&[i, i])).collect();
-            Ok(DenseTensor::from_data_with_order(
+            Ok(Dense::from_data_with_order(
                 data,
                 vec![n],
                 MemoryOrder::RowMajor,
@@ -348,10 +341,10 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
 ///
 /// ```
 /// use arnet_linalg::diagonal_scale;
-/// use arnet_tensor::{DenseTensor, MemoryOrder};
+/// use arnet_tensor::{Dense, MemoryOrder};
 ///
 /// // 2×3 matrix, scale columns by [1, 2, 3]
-/// let m = DenseTensor::from_data_with_order(
+/// let m = Dense::from_data_with_order(
 ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
 ///     vec![2, 3],
 ///     MemoryOrder::RowMajor,
@@ -362,10 +355,10 @@ pub fn diag<T: Scalar>(tensor: &DenseTensor<T>) -> Result<DenseTensor<T>, String
 /// assert_eq!(scaled.get(&[1, 2]), 18.0);
 /// ```
 pub fn diagonal_scale<T, S>(
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     weights: &[S],
     axis: usize,
-) -> Result<DenseTensor<T>, String>
+) -> Result<Dense<T>, String>
 where
     T: Clone + Mul<S, Output = T> + 'static,
     S: Clone,

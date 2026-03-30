@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
-use arnet_tensor::TensorStorage;
+use arnet_tensor::Dense;
 
 use super::types::{CanonicalForm, Mpo, Mps};
 
@@ -11,7 +11,7 @@ use super::types::{CanonicalForm, Mpo, Mps};
 ///
 /// Provides rank-independent accessors for site storages, bond dimensions,
 /// canonical form tracking, and backend access.
-pub trait TensorChain<T, B: ComputeBackend> {
+pub trait TensorChain<S, B: ComputeBackend> {
     /// Number of sites.
     fn len(&self) -> usize;
 
@@ -25,7 +25,7 @@ pub trait TensorChain<T, B: ComputeBackend> {
     /// # Panics
     ///
     /// Panics if `site >= len()`.
-    fn storage(&self, site: usize) -> &TensorStorage<T>;
+    fn storage(&self, site: usize) -> &Dense<S>;
 
     /// Mutable reference to the storage at a given site.
     ///
@@ -34,10 +34,10 @@ pub trait TensorChain<T, B: ComputeBackend> {
     /// # Panics
     ///
     /// Panics if `site >= len()`.
-    fn storage_mut(&mut self, site: usize) -> &mut TensorStorage<T>;
+    fn storage_mut(&mut self, site: usize) -> &mut Dense<S>;
 
     /// Slice of all site storages.
-    fn storages(&self) -> &[TensorStorage<T>];
+    fn storages(&self) -> &[Dense<S>];
 
     /// Current canonical form.
     fn canonical_form(&self) -> &CanonicalForm;
@@ -81,21 +81,21 @@ pub trait TensorChain<T, B: ComputeBackend> {
 
 macro_rules! impl_tensor_chain {
     ($type:ident) => {
-        impl<T, B: ComputeBackend> TensorChain<T, B> for $type<T, B> {
+        impl<S, B: ComputeBackend> TensorChain<S, B> for $type<S, B> {
             fn len(&self) -> usize {
                 self.0.storages.len()
             }
 
-            fn storage(&self, site: usize) -> &TensorStorage<T> {
+            fn storage(&self, site: usize) -> &Dense<S> {
                 &self.0.storages[site]
             }
 
-            fn storage_mut(&mut self, site: usize) -> &mut TensorStorage<T> {
+            fn storage_mut(&mut self, site: usize) -> &mut Dense<S> {
                 self.0.canonical_form = CanonicalForm::Unknown;
                 &mut self.0.storages[site]
             }
 
-            fn storages(&self) -> &[TensorStorage<T>] {
+            fn storages(&self) -> &[Dense<S>] {
                 &self.0.storages
             }
 

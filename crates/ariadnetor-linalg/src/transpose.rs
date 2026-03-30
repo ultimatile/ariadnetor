@@ -1,6 +1,6 @@
 use arnet_core::backend::{ComputeBackend, TransposeDescriptor};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::Dense;
 
 use crate::error::LinalgError;
 
@@ -17,9 +17,9 @@ use crate::error::LinalgError;
 /// Returns `LinalgError` if the backend fails to execute the transpose.
 pub fn transpose<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     perm: &[usize],
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     transpose_inner(backend, tensor, perm, false)
 }
 
@@ -34,25 +34,25 @@ pub fn transpose<T: Scalar>(
 /// Returns `LinalgError` if the backend fails to execute the transpose.
 pub fn conjugate_transpose<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     perm: &[usize],
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     transpose_inner(backend, tensor, perm, true)
 }
 
 /// Shared implementation for transpose and conjugate transpose.
 fn transpose_inner<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     perm: &[usize],
     conj: bool,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     let order = backend.preferred_order();
     let new_shape: Vec<usize> = perm.iter().map(|&i| tensor.shape()[i]).collect();
     let total = tensor.len();
 
     if total == 0 {
-        return Ok(DenseTensor::from_data_with_order(vec![], new_shape, order));
+        return Ok(Dense::from_data_with_order(vec![], new_shape, order));
     }
 
     let contiguous = tensor.to_contiguous(order);
@@ -69,5 +69,5 @@ fn transpose_inner<T: Scalar>(
 
     backend.transpose(desc)?;
 
-    Ok(DenseTensor::from_data_with_order(output, new_shape, order))
+    Ok(Dense::from_data_with_order(output, new_shape, order))
 }

@@ -1,10 +1,10 @@
-//! Slice, expand, and replace operations for DenseTensor.
+//! Slice, expand, and replace operations for Dense.
 
 use num_traits::Zero;
 
-use super::{DenseTensor, MemoryOrder, compute_strides_column_usize, compute_strides_usize};
+use super::{Dense, MemoryOrder, compute_strides_column_usize, compute_strides_usize};
 
-impl<T> DenseTensor<T>
+impl<T> Dense<T>
 where
     T: Clone,
 {

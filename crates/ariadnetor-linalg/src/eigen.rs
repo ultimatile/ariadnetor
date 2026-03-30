@@ -1,15 +1,15 @@
 use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, MemoryOrder};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
-/// - Eigenvalues: `DenseTensor<T::Real>` with shape `[n]`, sorted ascending
-/// - Eigenvectors: `DenseTensor<T>` with shape `[n, n]`, columns are eigenvectors
-pub type EighResult<T> = (DenseTensor<<T as Scalar>::Real>, DenseTensor<T>);
+/// - Eigenvalues: `Dense<T::Real>` with shape `[n]`, sorted ascending
+/// - Eigenvectors: `Dense<T>` with shape `[n, n]`, columns are eigenvectors
+pub type EighResult<T> = (Dense<<T as Scalar>::Real>, Dense<T>);
 
 /// Compute self-adjoint eigenvalue decomposition of a tensor reshaped as a square matrix.
 ///
@@ -34,7 +34,7 @@ pub type EighResult<T> = (DenseTensor<<T as Scalar>::Real>, DenseTensor<T>);
 /// or the backend fails.
 pub fn eigh<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<EighResult<T>, LinalgError> {
     let shape = tensor.shape();
@@ -58,8 +58,7 @@ pub fn eigh<T: Scalar>(
     let order = backend.preferred_order();
     // Ensure row-major reshape to 2D, then convert to backend order
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d =
-        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let mat_2d = Dense::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let contiguous = mat_2d.to_contiguous(order);
 
     let mut w_data = vec![T::Real::zero(); n];
@@ -74,7 +73,7 @@ pub fn eigh<T: Scalar>(
 
     backend.eigh(desc)?;
 
-    let w_tensor = DenseTensor::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
+    let w_tensor = Dense::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))
@@ -100,21 +99,18 @@ pub fn eigh<T: Scalar>(
 /// or the backend fails.
 pub fn eigvalsh<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
-) -> Result<DenseTensor<T::Real>, LinalgError> {
+) -> Result<Dense<T::Real>, LinalgError> {
     let (w, _v) = eigh(backend, tensor, nrow)?;
     Ok(w)
 }
 
 /// Result of a general eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
-/// - Eigenvalues: `DenseTensor<T::Complex>` with shape `[n]`, complex
-/// - Eigenvectors: `DenseTensor<T::Complex>` with shape `[n, n]`, complex, columns are right eigenvectors
-pub type EigResult<T> = (
-    DenseTensor<<T as Scalar>::Complex>,
-    DenseTensor<<T as Scalar>::Complex>,
-);
+/// - Eigenvalues: `Dense<T::Complex>` with shape `[n]`, complex
+/// - Eigenvectors: `Dense<T::Complex>` with shape `[n, n]`, complex, columns are right eigenvectors
+pub type EigResult<T> = (Dense<<T as Scalar>::Complex>, Dense<<T as Scalar>::Complex>);
 
 /// Compute general eigenvalue decomposition of a tensor reshaped as a square matrix.
 ///
@@ -139,7 +135,7 @@ pub type EigResult<T> = (
 /// or the backend fails.
 pub fn eig<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<EigResult<T>, LinalgError> {
     let shape = tensor.shape();
@@ -162,8 +158,7 @@ pub fn eig<T: Scalar>(
 
     let order = backend.preferred_order();
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d =
-        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let mat_2d = Dense::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let contiguous = mat_2d.to_contiguous(order);
 
     let mut w_data = vec![T::Complex::zero(); n];
@@ -178,7 +173,7 @@ pub fn eig<T: Scalar>(
 
     backend.eig(desc)?;
 
-    let w_tensor = DenseTensor::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
+    let w_tensor = Dense::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))
@@ -204,9 +199,9 @@ pub fn eig<T: Scalar>(
 /// or the backend fails.
 pub fn eigvals<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
-) -> Result<DenseTensor<T::Complex>, LinalgError> {
+) -> Result<Dense<T::Complex>, LinalgError> {
     let (w, _v) = eig(backend, tensor, nrow)?;
     Ok(w)
 }

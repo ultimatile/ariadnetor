@@ -2,13 +2,13 @@
 //!
 //! Validates that usage examples from two_layer_tensor_architecture.md actually work.
 
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 
 #[test]
 fn test_design_doc_example_dense_tensor() {
     // Low-level API usage
-    let raw_a = TensorStorage::Dense(DenseTensor::<f64>::zeros(vec![10, 20]));
-    let raw_b = TensorStorage::Dense(DenseTensor::<f64>::ones(vec![20, 30]));
+    let raw_a = Dense::<f64>::zeros(vec![10, 20]);
+    let raw_b = Dense::<f64>::ones(vec![20, 30]);
 
     assert_eq!(raw_a.shape(), &[10, 20]);
     assert_eq!(raw_b.shape(), &[20, 30]);
@@ -21,7 +21,7 @@ fn test_design_doc_example_dense_tensor() {
 #[test]
 fn test_design_doc_arc_cow() {
     // Arc + Copy-on-Write example
-    let mut tensor = DenseTensor::<f64>::zeros(vec![10, 20]);
+    let mut tensor = Dense::<f64>::zeros(vec![10, 20]);
     let cloned = tensor.clone(); // O(1) - only increments reference count
 
     // Modification triggers CoW
@@ -33,8 +33,8 @@ fn test_design_doc_arc_cow() {
 
 #[test]
 fn test_design_doc_dense_storage() {
-    // DenseTensor basic usage
-    let tensor = DenseTensor::from_data_with_order(
+    // Dense basic usage
+    let tensor = Dense::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
@@ -55,7 +55,7 @@ fn test_design_doc_row_major_layout() {
     // [[a, b, c],
     //  [d, e, f]]
     // → [a, b, c, d, e, f]
-    let tensor = DenseTensor::from_data_with_order(
+    let tensor = Dense::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
@@ -74,19 +74,19 @@ fn test_design_doc_row_major_layout() {
 #[test]
 fn test_design_doc_constructors() {
     // Various constructor methods from design doc
-    let zeros = DenseTensor::<f64>::zeros(vec![3, 4]);
+    let zeros = Dense::<f64>::zeros(vec![3, 4]);
     assert_eq!(zeros.len(), 12);
     for &val in zeros.data() {
         assert_eq!(val, 0.0);
     }
 
-    let ones = DenseTensor::<f64>::ones(vec![2, 3]);
+    let ones = Dense::<f64>::ones(vec![2, 3]);
     assert_eq!(ones.len(), 6);
     for &val in ones.data() {
         assert_eq!(val, 1.0);
     }
 
-    let constant = DenseTensor::constant(vec![2, 2], 3.14);
+    let constant = Dense::constant(vec![2, 2], 3.14);
     assert_eq!(constant.len(), 4);
     for &val in constant.data() {
         assert_eq!(val, 3.14);
@@ -96,7 +96,7 @@ fn test_design_doc_constructors() {
 #[test]
 fn test_design_doc_phase_0_vec_usage() {
     // Current implementation uses Vec everywhere
-    let tensor = DenseTensor::<f64>::zeros(vec![10, 20, 30, 40]);
+    let tensor = Dense::<f64>::zeros(vec![10, 20, 30, 40]);
 
     // Shape is stored as Vec (not SmallVec in Phase 0)
     assert_eq!(tensor.rank(), 4);

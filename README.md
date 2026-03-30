@@ -18,7 +18,7 @@ Tensor network framework in Rust
 │  linear algebra API      │  faer + hptt-rs              │
 ├──────────────────────────┴──────────────────────────────┤
 │  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
-│    DenseTensor, TensorStorage, Tensor                   │
+│    Dense, TensorRepr, Tensor                       │
 ├─────────────────────────────────────────────────────────┤
 │  ariadnetor-core (arnet_core)  - Core Abstractions      │
 │    Scalar, LabelId, ComputeBackend trait, EinsumExpr    │
@@ -35,9 +35,9 @@ Backend-agnostic core abstractions: `Scalar` trait, `LabelId`, `EinsumExpr`, `Co
 
 Tensor data structures with Arc-based Copy-on-Write.
 
-- `DenseTensor<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag
-- `TensorStorage<T>` — Storage format enum (Dense)
-- `Tensor<T>` — Main API type: scale, linear_combine, norm, normalize
+- `Dense<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag, scale, norm, normalize
+- `TensorRepr` — Common trait for tensor storage representations
+- `Tensor<T, B>` — Main API type: wraps storage + backend
 
 ### `ariadnetor-linalg`
 
@@ -61,12 +61,12 @@ Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
 ## Usage
 
 ```rust
-use arnet::{Tensor, NativeBackend};
+use arnet::{Dense, Tensor, NativeBackend};
 use arnet_linalg::{contract, svd, transpose};
 
 // Create tensors
-let a = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-let b = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+let a = Tensor::<Dense<f64>>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+let b = Tensor::<Dense<f64>>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
 // Tensor contraction via ComputeBackend
 let backend = NativeBackend::new();

@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract;
@@ -33,9 +33,9 @@ use crate::transpose::conjugate_transpose;
 /// or the backend fails.
 pub fn expm_hermitian<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     let (w, v) = eigh(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(λ_j)
@@ -71,9 +71,9 @@ pub fn expm_hermitian<T: Scalar>(
 /// the matrix is non-square, or the backend fails.
 pub fn expm_antihermitian<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     // Reject real types — multiplication by i is not representable
     let tid = TypeId::of::<T>();
     if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
@@ -92,7 +92,7 @@ pub fn expm_antihermitian<T: Scalar>(
         .iter()
         .map(|&x| T::from_real_imag(-x.im(), x.re()))
         .collect();
-    let ia = DenseTensor::from_data_with_order(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
+    let ia = Dense::from_data_with_order(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
 
     // eigh(iA) → real eigenvalues λ, eigenvectors V
     let (w, v_orig) = eigh(backend, &ia, nrow)?;
@@ -133,20 +133,20 @@ fn norm_1<T: Scalar>(data: &[T], n: usize) -> T::Real {
     max_col_sum
 }
 
-/// Matrix multiplication helper: C = A * B (both n×n, stored as DenseTensor).
+/// Matrix multiplication helper: C = A * B (both n×n, stored as Dense).
 fn matmul<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &DenseTensor<T>,
-    b: &DenseTensor<T>,
-) -> Result<DenseTensor<T>, LinalgError> {
+    a: &Dense<T>,
+    b: &Dense<T>,
+) -> Result<Dense<T>, LinalgError> {
     contract(backend, a, b, "ij,jk->ik")
 }
 
 /// Scale each element of a tensor by a real factor.
-fn scale_real<T: Scalar>(tensor: &DenseTensor<T>, factor: T::Real) -> DenseTensor<T> {
+fn scale_real<T: Scalar>(tensor: &Dense<T>, factor: T::Real) -> Dense<T> {
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
     let data: Vec<T> = rm.data().iter().map(|&x| x.scale_real(factor)).collect();
-    DenseTensor::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor)
+    Dense::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor)
 }
 
 /// Padé approximant coefficients b_0..b_m for [m/m] approximant.
@@ -170,12 +170,12 @@ fn coeff<T: Scalar>(c: f64) -> T {
 /// Uses Horner-like evaluation to minimize matrix multiplications.
 fn pade_uv_small<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &DenseTensor<T>,
+    a: &Dense<T>,
     n: usize,
     m: usize,
-) -> Result<(DenseTensor<T>, DenseTensor<T>), LinalgError> {
+) -> Result<(Dense<T>, Dense<T>), LinalgError> {
     let b = pade_coefficients(m);
-    let id = DenseTensor::<T>::eye(n);
+    let id = Dense::<T>::eye(n);
 
     // Compute needed powers of A
     let a2 = matmul(backend, a, a)?;
@@ -276,11 +276,11 @@ fn pade_uv_small<T: Scalar>(
 /// plus 3 for the polynomial evaluation = 6 total).
 fn pade_uv_13<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &DenseTensor<T>,
+    a: &Dense<T>,
     n: usize,
-) -> Result<(DenseTensor<T>, DenseTensor<T>), LinalgError> {
+) -> Result<(Dense<T>, Dense<T>), LinalgError> {
     let b = pade_coefficients(13);
-    let id = DenseTensor::<T>::eye(n);
+    let id = Dense::<T>::eye(n);
 
     let a2 = matmul(backend, a, a)?;
     let a4 = matmul(backend, &a2, &a2)?;
@@ -360,9 +360,9 @@ fn pade_uv_13<T: Scalar>(
 /// or the backend fails.
 pub fn expm<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -385,8 +385,7 @@ pub fn expm<T: Scalar>(
 
     // Flatten to n×n row-major for internal computation
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let a =
-        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let a = Dense::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
 
     let norm = norm_1::<T>(a.data(), n);
 
@@ -407,7 +406,7 @@ pub fn expm<T: Scalar>(
             let (u, v) = pade_uv_small(backend, &a, n, order)?;
             let result = solve_pade(backend, &u, &v)?;
             let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-            return Ok(DenseTensor::from_data_with_order(
+            return Ok(Dense::from_data_with_order(
                 result_rm.data().to_vec(),
                 shape.to_vec(),
                 MemoryOrder::RowMajor,
@@ -451,7 +450,7 @@ pub fn expm<T: Scalar>(
     }
 
     let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-    Ok(DenseTensor::from_data_with_order(
+    Ok(Dense::from_data_with_order(
         result_rm.data().to_vec(),
         shape.to_vec(),
         MemoryOrder::RowMajor,
@@ -461,9 +460,9 @@ pub fn expm<T: Scalar>(
 /// Solve (V - U) X = V + U for the Padé approximant.
 fn solve_pade<T: Scalar>(
     backend: &impl ComputeBackend,
-    u: &DenseTensor<T>,
-    v: &DenseTensor<T>,
-) -> Result<DenseTensor<T>, LinalgError> {
+    u: &Dense<T>,
+    v: &Dense<T>,
+) -> Result<Dense<T>, LinalgError> {
     // V - U
     let neg_one: T = coeff::<T>(-1.0);
     let lhs =

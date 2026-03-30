@@ -2,24 +2,24 @@
 
 use approx::assert_abs_diff_eq;
 use arnet::mps::{self, CanonicalForm, Mps, TensorChain, TruncSvdParams, TruncateParams};
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
 
-/// Convert a row-major DenseTensor to column-major layout (same logical values).
-fn to_col_major(t: &DenseTensor<f64>) -> DenseTensor<f64> {
+/// Convert a row-major Dense to column-major layout (same logical values).
+fn to_col_major(t: &Dense<f64>) -> Dense<f64> {
     t.to_contiguous(MemoryOrder::ColumnMajor)
 }
 
 /// Build the same 4-site MPS as make_4site_mps but with column-major site tensors.
 fn make_4site_mps_col_major() -> Mps<f64> {
     let rm = make_4site_mps();
-    let storages: Vec<TensorStorage<f64>> = (0..rm.len())
+    let storages: Vec<Dense<f64>> = (0..rm.len())
         .map(|j| {
             let dense = match rm.storage(j) {
-                TensorStorage::Dense(d) => d,
+                d => d,
             };
-            TensorStorage::Dense(to_col_major(dense))
+            to_col_major(dense)
         })
         .collect();
     Mps::from_storages(storages)

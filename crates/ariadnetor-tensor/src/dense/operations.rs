@@ -4,9 +4,9 @@ use num_traits::Zero;
 use std::ops::{Add, Mul};
 use std::sync::Arc;
 
-use super::{DenseTensor, MemoryOrder, column_major_strides, row_major_strides};
+use super::{Dense, MemoryOrder, column_major_strides, row_major_strides};
 
-impl<T> DenseTensor<T>
+impl<T> Dense<T>
 where
     T: Clone,
 {
@@ -128,7 +128,7 @@ where
     /// Apply a function to each element, preserving the tensor's memory order.
     ///
     /// Iterates over contiguous data directly for efficiency.
-    pub fn map<U, F>(&self, f: F) -> DenseTensor<U>
+    pub fn map<U, F>(&self, f: F) -> Dense<U>
     where
         F: Fn(&T) -> U,
         U: Clone + 'static,
@@ -136,7 +136,7 @@ where
         let order = self.memory_order();
         let contiguous = self.to_contiguous(order);
         let result: Vec<U> = contiguous.data().iter().map(f).collect();
-        DenseTensor::from_data_with_order(result, self.shape().to_vec(), order)
+        Dense::from_data_with_order(result, self.shape().to_vec(), order)
     }
 
     /// Apply a function to each element in place (triggers CoW if shared).
@@ -161,7 +161,7 @@ where
 
     /// Apply a function with multi-dimensional coordinates to each element,
     /// preserving the tensor's memory order.
-    pub fn map_with_index<U, F>(&self, f: F) -> DenseTensor<U>
+    pub fn map_with_index<U, F>(&self, f: F) -> Dense<U>
     where
         F: Fn(&[usize], &T) -> U,
         U: Clone + 'static,
@@ -191,7 +191,7 @@ where
             }
         }
 
-        DenseTensor::from_data_with_order(result, shape.to_vec(), order)
+        Dense::from_data_with_order(result, shape.to_vec(), order)
     }
 
     // ========================================================================
@@ -213,6 +213,25 @@ where
         }
     }
 
+    /// Scale all elements and return a new tensor (out-of-place).
+    pub fn scaled(&self, factor: T) -> Self
+    where
+        T: Mul<Output = T>,
+    {
+        let mut result = self.clone();
+        result.scale(factor);
+        result
+    }
+
+    /// Add all tensors (coefficients all = 1).
+    pub fn add_all(tensors: &[&Dense<T>]) -> Result<Dense<T>, String>
+    where
+        T: Zero + num_traits::One + Add<Output = T> + Mul<Output = T>,
+    {
+        let coefs = vec![T::one(); tensors.len()];
+        Self::linear_combine(tensors, &coefs)
+    }
+
     /// Linear combination: Σ coefs\[i\] * tensors\[i\].
     ///
     /// Output memory order matches the first tensor's order.
@@ -221,10 +240,7 @@ where
     ///
     /// Returns an error if tensors have different shapes, the list is empty,
     /// or tensors and coefficients have different lengths.
-    pub fn linear_combine(
-        tensors: &[&DenseTensor<T>],
-        coefs: &[T],
-    ) -> Result<DenseTensor<T>, String>
+    pub fn linear_combine(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, String>
     where
         T: Zero + Add<Output = T> + Mul<Output = T>,
     {
@@ -253,10 +269,6 @@ where
                 *r = r.clone() + coef.clone() * val.clone();
             }
         }
-        Ok(DenseTensor::from_data_with_order(
-            result,
-            shape.to_vec(),
-            order,
-        ))
+        Ok(Dense::from_data_with_order(result, shape.to_vec(), order))
     }
 }

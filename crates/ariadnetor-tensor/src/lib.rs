@@ -2,15 +2,14 @@
 //!
 //! Provides backend-agnostic data structures for tensor storage.
 //!
-//! - [`DenseTensor<T>`]: Dense storage with Arc-based Copy-on-Write
-//! - [`TensorStorage<T>`]: Storage format enum (Dense; future: Sparse, BlockSparse)
+//! - [`Dense<T>`]: Dense storage with Arc-based Copy-on-Write
+//! - [`TensorRepr`]: Common trait for tensor storage representations
 //!
 //! For the main `Tensor` type (storage + backend), see the `arnet` crate.
 
-pub mod arithmetic;
 pub mod dense;
+pub mod repr;
 pub mod sector;
-pub mod tensor_storage;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{
@@ -18,8 +17,8 @@ pub use arnet_core::{
     compute_permutation, contraction_error, einsum, scalar,
 };
 
-pub use dense::{DenseTensor, MemoryOrder, column_major_strides, row_major_strides};
-pub use tensor_storage::TensorStorage;
+pub use dense::{Dense, DenseIter, MemoryOrder, column_major_strides, row_major_strides};
+pub use repr::TensorRepr;
 
 /// Extension trait for backend-aware tensor construction.
 ///
@@ -27,54 +26,40 @@ pub use tensor_storage::TensorStorage;
 /// from callers and allowing future backend properties to influence
 /// tensor construction without changing call sites.
 pub trait ComputeBackendTensorExt: ComputeBackend {
-    /// Construct a `DenseTensor` from data in this backend's preferred memory order.
-    fn make_tensor<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
-        DenseTensor::from_data_with_order(data, shape, self.preferred_order())
+    /// Construct a `Dense` from data in this backend's preferred memory order.
+    fn make_tensor<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
+        Dense::from_data_with_order(data, shape, self.preferred_order())
     }
 
     /// Create a zero-filled tensor in this backend's preferred memory order.
-    fn zeros<T: Clone + num_traits::Zero>(&self, shape: Vec<usize>) -> DenseTensor<T> {
+    fn zeros<T: Clone + num_traits::Zero>(&self, shape: Vec<usize>) -> Dense<T> {
         let total: usize = shape.iter().product();
-        DenseTensor::from_data_with_order(vec![T::zero(); total], shape, self.preferred_order())
+        Dense::from_data_with_order(vec![T::zero(); total], shape, self.preferred_order())
     }
 
     /// Create a ones-filled tensor in this backend's preferred memory order.
-    fn ones<T: Clone + num_traits::Zero + num_traits::One>(
-        &self,
-        shape: Vec<usize>,
-    ) -> DenseTensor<T> {
+    fn ones<T: Clone + num_traits::Zero + num_traits::One>(&self, shape: Vec<usize>) -> Dense<T> {
         let total: usize = shape.iter().product();
-        DenseTensor::from_data_with_order(vec![T::one(); total], shape, self.preferred_order())
+        Dense::from_data_with_order(vec![T::one(); total], shape, self.preferred_order())
     }
 
     /// Create a constant-filled tensor in this backend's preferred memory order.
-    fn constant<T: Clone>(&self, shape: Vec<usize>, value: T) -> DenseTensor<T> {
+    fn constant<T: Clone>(&self, shape: Vec<usize>, value: T) -> Dense<T> {
         let total: usize = shape.iter().product();
-        DenseTensor::from_data_with_order(vec![value; total], shape, self.preferred_order())
+        Dense::from_data_with_order(vec![value; total], shape, self.preferred_order())
     }
 
     /// Create an identity matrix in this backend's preferred memory order.
     ///
     /// The identity matrix is symmetric, so its flat data layout is the same
     /// regardless of memory order.
-    fn eye<T: Clone + num_traits::Zero + num_traits::One>(&self, n: usize) -> DenseTensor<T> {
+    fn eye<T: Clone + num_traits::Zero + num_traits::One>(&self, n: usize) -> Dense<T> {
         let mut data = vec![T::zero(); n * n];
         for i in 0..n {
             data[i * (n + 1)] = T::one();
         }
-        DenseTensor::from_data_with_order(data, vec![n, n], self.preferred_order())
+        Dense::from_data_with_order(data, vec![n, n], self.preferred_order())
     }
 }
 
 impl<B: ComputeBackend> ComputeBackendTensorExt for B {}
-
-// Convenient type aliases for common numeric types
-pub type DenseTensor64 = DenseTensor<f64>;
-pub type DenseTensor32 = DenseTensor<f32>;
-pub type DenseTensorC64 = DenseTensor<Complex<f64>>;
-pub type DenseTensorC32 = DenseTensor<Complex<f32>>;
-
-pub type TensorStorage64 = TensorStorage<f64>;
-pub type TensorStorage32 = TensorStorage<f32>;
-pub type TensorStorageC64 = TensorStorage<Complex<f64>>;
-pub type TensorStorageC32 = TensorStorage<Complex<f32>>;

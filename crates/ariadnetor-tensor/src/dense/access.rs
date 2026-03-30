@@ -1,16 +1,16 @@
-//! Data access and element-level operations for DenseTensor.
+//! Data access and element-level operations for Dense.
 
 use std::sync::Arc;
 
-use super::DenseTensor;
+use super::Dense;
 
-impl<T> DenseTensor<T>
+impl<T> Dense<T>
 where
     T: Clone,
 {
     /// Get a reference to the underlying contiguous data.
     ///
-    /// The caller must check [`memory_order()`](super::DenseTensor::memory_order)
+    /// The caller must check [`memory_order()`](super::Dense::memory_order)
     /// to interpret the layout correctly.
     ///
     /// # Panics
@@ -86,11 +86,11 @@ where
     /// Element ordering depends on the memory layout and is not guaranteed to
     /// follow any particular index order. Use this for order-independent
     /// operations such as norm, scale, and element-wise maps.
-    pub fn iter(&self) -> DenseTensorIter<'_, T> {
+    pub fn iter(&self) -> DenseIter<'_, T> {
         if self.is_contiguous() {
-            DenseTensorIter::Contiguous(self.data[self.offset..self.offset + self.len()].iter())
+            DenseIter::Contiguous(self.data[self.offset..self.offset + self.len()].iter())
         } else {
-            DenseTensorIter::Strided(StridedIter::new(self))
+            DenseIter::Strided(StridedIter::new(self))
         }
     }
 
@@ -124,16 +124,16 @@ where
     }
 }
 
-/// Iterator over `DenseTensor` elements.
+/// Iterator over `Dense` elements.
 ///
 /// Dispatches between a direct slice iterator (contiguous case) and
 /// a stride-walking iterator (non-contiguous case).
-pub enum DenseTensorIter<'a, T> {
+pub enum DenseIter<'a, T> {
     Contiguous(std::slice::Iter<'a, T>),
     Strided(StridedIter<'a, T>),
 }
 
-impl<'a, T: Clone> Iterator for DenseTensorIter<'a, T> {
+impl<'a, T: Clone> Iterator for DenseIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -151,7 +151,7 @@ impl<'a, T: Clone> Iterator for DenseTensorIter<'a, T> {
     }
 }
 
-impl<T: Clone> ExactSizeIterator for DenseTensorIter<'_, T> {}
+impl<T: Clone> ExactSizeIterator for DenseIter<'_, T> {}
 
 /// Stride-walking iterator for non-contiguous tensors.
 ///
@@ -171,7 +171,7 @@ pub struct StridedIter<'a, T> {
 }
 
 impl<'a, T> StridedIter<'a, T> {
-    fn new(tensor: &'a DenseTensor<T>) -> Self {
+    fn new(tensor: &'a Dense<T>) -> Self {
         let total = tensor.len();
         let mut axis_order: Vec<usize> = (0..tensor.rank()).collect();
         let strides = tensor.strides();

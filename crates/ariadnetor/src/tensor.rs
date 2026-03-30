@@ -1,17 +1,18 @@
 //! Tensor type combining storage and compute backend
 //!
-//! `Tensor<T, B>` is the main user-facing type. It holds a [`TensorStorage<T>`]
-//! for data and an `Arc<B>` for computation dispatch.
+//! `Tensor<T, B>` is the main user-facing type. It holds a storage `T`
+//! (defaulting to [`Dense<f64>`]) and an `Arc<B>` for computation dispatch.
 //!
 //! The backend type parameter defaults to [`NativeBackend`], so CPU users
-//! can simply write `Tensor<f64>` without specifying a backend.
+//! can simply write `Tensor` without specifying a backend.
 
 use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_native::NativeBackend;
-pub use arnet_tensor::{DenseTensor, TensorStorage};
+pub use arnet_tensor::Dense;
+use arnet_tensor::TensorRepr;
 use num_traits::{One, Zero};
 use std::ops::{Add, Mul};
 
@@ -19,28 +20,32 @@ use std::ops::{Add, Mul};
 ///
 /// # Type Parameters
 ///
-/// * `T` - Element type (default: `f64`)
+/// * `T` - Storage representation (default: [`Dense<f64>`])
 /// * `B` - Compute backend (default: [`NativeBackend`])
 ///
 /// # Examples
 ///
 /// ```
-/// use arnet::Tensor;
+/// use arnet::{Dense, Tensor};
 ///
-/// // CPU tensor (NativeBackend is implicit)
-/// let a = Tensor::<f64>::zeros(vec![2, 2]);
+/// // CPU tensor (Dense<f64> + NativeBackend are implicit)
+/// let a = Tensor::<Dense<f64>>::zeros(vec![2, 2]);
 /// assert_eq!(a.shape(), &[2, 2]);
 /// ```
 #[derive(Debug, Clone)]
-pub struct Tensor<T = f64, B: ComputeBackend = NativeBackend> {
+pub struct Tensor<T = Dense<f64>, B: ComputeBackend = NativeBackend> {
     /// Underlying data storage
-    pub storage: TensorStorage<T>,
+    pub storage: T,
     backend: Arc<B>,
 }
 
-impl<T, B: ComputeBackend> Tensor<T, B> {
+// ============================================================================
+// Generic methods (all storage types)
+// ============================================================================
+
+impl<T: TensorRepr, B: ComputeBackend> Tensor<T, B> {
     /// Create a Tensor from storage and an explicit backend.
-    pub fn with_backend(storage: TensorStorage<T>, backend: Arc<B>) -> Self {
+    pub fn with_backend(storage: T, backend: Arc<B>) -> Self {
         Self { storage, backend }
     }
 
@@ -76,87 +81,84 @@ impl<T, B: ComputeBackend> Tensor<T, B> {
 }
 
 // ============================================================================
-// Constructors with default NativeBackend
+// Dense-specific constructors with default NativeBackend
 // ============================================================================
 
-impl<T> Tensor<T, NativeBackend>
+impl<S> Tensor<Dense<S>, NativeBackend>
 where
-    T: Clone,
+    S: Clone,
 {
     /// Create a tensor filled with zeros (default: NativeBackend).
     pub fn zeros(shape: Vec<usize>) -> Self
     where
-        T: Zero,
+        S: Zero,
     {
-        Self::with_backend(TensorStorage::zeros(shape), NativeBackend::shared())
+        Self::with_backend(Dense::zeros(shape), NativeBackend::shared())
     }
 
     /// Create a tensor filled with ones (default: NativeBackend).
     pub fn ones(shape: Vec<usize>) -> Self
     where
-        T: One + Zero,
+        S: One + Zero,
     {
-        Self::with_backend(TensorStorage::ones(shape), NativeBackend::shared())
+        Self::with_backend(Dense::ones(shape), NativeBackend::shared())
     }
 
     /// Create a tensor filled with a constant value (default: NativeBackend).
-    pub fn constant(shape: Vec<usize>, value: T) -> Self {
-        Self::with_backend(
-            TensorStorage::constant(shape, value),
-            NativeBackend::shared(),
-        )
+    pub fn constant(shape: Vec<usize>, value: S) -> Self {
+        Self::with_backend(Dense::constant(shape, value), NativeBackend::shared())
     }
 }
 
 // ============================================================================
-// Data access (all backends)
+// Dense-specific data access (all backends)
 // ============================================================================
 
-impl<T, B: ComputeBackend> Tensor<T, B>
+impl<S, B: ComputeBackend> Tensor<Dense<S>, B>
 where
-    T: Clone,
+    S: Clone,
 {
-    /// Get a reference to the underlying data (only for Dense).
-    pub fn data(&self) -> Option<&[T]> {
+    /// Get a reference to the underlying data.
+    pub fn data(&self) -> &[S] {
         self.storage.data()
     }
 
-    /// Get a mutable reference to the underlying data (only for Dense).
-    pub fn data_mut(&mut self) -> Option<&mut [T]> {
+    /// Get a mutable reference to the underlying data.
+    pub fn data_mut(&mut self) -> &mut [S] {
         self.storage.data_mut()
     }
 
     /// Get element at given indices.
-    pub fn get(&self, indices: &[usize]) -> T {
+    pub fn get(&self, indices: &[usize]) -> S {
         self.storage.get(indices)
     }
 
     /// Set element at given indices.
-    pub fn set(&mut self, indices: &[usize], value: T) {
+    pub fn set(&mut self, indices: &[usize], value: S) {
         self.storage.set(indices, value)
     }
 
     /// Fill tensor with a constant value.
-    pub fn fill(&mut self, value: T) {
+    pub fn fill(&mut self, value: S) {
         self.storage.fill(value)
     }
 }
 
 // ============================================================================
-// Arithmetic operations (all backends)
+// Dense-specific arithmetic operations (all backends)
 // ============================================================================
 
-impl<T, B: ComputeBackend> Tensor<T, B>
+impl<S, B: ComputeBackend> Tensor<Dense<S>, B>
 where
-    T: Clone + Mul<Output = T>,
+    S: Clone + Mul<Output = S>,
 {
     /// Scale tensor by a scalar factor (in-place).
-    pub fn scale(&mut self, factor: T) {
+    pub fn scale(&mut self, factor: S) {
         self.storage.scale(factor);
     }
 
     /// Scale tensor and return new tensor (out-of-place).
-    pub fn scaled(&self, factor: T) -> Self {
+    pub fn scaled(&self, factor: S) -> Self {
         Self {
             storage: self.storage.scaled(factor),
             backend: Arc::clone(&self.backend),
@@ -164,21 +166,24 @@ where
     }
 }
 
-impl<T, B: ComputeBackend> Tensor<T, B>
+impl<S, B: ComputeBackend> Tensor<Dense<S>, B>
 where
-    T: Clone + Zero + One + Add<Output = T> + Mul<Output = T>,
+    S: Clone + Zero + One + Add<Output = S> + Mul<Output = S>,
 {
     /// Linear combination of tensors.
     ///
     /// All tensors must have the same shape.
-    pub fn linear_combine(tensors: &[&Tensor<T, B>], coefs: &[T]) -> Result<Tensor<T, B>, String> {
+    pub fn linear_combine(
+        tensors: &[&Tensor<Dense<S>, B>],
+        coefs: &[S],
+    ) -> Result<Tensor<Dense<S>, B>, String> {
         if tensors.is_empty() {
             return Err("Cannot combine empty tensor list".to_string());
         }
 
         let backend = Arc::clone(&tensors[0].backend);
         let raw_tensors: Vec<_> = tensors.iter().map(|t| &t.storage).collect();
-        let result_storage = TensorStorage::linear_combine(&raw_tensors, coefs)?;
+        let result_storage = Dense::linear_combine(&raw_tensors, coefs)?;
 
         Ok(Tensor {
             storage: result_storage,
@@ -187,36 +192,36 @@ where
     }
 
     /// Add all tensors (coefficients all = 1).
-    pub fn add_all(tensors: &[&Tensor<T, B>]) -> Result<Tensor<T, B>, String> {
-        let coefs = vec![T::one(); tensors.len()];
+    pub fn add_all(tensors: &[&Tensor<Dense<S>, B>]) -> Result<Tensor<Dense<S>, B>, String> {
+        let coefs = vec![S::one(); tensors.len()];
         Self::linear_combine(tensors, &coefs)
     }
 }
 
 // ============================================================================
-// Norm and normalization operations (all backends)
+// Dense-specific norm and normalization operations (all backends)
 // ============================================================================
 
-impl<T, B: ComputeBackend> Tensor<T, B>
+impl<S, B: ComputeBackend> Tensor<Dense<S>, B>
 where
-    T: Scalar,
+    S: Scalar,
 {
     /// Compute Frobenius norm.
-    pub fn norm(&self) -> T::Real {
+    pub fn norm(&self) -> S::Real {
         self.storage.norm()
     }
 
     /// Normalize to unit norm (in-place).
     ///
     /// Returns the norm before normalization.
-    pub fn normalize(&mut self) -> T::Real {
-        self.storage.normalize()
+    pub fn normalize(&mut self) -> S::Real {
+        self.storage.normalize_in_place()
     }
 
     /// Normalize and return new tensor (out-of-place).
     ///
     /// Returns `(normalized_tensor, original_norm)`.
-    pub fn normalized(&self) -> (Self, T::Real) {
+    pub fn normalized(&self) -> (Self, S::Real) {
         let (normalized_storage, norm) = self.storage.normalized();
         (
             Self {

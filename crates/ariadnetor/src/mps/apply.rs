@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::contract;
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::MemoryOrder;
 
 use super::chain::TensorChain;
 use super::types::{Mpo, Mps, TruncateParams};
@@ -41,8 +41,8 @@ where
     let mut storages = Vec::with_capacity(n);
 
     for j in 0..n {
-        let w = as_dense(op.storage(j)); // (w_L, d_ket, d_bra, w_R)
-        let a = as_dense(psi.storage(j)); // (χ_L, d, χ_R)
+        let w = op.storage(j); // (w_L, d_ket, d_bra, w_R)
+        let a = psi.storage(j); // (χ_L, d, χ_R)
 
         // Contract over physical index (b = d_ket = d):
         // W(a,b,c,d) × A(e,b,f) → result(a,e,c,d,f)
@@ -62,7 +62,7 @@ where
         let result = result.to_contiguous(MemoryOrder::RowMajor);
         let fused = result.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
 
-        storages.push(TensorStorage::Dense(fused));
+        storages.push(fused);
     }
 
     let mut result_mps = Mps::with_backend(storages, Arc::clone(psi.backend_arc()));
@@ -74,10 +74,4 @@ where
     }
 
     result_mps
-}
-
-fn as_dense<T>(storage: &TensorStorage<T>) -> &DenseTensor<T> {
-    match storage {
-        TensorStorage::Dense(d) => d,
-    }
 }

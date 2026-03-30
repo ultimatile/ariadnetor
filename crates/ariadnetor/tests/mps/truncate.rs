@@ -4,7 +4,7 @@ use approx::assert_abs_diff_eq;
 use arnet::mps::{
     self, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
@@ -36,26 +36,26 @@ fn test_truncate_no_change_within_tolerance() {
 fn test_truncate_reduces_bond_dim() {
     // Build MPS with large bond dims, orthogonalize, then truncate to chi_max=2
     let storages = vec![
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        Dense::from_data_with_order(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
             vec![1, 2, 4],
             MemoryOrder::RowMajor,
-        )),
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        ),
+        Dense::from_data_with_order(
             (1..=32).map(|i| i as f64 * 0.1).collect(),
             vec![4, 2, 4],
             MemoryOrder::RowMajor,
-        )),
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        ),
+        Dense::from_data_with_order(
             (1..=32).map(|i| i as f64 * 0.01).collect(),
             vec![4, 2, 4],
             MemoryOrder::RowMajor,
-        )),
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        ),
+        Dense::from_data_with_order(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
             vec![4, 2, 1],
             MemoryOrder::RowMajor,
-        )),
+        ),
     ];
     let mut mps = Mps::from_storages(storages);
     mps::orthogonalize(&mut mps, 1);
@@ -118,11 +118,11 @@ fn test_truncate_with_cutoff() {
 
 #[test]
 fn test_truncate_single_site() {
-    let storages = vec![TensorStorage::Dense(DenseTensor::from_data_with_order(
+    let storages = vec![Dense::from_data_with_order(
         vec![3.0, 4.0],
         vec![1, 2, 1],
         MemoryOrder::RowMajor,
-    ))];
+    )];
     let mut mps = Mps::from_storages(storages);
     mps::orthogonalize(&mut mps, 0);
 
@@ -368,10 +368,10 @@ fn test_absorb_left_differs_from_right() {
 
     // Center tensors should differ between Left and Right
     let center_l = match mps_l.storage(1) {
-        TensorStorage::Dense(d) => d,
+        d => d,
     };
     let center_r = match mps_r.storage(1) {
-        TensorStorage::Dense(d) => d,
+        d => d,
     };
     let max_diff = center_l
         .data()

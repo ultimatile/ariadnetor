@@ -6,7 +6,7 @@ use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::TruncSvdParams;
 use arnet_native::NativeBackend;
-use arnet_tensor::TensorStorage;
+use arnet_tensor::Dense;
 
 /// Canonical form of a tensor chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,8 +78,8 @@ pub struct TruncResult<T: Scalar> {
 /// Holds raw tensor storages, a shared backend, and canonical form state.
 /// This type is `pub(crate)` — users interact through `Mps` / `Mpo` newtypes.
 #[derive(Debug, Clone)]
-pub(crate) struct TensorChainData<T, B: ComputeBackend = NativeBackend> {
-    pub(crate) storages: Vec<TensorStorage<T>>,
+pub(crate) struct TensorChainData<S, B: ComputeBackend = NativeBackend> {
+    pub(crate) storages: Vec<Dense<S>>,
     pub(crate) backend: Arc<B>,
     pub(crate) canonical_form: CanonicalForm,
 }
@@ -93,7 +93,7 @@ pub(crate) struct TensorChainData<T, B: ComputeBackend = NativeBackend> {
 ///
 /// Edge tensors use dummy bonds (dim 1) to maintain rank 3.
 #[derive(Debug, Clone)]
-pub struct Mps<T = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<T, B>);
+pub struct Mps<S = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<S, B>);
 
 /// Matrix Product Operator — rank-4 tensor chain.
 ///
@@ -105,18 +105,18 @@ pub struct Mps<T = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChai
 ///
 /// Edge tensors use dummy bonds (dim 1) to maintain rank 4.
 #[derive(Debug, Clone)]
-pub struct Mpo<T = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<T, B>);
+pub struct Mpo<S = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<S, B>);
 
 // ============================================================================
 // Constructors (any backend)
 // ============================================================================
 
-impl<T, B: ComputeBackend> Mps<T, B> {
+impl<S, B: ComputeBackend> Mps<S, B> {
     /// Create an MPS from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 3 with shape `(χ_L, d, χ_R)`.
     /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<TensorStorage<T>>, backend: Arc<B>) -> Self {
+    pub fn with_backend(storages: Vec<Dense<S>>, backend: Arc<B>) -> Self {
         Self(TensorChainData {
             storages,
             backend,
@@ -125,12 +125,12 @@ impl<T, B: ComputeBackend> Mps<T, B> {
     }
 }
 
-impl<T, B: ComputeBackend> Mpo<T, B> {
+impl<S, B: ComputeBackend> Mpo<S, B> {
     /// Create an MPO from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 4 with shape `(χ_L, d_ket, d_bra, χ_R)`.
     /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<TensorStorage<T>>, backend: Arc<B>) -> Self {
+    pub fn with_backend(storages: Vec<Dense<S>>, backend: Arc<B>) -> Self {
         Self(TensorChainData {
             storages,
             backend,
@@ -143,16 +143,16 @@ impl<T, B: ComputeBackend> Mpo<T, B> {
 // Constructors (default NativeBackend)
 // ============================================================================
 
-impl<T> Mps<T, NativeBackend> {
+impl<S> Mps<S, NativeBackend> {
     /// Create an MPS from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<TensorStorage<T>>) -> Self {
+    pub fn from_storages(storages: Vec<Dense<S>>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
     }
 }
 
-impl<T> Mpo<T, NativeBackend> {
+impl<S> Mpo<S, NativeBackend> {
     /// Create an MPO from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<TensorStorage<T>>) -> Self {
+    pub fn from_storages(storages: Vec<Dense<S>>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
     }
 }

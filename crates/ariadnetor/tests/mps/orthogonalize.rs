@@ -1,7 +1,7 @@
 //! Orthogonalization tests.
 
 use arnet::mps::{self, CanonicalForm, Mps, TensorChain};
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
@@ -93,11 +93,11 @@ fn test_orthogonalize_center_last() {
 
 #[test]
 fn test_orthogonalize_single_site() {
-    let storages = vec![TensorStorage::Dense(DenseTensor::from_data_with_order(
+    let storages = vec![Dense::from_data_with_order(
         vec![1.0, 2.0],
         vec![1, 2, 1],
         MemoryOrder::RowMajor,
-    ))];
+    )];
     let mut mps = Mps::from_storages(storages);
 
     mps::orthogonalize(&mut mps, 0);
