@@ -367,12 +367,8 @@ fn test_absorb_left_differs_from_right() {
     mps::truncate(&mut mps_r, &params_r);
 
     // Center tensors should differ between Left and Right
-    let center_l = match mps_l.storage(1) {
-        d => d,
-    };
-    let center_r = match mps_r.storage(1) {
-        d => d,
-    };
+    let center_l = mps_l.storage(1);
+    let center_r = mps_r.storage(1);
     let max_diff = center_l
         .data()
         .iter()
