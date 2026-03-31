@@ -47,7 +47,7 @@ fn test_complex_f64_normalize() {
     let data = vec![Complex::new(1.0, 0.0), Complex::new(0.0, 1.0)];
     let mut tensor = Dense::from_data_with_order(data, vec![2], MemoryOrder::RowMajor);
 
-    let norm: f64 = tensor.normalize_in_place();
+    let norm: f64 = tensor.normalize();
     let expected_norm: f64 = 2.0f64.sqrt();
     assert!((norm - expected_norm).abs() < 1e-10);
 

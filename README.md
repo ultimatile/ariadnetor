@@ -10,7 +10,7 @@ Tensor network framework in Rust
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  ariadnetor (arnet)  - High-level API                   │
-│    Einsum DSL, Expression Graph, Runtime                │
+│    Tensor, Einsum, MPS/MPO                              │
 ├──────────────────────────┬──────────────────────────────┤
 │  ariadnetor-linalg       │  ariadnetor-native           │
 │  (arnet_linalg)          │  (arnet_native)              │
@@ -18,7 +18,7 @@ Tensor network framework in Rust
 │  linear algebra API      │  faer + hptt-rs              │
 ├──────────────────────────┴──────────────────────────────┤
 │  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
-│    Dense, TensorRepr, Tensor                       │
+│    Dense, TensorRepr                                    │
 ├─────────────────────────────────────────────────────────┤
 │  ariadnetor-core (arnet_core)  - Core Abstractions      │
 │    Scalar, LabelId, ComputeBackend trait, EinsumExpr    │

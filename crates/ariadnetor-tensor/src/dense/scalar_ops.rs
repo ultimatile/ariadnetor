@@ -56,7 +56,7 @@ where
     /// Panics if the tensor has zero norm.
     pub fn normalized(&self) -> (Self, T::Real) {
         let mut result = self.clone();
-        let norm = result.normalize_in_place();
+        let norm = result.normalize();
         (result, norm)
     }
 
@@ -64,7 +64,7 @@ where
     ///
     /// Returns the norm before normalization.
     /// Panics if the tensor has zero norm.
-    pub fn normalize_in_place(&mut self) -> T::Real {
+    pub fn normalize(&mut self) -> T::Real {
         let norm = self.norm_frobenius();
         assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
         let inv_norm = T::Real::one() / norm;

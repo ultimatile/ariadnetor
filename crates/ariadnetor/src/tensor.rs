@@ -220,7 +220,7 @@ where
     ///
     /// Returns the norm before normalization.
     pub fn normalize(&mut self) -> S::Real {
-        self.storage.normalize_in_place()
+        self.storage.normalize()
     }
 
     /// Normalize and return new tensor (out-of-place).

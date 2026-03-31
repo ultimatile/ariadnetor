@@ -71,7 +71,7 @@ fn test_norm_zero_tensor() {
 fn test_normalize_f64_inplace() {
     let mut tensor = Dense::<f64>::ones(vec![2, 2]);
     // Initial norm = sqrt(4) = 2
-    let norm = tensor.normalize_in_place();
+    let norm = tensor.normalize();
     assert!((norm - 2.0).abs() < EPSILON);
 
     // After normalization, each element should be 1/2
@@ -112,7 +112,7 @@ fn test_normalize_f64_out_of_place() {
 #[test]
 fn test_normalize_f32() {
     let mut tensor = Dense::<f32>::ones(vec![3, 3]);
-    let norm = tensor.normalize_in_place();
+    let norm = tensor.normalize();
     assert!((norm - 3.0f32).abs() < 1e-6);
 
     {
@@ -129,7 +129,7 @@ fn test_normalize_complex_f64() {
     let data: Vec<Complex<f64>> = vec![Complex::new(2.0, 0.0), Complex::new(0.0, 2.0)];
     let mut tensor = Dense::from_data_with_order(data, vec![2], MemoryOrder::RowMajor);
 
-    let norm = tensor.normalize_in_place();
+    let norm = tensor.normalize();
     assert!((norm - 8.0f64.sqrt()).abs() < EPSILON);
 
     // Each element should be divided by 2*sqrt(2)
@@ -152,7 +152,7 @@ fn test_normalize_complex_f64() {
 #[should_panic(expected = "Cannot normalize zero tensor")]
 fn test_normalize_zero_tensor_panic() {
     let mut tensor = Dense::<f64>::zeros(vec![2, 2]);
-    tensor.normalize_in_place();
+    tensor.normalize();
 }
 
 // Tensor-level norm/normalize tests are in ariadnetor/tests/

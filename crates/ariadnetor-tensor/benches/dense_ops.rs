@@ -223,11 +223,11 @@ fn bench_linear_combine(c: &mut Criterion) {
 }
 
 // ==========================================================================
-// normalize_in_place
+// normalize
 // ==========================================================================
 
-fn bench_normalize_in_place(c: &mut Criterion) {
-    let mut group = c.benchmark_group("normalize_in_place");
+fn bench_normalize(c: &mut Criterion) {
+    let mut group = c.benchmark_group("normalize");
 
     let shapes: Vec<TensorShape> = shapes_square().into_iter().chain(shapes_rank3()).collect();
 
@@ -236,7 +236,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(s.label), &tensor, |b, t| {
             b.iter_batched_ref(
                 || unique_copy(t),
-                |t| t.normalize_in_place(),
+                |t| t.normalize(),
                 criterion::BatchSize::LargeInput,
             );
         });
@@ -331,7 +331,7 @@ criterion_group!(
     bench_norm_frobenius,
     bench_scale,
     bench_linear_combine,
-    bench_normalize_in_place,
+    bench_normalize,
     bench_slice,
     bench_concatenate,
 );
