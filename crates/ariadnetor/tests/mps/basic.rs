@@ -1,14 +1,14 @@
 //! MPS/MPO construction, accessors, canonical form, and edge case tests.
 
 use arnet::mps::{CanonicalForm, Mpo, Mps, TensorChain};
-use arnet_tensor::TensorStorage;
+use arnet_tensor::Dense;
 
 /// Build a simple 3-site MPS with shapes (1,2,4), (4,2,4), (4,2,1).
 fn make_3site_mps() -> Mps<f64> {
     let storages = vec![
-        TensorStorage::ones(vec![1, 2, 4]), // site 0
-        TensorStorage::ones(vec![4, 2, 4]), // site 1
-        TensorStorage::ones(vec![4, 2, 1]), // site 2
+        Dense::ones(vec![1, 2, 4]), // site 0
+        Dense::ones(vec![4, 2, 4]), // site 1
+        Dense::ones(vec![4, 2, 1]), // site 2
     ];
     Mps::from_storages(storages)
 }
@@ -53,10 +53,10 @@ fn test_mps_bond_dims() {
 #[test]
 fn test_mps_varying_bond_dims() {
     let storages = vec![
-        TensorStorage::<f64>::ones(vec![1, 2, 3]),
-        TensorStorage::ones(vec![3, 2, 5]),
-        TensorStorage::ones(vec![5, 2, 2]),
-        TensorStorage::ones(vec![2, 2, 1]),
+        Dense::<f64>::ones(vec![1, 2, 3]),
+        Dense::ones(vec![3, 2, 5]),
+        Dense::ones(vec![5, 2, 2]),
+        Dense::ones(vec![2, 2, 1]),
     ];
     let mps = Mps::from_storages(storages);
 
@@ -113,9 +113,9 @@ fn test_storage_mut_resets_canonical_form() {
 #[test]
 fn test_mpo_from_storages() {
     let storages = vec![
-        TensorStorage::<f64>::ones(vec![1, 2, 2, 3]), // site 0: (1, d_ket, d_bra, 3)
-        TensorStorage::ones(vec![3, 2, 2, 3]),        // site 1
-        TensorStorage::ones(vec![3, 2, 2, 1]),        // site 2
+        Dense::<f64>::ones(vec![1, 2, 2, 3]), // site 0: (1, d_ket, d_bra, 3)
+        Dense::ones(vec![3, 2, 2, 3]),        // site 1
+        Dense::ones(vec![3, 2, 2, 1]),        // site 2
     ];
     let mpo = Mpo::from_storages(storages);
 
@@ -131,7 +131,7 @@ fn test_mpo_from_storages() {
 
 #[test]
 fn test_single_site_mps() {
-    let storages = vec![TensorStorage::<f64>::ones(vec![1, 2, 1])];
+    let storages = vec![Dense::<f64>::ones(vec![1, 2, 1])];
     let mps = Mps::from_storages(storages);
 
     assert_eq!(mps.len(), 1);

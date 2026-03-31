@@ -1,41 +1,38 @@
 //! Shared test helpers for MPS tests.
 
 use arnet::mps::{Mpo, Mps, TensorChain};
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 
 /// Build a random-ish 4-site MPS from deterministic data.
 pub fn make_4site_mps() -> Mps<f64> {
     let storages = vec![
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        Dense::from_data_with_order(
             vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
             vec![1, 2, 4],
             MemoryOrder::RowMajor,
-        )),
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        ),
+        Dense::from_data_with_order(
             (1..=32).map(|i| i as f64 * 0.1).collect(),
             vec![4, 2, 4],
             MemoryOrder::RowMajor,
-        )),
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        ),
+        Dense::from_data_with_order(
             (1..=24).map(|i| i as f64 * 0.1).collect(),
             vec![4, 2, 3],
             MemoryOrder::RowMajor,
-        )),
-        TensorStorage::Dense(DenseTensor::from_data_with_order(
+        ),
+        Dense::from_data_with_order(
             (1..=6).map(|i| i as f64 * 0.1).collect(),
             vec![3, 2, 1],
             MemoryOrder::RowMajor,
-        )),
+        ),
     ];
     Mps::from_storages(storages)
 }
 
 /// Check that a site tensor is left-canonical: Q^H Q ≈ I.
 /// Reshape to (m, k) where m = product(shape[..rank-1]), k = shape[rank-1].
-pub fn is_left_canonical(storage: &TensorStorage<f64>, tol: f64) -> bool {
-    let dense = match storage {
-        TensorStorage::Dense(d) => d,
-    };
+pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let shape = dense.shape();
     let rank = shape.len();
     let k = shape[rank - 1];
@@ -58,10 +55,7 @@ pub fn is_left_canonical(storage: &TensorStorage<f64>, tol: f64) -> bool {
 
 /// Check that a site tensor is right-canonical: Q Q^H ≈ I.
 /// Reshape to (k, n) where k = shape[0], n = product(shape[1..]).
-pub fn is_right_canonical(storage: &TensorStorage<f64>, tol: f64) -> bool {
-    let dense = match storage {
-        TensorStorage::Dense(d) => d,
-    };
+pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let shape = dense.shape();
     let k = shape[0];
     let n: usize = shape[1..].iter().product();
@@ -82,19 +76,14 @@ pub fn is_right_canonical(storage: &TensorStorage<f64>, tol: f64) -> bool {
 }
 
 /// Compute the full state vector from an MPS by contracting all sites.
-pub fn mps_to_dense(mps: &Mps<f64>) -> DenseTensor<f64> {
+pub fn mps_to_dense(mps: &Mps<f64>) -> Dense<f64> {
     let backend = arnet_native::NativeBackend::new();
     let n = mps.len();
 
-    let first = match mps.storage(0) {
-        TensorStorage::Dense(d) => d.clone(),
-    };
-    let mut result = first;
+    let mut result = mps.storage(0).clone();
 
     for j in 1..n {
-        let site = match mps.storage(j) {
-            TensorStorage::Dense(d) => d,
-        };
+        let site = mps.storage(j);
         let r_rank = result.rank();
         let r_last: usize = *result.shape().last().unwrap();
         let r_rest: usize = result.shape()[..r_rank - 1].iter().product();
@@ -124,11 +113,7 @@ pub fn make_identity_mpo(n: usize, d: usize) -> Mpo<f64> {
             for i in 0..d {
                 data[i * d + i] = 1.0;
             }
-            TensorStorage::Dense(DenseTensor::from_data_with_order(
-                data,
-                vec![1, d, d, 1],
-                MemoryOrder::RowMajor,
-            ))
+            Dense::from_data_with_order(data, vec![1, d, d, 1], MemoryOrder::RowMajor)
         })
         .collect();
     Mpo::from_storages(storages)

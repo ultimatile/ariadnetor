@@ -1,5 +1,5 @@
 use arnet_linalg::{linear_combine, norm, normalize, scale, trace};
-use arnet_tensor::DenseTensor;
+use arnet_tensor::Dense;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 
@@ -50,8 +50,8 @@ fn shapes_square() -> Vec<TensorShape> {
     ]
 }
 
-fn random_tensor(shape: Vec<usize>) -> DenseTensor<f64> {
-    DenseTensor::random(shape, &mut rng())
+fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
+    Dense::random(shape, &mut rng())
 }
 
 // ==========================================================================

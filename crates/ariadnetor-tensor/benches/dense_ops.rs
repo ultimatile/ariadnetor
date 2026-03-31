@@ -1,4 +1,4 @@
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use arnet_tensor::{Dense, MemoryOrder};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 
@@ -52,12 +52,12 @@ fn shapes_rank4() -> Vec<TensorShape> {
     }]
 }
 
-fn random_tensor(shape: Vec<usize>) -> DenseTensor<f64> {
-    DenseTensor::random(shape, &mut rng())
+fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
+    Dense::random(shape, &mut rng())
 }
 
-fn random_tensor_with_order(shape: Vec<usize>, order: MemoryOrder) -> DenseTensor<f64> {
-    DenseTensor::from_data_with_order(
+fn random_tensor_with_order(shape: Vec<usize>, order: MemoryOrder) -> Dense<f64> {
+    Dense::from_data_with_order(
         (0..shape.iter().product::<usize>())
             .map(|_| rand::random::<f64>())
             .collect(),
@@ -68,8 +68,8 @@ fn random_tensor_with_order(shape: Vec<usize>, order: MemoryOrder) -> DenseTenso
 
 /// Create a uniquely-owned copy (Arc refcount = 1) so mutating ops
 /// don't trigger copy-on-write during the timed section.
-fn unique_copy(t: &DenseTensor<f64>) -> DenseTensor<f64> {
-    DenseTensor::from_data_with_order(t.data().to_vec(), t.shape().to_vec(), t.memory_order())
+fn unique_copy(t: &Dense<f64>) -> Dense<f64> {
+    Dense::from_data_with_order(t.data().to_vec(), t.shape().to_vec(), t.memory_order())
 }
 
 // ==========================================================================
@@ -214,9 +214,7 @@ fn bench_linear_combine(c: &mut Criterion) {
             BenchmarkId::from_parameter(s.label),
             &s.label,
             |bench, _| {
-                bench.iter_with_large_drop(|| {
-                    DenseTensor::linear_combine(&tensors, &coefs).unwrap()
-                });
+                bench.iter_with_large_drop(|| Dense::linear_combine(&tensors, &coefs).unwrap());
             },
         );
     }
@@ -225,11 +223,11 @@ fn bench_linear_combine(c: &mut Criterion) {
 }
 
 // ==========================================================================
-// normalize_in_place
+// normalize
 // ==========================================================================
 
-fn bench_normalize_in_place(c: &mut Criterion) {
-    let mut group = c.benchmark_group("normalize_in_place");
+fn bench_normalize(c: &mut Criterion) {
+    let mut group = c.benchmark_group("normalize");
 
     let shapes: Vec<TensorShape> = shapes_square().into_iter().chain(shapes_rank3()).collect();
 
@@ -238,7 +236,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(s.label), &tensor, |b, t| {
             b.iter_batched_ref(
                 || unique_copy(t),
-                |t| t.normalize_in_place(),
+                |t| t.normalize(),
                 criterion::BatchSize::LargeInput,
             );
         });
@@ -306,7 +304,7 @@ fn bench_concatenate(c: &mut Criterion) {
         let b = random_tensor(s.shape.clone());
         let tensors = [&a, &b];
         group.bench_with_input(BenchmarkId::new("axis0", s.label), &s.label, |bench, _| {
-            bench.iter_with_large_drop(|| DenseTensor::concatenate(&tensors, 0));
+            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
         });
     }
 
@@ -318,7 +316,7 @@ fn bench_concatenate(c: &mut Criterion) {
         BenchmarkId::new("axis0", "64x4x64"),
         &"64x4x64",
         |bench, _| {
-            bench.iter_with_large_drop(|| DenseTensor::concatenate(&tensors, 0));
+            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
         },
     );
 
@@ -333,7 +331,7 @@ criterion_group!(
     bench_norm_frobenius,
     bench_scale,
     bench_linear_combine,
-    bench_normalize_in_place,
+    bench_normalize,
     bench_slice,
     bench_concatenate,
 );

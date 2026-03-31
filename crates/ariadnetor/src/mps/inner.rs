@@ -4,7 +4,6 @@ use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::contract;
 use arnet_tensor::ComputeBackendTensorExt;
-use arnet_tensor::{DenseTensor, TensorStorage};
 use num_traits::{Float, One};
 
 use super::chain::TensorChain;
@@ -32,8 +31,8 @@ where
     let mut env = backend.make_tensor(vec![T::one()], vec![1, 1]);
 
     for j in 0..n {
-        let psi_j = as_dense(psi.storage(j)).conj();
-        let phi_j = as_dense(phi.storage(j));
+        let psi_j = psi.storage(j).conj();
+        let phi_j = phi.storage(j);
 
         // env(a,b) × conj(ψ)(a,d,c) → temp(b,d,c)
         let temp = contract(backend, &env, &psi_j, "ab,adc->bdc")
@@ -93,9 +92,9 @@ where
     let mut env = backend.make_tensor(vec![T::one()], vec![1, 1, 1]);
 
     for j in 0..n {
-        let psi_j = as_dense(psi.storage(j)).conj(); // bra: (ψ_L, d_bra, ψ_R)
-        let a_j = as_dense(op.storage(j)); // operator: (A_L, d_ket, d_bra, A_R)
-        let phi_j = as_dense(phi.storage(j)); // ket: (φ_L, d_ket, φ_R)
+        let psi_j = psi.storage(j).conj(); // bra: (ψ_L, d_bra, ψ_R)
+        let a_j = op.storage(j); // operator: (A_L, d_ket, d_bra, A_R)
+        let phi_j = phi.storage(j); // ket: (φ_L, d_ket, φ_R)
 
         // Step 1: env(a,b,c) × conj(ψ)(a,d,e) → temp1(b,c,d,e)
         let temp1 = contract(backend, &env, &psi_j, "abc,ade->bcde")
@@ -111,10 +110,4 @@ where
     }
 
     env.get(&[0, 0, 0])
-}
-
-fn as_dense<T>(storage: &TensorStorage<T>) -> &DenseTensor<T> {
-    match storage {
-        TensorStorage::Dense(d) => d,
-    }
 }

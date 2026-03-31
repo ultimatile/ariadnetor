@@ -1,8 +1,8 @@
 //! Multi-tensor operations: concatenate and stack.
 
-use super::{DenseTensor, MemoryOrder};
+use super::{Dense, MemoryOrder};
 
-impl<T> DenseTensor<T>
+impl<T> Dense<T>
 where
     T: Clone,
 {
@@ -10,7 +10,7 @@ where
     ///
     /// Output memory order matches the first tensor's order.
     /// Inputs may be any layout.
-    pub fn concatenate(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
+    pub fn concatenate(tensors: &[&Dense<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "concatenate: empty tensor list");
         let rank = tensors[0].rank();
         assert!(
@@ -81,7 +81,7 @@ where
     ///
     /// Output memory order matches the first tensor's order.
     /// Inputs may be any layout.
-    pub fn stack(tensors: &[&DenseTensor<T>], axis: usize) -> Self {
+    pub fn stack(tensors: &[&Dense<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "stack: empty tensor list");
         let base_shape = tensors[0].shape();
         let rank = tensors[0].rank();

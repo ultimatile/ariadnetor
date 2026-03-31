@@ -3,7 +3,7 @@
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, trunc_svd};
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{Float, Zero};
 
 use super::chain::TensorChain;
@@ -96,7 +96,7 @@ where
     C: TensorChain<T, B>,
 {
     let (left_storage, right_factor, err) = {
-        let dense = as_dense(chain.storage(j));
+        let dense = chain.storage(j);
         let rank = dense.rank();
         let orig_shape = dense.shape().to_vec();
 
@@ -113,7 +113,7 @@ where
                 // U stays at j (left-canonical), S·Vt absorbed into j+1
                 let svt =
                     diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
-                (TensorStorage::Dense(u_rm.reshape(u_shape)), svt, err)
+                (u_rm.reshape(u_shape), svt, err)
             }
             SvdAbsorb::Left => {
                 // U·S stays at j, Vt absorbed into j+1 (right-canonical Vt)
@@ -121,7 +121,7 @@ where
                     diagonal_scale(&u_rm, s.data(), 1).expect("U·S scaling failed during truncate");
                 let us = us.to_contiguous(MemoryOrder::RowMajor);
                 let us_reshaped = us.reshape(u_shape);
-                (TensorStorage::Dense(us_reshaped), vt, err)
+                (us_reshaped, vt, err)
             }
             SvdAbsorb::Both => {
                 // √S applied to both sides
@@ -131,11 +131,7 @@ where
                 let u_scaled = u_scaled.to_contiguous(MemoryOrder::RowMajor);
                 let vt_scaled =
                     diagonal_scale(&vt, &sqrt_s, 0).expect("√S·Vt scaling failed during truncate");
-                (
-                    TensorStorage::Dense(u_scaled.reshape(u_shape)),
-                    vt_scaled,
-                    err,
-                )
+                (u_scaled.reshape(u_shape), vt_scaled, err)
             }
         }
     };
@@ -143,11 +139,11 @@ where
     *chain.storage_mut(j) = left_storage;
 
     let new_next = {
-        let next = as_dense(chain.storage(j + 1));
+        let next = chain.storage(j + 1);
         absorb_from_left(&right_factor, next, chain.backend())
     };
 
-    *chain.storage_mut(j + 1) = TensorStorage::Dense(new_next);
+    *chain.storage_mut(j + 1) = new_next;
 
     err * err
 }
@@ -166,7 +162,7 @@ where
     C: TensorChain<T, B>,
 {
     let (right_storage, left_factor, err) = {
-        let dense = as_dense(chain.storage(j));
+        let dense = chain.storage(j);
         let orig_shape = dense.shape().to_vec();
 
         let (u, s, vt, err) =
@@ -183,7 +179,7 @@ where
                 // S accompanies the sweep direction (leftward), producing mixed-canonical form.
                 let us =
                     diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
-                (TensorStorage::Dense(vt_rm.reshape(vt_shape)), us, err)
+                (vt_rm.reshape(vt_shape), us, err)
             }
             SvdAbsorb::Left => {
                 // S·Vt stays at j, bare U absorbed into j-1
@@ -192,7 +188,7 @@ where
                     .expect("S·Vt scaling failed during truncate");
                 let svt = svt.to_contiguous(MemoryOrder::RowMajor);
                 let svt_reshaped = svt.reshape(vt_shape);
-                (TensorStorage::Dense(svt_reshaped), u, err)
+                (svt_reshaped, u, err)
             }
             SvdAbsorb::Both => {
                 // √S applied to both sides
@@ -202,11 +198,7 @@ where
                 let vt_scaled = vt_scaled.to_contiguous(MemoryOrder::RowMajor);
                 let u_scaled =
                     diagonal_scale(&u, &sqrt_s, 1).expect("√S·U scaling failed during truncate");
-                (
-                    TensorStorage::Dense(vt_scaled.reshape(vt_shape)),
-                    u_scaled,
-                    err,
-                )
+                (vt_scaled.reshape(vt_shape), u_scaled, err)
             }
         }
     };
@@ -214,21 +206,21 @@ where
     *chain.storage_mut(j) = right_storage;
 
     let new_prev = {
-        let prev = as_dense(chain.storage(j - 1));
+        let prev = chain.storage(j - 1);
         absorb_from_right(prev, &left_factor, chain.backend())
     };
 
-    *chain.storage_mut(j - 1) = TensorStorage::Dense(new_prev);
+    *chain.storage_mut(j - 1) = new_prev;
 
     err * err
 }
 
 /// Multiply a 2D matrix into the next site tensor from the left.
 fn absorb_from_left<T: Scalar>(
-    left: &DenseTensor<T>,
-    next: &DenseTensor<T>,
+    left: &Dense<T>,
+    next: &Dense<T>,
     backend: &impl ComputeBackend,
-) -> DenseTensor<T> {
+) -> Dense<T> {
     // Ensure row-major so reshape uses standard axis merge order.
     let next = next.to_contiguous(MemoryOrder::RowMajor);
     let next_shape = next.shape().to_vec();
@@ -249,10 +241,10 @@ fn absorb_from_left<T: Scalar>(
 
 /// Multiply a 2D matrix into the previous site tensor from the right.
 fn absorb_from_right<T: Scalar>(
-    prev: &DenseTensor<T>,
-    right: &DenseTensor<T>,
+    prev: &Dense<T>,
+    right: &Dense<T>,
     backend: &impl ComputeBackend,
-) -> DenseTensor<T> {
+) -> Dense<T> {
     // Ensure row-major so reshape uses standard axis merge order.
     let prev = prev.to_contiguous(MemoryOrder::RowMajor);
     let prev_shape = prev.shape().to_vec();
@@ -269,10 +261,4 @@ fn absorb_from_right<T: Scalar>(
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
     result_2d.reshape(new_shape)
-}
-
-fn as_dense<T>(storage: &TensorStorage<T>) -> &DenseTensor<T> {
-    match storage {
-        TensorStorage::Dense(d) => d,
-    }
 }

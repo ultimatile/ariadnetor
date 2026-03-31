@@ -3,7 +3,7 @@
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{contract, lq, qr};
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::chain::TensorChain;
 use super::types::CanonicalForm;
@@ -53,7 +53,7 @@ where
 {
     // QR decomposition: group all modes except the last as "rows"
     let (q_storage, r) = {
-        let dense = as_dense(chain.storage(j));
+        let dense = chain.storage(j);
         let rank = dense.rank();
         let orig_shape = dense.shape().to_vec();
 
@@ -67,18 +67,18 @@ where
         let mut q_shape = orig_shape[..rank - 1].to_vec();
         q_shape.push(k);
 
-        (TensorStorage::Dense(q_rm.reshape(q_shape)), r)
+        (q_rm.reshape(q_shape), r)
     };
 
     *chain.storage_mut(j) = q_storage;
 
     // Absorb R into site j+1: R(k, old_bond) × next(old_bond, ...) → (k, ...)
     let new_next = {
-        let next = as_dense(chain.storage(j + 1));
+        let next = chain.storage(j + 1);
         absorb_from_left(&r, next, chain.backend())
     };
 
-    *chain.storage_mut(j + 1) = TensorStorage::Dense(new_next);
+    *chain.storage_mut(j + 1) = new_next;
 }
 
 /// LQ step: decompose site j, replace with Q, absorb L into site j-1.
@@ -90,7 +90,7 @@ where
 {
     // LQ decomposition: group only the first mode as "rows"
     let (q_storage, l) = {
-        let dense = as_dense(chain.storage(j));
+        let dense = chain.storage(j);
         let orig_shape = dense.shape().to_vec();
 
         let (l, q) =
@@ -103,27 +103,27 @@ where
         let mut q_shape = vec![k];
         q_shape.extend_from_slice(&orig_shape[1..]);
 
-        (TensorStorage::Dense(q_rm.reshape(q_shape)), l)
+        (q_rm.reshape(q_shape), l)
     };
 
     *chain.storage_mut(j) = q_storage;
 
     // Absorb L into site j-1: prev(..., old_bond) × L(old_bond, k) → (..., k)
     let new_prev = {
-        let prev = as_dense(chain.storage(j - 1));
+        let prev = chain.storage(j - 1);
         absorb_from_right(prev, &l, chain.backend())
     };
 
-    *chain.storage_mut(j - 1) = TensorStorage::Dense(new_prev);
+    *chain.storage_mut(j - 1) = new_prev;
 }
 
 /// Multiply R matrix into the next site: R(k, d) × next(d, ...) → (k, ...).
 /// Reshapes next to 2D for matmul, then restores original rank.
 fn absorb_from_left<T: Scalar>(
-    r: &DenseTensor<T>,
-    next: &DenseTensor<T>,
+    r: &Dense<T>,
+    next: &Dense<T>,
     backend: &impl ComputeBackend,
-) -> DenseTensor<T> {
+) -> Dense<T> {
     // Ensure row-major so reshape uses standard axis merge order.
     let next = next.to_contiguous(MemoryOrder::RowMajor);
     let next_shape = next.shape().to_vec();
@@ -145,10 +145,10 @@ fn absorb_from_left<T: Scalar>(
 /// Multiply L matrix into the previous site: prev(..., d) × L(d, k) → (..., k).
 /// Reshapes prev to 2D for matmul, then restores original rank.
 fn absorb_from_right<T: Scalar>(
-    prev: &DenseTensor<T>,
-    l: &DenseTensor<T>,
+    prev: &Dense<T>,
+    l: &Dense<T>,
     backend: &impl ComputeBackend,
-) -> DenseTensor<T> {
+) -> Dense<T> {
     // Ensure row-major so reshape uses standard axis merge order.
     let prev = prev.to_contiguous(MemoryOrder::RowMajor);
     let prev_shape = prev.shape().to_vec();
@@ -165,10 +165,4 @@ fn absorb_from_right<T: Scalar>(
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
     result_2d.reshape(new_shape)
-}
-
-fn as_dense<T>(storage: &TensorStorage<T>) -> &DenseTensor<T> {
-    match storage {
-        TensorStorage::Dense(d) => d,
-    }
 }

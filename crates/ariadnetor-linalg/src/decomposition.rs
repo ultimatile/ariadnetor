@@ -1,6 +1,6 @@
 use arnet_core::backend::{ComputeBackend, LqDescriptor, QrDescriptor, SvdDescriptor};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, MemoryOrder};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, MemoryOrder};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
@@ -10,11 +10,7 @@ use crate::error::LinalgError;
 /// - `U`: Left singular vectors
 /// - `S`: Singular values (real-valued, descending)
 /// - `Vt`: Right singular vectors transposed
-pub type SvdResult<T> = (
-    DenseTensor<T>,
-    DenseTensor<<T as Scalar>::Real>,
-    DenseTensor<T>,
-);
+pub type SvdResult<T> = (Dense<T>, Dense<<T as Scalar>::Real>, Dense<T>);
 
 /// Result of a truncated SVD decomposition: `(U, S, Vt, trunc_err)`.
 ///
@@ -23,9 +19,9 @@ pub type SvdResult<T> = (
 /// - `Vt`: Right singular vectors transposed (truncated)
 /// - `trunc_err`: Truncation error — Frobenius norm of discarded singular values
 pub type TruncSvdResult<T> = (
-    DenseTensor<T>,
-    DenseTensor<<T as Scalar>::Real>,
-    DenseTensor<T>,
+    Dense<T>,
+    Dense<<T as Scalar>::Real>,
+    Dense<T>,
     <T as Scalar>::Real,
 );
 
@@ -50,15 +46,14 @@ pub struct TruncSvdParams {
 /// column-major order, which differs from the standard mathematical reshape.
 /// This function ensures row-major merge semantics regardless of input layout.
 fn reshape_for_backend<T: Scalar>(
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     m: usize,
     n: usize,
     order: MemoryOrder,
-) -> DenseTensor<T> {
+) -> Dense<T> {
     // Row-major reshape to 2D (standard mathematical convention)
     let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d =
-        DenseTensor::from_data_with_order(rm.data().to_vec(), vec![m, n], MemoryOrder::RowMajor);
+    let mat_2d = Dense::from_data_with_order(rm.data().to_vec(), vec![m, n], MemoryOrder::RowMajor);
     // Convert to backend's preferred order
     mat_2d.to_contiguous(order)
 }
@@ -86,7 +81,7 @@ fn reshape_for_backend<T: Scalar>(
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn svd<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<SvdResult<T>, LinalgError> {
     let shape = tensor.shape();
@@ -123,7 +118,7 @@ pub fn svd<T: Scalar>(
     backend.svd(desc)?;
 
     let u_tensor = backend.make_tensor(u_data, vec![m, k]);
-    let s_tensor = DenseTensor::from_data_with_order(s_data, vec![k], MemoryOrder::RowMajor);
+    let s_tensor = Dense::from_data_with_order(s_data, vec![k], MemoryOrder::RowMajor);
     let vt_tensor = backend.make_tensor(vt_data, vec![k, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor))
@@ -155,7 +150,7 @@ pub fn svd<T: Scalar>(
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn trunc_svd<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
     params: &TruncSvdParams,
 ) -> Result<TruncSvdResult<T>, LinalgError> {
@@ -250,7 +245,7 @@ pub fn trunc_svd<T: Scalar>(
     };
 
     let u_tensor = backend.make_tensor(u_trunc, vec![m, chi]);
-    let s_tensor = DenseTensor::from_data_with_order(s_trunc, vec![chi], MemoryOrder::RowMajor);
+    let s_tensor = Dense::from_data_with_order(s_trunc, vec![chi], MemoryOrder::RowMajor);
     let vt_tensor = backend.make_tensor(vt_trunc, vec![chi, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor, trunc_err))
@@ -260,13 +255,13 @@ pub fn trunc_svd<T: Scalar>(
 ///
 /// - `Q`: Orthogonal/unitary matrix, shape `[m, k]` where `k = min(m, n)`
 /// - `R`: Upper triangular matrix, shape `[k, n]`
-pub type QrResult<T> = (DenseTensor<T>, DenseTensor<T>);
+pub type QrResult<T> = (Dense<T>, Dense<T>);
 
 /// Result of a thin LQ decomposition: `(L, Q)`.
 ///
 /// - `L`: Lower triangular matrix, shape `[m, k]` where `k = min(m, n)`
 /// - `Q`: Orthogonal/unitary matrix, shape `[k, n]`
-pub type LqResult<T> = (DenseTensor<T>, DenseTensor<T>);
+pub type LqResult<T> = (Dense<T>, Dense<T>);
 
 /// Compute thin QR decomposition of a tensor reshaped as a matrix.
 ///
@@ -290,7 +285,7 @@ pub type LqResult<T> = (DenseTensor<T>, DenseTensor<T>);
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn qr<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<QrResult<T>, LinalgError> {
     let shape = tensor.shape();
@@ -350,7 +345,7 @@ pub fn qr<T: Scalar>(
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn lq<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<LqResult<T>, LinalgError> {
     let shape = tensor.shape();

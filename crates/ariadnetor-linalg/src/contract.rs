@@ -1,7 +1,7 @@
 use arnet_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
 use crate::transpose::transpose;
@@ -30,10 +30,10 @@ use crate::transpose::transpose;
 /// batch indices are present, or the backend fails to execute transpose/GEMM.
 pub fn contract<T: Scalar>(
     backend: &impl ComputeBackend,
-    lhs: &DenseTensor<T>,
-    rhs: &DenseTensor<T>,
+    lhs: &Dense<T>,
+    rhs: &Dense<T>,
     notation: &str,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
@@ -134,7 +134,7 @@ pub fn contract<T: Scalar>(
         // 2D preferred_order → RowMajor 2D → reshape to multi-dim → preferred_order
         let result_2d = backend.make_tensor(c_data, vec![m, n]);
         let result_rm = result_2d.to_contiguous(MemoryOrder::RowMajor);
-        DenseTensor::from_data_with_order(
+        Dense::from_data_with_order(
             result_rm.data().to_vec(),
             output_shape,
             MemoryOrder::RowMajor,
@@ -152,11 +152,11 @@ pub fn contract<T: Scalar>(
 /// For rank <= 2, no axis merge is needed — directly convert to target order.
 /// For rank > 2, RowMajor reshape ensures correct axis merge semantics.
 fn prepare_for_gemm<T: Scalar>(
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     rows: usize,
     cols: usize,
     order: MemoryOrder,
-) -> DenseTensor<T> {
+) -> Dense<T> {
     if tensor.rank() <= 2 {
         // No axis merge: directly convert to preferred_order (zero-copy if already correct)
         tensor.to_contiguous(order)
@@ -180,10 +180,10 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
 /// Reorder output dimensions from [free_lhs, free_rhs] to the requested output order.
 fn reorder_output<T: Scalar>(
     backend: &impl ComputeBackend,
-    result: DenseTensor<T>,
+    result: Dense<T>,
     plan: &ContractionPlan,
     expr: &EinsumExpr,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     let out = expr.out_indices();
     if out.is_empty() {
         // Scalar result — no reordering needed

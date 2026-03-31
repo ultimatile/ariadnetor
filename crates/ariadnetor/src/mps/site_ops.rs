@@ -1,7 +1,7 @@
 //! SiteOps trait and concrete operator dictionaries
 
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{NumCast, Zero};
 
 /// Trait for site-local operator dictionaries.
@@ -29,11 +29,11 @@ impl SiteOps for SpinHalf {
 
 impl SpinHalf {
     /// S_z = diag(1/2, -1/2)
-    pub fn sz<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn sz<T: Scalar>(&self) -> Dense<T> {
         let half = real::<T>(0.5);
         let neg_half = real::<T>(-0.5);
         let z = T::zero();
-        DenseTensor::from_data_with_order(
+        Dense::from_data_with_order(
             vec![half, z, z, neg_half],
             vec![2, 2],
             MemoryOrder::RowMajor,
@@ -41,24 +41,24 @@ impl SpinHalf {
     }
 
     /// S+ (raising operator) = [[0, 1], [0, 0]]
-    pub fn sp<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn sp<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
-        DenseTensor::from_data_with_order(vec![z, o, z, z], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![z, o, z, z], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// S- (lowering operator) = [[0, 0], [1, 0]]
-    pub fn sm<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn sm<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
-        DenseTensor::from_data_with_order(vec![z, z, o, z], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![z, z, o, z], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// Identity operator = [[1, 0], [0, 1]]
-    pub fn id<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn id<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
-        DenseTensor::from_data_with_order(vec![o, z, z, o], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![o, z, z, o], vec![2, 2], MemoryOrder::RowMajor)
     }
 }
 
@@ -80,39 +80,35 @@ impl SiteOps for Qubit {
 
 impl Qubit {
     /// Pauli X = [[0, 1], [1, 0]]
-    pub fn x<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn x<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
-        DenseTensor::from_data_with_order(vec![z, o, o, z], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![z, o, o, z], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// Pauli Y = [[0, -i], [i, 0]]
-    pub fn y<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn y<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let zi = T::Real::zero();
         let one = real_val::<T::Real>(1.0);
         let neg_i = T::from_real_imag(zi, real_val::<T::Real>(-1.0));
         let pos_i = T::from_real_imag(zi, one);
-        DenseTensor::from_data_with_order(
-            vec![z, neg_i, pos_i, z],
-            vec![2, 2],
-            MemoryOrder::RowMajor,
-        )
+        Dense::from_data_with_order(vec![z, neg_i, pos_i, z], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// Pauli Z = [[1, 0], [0, -1]]
-    pub fn z<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn z<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
         let neg = real::<T>(-1.0);
-        DenseTensor::from_data_with_order(vec![o, z, z, neg], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![o, z, z, neg], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// Hadamard = [[1, 1], [1, -1]] / sqrt(2)
-    pub fn h<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn h<T: Scalar>(&self) -> Dense<T> {
         let inv_sqrt2 = real::<T>(std::f64::consts::FRAC_1_SQRT_2);
         let neg_inv_sqrt2 = real::<T>(-std::f64::consts::FRAC_1_SQRT_2);
-        DenseTensor::from_data_with_order(
+        Dense::from_data_with_order(
             vec![inv_sqrt2, inv_sqrt2, inv_sqrt2, neg_inv_sqrt2],
             vec![2, 2],
             MemoryOrder::RowMajor,
@@ -120,15 +116,15 @@ impl Qubit {
     }
 
     /// S gate = [[1, 0], [0, i]]
-    pub fn s<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn s<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
         let i = T::from_real_imag(T::Real::zero(), real_val::<T::Real>(1.0));
-        DenseTensor::from_data_with_order(vec![o, z, z, i], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![o, z, z, i], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// T gate = [[1, 0], [0, exp(iπ/4)]]
-    pub fn t<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn t<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
         let angle = std::f64::consts::FRAC_PI_4;
@@ -136,28 +132,28 @@ impl Qubit {
             real_val::<T::Real>(angle.cos()),
             real_val::<T::Real>(angle.sin()),
         );
-        DenseTensor::from_data_with_order(vec![o, z, z, t_val], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![o, z, z, t_val], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// Identity = [[1, 0], [0, 1]]
-    pub fn id<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn id<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
-        DenseTensor::from_data_with_order(vec![o, z, z, o], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![o, z, z, o], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// |0⟩⟨0| = [[1, 0], [0, 0]]
-    pub fn proj0<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn proj0<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
-        DenseTensor::from_data_with_order(vec![o, z, z, z], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![o, z, z, z], vec![2, 2], MemoryOrder::RowMajor)
     }
 
     /// |1⟩⟨1| = [[0, 0], [0, 1]]
-    pub fn proj1<T: Scalar>(&self) -> DenseTensor<T> {
+    pub fn proj1<T: Scalar>(&self) -> Dense<T> {
         let z = T::zero();
         let o = T::one();
-        DenseTensor::from_data_with_order(vec![z, z, z, o], vec![2, 2], MemoryOrder::RowMajor)
+        Dense::from_data_with_order(vec![z, z, z, o], vec![2, 2], MemoryOrder::RowMajor)
     }
 }
 

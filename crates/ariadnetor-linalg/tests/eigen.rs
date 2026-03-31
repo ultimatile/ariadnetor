@@ -1,6 +1,6 @@
 use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
 use arnet_native::NativeBackend;
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use arnet_tensor::{Dense, MemoryOrder};
 
 // --- EIGH tests ---
 
@@ -8,7 +8,7 @@ use arnet_tensor::{DenseTensor, MemoryOrder};
 fn test_eigh_f64_2x2_symmetric() {
     // [[2, 1], [1, 2]] → eigenvalues [1, 3]
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![2.0, 1.0, 1.0, 2.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -36,7 +36,7 @@ fn test_eigh_f64_2x2_symmetric() {
 fn test_eigh_f64_3x3_diagonal() {
     // Diagonal matrix: eigenvalues = diagonal elements (sorted ascending)
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0],
         vec![3, 3],
         MemoryOrder::RowMajor,
@@ -56,7 +56,7 @@ fn test_eigh_c64_hermitian() {
 
     // Hermitian: [[2, 1-i], [1+i, 3]]
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::from_data_with_order(
+    let tensor = Dense::from_data_with_order(
         vec![
             Complex::new(2.0, 0.0),
             Complex::new(1.0, -1.0),
@@ -91,7 +91,7 @@ fn test_eigh_c64_hermitian() {
 #[test]
 fn test_eigvalsh_f64() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![2.0, 1.0, 1.0, 2.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -108,7 +108,7 @@ fn test_eigvalsh_f64() {
 fn test_eigh_non_square_error() {
     let backend = NativeBackend::new();
     // 2×3 matrix → non-square → error
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
@@ -121,7 +121,7 @@ fn test_eigh_non_square_error() {
 #[test]
 fn test_eigh_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data_with_order(
+    let tensor = Dense::<f32>::from_data_with_order(
         vec![2.0, 1.0, 1.0, 2.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -137,7 +137,7 @@ fn test_eigh_f32() {
 #[test]
 fn test_eigh_invalid_nrow() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -155,7 +155,7 @@ fn test_eig_f64_2x2_trace_det() {
     // trace = 5, det = -2
     // eigenvalues satisfy: λ² - 5λ - 2 = 0
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -182,7 +182,7 @@ fn test_eig_f64_diagonal() {
     // Diagonal: [[3, 0], [0, 7]]
     // eigenvalues = {3, 7}
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![3.0, 0.0, 0.0, 7.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -203,7 +203,7 @@ fn test_eig_c64_complex_input() {
     // Complex matrix: [[1+i, 2], [0, 3-i]]
     // Upper triangular → eigenvalues = diagonal = {1+i, 3-i}
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::from_data_with_order(
+    let tensor = Dense::from_data_with_order(
         vec![
             Complex::new(1.0, 1.0),
             Complex::new(2.0, 0.0),
@@ -231,7 +231,7 @@ fn test_eig_c64_complex_input() {
 #[test]
 fn test_eigvals_f64() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -248,7 +248,7 @@ fn test_eigvals_f64() {
 #[test]
 fn test_eig_non_square_error() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
@@ -260,7 +260,7 @@ fn test_eig_non_square_error() {
 #[test]
 fn test_eig_f32() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f32>::from_data_with_order(
+    let tensor = Dense::<f32>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -278,7 +278,7 @@ fn test_eig_f32() {
 #[test]
 fn test_eig_invalid_nrow() {
     let backend = NativeBackend::new();
-    let tensor = DenseTensor::<f64>::from_data_with_order(
+    let tensor = Dense::<f64>::from_data_with_order(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,

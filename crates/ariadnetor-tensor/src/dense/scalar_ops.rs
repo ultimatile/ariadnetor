@@ -2,9 +2,9 @@
 
 use num_traits::{Float, One, Zero};
 
-use super::DenseTensor;
+use super::Dense;
 
-impl<T> DenseTensor<T>
+impl<T> Dense<T>
 where
     T: arnet_core::scalar::Scalar,
 {
@@ -14,17 +14,17 @@ where
     }
 
     /// Convert each element to its complex representation.
-    pub fn to_complex(&self) -> DenseTensor<T::Complex> {
+    pub fn to_complex(&self) -> Dense<T::Complex> {
         self.map(|x| x.into_complex())
     }
 
     /// Extract the real part of each element.
-    pub fn real(&self) -> DenseTensor<T::Real> {
+    pub fn real(&self) -> Dense<T::Real> {
         self.map(|x| x.re())
     }
 
     /// Extract the imaginary part of each element.
-    pub fn imag(&self) -> DenseTensor<T::Real> {
+    pub fn imag(&self) -> Dense<T::Real> {
         self.map(|x| x.im())
     }
 
@@ -45,11 +45,26 @@ where
         self.norm_squared().sqrt()
     }
 
+    /// Compute Frobenius norm (alias for [`norm_frobenius`](Self::norm_frobenius)).
+    pub fn norm(&self) -> T::Real {
+        self.norm_frobenius()
+    }
+
+    /// Normalize and return a new tensor (out-of-place).
+    ///
+    /// Returns `(normalized_tensor, original_norm)`.
+    /// Panics if the tensor has zero norm.
+    pub fn normalized(&self) -> (Self, T::Real) {
+        let mut result = self.clone();
+        let norm = result.normalize();
+        (result, norm)
+    }
+
     /// Normalize to unit Frobenius norm (in-place).
     ///
     /// Returns the norm before normalization.
     /// Panics if the tensor has zero norm.
-    pub fn normalize_in_place(&mut self) -> T::Real {
+    pub fn normalize(&mut self) -> T::Real {
         let norm = self.norm_frobenius();
         assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
         let inv_norm = T::Real::one() / norm;

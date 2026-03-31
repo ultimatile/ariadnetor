@@ -10,7 +10,7 @@ Tensor network framework in Rust
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  ariadnetor (arnet)  - High-level API                   │
-│    Einsum DSL, Expression Graph, Runtime                │
+│    Tensor, Einsum, MPS/MPO                              │
 ├──────────────────────────┬──────────────────────────────┤
 │  ariadnetor-linalg       │  ariadnetor-native           │
 │  (arnet_linalg)          │  (arnet_native)              │
@@ -18,7 +18,7 @@ Tensor network framework in Rust
 │  linear algebra API      │  faer + hptt-rs              │
 ├──────────────────────────┴──────────────────────────────┤
 │  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
-│    DenseTensor, TensorStorage, Tensor                   │
+│    Dense, TensorRepr                                    │
 ├─────────────────────────────────────────────────────────┤
 │  ariadnetor-core (arnet_core)  - Core Abstractions      │
 │    Scalar, LabelId, ComputeBackend trait, EinsumExpr    │
@@ -35,9 +35,9 @@ Backend-agnostic core abstractions: `Scalar` trait, `LabelId`, `EinsumExpr`, `Co
 
 Tensor data structures with Arc-based Copy-on-Write.
 
-- `DenseTensor<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag
-- `TensorStorage<T>` — Storage format enum (Dense)
-- `Tensor<T>` — Main API type: scale, linear_combine, norm, normalize
+- `Dense<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag, scale, norm, normalize
+- `TensorRepr` — Common trait for tensor storage representations
+- `Tensor<T, B>` — Main API type: wraps storage + backend
 
 ### `ariadnetor-linalg`
 
@@ -61,19 +61,17 @@ Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
 ## Usage
 
 ```rust
-use arnet::{Tensor, NativeBackend};
-use arnet_linalg::{contract, svd, transpose};
+use arnet::{Dense, Tensor, contract, svd};
 
 // Create tensors
-let a = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-let b = Tensor::<f64>::from_data(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+let a = Tensor::<Dense<f64>>::zeros(vec![2, 3]);
+let b = Tensor::<Dense<f64>>::zeros(vec![3, 2]);
 
-// Tensor contraction via ComputeBackend
-let backend = NativeBackend::new();
-let c = contract(&a.storage, &b.storage, "ij,jk->ik", &backend).unwrap();
+// Tensor contraction
+let c = contract(&a, &b, "ij,jk->ik").unwrap();
 
 // SVD decomposition
-let result = svd(&a.storage, 0, &backend).unwrap();
+let (u, s, vt) = svd(&a, 1).unwrap();
 ```
 
 ## Building

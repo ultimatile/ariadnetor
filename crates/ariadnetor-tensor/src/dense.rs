@@ -18,7 +18,7 @@ use std::sync::Arc;
 /// 64-byte alignment for SIMD (AVX-512)
 type Align64 = ConstAlign<64>;
 
-pub use access::{DenseTensorIter, StridedIter};
+pub use access::{DenseIter, StridedIter};
 pub use arnet_core::MemoryOrder;
 
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
@@ -32,8 +32,7 @@ pub use arnet_core::MemoryOrder;
 /// # Type Parameters
 ///
 /// * `T` - Element type (default: f64)
-#[derive(Clone)]
-pub struct DenseTensor<T = f64> {
+pub struct Dense<T = f64> {
     /// Shared data buffer (64-byte aligned)
     data: Arc<AVec<T, Align64>>,
     /// Tensor shape
@@ -46,6 +45,21 @@ pub struct DenseTensor<T = f64> {
     /// Needed to disambiguate layouts where strides alone are ambiguous
     /// (e.g., 1D tensors, tensors with size-1 dimensions).
     order: MemoryOrder,
+}
+
+// Manual Clone impl: all fields are Clone regardless of T
+// (Arc<AVec<T, _>> is Clone without T: Clone).
+// #[derive(Clone)] would unnecessarily require T: Clone.
+impl<T> Clone for Dense<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: Arc::clone(&self.data),
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+            offset: self.offset,
+            order: self.order,
+        }
+    }
 }
 
 // ============================================================================
@@ -76,7 +90,7 @@ pub fn column_major_strides(shape: &[usize]) -> Vec<isize> {
 // Basic accessors
 // ============================================================================
 
-impl<T> DenseTensor<T> {
+impl<T> Dense<T> {
     /// Get the shape of the tensor
     pub fn shape(&self) -> &[usize] {
         &self.shape
@@ -185,11 +199,11 @@ impl<T> DenseTensor<T> {
 // Display / Debug
 // ============================================================================
 
-impl<T> fmt::Debug for DenseTensor<T> {
+impl<T> fmt::Debug for Dense<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "DenseTensor(shape={:?}, strides={:?}, offset={}, elements={})",
+            "Dense(shape={:?}, strides={:?}, offset={}, elements={})",
             self.shape,
             self.strides,
             self.offset,
@@ -198,9 +212,9 @@ impl<T> fmt::Debug for DenseTensor<T> {
     }
 }
 
-impl<T> fmt::Display for DenseTensor<T> {
+impl<T> fmt::Display for Dense<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DenseTensor{:?}", self.shape)
+        write!(f, "Dense{:?}", self.shape)
     }
 }
 

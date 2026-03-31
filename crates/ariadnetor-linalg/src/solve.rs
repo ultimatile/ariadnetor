@@ -1,6 +1,6 @@
 use arnet_core::backend::{ComputeBackend, MemoryOrder, SolveDescriptor};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
 
@@ -27,10 +27,10 @@ use crate::error::LinalgError;
 /// dimensions are incompatible, or the backend fails.
 pub fn solve<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &DenseTensor<T>,
-    b: &DenseTensor<T>,
+    a: &Dense<T>,
+    b: &Dense<T>,
     nrow_a: usize,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     let a_shape = a.shape();
     let a_rank = a.rank();
 
@@ -53,8 +53,7 @@ pub fn solve<T: Scalar>(
     let order = backend.preferred_order();
     // Ensure row-major reshape semantics, then convert to backend order
     let a_rm = a.to_contiguous(MemoryOrder::RowMajor);
-    let a_2d =
-        DenseTensor::from_data_with_order(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let a_2d = Dense::from_data_with_order(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let a_contiguous = a_2d.to_contiguous(order);
 
     let b_rm = b.to_contiguous(MemoryOrder::RowMajor);
@@ -68,11 +67,8 @@ pub fn solve<T: Scalar>(
 
     let nrhs = b_total / n;
 
-    let b_2d = DenseTensor::from_data_with_order(
-        b_rm.data().to_vec(),
-        vec![n, nrhs],
-        MemoryOrder::RowMajor,
-    );
+    let b_2d =
+        Dense::from_data_with_order(b_rm.data().to_vec(), vec![n, nrhs], MemoryOrder::RowMajor);
     let b_contiguous = b_2d.to_contiguous(order);
 
     let mut x_data = vec![T::zero(); n * nrhs];
@@ -92,7 +88,7 @@ pub fn solve<T: Scalar>(
     // to preserve standard unflatten semantics for higher-rank RHS.
     let x_2d = backend.make_tensor(x_data, vec![n, nrhs]);
     let x_rm = x_2d.to_contiguous(MemoryOrder::RowMajor);
-    Ok(DenseTensor::from_data_with_order(
+    Ok(Dense::from_data_with_order(
         x_rm.data().to_vec(),
         b.shape().to_vec(),
         MemoryOrder::RowMajor,
@@ -119,9 +115,9 @@ pub fn solve<T: Scalar>(
 /// singular, or the backend fails.
 pub fn inverse<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &DenseTensor<T>,
+    tensor: &Dense<T>,
     nrow: usize,
-) -> Result<DenseTensor<T>, LinalgError> {
+) -> Result<Dense<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -140,17 +136,17 @@ pub fn inverse<T: Scalar>(
         )));
     }
 
-    let identity = DenseTensor::<T>::eye(n);
+    let identity = Dense::<T>::eye(n);
 
     // Flatten to n×n and solve AX = I → X = A⁻¹
     let a_rm = tensor.to_contiguous(MemoryOrder::RowMajor);
     let a_flat =
-        DenseTensor::from_data_with_order(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+        Dense::from_data_with_order(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let result = solve(backend, &a_flat, &identity, 1)?;
 
     // Return in original shape, row-major (inverse output matches input convention)
     let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-    Ok(DenseTensor::from_data_with_order(
+    Ok(Dense::from_data_with_order(
         result_rm.data().to_vec(),
         shape.to_vec(),
         MemoryOrder::RowMajor,

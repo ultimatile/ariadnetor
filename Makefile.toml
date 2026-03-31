@@ -150,7 +150,7 @@ description = "Run all benchmarks"
 dependencies = ["bench-tensor", "bench-linalg"]
 
 [tasks.bench-tensor]
-description = "Run DenseTensor benchmarks"
+description = "Run Dense benchmarks"
 command = "cargo"
 args = ["bench", "-p", "ariadnetor-tensor", "--features", "ariadnetor-tensor/random"]
 

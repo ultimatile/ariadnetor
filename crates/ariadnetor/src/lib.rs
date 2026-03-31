@@ -3,10 +3,10 @@
 //! # Example
 //!
 //! ```
-//! use arnet::Tensor;
+//! use arnet::{Dense, Tensor};
 //!
-//! let a = Tensor::<f64>::zeros(vec![2, 3]);
-//! let b = Tensor::<f64>::zeros(vec![3, 2]);
+//! let a = Tensor::<Dense<f64>>::zeros(vec![2, 3]);
+//! let b = Tensor::<Dense<f64>>::zeros(vec![3, 2]);
 //!
 //! assert_eq!(a.shape(), &[2, 3]);
 //! assert_eq!(b.shape(), &[3, 2]);
@@ -20,7 +20,7 @@ pub mod tensor;
 
 // Main types
 pub use diag_tensor::DiagTensor;
-pub use tensor::{DenseTensor, Tensor, TensorStorage};
+pub use tensor::{Dense, Tensor};
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};

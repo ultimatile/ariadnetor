@@ -1,6 +1,6 @@
 //! Diagonal tensor type
 //!
-//! `DiagTensor<T, B>` is a newtype wrapping a rank-1 `Tensor<T, B>` that
+//! `DiagTensor<S, B>` is a newtype wrapping a rank-1 `Tensor<Dense<S>, B>` that
 //! represents an n×n diagonal matrix by storing only the n diagonal elements.
 
 use std::fmt;
@@ -10,14 +10,14 @@ use std::sync::Arc;
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_native::NativeBackend;
-use arnet_tensor::{DenseTensor, MemoryOrder, TensorStorage};
+use arnet_tensor::{Dense, MemoryOrder};
 
 use crate::Tensor;
 
 /// Diagonal matrix represented as a rank-1 tensor of diagonal elements.
 ///
-/// Wraps a rank-1 [`Tensor<T, B>`] and interprets it as an n×n diagonal matrix
-/// where only the n diagonal entries are stored (O(n) instead of O(n²)).
+/// Wraps a rank-1 [`Tensor<Dense<S>, B>`] and interprets it as an n×n diagonal
+/// matrix where only the n diagonal entries are stored (O(n) instead of O(n²)).
 ///
 /// # Examples
 ///
@@ -30,15 +30,15 @@ use crate::Tensor;
 /// assert_eq!(d.data(), &[1.0, 2.0, 3.0]);
 /// ```
 #[derive(Debug, Clone)]
-pub struct DiagTensor<T = f64, B: ComputeBackend = NativeBackend>(Tensor<T, B>);
+pub struct DiagTensor<S = f64, B: ComputeBackend = NativeBackend>(Tensor<Dense<S>, B>);
 
-impl<T, B: ComputeBackend> DiagTensor<T, B> {
+impl<S: Clone, B: ComputeBackend> DiagTensor<S, B> {
     /// Create a `DiagTensor` from a rank-1 tensor.
     ///
     /// # Errors
     ///
     /// Returns an error if the tensor is not rank 1.
-    pub fn from_tensor(tensor: Tensor<T, B>) -> Result<Self, String> {
+    pub fn from_tensor(tensor: Tensor<Dense<S>, B>) -> Result<Self, String> {
         if tensor.rank() != 1 {
             return Err(format!(
                 "DiagTensor requires a rank-1 tensor, got rank {}",
@@ -65,35 +65,29 @@ impl<T, B: ComputeBackend> DiagTensor<T, B> {
     }
 
     /// Get a reference to the underlying rank-1 tensor.
-    pub fn as_tensor(&self) -> &Tensor<T, B> {
+    pub fn as_tensor(&self) -> &Tensor<Dense<S>, B> {
         &self.0
     }
 
     /// Consume the `DiagTensor` and return the underlying tensor.
-    pub fn into_tensor(self) -> Tensor<T, B> {
+    pub fn into_tensor(self) -> Tensor<Dense<S>, B> {
         self.0
     }
-}
 
-impl<T: Clone, B: ComputeBackend> DiagTensor<T, B> {
     /// Create a `DiagTensor` from a vector and an explicit backend.
-    pub fn from_vec_with_backend(diag: Vec<T>, backend: Arc<B>) -> Self {
+    pub fn from_vec_with_backend(diag: Vec<S>, backend: Arc<B>) -> Self {
         let n = diag.len();
-        let storage = TensorStorage::Dense(DenseTensor::from_data_with_order(
-            diag,
-            vec![n],
-            MemoryOrder::RowMajor,
-        ));
+        let storage = Dense::from_data_with_order(diag, vec![n], MemoryOrder::RowMajor);
         Self(Tensor::with_backend(storage, backend))
     }
 
     /// Get diagonal elements as a slice.
-    pub fn data(&self) -> &[T] {
-        self.0.data().expect("DiagTensor storage is always Dense")
+    pub fn data(&self) -> &[S] {
+        self.0.data()
     }
 }
 
-impl<T: Scalar, B: ComputeBackend> DiagTensor<T, B> {
+impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
     /// Extract the diagonal of a square matrix as a `DiagTensor`.
     ///
     /// # Errors
@@ -103,23 +97,20 @@ impl<T: Scalar, B: ComputeBackend> DiagTensor<T, B> {
     /// # Examples
     ///
     /// ```
-    /// use arnet::{DiagTensor, Tensor};
-    /// use arnet_tensor::{DenseTensor, TensorStorage, MemoryOrder};
+    /// use arnet::{Dense, DiagTensor, Tensor};
+    /// use arnet_tensor::MemoryOrder;
     /// use arnet_native::NativeBackend;
     ///
-    /// let dense = DenseTensor::from_data_with_order(
+    /// let dense = Dense::from_data_with_order(
     ///     vec![1.0, 0.0, 0.0, 2.0],
     ///     vec![2, 2],
     ///     MemoryOrder::RowMajor,
     /// );
-    /// let t = Tensor::with_backend(
-    ///     TensorStorage::Dense(dense),
-    ///     NativeBackend::shared(),
-    /// );
+    /// let t = Tensor::with_backend(dense, NativeBackend::shared());
     /// let d = DiagTensor::from_matrix(&t).unwrap();
     /// assert_eq!(d.data(), &[1.0, 2.0]);
     /// ```
-    pub fn from_matrix(tensor: &Tensor<T, B>) -> Result<Self, String> {
+    pub fn from_matrix(tensor: &Tensor<Dense<S>, B>) -> Result<Self, String> {
         let shape = tensor.shape();
         if shape.len() != 2 {
             return Err(format!(
@@ -133,11 +124,9 @@ impl<T: Scalar, B: ComputeBackend> DiagTensor<T, B> {
                 shape[0], shape[1]
             ));
         }
-        let TensorStorage::Dense(dense) = &tensor.storage;
-        let result = arnet_linalg::diag(dense)?;
-        let storage = TensorStorage::Dense(result);
+        let result = arnet_linalg::diag(&tensor.storage)?;
         Ok(Self(Tensor::with_backend(
-            storage,
+            result,
             Arc::clone(tensor.backend_arc()),
         )))
     }
@@ -159,39 +148,36 @@ impl<T: Scalar, B: ComputeBackend> DiagTensor<T, B> {
     /// assert_eq!(dense.get(&[1, 0]), 0.0);
     /// assert_eq!(dense.get(&[1, 1]), 3.0);
     /// ```
-    pub fn to_dense(&self) -> Tensor<T, B> {
+    pub fn to_dense(&self) -> Tensor<Dense<S>, B> {
         let diag = self.data();
         let n = diag.len();
-        let mut data = vec![T::zero(); n * n];
+        let mut data = vec![S::zero(); n * n];
         for i in 0..n {
             data[i * n + i] = diag[i];
         }
-        let dense = DenseTensor::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor);
-        Tensor::with_backend(
-            TensorStorage::Dense(dense),
-            Arc::clone(self.0.backend_arc()),
-        )
+        let dense = Dense::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor);
+        Tensor::with_backend(dense, Arc::clone(self.0.backend_arc()))
     }
 }
 
-impl<T: Clone> DiagTensor<T, NativeBackend> {
+impl<S: Clone> DiagTensor<S, NativeBackend> {
     /// Create a `DiagTensor` from a vector (default: NativeBackend).
-    pub fn from_vec(diag: Vec<T>) -> Self {
+    pub fn from_vec(diag: Vec<S>) -> Self {
         Self::from_vec_with_backend(diag, NativeBackend::shared())
     }
 }
 
-impl<T, B: ComputeBackend> Deref for DiagTensor<T, B> {
-    type Target = Tensor<T, B>;
+impl<S: Clone, B: ComputeBackend> Deref for DiagTensor<S, B> {
+    type Target = Tensor<Dense<S>, B>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<T, B: ComputeBackend> fmt::Display for DiagTensor<T, B>
+impl<S, B: ComputeBackend> fmt::Display for DiagTensor<S, B>
 where
-    T: fmt::Display + Clone,
+    S: fmt::Display + Clone,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "DiagTensor(")?;
@@ -229,7 +215,7 @@ mod tests {
 
     #[test]
     fn from_tensor_rank1() {
-        let t = Tensor::<f64>::constant(vec![3], 5.0);
+        let t = Tensor::<Dense<f64>>::constant(vec![3], 5.0);
         let d = DiagTensor::from_tensor(t).unwrap();
         assert_eq!(d.len(), 3);
         assert_eq!(d.data(), &[5.0, 5.0, 5.0]);
@@ -237,7 +223,7 @@ mod tests {
 
     #[test]
     fn from_tensor_rejects_rank2() {
-        let t = Tensor::<f64>::zeros(vec![2, 2]);
+        let t = Tensor::<Dense<f64>>::zeros(vec![2, 2]);
         let err = DiagTensor::from_tensor(t).unwrap_err();
         assert!(err.contains("rank-1"));
     }
@@ -304,35 +290,35 @@ mod tests {
         let d = DiagTensor::from_vec(vec![1.0, 2.0]);
         let t = d.into_tensor();
         assert_eq!(t.shape(), &[2]);
-        assert_eq!(t.data().unwrap(), &[1.0, 2.0]);
+        assert_eq!(t.data(), &[1.0, 2.0]);
     }
 
     #[test]
     fn from_matrix_extracts_diagonal() {
-        let dense = DenseTensor::from_data_with_order(
+        let dense = Dense::from_data_with_order(
             vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
             vec![3, 3],
             MemoryOrder::RowMajor,
         );
-        let t = Tensor::with_backend(TensorStorage::Dense(dense), NativeBackend::shared());
+        let t = Tensor::with_backend(dense, NativeBackend::shared());
         let d = DiagTensor::from_matrix(&t).unwrap();
         assert_eq!(d.data(), &[1.0, 5.0, 9.0]);
     }
 
     #[test]
     fn from_matrix_rejects_non_square() {
-        let dense = DenseTensor::from_data_with_order(
+        let dense = Dense::from_data_with_order(
             vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
             vec![2, 3],
             MemoryOrder::RowMajor,
         );
-        let t = Tensor::with_backend(TensorStorage::Dense(dense), NativeBackend::shared());
+        let t = Tensor::with_backend(dense, NativeBackend::shared());
         assert!(DiagTensor::<f64>::from_matrix(&t).is_err());
     }
 
     #[test]
     fn from_matrix_rejects_rank1() {
-        let t = Tensor::<f64>::constant(vec![3], 1.0);
+        let t = Tensor::<Dense<f64>>::constant(vec![3], 1.0);
         assert!(DiagTensor::from_matrix(&t).is_err());
     }
 

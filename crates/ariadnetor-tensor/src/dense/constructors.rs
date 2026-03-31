@@ -1,12 +1,12 @@
-//! Factory methods and data initialization for DenseTensor.
+//! Factory methods and data initialization for Dense.
 
 use aligned_vec::{AVec, ConstAlign};
 use num_traits::{One, Zero};
 use std::sync::Arc;
 
-use super::{Align64, DenseTensor, MemoryOrder, column_major_strides, row_major_strides};
+use super::{Align64, Dense, MemoryOrder, column_major_strides, row_major_strides};
 
-impl<T> DenseTensor<T>
+impl<T> Dense<T>
 where
     T: Clone,
 {
