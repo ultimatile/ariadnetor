@@ -38,11 +38,24 @@ pub trait Sector: Clone + Eq + Ord + Hash + Debug {
 /// Fusion rule: (a + b) mod 2.
 /// Every element is self-dual.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Z2Sector(pub u8);
+pub struct Z2Sector(u8);
+
+impl Z2Sector {
+    /// Create a Z₂ sector. Panics if `value` is not 0 or 1.
+    pub fn new(value: u8) -> Self {
+        assert!(value <= 1, "Z2Sector value must be 0 or 1, got {value}");
+        Self(value)
+    }
+
+    /// Return the inner value (0 or 1).
+    pub fn value(self) -> u8 {
+        self.0
+    }
+}
 
 impl Sector for Z2Sector {
     fn fuse(&self, other: &Self) -> Self {
-        Self((self.0 + other.0) % 2)
+        Self(self.0 ^ other.0)
     }
 
     fn identity() -> Self {
@@ -123,29 +136,37 @@ mod tests {
 
     #[test]
     fn z2_laws() {
-        let s0 = Z2Sector(0);
-        let s1 = Z2Sector(1);
+        let s0 = Z2Sector::new(0);
+        let s1 = Z2Sector::new(1);
         assert_sector_laws(&s0, &s1);
         assert_sector_laws(&s1, &s1);
     }
 
     #[test]
     fn z2_fusion_table() {
-        assert_eq!(Z2Sector(0).fuse(&Z2Sector(0)), Z2Sector(0));
-        assert_eq!(Z2Sector(0).fuse(&Z2Sector(1)), Z2Sector(1));
-        assert_eq!(Z2Sector(1).fuse(&Z2Sector(0)), Z2Sector(1));
-        assert_eq!(Z2Sector(1).fuse(&Z2Sector(1)), Z2Sector(0));
+        let z0 = Z2Sector::new(0);
+        let z1 = Z2Sector::new(1);
+        assert_eq!(z0.fuse(&z0), z0);
+        assert_eq!(z0.fuse(&z1), z1);
+        assert_eq!(z1.fuse(&z0), z1);
+        assert_eq!(z1.fuse(&z1), z0);
     }
 
     #[test]
     fn z2_dual() {
-        assert_eq!(Z2Sector(0).dual(), Z2Sector(0));
-        assert_eq!(Z2Sector(1).dual(), Z2Sector(1));
+        assert_eq!(Z2Sector::new(0).dual(), Z2Sector::new(0));
+        assert_eq!(Z2Sector::new(1).dual(), Z2Sector::new(1));
     }
 
     #[test]
     fn z2_ord() {
-        assert!(Z2Sector(0) < Z2Sector(1));
+        assert!(Z2Sector::new(0) < Z2Sector::new(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "Z2Sector value must be 0 or 1")]
+    fn z2_invalid_value() {
+        Z2Sector::new(2);
     }
 
     #[test]
@@ -178,40 +199,40 @@ mod tests {
 
     #[test]
     fn tuple_laws() {
-        let a = (U1Sector(1), Z2Sector(0));
-        let b = (U1Sector(-2), Z2Sector(1));
+        let a = (U1Sector(1), Z2Sector::new(0));
+        let b = (U1Sector(-2), Z2Sector::new(1));
         assert_sector_laws(&a, &b);
     }
 
     #[test]
     fn tuple_fusion() {
-        let a = (U1Sector(1), Z2Sector(1));
-        let b = (U1Sector(2), Z2Sector(1));
-        assert_eq!(a.fuse(&b), (U1Sector(3), Z2Sector(0)));
+        let a = (U1Sector(1), Z2Sector::new(1));
+        let b = (U1Sector(2), Z2Sector::new(1));
+        assert_eq!(a.fuse(&b), (U1Sector(3), Z2Sector::new(0)));
     }
 
     #[test]
     fn tuple_identity_and_dual() {
         let id = <(U1Sector, Z2Sector)>::identity();
-        assert_eq!(id, (U1Sector(0), Z2Sector(0)));
+        assert_eq!(id, (U1Sector(0), Z2Sector::new(0)));
 
-        let s = (U1Sector(3), Z2Sector(1));
-        assert_eq!(s.dual(), (U1Sector(-3), Z2Sector(1)));
+        let s = (U1Sector(3), Z2Sector::new(1));
+        assert_eq!(s.dual(), (U1Sector(-3), Z2Sector::new(1)));
     }
 
     #[test]
     fn tuple_ord() {
         // Lexicographic: U1 compared first, then Z2
-        let a = (U1Sector(0), Z2Sector(1));
-        let b = (U1Sector(1), Z2Sector(0));
+        let a = (U1Sector(0), Z2Sector::new(1));
+        let b = (U1Sector(1), Z2Sector::new(0));
         assert!(a < b);
     }
 
     #[test]
     fn nested_tuple() {
         // (U1 × Z2) × U1 — verifies blanket impl composes
-        let a = ((U1Sector(1), Z2Sector(0)), U1Sector(2));
-        let b = ((U1Sector(-1), Z2Sector(1)), U1Sector(3));
+        let a = ((U1Sector(1), Z2Sector::new(0)), U1Sector(2));
+        let b = ((U1Sector(-1), Z2Sector::new(1)), U1Sector(3));
         assert_sector_laws(&a, &b);
     }
 }
