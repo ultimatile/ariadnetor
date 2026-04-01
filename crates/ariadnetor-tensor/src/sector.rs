@@ -16,8 +16,8 @@ use std::hash::Hash;
 /// - **Inverse**: `s.fuse(&s.dual()) == S::identity()`
 /// - **Commutativity**: `s.fuse(&t) == t.fuse(&s)`
 ///
-/// `Ord` is required so that [`QNIndex`](super::QNIndex) can keep sectors
-/// in sorted order for binary search and merge operations.
+/// `Ord` is required so that index types can keep sectors in sorted order
+/// for binary search and merge operations.
 pub trait Sector: Clone + Eq + Ord + Hash + Debug {
     /// Fuse two sectors (tensor-product selection rule).
     fn fuse(&self, other: &Self) -> Self;
