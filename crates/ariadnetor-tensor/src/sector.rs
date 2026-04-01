@@ -80,7 +80,11 @@ pub struct U1Sector(pub i32);
 
 impl Sector for U1Sector {
     fn fuse(&self, other: &Self) -> Self {
-        Self(self.0 + other.0)
+        Self(
+            self.0
+                .checked_add(other.0)
+                .expect("U1Sector charge overflow"),
+        )
     }
 
     fn identity() -> Self {
@@ -88,7 +92,7 @@ impl Sector for U1Sector {
     }
 
     fn dual(&self) -> Self {
-        Self(-self.0)
+        Self(self.0.checked_neg().expect("U1Sector charge overflow"))
     }
 }
 
