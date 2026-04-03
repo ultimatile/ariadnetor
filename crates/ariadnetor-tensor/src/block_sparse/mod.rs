@@ -265,7 +265,8 @@ impl<T, S: Sector> BlockSparse<T, S> {
     }
 }
 
-impl<T: Clone, S: Sector> Clone for BlockSparse<T, S> {
+// Manual Clone: Arc::clone does not require T: Clone (same pattern as Dense<T>).
+impl<T, S: Sector> Clone for BlockSparse<T, S> {
     fn clone(&self) -> Self {
         Self {
             data: Arc::clone(&self.data),
@@ -279,20 +280,20 @@ impl<T: Clone, S: Sector> Clone for BlockSparse<T, S> {
 }
 
 // ---------------------------------------------------------------------------
-// Internal constructor (for tests and Phase 2 construction API)
+// Construction API
 // ---------------------------------------------------------------------------
 
 impl<T: Clone, S: Sector> BlockSparse<T, S> {
     /// Construct a `BlockSparse` from pre-validated components.
     ///
-    /// This performs consistency checks (coord validity, flux conservation,
-    /// offset/size bounds, block_index consistency) but does NOT enumerate
-    /// allowed blocks from scratch — that is the Phase 2 construction API's job.
+    /// Performs consistency checks (coord validity, flux conservation,
+    /// offset/size bounds, contiguous packing) but does NOT enumerate
+    /// allowed blocks — the caller is responsible for providing correct blocks.
     ///
     /// # Panics
     ///
     /// Panics if any invariant is violated.
-    #[allow(dead_code)] // Used in tests; will be called by Phase 2 construction API
+    #[cfg(test)]
     pub(crate) fn from_raw_parts(
         data: Vec<T>,
         blocks: Vec<BlockMeta>,
@@ -407,6 +408,99 @@ impl<T: Clone, S: Sector> BlockSparse<T, S> {
             flux,
             shape,
         }
+    }
+}
+
+impl<T, S: Sector> BlockSparse<T, S> {
+    /// Construct a zero-filled `BlockSparse` with all flux-allowed blocks.
+    ///
+    /// Enumerates every block coordinate satisfying the flux conservation law
+    /// and allocates a contiguous zero-filled data buffer.
+    pub fn zeros(indices: Vec<QNIndex<S>>, flux: S) -> Self
+    where
+        T: Clone + num_traits::Zero,
+    {
+        let shape: Vec<usize> = indices.iter().map(|idx| idx.total_dim()).collect();
+        let rank = indices.len();
+        let num_blocks_per_leg: Vec<usize> = indices.iter().map(|idx| idx.num_blocks()).collect();
+
+        let mut blocks = Vec::new();
+        let mut total_size = 0usize;
+
+        // Enumerate all block coordinate combinations in lexicographic order.
+        // Skip if any leg has no sectors (tensor is empty).
+        if rank == 0 || num_blocks_per_leg.iter().all(|&n| n > 0) {
+            let mut current = vec![0usize; rank];
+            loop {
+                // Check flux conservation for this coordinate
+                let mut fused = S::identity();
+                for (axis, &bi) in current.iter().enumerate() {
+                    let sector = indices[axis].sector(bi);
+                    let directed = indices[axis].direction().apply(sector);
+                    fused = fused.fuse(&directed);
+                }
+
+                if fused == flux {
+                    let size: usize = current
+                        .iter()
+                        .enumerate()
+                        .map(|(axis, &bi)| indices[axis].block_dim(bi))
+                        .product();
+                    blocks.push(BlockMeta {
+                        coord: BlockCoord(current.clone()),
+                        offset: total_size,
+                        size,
+                    });
+                    total_size += size;
+                }
+
+                // Increment multi-index (lexicographic order)
+                let mut carry = true;
+                for axis in (0..rank).rev() {
+                    current[axis] += 1;
+                    if current[axis] < num_blocks_per_leg[axis] {
+                        carry = false;
+                        break;
+                    }
+                    current[axis] = 0;
+                }
+                if carry {
+                    break;
+                }
+            }
+        }
+
+        let mut block_index = HashMap::with_capacity(blocks.len());
+        for (i, meta) in blocks.iter().enumerate() {
+            block_index.insert(meta.coord.clone(), i);
+        }
+
+        let data = AVec::from_slice(64, &vec![T::zero(); total_size]);
+
+        Self {
+            data: Arc::new(data),
+            blocks,
+            block_index,
+            indices,
+            flux,
+            shape,
+        }
+    }
+
+    /// Mutable data slice for a block identified by coordinate (CoW).
+    ///
+    /// Triggers a copy of the entire data buffer if other clones exist.
+    /// Returns `None` if the block is not stored.
+    pub fn block_data_mut(&mut self, coord: &BlockCoord) -> Option<&mut [T]>
+    where
+        T: Clone,
+    {
+        let &idx = self.block_index.get(coord)?;
+        let meta = &self.blocks[idx];
+        let offset = meta.offset;
+        let size = meta.size;
+        let data = Arc::make_mut(&mut self.data);
+        Some(&mut data[offset..offset + size])
     }
 }
 

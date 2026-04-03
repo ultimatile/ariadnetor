@@ -2,11 +2,13 @@
 //!
 //! Defines the common interface that all tensor storage types must implement.
 
+use crate::block_sparse::BlockSparse;
 use crate::dense::Dense;
+use crate::sector::Sector;
 
 /// Common interface for tensor storage representations.
 ///
-/// Implemented by [`Dense<T>`] and future storage types (e.g., `BlockSparse<T, S>`).
+/// Implemented by [`Dense<T>`] and [`BlockSparse<T, S>`].
 pub trait TensorRepr: Clone {
     /// Element type stored in the tensor
     type Elem;
@@ -31,6 +33,14 @@ pub trait TensorRepr: Clone {
 }
 
 impl<T> TensorRepr for Dense<T> {
+    type Elem = T;
+
+    fn shape(&self) -> &[usize] {
+        self.shape()
+    }
+}
+
+impl<T, S: Sector> TensorRepr for BlockSparse<T, S> {
     type Elem = T;
 
     fn shape(&self) -> &[usize] {
