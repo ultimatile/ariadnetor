@@ -378,3 +378,44 @@ fn block_sparse_tuple_symmetry() {
     let bs: BlockSparse<f64, Sym> = BlockSparse::from_raw_parts(data, blocks, vec![row, col], flux);
     assert_eq!(bs.num_blocks(), 2);
 }
+
+#[test]
+#[should_panic(expected = "gap or overlap")]
+fn block_sparse_rejects_overlapping_blocks() {
+    // Two valid blocks but with overlapping offsets
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
+
+    let data = vec![0.0_f64; 9]; // only 9 elements, not 13
+    let blocks = vec![
+        BlockMeta {
+            coord: BlockCoord(vec![0, 0]),
+            offset: 0,
+            size: 4,
+        },
+        BlockMeta {
+            coord: BlockCoord(vec![1, 1]),
+            offset: 0, // overlaps with block (0,0)
+            size: 9,
+        },
+    ];
+
+    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(0));
+}
+
+#[test]
+#[should_panic(expected = "Data buffer has")]
+fn block_sparse_rejects_trailing_padding() {
+    // Data buffer larger than blocks require
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+
+    let data = vec![0.0_f64; 8]; // 8 elements but block only needs 4
+    let blocks = vec![BlockMeta {
+        coord: BlockCoord(vec![0, 0]),
+        offset: 0,
+        size: 4,
+    }];
+
+    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(0));
+}

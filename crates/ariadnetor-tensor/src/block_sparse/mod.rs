@@ -376,6 +376,27 @@ impl<T: Clone, S: Sector> BlockSparse<T, S> {
             );
         }
 
+        // Verify blocks tile the data buffer contiguously without gaps or overlaps
+        let mut expected_offset = 0;
+        // Sort by offset to verify packing (blocks are sorted by coord, not offset)
+        let mut offset_order: Vec<usize> = (0..blocks.len()).collect();
+        offset_order.sort_by_key(|&i| blocks[i].offset);
+        for &i in &offset_order {
+            assert_eq!(
+                blocks[i].offset, expected_offset,
+                "Block {:?} has offset {} but expected {} (gap or overlap)",
+                blocks[i].coord, blocks[i].offset, expected_offset
+            );
+            expected_offset += blocks[i].size;
+        }
+        assert_eq!(
+            expected_offset,
+            data.len(),
+            "Data buffer has {} elements but blocks cover only {}",
+            data.len(),
+            expected_offset
+        );
+
         let aligned_data = AVec::from_slice(64, &data);
 
         Self {
