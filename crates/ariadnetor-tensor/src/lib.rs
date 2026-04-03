@@ -7,6 +7,7 @@
 //!
 //! For the main `Tensor` type (storage + backend), see the `arnet` crate.
 
+pub mod block_sparse;
 pub mod dense;
 pub mod repr;
 pub mod sector;
