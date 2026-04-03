@@ -143,7 +143,7 @@ pub struct BlockCoord(pub Vec<usize>);
 pub struct BlockMeta {
     /// Block coordinate (index into each leg's QNIndex).
     pub coord: BlockCoord,
-    /// Byte-element offset into the flat data buffer.
+    /// Element offset into the flat data buffer.
     pub offset: usize,
     /// Number of elements in this block.
     pub size: usize,
