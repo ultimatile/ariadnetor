@@ -137,8 +137,8 @@ fn zeros_no_allowed_blocks() {
 }
 
 #[test]
-fn zeros_matches_from_raw_parts() {
-    // Verify zeros produces the same structure as manually built from_raw_parts
+fn zeros_block_layout() {
+    // Verify zeros produces correct block ordering and contiguous offsets
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
 

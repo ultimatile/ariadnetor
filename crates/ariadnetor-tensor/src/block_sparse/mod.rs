@@ -475,7 +475,7 @@ impl<T, S: Sector> BlockSparse<T, S> {
             block_index.insert(meta.coord.clone(), i);
         }
 
-        let mut data = AVec::<T, ConstAlign<64>>::new(64);
+        let mut data = AVec::<T, ConstAlign<64>>::with_capacity(64, total_size);
         data.resize(total_size, T::zero());
 
         Self {
