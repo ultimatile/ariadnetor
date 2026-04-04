@@ -425,3 +425,19 @@ fn svd_empty_tensor() {
     assert_eq!(u.num_blocks(), 0);
     assert_eq!(vt.num_blocks(), 0);
 }
+
+#[test]
+fn trunc_svd_empty_tensor_with_target_err() {
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
+    let bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1));
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(0.1),
+    };
+    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    assert_eq!(sv.values.len(), 0);
+    assert_eq!(u.num_blocks(), 0);
+    assert_eq!(vt.num_blocks(), 0);
+    assert!(trunc_err.abs() < 1e-15);
+}

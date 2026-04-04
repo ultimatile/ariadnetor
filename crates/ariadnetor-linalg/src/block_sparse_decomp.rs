@@ -316,6 +316,9 @@ fn cross_sector_truncate<T: Scalar>(
     sorted_sv.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
     let total_sv = sorted_sv.len();
+    if total_sv == 0 {
+        return Ok((vec![0; num_sectors], T::Real::zero()));
+    }
     let mut chi = total_sv;
 
     if let Some(chi_max) = params.chi_max {
