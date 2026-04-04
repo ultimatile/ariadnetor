@@ -203,12 +203,13 @@ pub(super) fn build_left_tensor<T: Scalar, S: Sector>(
             let mut coord_vec = left_tup.clone();
             coord_vec.push(bond_idx);
             let coord = BlockCoord(coord_vec);
-            if let Some(block_data) = output.block_data_mut(&coord) {
-                for r in 0..m_i {
-                    let src = (row_off + r) * k;
-                    let dst = r * k;
-                    block_data[dst..dst + k].copy_from_slice(&mat[src..src + k]);
-                }
+            let block_data = output
+                .block_data_mut(&coord)
+                .expect("internal error: missing output block in build_left_tensor");
+            for r in 0..m_i {
+                let src = (row_off + r) * k;
+                let dst = r * k;
+                block_data[dst..dst + k].copy_from_slice(&mat[src..src + k]);
             }
         }
         bond_idx += 1;
@@ -253,12 +254,13 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
             let mut coord_vec = vec![bond_idx];
             coord_vec.extend_from_slice(right_tup);
             let coord = BlockCoord(coord_vec);
-            if let Some(block_data) = output.block_data_mut(&coord) {
-                for r in 0..k {
-                    let src = r * n + col_off;
-                    let dst = r * n_j;
-                    block_data[dst..dst + n_j].copy_from_slice(&mat[src..src + n_j]);
-                }
+            let block_data = output
+                .block_data_mut(&coord)
+                .expect("internal error: missing output block in build_right_tensor");
+            for r in 0..k {
+                let src = r * n + col_off;
+                let dst = r * n_j;
+                block_data[dst..dst + n_j].copy_from_slice(&mat[src..src + n_j]);
             }
         }
         bond_idx += 1;

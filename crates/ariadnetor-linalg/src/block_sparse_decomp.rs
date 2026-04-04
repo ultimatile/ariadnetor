@@ -313,7 +313,12 @@ fn cross_sector_truncate<T: Scalar>(
             sorted_sv.push((sv, si));
         }
     }
-    sorted_sv.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    // Deterministic tie-breaking by sector index for equal singular values
+    sorted_sv.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+    });
 
     let total_sv = sorted_sv.len();
     if total_sv == 0 {
