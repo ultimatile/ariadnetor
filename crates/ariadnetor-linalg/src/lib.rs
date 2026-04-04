@@ -27,6 +27,7 @@
 //! - [`solve`]: Linear solve AX = B via backend (LU decomposition)
 //! - [`inverse`]: Matrix inverse via LU decomposition
 
+mod block_sparse_contract;
 mod contract;
 mod decomposition;
 mod eigen;
@@ -40,6 +41,7 @@ mod transpose;
 pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
+pub use block_sparse_contract::{BlockSparseContractResult, contract_block_sparse};
 pub use contract::contract;
 pub use decomposition::{
     LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq, qr, svd, trunc_svd,
