@@ -321,6 +321,100 @@ fn contraction_with_axis_transpose() {
 }
 
 // ---------------------------------------------------------------------------
+// Full contraction — no-transpose path
+// ---------------------------------------------------------------------------
+
+#[test]
+fn full_contraction_identity_perm() {
+    // [Out, In] × [In, Out] with axes=[0,1],[0,1] → rhs_perm is identity.
+    // Exercises the no-transpose path in contract_to_scalar.
+    let out_idx = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let in_idx = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+
+    let mut a =
+        BlockSparse::<f64, U1Sector>::zeros(vec![out_idx.clone(), in_idx.clone()], U1Sector(0));
+    a.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+
+    let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![in_idx, out_idx], U1Sector(0));
+    c.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[5.0, 6.0, 7.0, 8.0]);
+
+    // Σ A[i,j]*B[i,j] = 1*5 + 2*6 + 3*7 + 4*8 = 70
+    match contract_block_sparse(&b(), &a, &c, &[0, 1], &[0, 1]).unwrap() {
+        BlockSparseContractResult::Scalar(s) => {
+            assert!((s - 70.0).abs() < 1e-10, "expected 70, got {s}");
+        }
+        _ => panic!("expected scalar"),
+    }
+}
+
+#[test]
+fn full_contraction_identity_perm_multi_block() {
+    let out_idx = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
+    let in_idx = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
+
+    let mut a =
+        BlockSparse::<f64, U1Sector>::zeros(vec![out_idx.clone(), in_idx.clone()], U1Sector(0));
+    a.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+    a.block_data_mut(&BlockCoord(vec![1, 1]))
+        .unwrap()
+        .copy_from_slice(&[5.0]);
+
+    let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![in_idx, out_idx], U1Sector(0));
+    c.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[2.0, 0.0, 0.0, 3.0]);
+    c.block_data_mut(&BlockCoord(vec![1, 1]))
+        .unwrap()
+        .copy_from_slice(&[4.0]);
+
+    // Block (0,0): 1*2+2*0+3*0+4*3 = 14. Block (1,1): 5*4 = 20. Total = 34.
+    match contract_block_sparse(&b(), &a, &c, &[0, 1], &[0, 1]).unwrap() {
+        BlockSparseContractResult::Scalar(s) => {
+            assert!((s - 34.0).abs() < 1e-10, "expected 34, got {s}");
+        }
+        _ => panic!("expected scalar"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rank mismatch contraction (output_rank formula)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn contraction_rank2_with_rank1() {
+    // Matrix-vector: output_rank = 2+1-2 = 1 (tensor), not 2*1-2 = 0 (scalar).
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::In);
+    let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    a.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+
+    let v_out = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
+    let mut v = BlockSparse::<f64, U1Sector>::zeros(vec![v_out], U1Sector(0));
+    v.block_data_mut(&BlockCoord(vec![0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 0.0, 1.0]);
+
+    match contract_block_sparse(&b(), &a, &v, &[1], &[0]).unwrap() {
+        BlockSparseContractResult::Tensor(out) => {
+            assert_eq!(out.rank(), 1);
+            let d = out.block_data(&BlockCoord(vec![0])).unwrap();
+            // [1*1+2*0+3*1, 4*1+5*0+6*1] = [4, 10]
+            assert!((d[0] - 4.0).abs() < 1e-10);
+            assert!((d[1] - 10.0).abs() < 1e-10);
+        }
+        _ => panic!("expected tensor, got scalar"),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Z2 symmetry
 // ---------------------------------------------------------------------------
 

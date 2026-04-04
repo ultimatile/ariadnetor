@@ -166,6 +166,41 @@ fn verify_two_factor_reconstruction<S: Sector + PartialEq>(
     }
 }
 
+/// Rank-2 with known SVs: sector 0 → identity [1,1], sector 1 → diag(3,2).
+/// Global SVs sorted: [3, 2, 1, 1].
+fn sample_known_svs() -> BlockSparse<f64, U1Sector> {
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
+    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    bs.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 0.0, 0.0, 1.0]);
+    bs.block_data_mut(&BlockCoord(vec![1, 1]))
+        .unwrap()
+        .copy_from_slice(&[3.0, 0.0, 0.0, 2.0]);
+    bs
+}
+
+/// Rank-4 tensor with nrow=2 producing multi-tuple fused sectors.
+///
+/// Fused sector U1(1) has left tuples [(0,1),(1,0)] and right tuples [(0,1),(1,0)],
+/// giving non-trivial cumulative offsets [0, 1] on both sides.
+fn sample_rank4_multi_tuple() -> BlockSparse<f64, U1Sector> {
+    let leg0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let leg1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let leg2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let leg3 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![leg0, leg1, leg2, leg3], U1Sector(0));
+    // Distinct values so offset errors are detectable
+    bs.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).unwrap()[0] = 5.0;
+    bs.block_data_mut(&BlockCoord(vec![0, 1, 0, 1])).unwrap()[0] = 1.0;
+    bs.block_data_mut(&BlockCoord(vec![0, 1, 1, 0])).unwrap()[0] = 2.0;
+    bs.block_data_mut(&BlockCoord(vec![1, 0, 0, 1])).unwrap()[0] = 3.0;
+    bs.block_data_mut(&BlockCoord(vec![1, 0, 1, 0])).unwrap()[0] = 4.0;
+    bs.block_data_mut(&BlockCoord(vec![1, 1, 1, 1])).unwrap()[0] = 6.0;
+    bs
+}
+
 // -- Validation tests --------------------------------------------------------
 
 #[test]
@@ -274,35 +309,6 @@ fn trunc_svd_no_truncation() {
     assert!(trunc_err.abs() < 1e-15);
 }
 
-#[test]
-fn trunc_svd_target_err() {
-    let bs = sample_u1_rank2();
-    let params_full = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: None,
-    };
-    let (_, sv_full, _, _) = trunc_svd_block_sparse(&backend(), &bs, 1, &params_full).unwrap();
-    let mut all_sv: Vec<f64> = sv_full
-        .values
-        .iter()
-        .flat_map(|(_, v)| v.iter().copied())
-        .collect();
-    all_sv.sort_by(|a, b| b.partial_cmp(a).unwrap());
-    let smallest = *all_sv.last().unwrap();
-
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(smallest + 0.01),
-    };
-    let (_, sv_trunc, _, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
-    let total_kept: usize = sv_trunc.values.iter().map(|(_, v)| v.len()).sum();
-    assert!(
-        total_kept < 5,
-        "expected truncation, got {total_kept} values"
-    );
-    assert!(trunc_err <= smallest + 0.01 + 1e-10);
-}
-
 // -- QR tests ----------------------------------------------------------------
 
 #[test]
@@ -375,6 +381,154 @@ fn lq_orthogonality() {
             }
         }
     }
+}
+
+// -- Exact truncation error tests --------------------------------------------
+
+#[test]
+fn trunc_svd_exact_truncation_error() {
+    let bs = sample_known_svs();
+    // Verify SVs are exactly [3, 2, 1, 1]
+    let (_, sv_full, _) = svd_block_sparse(&backend(), &bs, 1).unwrap();
+    let mut all_sv: Vec<f64> = sv_full
+        .values
+        .iter()
+        .flat_map(|(_, v)| v.iter().copied())
+        .collect();
+    all_sv.sort_by(|a, b| b.partial_cmp(a).unwrap());
+    assert_eq!(all_sv.len(), 4);
+    assert!((all_sv[0] - 3.0).abs() < 1e-10);
+    assert!((all_sv[3] - 1.0).abs() < 1e-10);
+
+    // chi_max=2: keep [3,2], discard [1,1]
+    let params = TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    };
+    let (_, _, _, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    // trunc_err = sqrt(1² + 1²) = sqrt(2)
+    let expected_err = 2.0_f64.sqrt();
+    assert!(
+        (trunc_err - expected_err).abs() < 1e-12,
+        "trunc_err={trunc_err}, expected={expected_err}"
+    );
+}
+
+#[test]
+fn trunc_svd_target_err_exact_count() {
+    // SVs = [3, 2, 1, 1]. With target_err=1.1:
+    // target_sq = 1.21. Can discard one SV (1²=1 ≤ 1.21), not two (1+1=2 > 1.21).
+    let bs = sample_known_svs();
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1.1),
+    };
+    let (_, sv, _, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
+    assert_eq!(total_kept, 3, "should discard exactly 1 SV");
+    assert!(
+        (trunc_err - 1.0).abs() < 1e-12,
+        "trunc_err={trunc_err}, expected=1.0"
+    );
+}
+
+#[test]
+fn trunc_svd_target_err_boundary() {
+    // SVs = [3, 2, 1, 1]. With target_err=1.0 (target_sq=1.0):
+    // Smallest SV² = 1.0. Since 0+1 = 1 is NOT > 1.0 (strict >), it IS discarded.
+    let bs = sample_known_svs();
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1.0),
+    };
+    let (_, sv, _, _) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
+    assert_eq!(
+        total_kept, 3,
+        "boundary: sv²==target_sq should still discard"
+    );
+}
+
+#[test]
+fn trunc_svd_zero_sector_bond_structure() {
+    // SVs = [3, 2, 1, 1]. chi_max=1 keeps only SV=3 (sector 1).
+    // Sector 0 gets k=0, should be excluded from bond.
+    let bs = sample_known_svs();
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    };
+    let (u, sv, vt, _) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+
+    // Only sector 1 survives in SVD output
+    assert_eq!(sv.values.len(), 1);
+    assert_eq!(sv.values[0].0, U1Sector(1));
+    assert_eq!(sv.values[0].1.len(), 1);
+
+    // Bond indices should not contain zero-dimension blocks
+    let u_bond = u.indices().last().unwrap();
+    for bi in 0..u_bond.num_blocks() {
+        assert!(
+            u_bond.block_dim(bi) > 0,
+            "bond block {bi} has zero dimension"
+        );
+    }
+    let vt_bond = &vt.indices()[0];
+    for bi in 0..vt_bond.num_blocks() {
+        assert!(
+            vt_bond.block_dim(bi) > 0,
+            "bond block {bi} has zero dimension"
+        );
+    }
+}
+
+// -- Multi-tuple fused sector tests ------------------------------------------
+
+#[test]
+fn svd_rank4_multi_tuple_reconstruction() {
+    let bs = sample_rank4_multi_tuple();
+    let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 2).unwrap();
+    assert_eq!(u.rank(), 3);
+    assert_eq!(vt.rank(), 3);
+    verify_svd_reconstruction(&bs, &u, &sv, &vt, 2);
+}
+
+#[test]
+fn qr_rank4_multi_tuple_reconstruction() {
+    let bs = sample_rank4_multi_tuple();
+    let (q, r) = qr_block_sparse(&backend(), &bs, 2).unwrap();
+    assert_eq!(q.rank(), 3);
+    assert_eq!(r.rank(), 3);
+    verify_two_factor_reconstruction(&bs, &q, &r, 2);
+}
+
+#[test]
+fn lq_rank4_multi_tuple_reconstruction() {
+    let bs = sample_rank4_multi_tuple();
+    let (l, q) = lq_block_sparse(&backend(), &bs, 2).unwrap();
+    assert_eq!(l.rank(), 3);
+    assert_eq!(q.rank(), 3);
+    verify_two_factor_reconstruction(&bs, &l, &q, 2);
+}
+
+#[test]
+fn trunc_svd_rank4_multi_tuple_reconstruction() {
+    let bs = sample_rank4_multi_tuple();
+    let params = TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    };
+    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 2, &params).unwrap();
+    let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
+    assert_eq!(total_kept, 2);
+    assert!(trunc_err > 0.0);
+    // Bond should not have zero-dimension blocks
+    let u_bond = u.indices().last().unwrap();
+    for bi in 0..u_bond.num_blocks() {
+        assert!(u_bond.block_dim(bi) > 0);
+    }
+    assert_eq!(u.rank(), 3);
+    assert_eq!(vt.rank(), 3);
 }
 
 // -- Z2 symmetry test --------------------------------------------------------
