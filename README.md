@@ -18,7 +18,7 @@ Tensor network framework in Rust
 │  linear algebra API      │  faer + hptt-rs              │
 ├──────────────────────────┴──────────────────────────────┤
 │  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
-│    Dense, TensorRepr                                    │
+│    Dense, BlockSparse, Sector, TensorRepr               │
 ├─────────────────────────────────────────────────────────┤
 │  ariadnetor-core (arnet_core)  - Core Abstractions      │
 │    Scalar, LabelId, ComputeBackend trait, EinsumExpr    │
@@ -36,19 +36,23 @@ Backend-agnostic core abstractions: `Scalar` trait, `LabelId`, `EinsumExpr`, `Co
 Tensor data structures with Arc-based Copy-on-Write.
 
 - `Dense<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag, scale, norm, normalize
-- `TensorRepr` — Common trait for tensor storage representations
+- `BlockSparse<T, S>` — Block-sparse tensor with abelian symmetry conservation. Stores only flux-allowed blocks in a flat aligned buffer
+- `Sector` trait — Abelian symmetry sector algebra (fuse, identity, dual). Implementations: `Z2Sector`, `U1Sector`, tuple products
+- `QNIndex<S>` — Quantum-number index: maps sectors to block dimensions with direction (In/Out)
+- `TensorRepr` — Common trait for tensor storage representations (`Dense`, `BlockSparse`)
 - `Tensor<T, B>` — Main API type: wraps storage + backend
 
 ### `ariadnetor-linalg`
 
 Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
 
-- contract, transpose
-- scale, norm, normalize, linear_combine, trace, diag
+- contract, transpose, einsum
+- scale, norm, normalize, linear_combine, trace, diag, diagonal_scale
 - svd, trunc_svd, qr, lq
 - eig, eigh, eigvals, eigvalsh
 - expm, expm_hermitian, expm_antihermitian
 - solve, inverse
+- Block-sparse: contract_block_sparse, svd_block_sparse, trunc_svd_block_sparse, qr_block_sparse, lq_block_sparse
 
 ### `ariadnetor-native`
 
@@ -57,6 +61,8 @@ Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
 ### `ariadnetor`
 
 Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
+
+- `arnet::mps` — MPS/MPO tensor chains: orthogonalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit)
 
 ## Usage
 
