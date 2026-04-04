@@ -8,6 +8,7 @@
 //!
 //! - [`transpose`]: Permute tensor axes via backend
 //! - [`contract`]: Tensor contraction via Einstein summation (permute + GEMM)
+//! - [`contract_block_sparse`]: Block-sparse tensor contraction (block pairing + GEMM)
 //! - [`scale`]: Scalar multiplication (out-of-place)
 //! - [`norm`]: Frobenius norm
 //! - [`normalize`]: Normalize to unit norm (out-of-place)
@@ -27,6 +28,7 @@
 //! - [`solve`]: Linear solve AX = B via backend (LU decomposition)
 //! - [`inverse`]: Matrix inverse via LU decomposition
 
+mod block_sparse_contract;
 mod contract;
 mod decomposition;
 mod eigen;
@@ -40,6 +42,7 @@ mod transpose;
 pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
+pub use block_sparse_contract::{BlockSparseContractResult, contract_block_sparse};
 pub use contract::contract;
 pub use decomposition::{
     LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq, qr, svd, trunc_svd,
