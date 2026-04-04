@@ -8,6 +8,7 @@
 //!
 //! - [`transpose`]: Permute tensor axes via backend
 //! - [`contract`]: Tensor contraction via Einstein summation (permute + GEMM)
+//! - [`contract_block_sparse`]: Block-sparse tensor contraction (block pairing + GEMM)
 //! - [`scale`]: Scalar multiplication (out-of-place)
 //! - [`norm`]: Frobenius norm
 //! - [`normalize`]: Normalize to unit norm (out-of-place)

@@ -198,9 +198,12 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
     let rhs_metas = rhs.block_metas();
     let mut sum = T::zero();
 
+    let mut key = Vec::with_capacity(axes_lhs.len());
+
     for lhs_meta in lhs.block_metas() {
-        let key: Vec<usize> = axes_lhs.iter().map(|&a| lhs_meta.coord.0[a]).collect();
-        let Some(rhs_indices) = rhs_groups.get(&key) else {
+        key.clear();
+        key.extend(axes_lhs.iter().map(|&a| lhs_meta.coord.0[a]));
+        let Some(rhs_indices) = rhs_groups.get(key.as_slice()) else {
             continue;
         };
 
@@ -261,10 +264,12 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let rhs_needs_t = !is_identity_perm(&rhs_perm);
 
     let rhs_metas = rhs.block_metas();
+    let mut key = Vec::with_capacity(axes_lhs.len());
 
     for lhs_meta in lhs.block_metas() {
-        let key: Vec<usize> = axes_lhs.iter().map(|&a| lhs_meta.coord.0[a]).collect();
-        let Some(rhs_indices) = rhs_groups.get(&key) else {
+        key.clear();
+        key.extend(axes_lhs.iter().map(|&a| lhs_meta.coord.0[a]));
+        let Some(rhs_indices) = rhs_groups.get(key.as_slice()) else {
             continue;
         };
 
@@ -325,6 +330,9 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 rhs_data
             };
 
+            // Block data is row-major (last axis fastest), unlike Dense which
+            // tracks its own MemoryOrder. The descriptor's order field tells the
+            // backend the actual layout of the provided slices.
             backend.gemm(GemmDescriptor {
                 m,
                 n,
