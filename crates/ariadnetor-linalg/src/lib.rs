@@ -9,6 +9,10 @@
 //! - [`transpose`]: Permute tensor axes via backend
 //! - [`contract`]: Tensor contraction via Einstein summation (permute + GEMM)
 //! - [`contract_block_sparse`]: Block-sparse tensor contraction (block pairing + GEMM)
+//! - [`svd_block_sparse`]: Block-sparse SVD via fused sector method
+//! - [`trunc_svd_block_sparse`]: Truncated block-sparse SVD with bond dimension control
+//! - [`qr_block_sparse`]: Block-sparse QR decomposition via fused sector method
+//! - [`lq_block_sparse`]: Block-sparse LQ decomposition via fused sector method
 //! - [`scale`]: Scalar multiplication (out-of-place)
 //! - [`norm`]: Frobenius norm
 //! - [`normalize`]: Normalize to unit norm (out-of-place)
@@ -29,6 +33,7 @@
 //! - [`inverse`]: Matrix inverse via LU decomposition
 
 mod block_sparse_contract;
+mod block_sparse_decomp;
 mod contract;
 mod decomposition;
 mod eigen;
@@ -43,6 +48,10 @@ pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
 pub use block_sparse_contract::{BlockSparseContractResult, contract_block_sparse};
+pub use block_sparse_decomp::{
+    BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
+    lq_block_sparse, qr_block_sparse, svd_block_sparse, trunc_svd_block_sparse,
+};
 pub use contract::contract;
 pub use decomposition::{
     LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq, qr, svd, trunc_svd,
