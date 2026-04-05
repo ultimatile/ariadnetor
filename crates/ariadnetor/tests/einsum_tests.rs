@@ -9,9 +9,9 @@ use arnet::EinsumExpr;
 fn test_matrix_multiplication_end_to_end() {
     let expr = EinsumExpr::parse("ij,jk->ik").expect("Failed to parse matrix multiply");
 
-    assert_eq!(expr.lhs_indices(), &[b'i', b'j']);
-    assert_eq!(expr.rhs_indices(), &[b'j', b'k']);
-    assert_eq!(expr.out_indices(), &[b'i', b'k']);
+    assert_eq!(expr.lhs_indices(), b"ij");
+    assert_eq!(expr.rhs_indices(), b"jk");
+    assert_eq!(expr.out_indices(), b"ik");
 
     let contracted = expr.contracted_indices();
     assert_eq!(contracted.len(), 1);
@@ -30,9 +30,9 @@ fn test_higher_dimensional_contraction() {
     let expr =
         EinsumExpr::parse("ijk,jkl->il").expect("Failed to parse higher dimensional contraction");
 
-    assert_eq!(expr.lhs_indices(), &[b'i', b'j', b'k']);
-    assert_eq!(expr.rhs_indices(), &[b'j', b'k', b'l']);
-    assert_eq!(expr.out_indices(), &[b'i', b'l']);
+    assert_eq!(expr.lhs_indices(), b"ijk");
+    assert_eq!(expr.rhs_indices(), b"jkl");
+    assert_eq!(expr.out_indices(), b"il");
 
     let contracted = expr.contracted_indices();
     assert_eq!(contracted.len(), 2);
@@ -51,9 +51,9 @@ fn test_higher_dimensional_contraction() {
 fn test_element_wise_multiplication() {
     let expr = EinsumExpr::parse("ij,ij->ij").expect("Failed to parse element-wise multiplication");
 
-    assert_eq!(expr.lhs_indices(), &[b'i', b'j']);
-    assert_eq!(expr.rhs_indices(), &[b'i', b'j']);
-    assert_eq!(expr.out_indices(), &[b'i', b'j']);
+    assert_eq!(expr.lhs_indices(), b"ij");
+    assert_eq!(expr.rhs_indices(), b"ij");
+    assert_eq!(expr.out_indices(), b"ij");
 
     let contracted = expr.contracted_indices();
     assert_eq!(contracted.len(), 0);
@@ -71,9 +71,9 @@ fn test_batch_matrix_multiplication() {
     let expr =
         EinsumExpr::parse("bij,bjk->bik").expect("Failed to parse batch matrix multiplication");
 
-    assert_eq!(expr.lhs_indices(), &[b'b', b'i', b'j']);
-    assert_eq!(expr.rhs_indices(), &[b'b', b'j', b'k']);
-    assert_eq!(expr.out_indices(), &[b'b', b'i', b'k']);
+    assert_eq!(expr.lhs_indices(), b"bij");
+    assert_eq!(expr.rhs_indices(), b"bjk");
+    assert_eq!(expr.out_indices(), b"bik");
 
     let contracted = expr.contracted_indices();
     assert_eq!(contracted, vec![b'j']);
@@ -88,9 +88,9 @@ fn test_batch_matrix_multiplication() {
 fn test_tensor_outer_product() {
     let expr = EinsumExpr::parse("ij,kl->ijkl").expect("Failed to parse outer product");
 
-    assert_eq!(expr.lhs_indices(), &[b'i', b'j']);
-    assert_eq!(expr.rhs_indices(), &[b'k', b'l']);
-    assert_eq!(expr.out_indices(), &[b'i', b'j', b'k', b'l']);
+    assert_eq!(expr.lhs_indices(), b"ij");
+    assert_eq!(expr.rhs_indices(), b"kl");
+    assert_eq!(expr.out_indices(), b"ijkl");
 
     let contracted = expr.contracted_indices();
     assert_eq!(contracted.len(), 0);
@@ -105,9 +105,9 @@ fn test_tensor_outer_product() {
 fn test_partial_trace() {
     let expr = EinsumExpr::parse("iij,jk->ik").expect("Failed to parse partial trace");
 
-    assert_eq!(expr.lhs_indices(), &[b'i', b'i', b'j']);
-    assert_eq!(expr.rhs_indices(), &[b'j', b'k']);
-    assert_eq!(expr.out_indices(), &[b'i', b'k']);
+    assert_eq!(expr.lhs_indices(), b"iij");
+    assert_eq!(expr.rhs_indices(), b"jk");
+    assert_eq!(expr.out_indices(), b"ik");
 
     let contracted = expr.contracted_indices();
     assert_eq!(contracted, vec![b'j']);
@@ -122,7 +122,7 @@ fn test_partial_trace() {
 fn test_single_tensor_trace() {
     let expr = EinsumExpr::parse("ii->").expect("Failed to parse trace");
     assert_eq!(expr.num_inputs(), 1);
-    assert_eq!(expr.lhs_indices(), &[b'i', b'i']);
+    assert_eq!(expr.lhs_indices(), b"ii");
     assert_eq!(expr.out_indices(), &[] as &[u8]);
 }
 
@@ -130,15 +130,15 @@ fn test_single_tensor_trace() {
 fn test_single_tensor_transpose() {
     let expr = EinsumExpr::parse("ij->ji").expect("Failed to parse transpose");
     assert_eq!(expr.num_inputs(), 1);
-    assert_eq!(expr.lhs_indices(), &[b'i', b'j']);
-    assert_eq!(expr.out_indices(), &[b'j', b'i']);
+    assert_eq!(expr.lhs_indices(), b"ij");
+    assert_eq!(expr.out_indices(), b"ji");
 }
 
 #[test]
 fn test_implicit_output_inference() {
     // "ij,jk" → free indices i,k sorted → "ij,jk->ik"
     let expr = EinsumExpr::parse("ij,jk").expect("Failed to parse implicit output");
-    assert_eq!(expr.out_indices(), &[b'i', b'k']);
+    assert_eq!(expr.out_indices(), b"ik");
 }
 
 #[test]
@@ -162,8 +162,8 @@ fn test_error_single_input_invalid_output() {
 fn test_uppercase_indices_are_valid() {
     // Core EinsumExpr supports both A-Z and a-z as index characters
     let expr = EinsumExpr::parse("iJ,Jk->ik").unwrap();
-    assert_eq!(expr.lhs_indices(), &[b'i', b'J']);
-    assert_eq!(expr.rhs_indices(), &[b'J', b'k']);
+    assert_eq!(expr.lhs_indices(), b"iJ");
+    assert_eq!(expr.rhs_indices(), b"Jk");
 }
 
 #[test]
@@ -222,9 +222,9 @@ fn test_whitespace_handling() {
 fn test_complex_multidimensional_contraction() {
     let expr = EinsumExpr::parse("abcd,cdef->abef").expect("Failed to parse complex contraction");
 
-    assert_eq!(expr.lhs_indices(), &[b'a', b'b', b'c', b'd']);
-    assert_eq!(expr.rhs_indices(), &[b'c', b'd', b'e', b'f']);
-    assert_eq!(expr.out_indices(), &[b'a', b'b', b'e', b'f']);
+    assert_eq!(expr.lhs_indices(), b"abcd");
+    assert_eq!(expr.rhs_indices(), b"cdef");
+    assert_eq!(expr.out_indices(), b"abef");
 
     let contracted = expr.contracted_indices();
     assert_eq!(contracted.len(), 2);

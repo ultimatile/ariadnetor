@@ -377,44 +377,4 @@ pub fn compute_permutation(current: &[u8], target: &[u8]) -> Option<Vec<usize>> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_einsum() {
-        let expr = EinsumExpr::parse("ijk,jkl->il").unwrap();
-        assert_eq!(expr.lhs_indices(), &[b'i', b'j', b'k']);
-        assert_eq!(expr.rhs_indices(), &[b'j', b'k', b'l']);
-        assert_eq!(expr.out_indices(), &[b'i', b'l']);
-    }
-
-    #[test]
-    fn test_parse_single_input_trace() {
-        let expr = EinsumExpr::parse("ii->").unwrap();
-        assert_eq!(expr.num_inputs(), 1);
-        assert_eq!(expr.lhs_indices(), &[b'i', b'i']);
-        assert_eq!(expr.out_indices(), &[] as &[u8]);
-    }
-
-    #[test]
-    fn test_implicit_output_inference() {
-        let expr = EinsumExpr::parse("ij,jk").unwrap();
-        assert_eq!(expr.out_indices(), &[b'i', b'k']);
-    }
-
-    #[test]
-    fn test_contraction_plan() {
-        let expr = EinsumExpr::parse("ijk,jkl->il").unwrap();
-        let plan = ContractionPlan::from_expr(&expr);
-        assert_eq!(plan.contracted, vec![b'j', b'k']);
-        assert_eq!(plan.free_lhs, vec![b'i']);
-        assert_eq!(plan.free_rhs, vec![b'l']);
-    }
-
-    #[test]
-    fn test_contraction_preserves_lhs_order() {
-        let expr = EinsumExpr::parse("ikj,jkl->il").unwrap();
-        let plan = ContractionPlan::from_expr(&expr);
-        assert_eq!(plan.contracted, vec![b'k', b'j']); // LHS order: k before j
-    }
-}
+mod tests;

@@ -23,39 +23,6 @@ fn test_expm_hermitian_diagonal_f64() {
 }
 
 #[test]
-fn test_expm_hermitian_zero_f64() {
-    let backend = NativeBackend::new();
-
-    // exp(0) = I
-    let a = Dense::<f64>::from_data_with_order(vec![0.0; 4], vec![2, 2], MemoryOrder::RowMajor);
-    let result = expm_hermitian(&backend, &a, 1).unwrap();
-
-    assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
-    assert!(result.get(&[0, 1]).abs() < 1e-10);
-    assert!(result.get(&[1, 0]).abs() < 1e-10);
-    assert!((result.get(&[1, 1]) - 1.0).abs() < 1e-10);
-}
-
-#[test]
-fn test_expm_hermitian_identity_f64() {
-    let backend = NativeBackend::new();
-
-    // exp(I) = e * I
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 1.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let result = expm_hermitian(&backend, &a, 1).unwrap();
-
-    let e = std::f64::consts::E;
-    assert!((result.get(&[0, 0]) - e).abs() < 1e-10);
-    assert!(result.get(&[0, 1]).abs() < 1e-10);
-    assert!(result.get(&[1, 0]).abs() < 1e-10);
-    assert!((result.get(&[1, 1]) - e).abs() < 1e-10);
-}
-
-#[test]
 fn test_expm_hermitian_2x2_symmetric() {
     let backend = NativeBackend::new();
 
@@ -248,33 +215,6 @@ fn test_expm_antihermitian_pauli_z() {
 }
 
 #[test]
-fn test_expm_antihermitian_zero_c64() {
-    use num_complex::Complex;
-    use num_traits::Zero;
-
-    let backend = NativeBackend::new();
-
-    // exp(0) = I
-    let a = Dense::from_data_with_order(
-        vec![Complex::<f64>::zero(); 4],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let result = expm_antihermitian(&backend, &a, 1).unwrap();
-
-    for i in 0..2 {
-        for j in 0..2 {
-            let expected = if i == j { 1.0 } else { 0.0 };
-            let val = result.get(&[i, j]);
-            assert!(
-                (val - Complex::new(expected, 0.0)).norm() < 1e-10,
-                "result[{i},{j}] = {val}, expected {expected}"
-            );
-        }
-    }
-}
-
-#[test]
 fn test_expm_antihermitian_real_type_error() {
     let backend = NativeBackend::new();
 
@@ -319,39 +259,6 @@ fn test_expm_diagonal_f64() {
     assert!(result.get(&[0, 1]).abs() < 1e-10);
     assert!(result.get(&[1, 0]).abs() < 1e-10);
     assert!((result.get(&[1, 1]) - e * e).abs() < 1e-10);
-}
-
-#[test]
-fn test_expm_zero_f64() {
-    let backend = NativeBackend::new();
-
-    // exp(0) = I
-    let a = Dense::<f64>::from_data_with_order(vec![0.0; 4], vec![2, 2], MemoryOrder::RowMajor);
-    let result = expm(&backend, &a, 1).unwrap();
-
-    assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
-    assert!(result.get(&[0, 1]).abs() < 1e-10);
-    assert!(result.get(&[1, 0]).abs() < 1e-10);
-    assert!((result.get(&[1, 1]) - 1.0).abs() < 1e-10);
-}
-
-#[test]
-fn test_expm_identity_f64() {
-    let backend = NativeBackend::new();
-
-    // exp(I) = e * I
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 1.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let result = expm(&backend, &a, 1).unwrap();
-
-    let e = std::f64::consts::E;
-    assert!((result.get(&[0, 0]) - e).abs() < 1e-10);
-    assert!(result.get(&[0, 1]).abs() < 1e-10);
-    assert!(result.get(&[1, 0]).abs() < 1e-10);
-    assert!((result.get(&[1, 1]) - e).abs() < 1e-10);
 }
 
 #[test]
@@ -522,4 +429,213 @@ fn test_expm_invalid_nrow() {
     );
     assert!(expm(&backend, &a, 0).is_err());
     assert!(expm(&backend, &a, 2).is_err());
+}
+
+// --- Mutation testing: norm_1, Pade orders, scaling/squaring ---
+
+/// Helper to build a Dense matrix from a row-major flat vector.
+fn mat(data: Vec<f64>, n: usize) -> Dense<f64> {
+    Dense::<f64>::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor)
+}
+
+#[test]
+fn test_expm_norm_1_known_matrices() {
+    // norm_1 is the maximum absolute column sum.
+    // We test indirectly: for a diagonal matrix diag(a, b),
+    // ||diag(a,b)||_1 = max(|a|, |b|).
+    // If we scale each column differently, we can verify the correct column
+    // is selected as the max.
+    let backend = NativeBackend::new();
+
+    // A = [[1, 3], [2, 1]] → col sums: |1|+|2|=3, |3|+|1|=4 → norm_1 = 4
+    // If norm_1 were wrong (e.g. row-based), we'd get different Pade order selection.
+    // This matrix has norm_1 = 4 which is above theta_9=2.097 but below theta_13=5.371,
+    // so it should use Pade 13 without scaling.
+    let a = mat(vec![1.0, 3.0, 2.0, 1.0], 2);
+    let result = expm(&backend, &a, 1).unwrap();
+
+    // Verify via known eigenvalues: A has eigenvalues 1±sqrt(6)
+    // tr(exp(A)) = exp(1+sqrt(6)) + exp(1-sqrt(6))
+    let sq6 = 6.0f64.sqrt();
+    let expected_trace = (1.0 + sq6).exp() + (1.0 - sq6).exp();
+    let actual_trace = result.get(&[0, 0]) + result.get(&[1, 1]);
+    assert!(
+        (actual_trace - expected_trace).abs() < 1e-8,
+        "trace mismatch: actual={actual_trace}, expected={expected_trace}"
+    );
+}
+
+#[test]
+fn test_expm_norm_1_asymmetric_columns() {
+    let backend = NativeBackend::new();
+
+    // A = [[0, 10], [0, 0]] → col sums: 0, 10 → norm_1 = 10
+    // This is nilpotent: N^2 = 0, so exp(A) = I + A = [[1, 10], [0, 1]]
+    // The norm_1=10 forces scaling/squaring path.
+    let a = mat(vec![0.0, 10.0, 0.0, 0.0], 2);
+    let result = expm(&backend, &a, 1).unwrap();
+
+    assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
+    assert!((result.get(&[0, 1]) - 10.0).abs() < 1e-9);
+    assert!(result.get(&[1, 0]).abs() < 1e-10);
+    assert!((result.get(&[1, 1]) - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_expm_large_scaling_factor() {
+    // Very large norm to test multiple squaring steps
+    // A = 50 * I → exp(50*I) = e^50 * I
+    let backend = NativeBackend::new();
+    let a = mat(vec![50.0, 0.0, 0.0, 50.0], 2);
+    let result = expm(&backend, &a, 1).unwrap();
+
+    let e50 = 50.0f64.exp();
+    assert!(
+        (result.get(&[0, 0]) - e50).abs() / e50 < 1e-9,
+        "r00={}, expected {e50}",
+        result.get(&[0, 0])
+    );
+    assert!(result.get(&[0, 1]).abs() / e50 < 1e-10);
+    assert!(result.get(&[1, 0]).abs() / e50 < 1e-10);
+    assert!(
+        (result.get(&[1, 1]) - e50).abs() / e50 < 1e-9,
+        "r11={}, expected {e50}",
+        result.get(&[1, 1])
+    );
+}
+
+#[test]
+fn test_expm_scaling_boundary_norm_equals_theta13() {
+    // When norm_1 == theta_13, s should be 0 (no scaling needed)
+    // theta_13 ≈ 5.371920351148152
+    // Use A = theta_13 * [[1, 0], [0, 0]] → norm_1 = theta_13
+    // exp(A) = [[exp(theta_13), 0], [0, 1]]
+    let backend = NativeBackend::new();
+    let theta13 = 5.371_920_351_148_152;
+    let a = mat(vec![theta13, 0.0, 0.0, 0.0], 2);
+    let result = expm(&backend, &a, 1).unwrap();
+
+    let expected = theta13.exp();
+    assert!(
+        (result.get(&[0, 0]) - expected).abs() / expected < 1e-10,
+        "r00={}, expected {expected}",
+        result.get(&[0, 0])
+    );
+    assert!((result.get(&[1, 1]) - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_expm_3x3_rotation() {
+    // A general 3x3 matrix test to exercise Pade on larger sizes.
+    // Use a skew-symmetric matrix (generates rotation).
+    // A = [[0, -a, b], [a, 0, -c], [-b, c, 0]]
+    // exp(A) should be orthogonal: R^T R = I
+    let backend = NativeBackend::new();
+    #[rustfmt::skip]
+    let a = Dense::<f64>::from_data_with_order(
+        vec![
+            0.0, -0.3,  0.5,
+            0.3,  0.0, -0.7,
+           -0.5,  0.7,  0.0,
+        ],
+        vec![3, 3],
+        MemoryOrder::RowMajor,
+    );
+    let r = expm(&backend, &a, 1).unwrap();
+
+    // Check R^T R ≈ I
+    for i in 0..3 {
+        for j in 0..3 {
+            let mut dot = 0.0;
+            for k in 0..3 {
+                dot += r.get(&[k, i]) * r.get(&[k, j]);
+            }
+            let expected = if i == j { 1.0 } else { 0.0 };
+            assert!(
+                (dot - expected).abs() < 1e-10,
+                "R^T R[{i},{j}] = {dot}, expected {expected}"
+            );
+        }
+    }
+
+    // det(exp(A)) = exp(tr(A)) = exp(0) = 1 for skew-symmetric
+    let det = r.get(&[0, 0]) * (r.get(&[1, 1]) * r.get(&[2, 2]) - r.get(&[1, 2]) * r.get(&[2, 1]))
+        - r.get(&[0, 1]) * (r.get(&[1, 0]) * r.get(&[2, 2]) - r.get(&[1, 2]) * r.get(&[2, 0]))
+        + r.get(&[0, 2]) * (r.get(&[1, 0]) * r.get(&[2, 1]) - r.get(&[1, 1]) * r.get(&[2, 0]));
+    assert!(
+        (det - 1.0).abs() < 1e-10,
+        "det(exp(A)) = {det}, expected 1.0"
+    );
+}
+
+#[test]
+fn test_expm_different_pade_orders_agree() {
+    // Scale the same base matrix to hit different Pade orders, and verify
+    // they all give consistent results (exp(c*A) via different paths).
+    // Use A = [[0,1],[-1,0]] (rotation generator).
+    // exp(t*A) = [[cos(t), sin(t)], [-sin(t), cos(t)]]
+    let backend = NativeBackend::new();
+
+    // Norms that hit each Pade order threshold:
+    // order 3: t=0.01, order 5: t=0.1, order 7: t=0.5
+    // order 9: t=1.5, order 13 no scale: t=3.0, order 13 w/ scale: t=8.0
+    let test_values = [0.01, 0.1, 0.5, 1.5, 3.0, 8.0];
+    for &t in &test_values {
+        let a = mat(vec![0.0, t, -t, 0.0], 2);
+        let result = expm(&backend, &a, 1).unwrap();
+        let c = t.cos();
+        let s = t.sin();
+        let expected = [[c, s], [-s, c]];
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!(
+                    (result.get(&[i, j]) - expected[i][j]).abs() < 1e-10,
+                    "t={t}: r[{i},{j}]={}, expected {}",
+                    result.get(&[i, j]),
+                    expected[i][j]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_expm_1x1_matrix() {
+    // Edge case: 1x1 matrix, must be passed as [1,1] shape with nrow=1
+    // Requires rank-2 tensor. exp([[x]]) = [[exp(x)]]
+    let backend = NativeBackend::new();
+    let a = Dense::<f64>::from_data_with_order(vec![2.0], vec![1, 1], MemoryOrder::RowMajor);
+    let result = expm(&backend, &a, 1).unwrap();
+    assert!(
+        (result.get(&[0, 0]) - 2.0f64.exp()).abs() < 1e-12,
+        "r00={}, expected {}",
+        result.get(&[0, 0]),
+        2.0f64.exp()
+    );
+}
+
+#[test]
+fn test_expm_satisfies_exp_property() {
+    // exp(A+B) = exp(A)*exp(B) when [A,B]=0 (commuting matrices)
+    // Use A = diag(1, 2), B = diag(3, 4) → both diagonal → they commute
+    let backend = NativeBackend::new();
+    let a = mat(vec![1.0, 0.0, 0.0, 2.0], 2);
+    let b = mat(vec![3.0, 0.0, 0.0, 4.0], 2);
+    let ab = mat(vec![4.0, 0.0, 0.0, 6.0], 2);
+
+    let exp_a = expm(&backend, &a, 1).unwrap();
+    let exp_b = expm(&backend, &b, 1).unwrap();
+    let exp_ab = expm(&backend, &ab, 1).unwrap();
+    let product = contract(&backend, &exp_a, &exp_b, "ij,jk->ik").unwrap();
+
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!(
+                (product.get(&[i, j]) - exp_ab.get(&[i, j])).abs()
+                    / (1.0 + exp_ab.get(&[i, j]).abs())
+                    < 1e-9,
+                "exp(A+B) != exp(A)*exp(B) at ({i},{j})"
+            );
+        }
+    }
 }

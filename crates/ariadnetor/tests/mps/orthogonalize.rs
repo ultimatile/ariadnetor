@@ -113,10 +113,10 @@ fn test_orthogonalize_preserves_physical_dims() {
 
     mps::orthogonalize(&mut mps, 1);
 
-    for j in 0..4 {
+    for (j, &expected) in phys_dims.iter().enumerate() {
         assert_eq!(
             mps.storage(j).shape()[1],
-            phys_dims[j],
+            expected,
             "physical dim changed at site {j}"
         );
     }

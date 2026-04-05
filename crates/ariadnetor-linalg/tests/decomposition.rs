@@ -234,88 +234,6 @@ fn test_trunc_svd_chi_max_no_truncation() {
 }
 
 #[test]
-fn test_trunc_svd_target_trunc_err() {
-    let backend = NativeBackend::new();
-    // 4×4 matrix
-    let data: Vec<f64> = (1..=16).map(|i| i as f64).collect();
-    let tensor = Dense::from_data_with_order(data, vec![4, 4], MemoryOrder::RowMajor);
-
-    // Full SVD first to know the singular values
-    let (_, s_full, _, _) = trunc_svd(
-        &backend,
-        &tensor,
-        1,
-        &TruncSvdParams {
-            chi_max: None,
-            target_trunc_err: None,
-        },
-    )
-    .unwrap();
-
-    // Set threshold just above the smallest singular value
-    let smallest_sv = s_full.get(&[s_full.len() - 1]);
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(smallest_sv + 1e-10),
-    };
-    let (_u, s, _vt, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
-
-    // Should have discarded the smallest singular value
-    assert!(s.len() < s_full.len());
-    // Truncation error should be approximately equal to the discarded singular value
-    assert!(trunc_err <= smallest_sv + 1e-10);
-}
-
-#[test]
-fn test_trunc_svd_both_params() {
-    let backend = NativeBackend::new();
-    // 4×4 matrix
-    let data: Vec<f64> = (1..=16).map(|i| i as f64).collect();
-    let tensor = Dense::from_data_with_order(data, vec![4, 4], MemoryOrder::RowMajor);
-
-    // Full SVD to get singular values
-    let (_, s_full, _, _) = trunc_svd(
-        &backend,
-        &tensor,
-        1,
-        &TruncSvdParams {
-            chi_max: None,
-            target_trunc_err: None,
-        },
-    )
-    .unwrap();
-    let k_full = s_full.len();
-
-    // chi_max is the binding constraint: target_trunc_err=0 forces keeping all,
-    // but chi_max limits to 2
-    let params = TruncSvdParams {
-        chi_max: Some(2),
-        target_trunc_err: Some(0.0),
-    };
-    let (_, s, _, _) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
-    assert_eq!(s.len(), 2);
-
-    // target_trunc_err is the binding constraint: chi_max allows all,
-    // but large target_trunc_err allows aggressive truncation
-    let params = TruncSvdParams {
-        chi_max: Some(k_full),
-        target_trunc_err: Some(1e10),
-    };
-    let (_, s, _, _) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
-    // Large allowed error → aggressive truncation → minimum 1 value kept
-    assert_eq!(s.len(), 1);
-
-    // Neither constraint truncates: chi_max=k_full, target_trunc_err=0
-    let params = TruncSvdParams {
-        chi_max: Some(k_full),
-        target_trunc_err: Some(0.0),
-    };
-    let (_, s, _, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
-    assert_eq!(s.len(), k_full);
-    assert_eq!(trunc_err, 0.0);
-}
-
-#[test]
 fn test_trunc_svd_f32() {
     let backend = NativeBackend::new();
     let tensor = Dense::<f32>::from_data_with_order(
@@ -334,48 +252,6 @@ fn test_trunc_svd_f32() {
     assert_eq!(s.shape(), &[1]);
     assert_eq!(vt.shape(), &[1, 3]);
     assert!(trunc_err > 0.0);
-}
-
-#[test]
-fn test_trunc_svd_reconstruction() {
-    let backend = NativeBackend::new();
-    // Verify that truncated reconstruction is a valid low-rank approximation
-    let tensor = Dense::<f64>::from_data_with_order(
-        vec![
-            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
-        ],
-        vec![3, 4],
-        MemoryOrder::RowMajor,
-    );
-
-    let params = TruncSvdParams {
-        chi_max: Some(2),
-        target_trunc_err: None,
-    };
-    let (u, s, vt, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
-
-    let (m, n, chi) = (3, 4, 2);
-
-    // Reconstruct: A_approx = U * diag(S) * Vt
-    let mut recon_err_sq = 0.0;
-    for i in 0..m {
-        for j in 0..n {
-            let mut val = 0.0;
-            for l in 0..chi {
-                val += u.get(&[i, l]) * s.get(&[l]) * vt.get(&[l, j]);
-            }
-            let diff = val - tensor.data()[i * n + j];
-            recon_err_sq += diff * diff;
-        }
-    }
-    let recon_err = recon_err_sq.sqrt();
-
-    // Reconstruction error should equal the truncation error
-    // (Eckart-Young theorem: ||A - A_k||_F = sqrt(sum of discarded σ²))
-    assert!(
-        (recon_err - trunc_err).abs() < 1e-10,
-        "recon_err={recon_err} vs trunc_err={trunc_err}"
-    );
 }
 
 // --- QR tests ---
@@ -696,4 +572,211 @@ fn test_lq_invalid_nrow() {
 
     assert!(lq(&backend, &tensor, 0).is_err());
     assert!(lq(&backend, &tensor, 2).is_err());
+}
+
+// --- Mutation testing: trunc_svd arithmetic and boundary conditions ---
+
+#[test]
+fn test_trunc_svd_trunc_err_equals_frobenius_of_discarded() {
+    // Verify trunc_err = sqrt(sum of discarded sigma_i^2), not just last sv
+    let backend = NativeBackend::new();
+    // Construct a diagonal matrix with known singular values [5, 4, 3, 2, 1]
+    // so SVD returns them exactly.
+    let mut data = vec![0.0; 5 * 5];
+    let svs = [5.0, 4.0, 3.0, 2.0, 1.0];
+    for (i, &sv) in svs.iter().enumerate() {
+        data[i * 5 + i] = sv;
+    }
+    let tensor = Dense::<f64>::from_data_with_order(data, vec![5, 5], MemoryOrder::RowMajor);
+
+    // Keep 3, discard [2, 1]
+    let params = TruncSvdParams {
+        chi_max: Some(3),
+        target_trunc_err: None,
+    };
+    let (_, s, _, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+
+    assert_eq!(s.len(), 3);
+    // trunc_err = sqrt(2^2 + 1^2) = sqrt(5)
+    let expected = (4.0 + 1.0f64).sqrt();
+    assert!(
+        (trunc_err - expected).abs() < 1e-10,
+        "trunc_err={trunc_err}, expected={expected}"
+    );
+}
+
+#[test]
+fn test_trunc_svd_target_trunc_err_exact_boundary() {
+    // Test exact boundary: target_trunc_err == norm of smallest sv
+    // With target=1.0, discarding sv=1.0 gives norm=1.0, which is NOT > 1.0
+    // so it should be discarded.
+    let backend = NativeBackend::new();
+    let mut data = vec![0.0; 3 * 3];
+    // Singular values: [10, 5, 1]
+    data[0] = 10.0;
+    data[4] = 5.0;
+    data[8] = 1.0;
+    let tensor = Dense::<f64>::from_data_with_order(data, vec![3, 3], MemoryOrder::RowMajor);
+
+    // target=1.0: discarding sv=1 gives norm²=1.0 == target²=1.0, NOT > target²
+    // so sv=1 is discarded. chi_err becomes 2.
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1.0),
+    };
+    let (_, s, _, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+
+    assert_eq!(s.len(), 2, "sv=1.0 should be discarded when target=1.0");
+    assert!((trunc_err - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_trunc_svd_target_trunc_err_strict_boundary() {
+    // target_trunc_err slightly below sv norm: should NOT discard
+    let backend = NativeBackend::new();
+    let mut data = vec![0.0; 3 * 3];
+    data[0] = 10.0;
+    data[4] = 5.0;
+    data[8] = 1.0;
+    let tensor = Dense::<f64>::from_data_with_order(data, vec![3, 3], MemoryOrder::RowMajor);
+
+    // target = 0.999: discarding sv=1 gives norm²=1.0 > target²=0.998001
+    // so sv=1 is NOT discarded.
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(0.999),
+    };
+    let (_, s, _, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+
+    assert_eq!(
+        s.len(),
+        3,
+        "sv=1.0 should NOT be discarded when target=0.999"
+    );
+    assert_eq!(trunc_err, 0.0);
+}
+
+#[test]
+fn test_trunc_svd_target_err_accumulates_multiple_svs() {
+    // Verify error accumulation works across multiple discarded svs
+    let backend = NativeBackend::new();
+    let mut data = vec![0.0; 4 * 4];
+    // Singular values: [10, 3, 2, 1]
+    data[0] = 10.0;
+    data[5] = 3.0;
+    data[10] = 2.0;
+    data[15] = 1.0;
+    let tensor = Dense::<f64>::from_data_with_order(data, vec![4, 4], MemoryOrder::RowMajor);
+
+    // target = sqrt(1^2 + 2^2) = sqrt(5) ≈ 2.236
+    // Discarding sv=1: norm²=1 <= 5 → discard
+    // Discarding sv=2: norm²=1+4=5 <= 5 → discard
+    // Discarding sv=3: norm²=1+4+9=14 > 5 → stop
+    // chi_err = 1 (index of sv=3 after discarding 1 and 2)
+    let target = 5.0f64.sqrt();
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(target),
+    };
+    let (_, s, _, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+
+    assert_eq!(s.len(), 2, "should keep svs [10, 3], discard [2, 1]");
+    let expected_err = (4.0 + 1.0f64).sqrt(); // sqrt(2^2 + 1^2)
+    assert!(
+        (trunc_err - expected_err).abs() < 1e-10,
+        "trunc_err={trunc_err}, expected={expected_err}"
+    );
+}
+
+#[test]
+fn test_trunc_svd_target_err_keeps_at_least_one() {
+    // Even with a huge target_trunc_err, at least one sv is kept
+    let backend = NativeBackend::new();
+    let mut data = vec![0.0; 3 * 3];
+    data[0] = 3.0;
+    data[4] = 2.0;
+    data[8] = 1.0;
+    let tensor = Dense::<f64>::from_data_with_order(data, vec![3, 3], MemoryOrder::RowMajor);
+
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1e10),
+    };
+    let (_, s, _, _) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+
+    assert!(!s.is_empty(), "must keep at least one singular value");
+}
+
+#[test]
+fn test_trunc_svd_slicing_u_times_s_times_vt_approximation() {
+    // Verify truncated U*S*Vt approximates original within trunc_err,
+    // using a non-trivial non-diagonal matrix
+    let backend = NativeBackend::new();
+    #[rustfmt::skip]
+    let data = vec![
+        1.0, 2.0, 3.0,
+        4.0, 5.0, 6.0,
+        7.0, 8.0, 9.0,
+        10.0, 11.0, 12.0,
+    ];
+    let tensor = Dense::<f64>::from_data_with_order(data, vec![4, 3], MemoryOrder::RowMajor);
+
+    for chi in 1..=2 {
+        let params = TruncSvdParams {
+            chi_max: Some(chi),
+            target_trunc_err: None,
+        };
+        let (u, s, vt, trunc_err) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+        let (m, n) = (4, 3);
+
+        // Compute ||A - U*S*Vt||_F
+        let mut err_sq = 0.0;
+        for i in 0..m {
+            for j in 0..n {
+                let mut val = 0.0;
+                for l in 0..chi {
+                    val += u.get(&[i, l]) * s.get(&[l]) * vt.get(&[l, j]);
+                }
+                let diff = val - tensor.data()[i * n + j];
+                err_sq += diff * diff;
+            }
+        }
+        let recon_err = err_sq.sqrt();
+
+        assert!(
+            (recon_err - trunc_err).abs() < 1e-9,
+            "chi={chi}: recon_err={recon_err}, trunc_err={trunc_err}"
+        );
+    }
+}
+
+#[test]
+fn test_trunc_svd_chi_max_and_target_err_stricter_wins() {
+    // When both params are set, the one that produces smaller chi wins
+    let backend = NativeBackend::new();
+    let mut data = vec![0.0; 4 * 4];
+    data[0] = 10.0;
+    data[5] = 5.0;
+    data[10] = 2.0;
+    data[15] = 1.0;
+    let tensor = Dense::<f64>::from_data_with_order(data, vec![4, 4], MemoryOrder::RowMajor);
+
+    // chi_max=3 but target_trunc_err allows discarding sv=1 and sv=2
+    // target = sqrt(5) ≈ 2.236 → can discard [1, 2], chi_err=2
+    // Result: min(3, 2) = 2
+    let params = TruncSvdParams {
+        chi_max: Some(3),
+        target_trunc_err: Some(5.0f64.sqrt()),
+    };
+    let (_, s, _, _) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+    assert_eq!(s.len(), 2);
+
+    // chi_max=1, target_trunc_err=0 (keeps all)
+    // Result: min(1, 4) = 1
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: Some(0.0),
+    };
+    let (_, s, _, _) = trunc_svd(&backend, &tensor, 1, &params).unwrap();
+    assert_eq!(s.len(), 1);
 }
