@@ -35,28 +35,91 @@ where
         let new_shape: Vec<usize> = ranges.iter().map(|&(s, e)| e - s).collect();
         let new_total: usize = new_shape.iter().product();
         let order = self.memory_order();
-        let mut data = Vec::with_capacity(new_total);
-
         let rank = shape.len();
+
+        if new_total == 0 {
+            return Self::from_data_with_order(Vec::new(), new_shape, order);
+        }
+
+        // Identify the innermost axis (fastest-varying in memory)
+        let inner_axis = match order {
+            MemoryOrder::RowMajor => rank - 1,
+            MemoryOrder::ColumnMajor => 0,
+        };
+
+        // Strip copy: when source is contiguous and innermost stride is 1,
+        // copy each innermost strip in bulk via extend_from_slice.
+        if self.is_contiguous() && self.strides[inner_axis] == 1 {
+            let raw = &self.data.as_slice();
+            let strip_len = new_shape[inner_axis];
+            let num_strips = new_total / strip_len.max(1);
+
+            // Outer axes: all axes except the innermost, in memory order
+            let outer_axes: Vec<usize> = match order {
+                MemoryOrder::RowMajor => (0..rank - 1).collect(),
+                MemoryOrder::ColumnMajor => (1..rank).rev().collect(),
+            };
+
+            let mut data = Vec::with_capacity(new_total);
+            let mut outer_coords = vec![0usize; rank];
+            let strip_src_start: isize = ranges
+                .iter()
+                .zip(&self.strides)
+                .map(|(&(s, _), &st)| s as isize * st)
+                .sum::<isize>()
+                + self.offset as isize;
+
+            // Running offset tracks outer coordinate changes
+            let mut outer_flat = strip_src_start;
+
+            for _ in 0..num_strips {
+                let src_start = outer_flat as usize;
+                data.extend_from_slice(&raw[src_start..src_start + strip_len]);
+
+                // Advance outer coordinates
+                for &d in outer_axes.iter().rev() {
+                    outer_coords[d] += 1;
+                    outer_flat += self.strides[d];
+                    if outer_coords[d] < new_shape[d] {
+                        break;
+                    }
+                    outer_flat -= new_shape[d] as isize * self.strides[d];
+                    outer_coords[d] = 0;
+                }
+            }
+
+            return Self::from_data_with_order(data, new_shape, order);
+        }
+
+        // General case: incremental flat index (no per-element get() or Vec alloc)
+        let raw = self.data.as_slice();
+        let mut data = Vec::with_capacity(new_total);
         let mut coords = vec![0usize; rank];
+
         let axis_order: Vec<usize> = match order {
             MemoryOrder::RowMajor => (0..rank).collect(),
             MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
         };
 
-        for _ in 0..new_total {
-            let src_coords: Vec<usize> = coords
+        // Initialize src_flat to the flat index of the slice origin
+        let mut src_flat: isize = self.offset as isize
+            + ranges
                 .iter()
-                .zip(ranges)
-                .map(|(&c, &(s, _))| c + s)
-                .collect();
-            data.push(self.get(&src_coords));
+                .zip(&self.strides)
+                .map(|(&(s, _), &st)| s as isize * st)
+                .sum::<isize>();
+
+        for _ in 0..new_total {
+            debug_assert!(src_flat >= 0 && (src_flat as usize) < raw.len());
+            data.push(raw[src_flat as usize].clone());
 
             for &d in axis_order.iter().rev() {
                 coords[d] += 1;
+                src_flat += self.strides[d];
                 if coords[d] < new_shape[d] {
                     break;
                 }
+                src_flat -= new_shape[d] as isize * self.strides[d];
                 coords[d] = 0;
             }
         }
