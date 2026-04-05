@@ -79,46 +79,47 @@ where
     ///
     /// No-op (Arc clone) if already contiguous in the requested order.
     pub fn to_contiguous(&self, order: MemoryOrder) -> Self {
-        let already_ok = match order {
-            MemoryOrder::RowMajor => self.is_row_major() && self.offset == 0,
-            MemoryOrder::ColumnMajor => self.is_column_major() && self.offset == 0,
-        };
-
-        if already_ok {
+        // Already contiguous in the requested order and no offset: zero-copy
+        if self.contiguous_order() == Some(order) && self.offset == 0 {
             return self.clone();
         }
 
         let total = self.len();
-        let new_strides = match order {
-            MemoryOrder::RowMajor => row_major_strides(&self.shape),
-            MemoryOrder::ColumnMajor => column_major_strides(&self.shape),
-        };
 
-        // Iterate through all logical indices in the target order and copy
-        let mut new_data = Vec::with_capacity(total);
+        // Same order but non-zero offset: bulk slice copy
+        if self.contiguous_order() == Some(order) {
+            let src = &self.data.as_slice()[self.offset..self.offset + total];
+            return Self::from_data_with_order(src.to_vec(), self.shape.clone(), order);
+        }
+
+        // General case: walk target-order coordinates with incremental source index
         let rank = self.rank();
+        let mut new_data = Vec::with_capacity(total);
         let mut coords = vec![0usize; rank];
+        let raw = self.data.as_slice();
+        let mut src_flat = self.offset as isize;
 
-        // Iteration order depends on target layout
         let axis_order: Vec<usize> = match order {
             MemoryOrder::RowMajor => (0..rank).collect(),
             MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
         };
 
         for _ in 0..total {
-            new_data.push(self.get(&coords));
+            debug_assert!(src_flat >= 0 && (src_flat as usize) < raw.len());
+            new_data.push(raw[src_flat as usize].clone());
 
-            // Increment coordinates in the target order
             for &d in axis_order.iter().rev() {
                 coords[d] += 1;
+                src_flat += self.strides[d];
                 if coords[d] < self.shape[d] {
                     break;
                 }
+                src_flat -= self.shape[d] as isize * self.strides[d];
                 coords[d] = 0;
             }
         }
 
-        Self::from_data_with_strides(new_data, self.shape.clone(), new_strides, 0, order)
+        Self::from_data_with_order(new_data, self.shape.clone(), order)
     }
 
     // ========================================================================
