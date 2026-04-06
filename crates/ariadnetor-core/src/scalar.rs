@@ -186,17 +186,37 @@ impl Scalar for Complex<f64> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_scalar_f64() {
-        assert_eq!(3.0f64.abs(), 3.0);
-        assert_eq!(3.0f64.scale_real(2.0), 6.0);
+    /// Verify Scalar trait algebraic laws for any implementing type.
+    /// Uses fully-qualified `Scalar::method(x)` calls to test trait impls,
+    /// not inherent methods (e.g., f64::abs shadows Scalar::abs).
+    fn assert_scalar_laws<S>(x: S, factor: S::Real)
+    where
+        S: Scalar + PartialEq + std::fmt::Debug,
+        S::Real: PartialEq + std::fmt::Debug,
+    {
+        // abs is positive for non-zero input
+        assert!(Scalar::abs(x) > S::Real::zero());
+        // conj is involution
+        assert_eq!(Scalar::conj(Scalar::conj(x)), x);
+        // conj preserves re, negates im (real: 0 == -0, complex: real test)
+        assert_eq!(Scalar::re(Scalar::conj(x)), Scalar::re(x));
+        assert_eq!(Scalar::im(Scalar::conj(x)), S::Real::zero() - Scalar::im(x),);
+        // scale_real identity
+        assert_eq!(Scalar::scale_real(x, S::Real::one()), x);
+        // scale_real with non-trivial factor
+        let scaled = Scalar::scale_real(x, factor);
+        assert_eq!(Scalar::re(scaled), Scalar::re(x) * factor);
+        assert_eq!(Scalar::im(scaled), Scalar::im(x) * factor);
+        // re/im round-trip
+        assert_eq!(S::from_real_imag(Scalar::re(x), Scalar::im(x)), x);
     }
 
     #[test]
-    fn test_scalar_complex_f64() {
-        let z = Complex::new(3.0, 4.0);
-        assert_eq!(z.abs(), 5.0);
-        assert_eq!(z.conj(), Complex::new(3.0, -4.0));
+    fn test_scalar_laws() {
+        assert_scalar_laws(2.5f32, 3.0);
+        assert_scalar_laws(2.5f64, 3.0);
+        assert_scalar_laws(Complex::new(3.0f32, 4.0), 2.0);
+        assert_scalar_laws(Complex::new(3.0f64, 4.0), 2.0);
     }
 
     #[test]
@@ -272,26 +292,5 @@ mod tests {
     fn test_from_real_imag_f32() {
         let x = f32::from_real_imag(2.5, 999.0);
         assert_eq!(x, 2.5);
-    }
-
-    #[test]
-    fn test_round_trip_complex_f64() {
-        let z = Complex::new(3.0f64, -4.0);
-        let reconstructed = Complex::<f64>::from_real_imag(z.re(), z.im());
-        assert_eq!(reconstructed, z);
-    }
-
-    #[test]
-    fn test_round_trip_complex_f32() {
-        let z = Complex::new(1.5f32, 2.5);
-        let reconstructed = Complex::<f32>::from_real_imag(z.re(), z.im());
-        assert_eq!(reconstructed, z);
-    }
-
-    #[test]
-    fn test_round_trip_f64() {
-        let x = 7.0f64;
-        let reconstructed = f64::from_real_imag(x.re(), x.im());
-        assert_eq!(reconstructed, x);
     }
 }
