@@ -1,0 +1,4 @@
+# Equivalent mutants: real types return 0.0 for im(), same as Default::default()
+exclude_re = [
+    "Scalar for f(32|64)>::im .* Default::default",
+]
