@@ -237,3 +237,40 @@ where
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_tensor_mutation<S>(zero: S, val: S, fill_val: S, scale_factor: S)
+    where
+        S: Scalar + PartialEq + std::fmt::Debug + Mul<S, Output = S>,
+    {
+        let mut t = Tensor::<Dense<S>>::zeros(vec![2, 3]);
+
+        // set / get round-trip
+        t.set(&[1, 2], val);
+        assert_eq!(t.get(&[1, 2]), val);
+        assert_eq!(t.get(&[0, 0]), zero);
+
+        // fill overwrites all elements
+        t.fill(fill_val);
+        assert_eq!(t.get(&[0, 0]), fill_val);
+        assert_eq!(t.get(&[1, 2]), fill_val);
+
+        // data_mut provides mutable access
+        t.data_mut()[0] = val;
+        assert_eq!(t.get(&[0, 0]), val);
+
+        // scale multiplies all elements
+        t.fill(val);
+        t.scale(scale_factor);
+        assert_eq!(t.get(&[0, 0]), val * scale_factor);
+    }
+
+    #[test]
+    fn test_tensor_mutation() {
+        assert_tensor_mutation(0.0f64, 42.0, 2.718, 3.0);
+        assert_tensor_mutation(0.0f32, 42.0, 2.718, 3.0);
+    }
+}
