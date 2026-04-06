@@ -73,14 +73,6 @@ impl LabelId {
     pub fn base(&self) -> Self {
         Self::intern(self.name().trim_end_matches('\''))
     }
-
-    pub fn is_primed(&self) -> bool {
-        self.name().contains('\'')
-    }
-
-    pub fn prime_level(&self) -> usize {
-        self.name().chars().rev().take_while(|&c| c == '\'').count()
-    }
 }
 
 #[macro_export]
