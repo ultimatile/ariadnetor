@@ -1,4 +1,6 @@
 # Equivalent mutants: real types return 0.0 for im(), same as Default::default()
 exclude_re = [
     "Scalar for f(32|64)>::im .* Default::default",
+    # 3rd sweep restores center position; bonds already at chi_max so error is always 0
+    "truncate.rs:71.* replace \\+ with -",
 ]
