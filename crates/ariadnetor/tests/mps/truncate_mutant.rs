@@ -374,3 +374,62 @@ fn test_all_absorb_modes_same_norm() {
         assert!(inner_trunc > 0.0);
     }
 }
+
+// --------------------------------------------------------------------------
+// Kill: delete match arm CanonicalForm::Right (distinguishes from fallback)
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_truncate_right_form_ignores_center_param() {
+    // Right arm sets center=0, but fallback would use params.center=Some(2).
+    // With the arm deleted, center would be 2 instead of 0.
+    let mut mps = make_4site_mps();
+    mps::orthogonalize(&mut mps, 0);
+    mps.set_canonical_form(CanonicalForm::Right);
+
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(2),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::Right,
+        center: Some(2),
+    };
+    mps::truncate(&mut mps, &params);
+
+    // Right form always uses center=0, regardless of params.center
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
+}
+
+// --------------------------------------------------------------------------
+// Kill: err accumulation arithmetic (+→-) and err*err → err+err
+// by verifying reported error matches actual reconstruction error
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_truncation_error_matches_reconstruction_error() {
+    let mut mps = make_4site_mps();
+    mps::orthogonalize(&mut mps, 2);
+    let dense_before = mps_to_dense(&mps);
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+    let result = mps::truncate(&mut mps, &params);
+    let dense_after = mps_to_dense(&mps);
+
+    // Pythagorean: ||A||² ≈ ||A_trunc||² + error²
+    let norm_sq_before = dense_before.data().iter().map(|&x| x * x).sum::<f64>();
+    let norm_sq_after = dense_after.data().iter().map(|&x| x * x).sum::<f64>();
+    let expected_err_sq = norm_sq_before - norm_sq_after;
+
+    // Reported error² should be close to expected
+    let reported_err_sq = result.error * result.error;
+    assert!(
+        (reported_err_sq - expected_err_sq).abs() < 1e-6 * norm_sq_before,
+        "reported²={reported_err_sq}, expected²={expected_err_sq}, \
+         diff={d}",
+        d = (reported_err_sq - expected_err_sq).abs(),
+    );
+}
