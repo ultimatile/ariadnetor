@@ -39,38 +39,56 @@ where
 
         let mut out_shape: Vec<usize> = base_shape.to_vec();
         out_shape[axis] = tensors.iter().map(|t| t.shape()[axis]).sum();
-
         let out_total: usize = out_shape.iter().product();
-        let mut data = Vec::with_capacity(out_total);
-        let mut coords = vec![0usize; rank];
-        let axis_order: Vec<usize> = match order {
-            MemoryOrder::RowMajor => (0..rank).collect(),
-            MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+
+        if out_total == 0 {
+            return Self::from_data_with_order(Vec::new(), out_shape, order);
+        }
+
+        // Ensure all inputs are contiguous in the output order
+        let contigs: Vec<Dense<T>> = tensors.iter().map(|t| t.to_contiguous(order)).collect();
+        let contig_refs: Vec<&Dense<T>> = contigs.iter().collect();
+
+        // Check if concatenation is along the outermost axis (block copy)
+        let is_outermost = match order {
+            MemoryOrder::RowMajor => axis == 0,
+            MemoryOrder::ColumnMajor => axis == rank - 1,
         };
 
-        for _ in 0..out_total {
-            // Determine which input tensor and local coordinate for the concat axis
-            let mut axis_pos = coords[axis];
-            let mut src_tensor = None;
-            for t in tensors {
-                let t_size = t.shape()[axis];
-                if axis_pos < t_size {
-                    src_tensor = Some(t);
-                    break;
-                }
-                axis_pos -= t_size;
-            }
-            let t = src_tensor.expect("concatenate: axis position out of range");
-            let mut src_coords = coords.clone();
-            src_coords[axis] = axis_pos;
-            data.push(t.get(&src_coords));
+        let mut data = Vec::with_capacity(out_total);
 
-            for &d in axis_order.iter().rev() {
-                coords[d] += 1;
-                if coords[d] < out_shape[d] {
-                    break;
+        if is_outermost {
+            // Block copy: each input's entire data maps to a contiguous output block
+            for t in &contig_refs {
+                data.extend_from_slice(t.data());
+            }
+        } else {
+            // Strip copy: iterate outer blocks, interleave strips from each input
+            //
+            // For RowMajor: strip_len = product of shape[axis+1..rank]
+            //               outer_count = product of shape[0..axis]
+            // For ColumnMajor: strip_len = product of shape[0..axis]
+            //                  outer_count = product of shape[axis+1..rank]
+            let (strip_len, outer_count) = match order {
+                MemoryOrder::RowMajor => (
+                    base_shape[axis + 1..].iter().product::<usize>(),
+                    base_shape[..axis].iter().product::<usize>(),
+                ),
+                MemoryOrder::ColumnMajor => (
+                    base_shape[..axis].iter().product::<usize>(),
+                    base_shape[axis + 1..].iter().product::<usize>(),
+                ),
+            };
+
+            for outer in 0..outer_count {
+                for t in &contig_refs {
+                    let t_axis_size = t.shape()[axis];
+                    // Number of contiguous elements per outer block in this tensor
+                    let block_size = t_axis_size * strip_len;
+                    let src_start = outer * block_size;
+                    let src = &t.data()[src_start..src_start + block_size];
+                    data.extend_from_slice(src);
                 }
-                coords[d] = 0;
             }
         }
 
@@ -100,37 +118,24 @@ where
             );
         }
 
-        let n = tensors.len();
-        let mut out_shape = Vec::with_capacity(rank + 1);
-        out_shape.extend_from_slice(&base_shape[..axis]);
-        out_shape.push(n);
-        out_shape.extend_from_slice(&base_shape[axis..]);
+        // Reshape each input to insert a size-1 axis, then delegate to concatenate.
+        // reshape_view is zero-copy for contiguous tensors.
+        let contigs: Vec<Dense<T>> = tensors.iter().map(|t| t.to_contiguous(order)).collect();
 
-        let out_total: usize = out_shape.iter().product();
-        let out_rank = out_shape.len();
-        let mut data = Vec::with_capacity(out_total);
-        let mut coords = vec![0usize; out_rank];
-        let axis_order: Vec<usize> = match order {
-            MemoryOrder::RowMajor => (0..out_rank).collect(),
-            MemoryOrder::ColumnMajor => (0..out_rank).rev().collect(),
-        };
+        let mut new_shape = Vec::with_capacity(rank + 1);
+        new_shape.extend_from_slice(&base_shape[..axis]);
+        new_shape.push(1);
+        new_shape.extend_from_slice(&base_shape[axis..]);
 
-        for _ in 0..out_total {
-            // The stacked axis at position `axis` indexes into tensors
-            let t_idx = coords[axis];
-            let mut src_coords: Vec<usize> = coords[..axis].to_vec();
-            src_coords.extend_from_slice(&coords[axis + 1..]);
-            data.push(tensors[t_idx].get(&src_coords));
+        let reshaped: Vec<Dense<T>> = contigs
+            .iter()
+            .map(|t| {
+                t.reshape_view(new_shape.clone())
+                    .expect("reshape_view failed on contiguous tensor")
+            })
+            .collect();
+        let reshaped_refs: Vec<&Dense<T>> = reshaped.iter().collect();
 
-            for &d in axis_order.iter().rev() {
-                coords[d] += 1;
-                if coords[d] < out_shape[d] {
-                    break;
-                }
-                coords[d] = 0;
-            }
-        }
-
-        Self::from_data_with_order(data, out_shape, order)
+        Self::concatenate(&reshaped_refs, axis)
     }
 }
