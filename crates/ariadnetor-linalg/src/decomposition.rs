@@ -220,15 +220,19 @@ pub fn trunc_svd<T: Scalar>(
     let vt_raw = vt_full.data();
 
     let (u_trunc, vt_trunc) = match order {
+        // TODO: untested — no RowMajor backend exists yet
+        //
+        // U row-major [m, k_full] → [m, chi]: copy first chi elements per row
+        // let mut u_t = vec![T::zero(); m * chi];
+        // for i in 0..m {
+        //     u_t[i * chi..(i + 1) * chi]
+        //         .copy_from_slice(&u_raw[i * k_full..i * k_full + chi]);
+        // }
+        // Vt row-major [k_full, n] → [chi, n]: take first chi rows
+        // let vt_t: Vec<T> = vt_raw[..chi * n].to_vec();
+        // (u_t, vt_t)
         MemoryOrder::RowMajor => {
-            // U row-major [m, k_full] → [m, chi]: copy first chi elements per row
-            let mut u_t = vec![T::zero(); m * chi];
-            for i in 0..m {
-                u_t[i * chi..(i + 1) * chi].copy_from_slice(&u_raw[i * k_full..i * k_full + chi]);
-            }
-            // Vt row-major [k_full, n] → [chi, n]: take first chi rows
-            let vt_t: Vec<T> = vt_raw[..chi * n].to_vec();
-            (u_t, vt_t)
+            todo!("RowMajor truncation slicing")
         }
         MemoryOrder::ColumnMajor => {
             // U col-major [m, k_full]: columns are contiguous blocks of m elements.
