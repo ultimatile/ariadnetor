@@ -155,12 +155,19 @@ impl<T> Dense<T> {
     }
 
     /// Determine the memory order of this tensor, if contiguous.
+    ///
+    /// When strides unambiguously identify one layout (row-major xor
+    /// column-major), trust the strides.  When both match (1D, all-ones
+    /// shape), fall back to the authoritative `order` field.
     fn contiguous_order(&self) -> Option<MemoryOrder> {
-        if !self.is_contiguous() {
-            return None;
+        let rm = self.is_row_major();
+        let cm = self.is_column_major();
+        match (rm, cm) {
+            (true, true) => Some(self.order), // ambiguous: defer to order field
+            (true, false) => Some(MemoryOrder::RowMajor),
+            (false, true) => Some(MemoryOrder::ColumnMajor),
+            (false, false) => None,
         }
-        // Use the authoritative order field, not strides-based heuristic
-        Some(self.order)
     }
 
     // ========================================================================
