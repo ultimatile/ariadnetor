@@ -154,25 +154,88 @@ where
         };
         let rank = shape.len();
         let mut data = vec![T::zero(); new_total];
+
+        let src_total = self.len();
+        if src_total == 0 || rank == 0 {
+            // Rank-0 (scalar) or empty: copy the single element if present
+            if src_total == 1 {
+                data[0] = self.data.as_slice()[self.offset].clone();
+            }
+            return Self::from_data_with_order(data, new_shape, order);
+        }
+
+        let inner_axis = match order {
+            MemoryOrder::RowMajor => rank - 1,
+            MemoryOrder::ColumnMajor => 0,
+        };
+
+        // Strip copy: contiguous source + no padding on innermost axis
+        let no_inner_pad = padding[inner_axis] == (0, 0);
+        if self.is_contiguous() && self.strides[inner_axis] == 1 && no_inner_pad {
+            let raw = self.data();
+            let strip_len = shape[inner_axis];
+
+            // Outer axes: all except innermost, in memory order
+            let outer_axes: Vec<usize> = match order {
+                MemoryOrder::RowMajor => (0..rank - 1).collect(),
+                MemoryOrder::ColumnMajor => (1..rank).rev().collect(),
+            };
+
+            let num_strips = src_total / strip_len.max(1);
+            let mut src_offset = 0usize;
+
+            // Initial dst offset accounting for padding on outer axes
+            let mut dst_flat: usize = (0..rank).map(|d| padding[d].0 * dst_strides[d]).sum();
+            let dst_flat_init = dst_flat;
+
+            let mut outer_coords = vec![0usize; rank];
+
+            for _ in 0..num_strips {
+                data[dst_flat..dst_flat + strip_len]
+                    .clone_from_slice(&raw[src_offset..src_offset + strip_len]);
+                src_offset += strip_len;
+
+                // Advance outer coordinates
+                for &d in outer_axes.iter().rev() {
+                    outer_coords[d] += 1;
+                    dst_flat += dst_strides[d];
+                    if outer_coords[d] < shape[d] {
+                        break;
+                    }
+                    dst_flat -= shape[d] * dst_strides[d];
+                    outer_coords[d] = 0;
+                }
+            }
+            // Suppress unused variable warning when all axes are inner
+            let _ = dst_flat_init;
+
+            return Self::from_data_with_order(data, new_shape, order);
+        }
+
+        // General case: dual incremental flat index
+        let raw = self.data.as_slice();
         let mut coords = vec![0usize; rank];
         let axis_order: Vec<usize> = match order {
             MemoryOrder::RowMajor => (0..rank).collect(),
             MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
         };
 
-        let src_total = self.len();
+        let mut src_flat: isize = self.offset as isize;
+        let mut dst_flat: usize = (0..rank).map(|d| padding[d].0 * dst_strides[d]).sum();
+
         for _ in 0..src_total {
-            let val = self.get(&coords);
-            let dst_flat: usize = (0..rank)
-                .map(|d| (coords[d] + padding[d].0) * dst_strides[d])
-                .sum();
-            data[dst_flat] = val;
+            debug_assert!(src_flat >= 0 && (src_flat as usize) < raw.len());
+            data[dst_flat] = raw[src_flat as usize].clone();
 
             for &d in axis_order.iter().rev() {
                 coords[d] += 1;
+                src_flat += self.strides[d];
+                dst_flat += dst_strides[d];
                 if coords[d] < shape[d] {
                     break;
                 }
+                src_flat -= shape[d] as isize * self.strides[d];
+                dst_flat -= shape[d] * dst_strides[d];
                 coords[d] = 0;
             }
         }

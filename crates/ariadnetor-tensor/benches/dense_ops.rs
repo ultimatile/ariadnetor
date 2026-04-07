@@ -323,6 +323,44 @@ fn bench_concatenate(c: &mut Criterion) {
     group.finish();
 }
 
+// ==========================================================================
+// expand
+// ==========================================================================
+
+fn bench_expand(c: &mut Criterion) {
+    let mut group = c.benchmark_group("expand");
+
+    // 2D symmetric padding
+    for s in &[
+        TensorShape {
+            label: "256x256",
+            shape: vec![256, 256],
+        },
+        TensorShape {
+            label: "1024x1024",
+            shape: vec![1024, 1024],
+        },
+    ] {
+        let tensor = random_tensor(s.shape.clone());
+        let padding: Vec<(usize, usize)> = vec![(16, 16); s.shape.len()];
+        group.bench_with_input(
+            BenchmarkId::new("pad16", s.label),
+            &(&tensor, &padding),
+            |b, (t, p)| {
+                b.iter_with_large_drop(|| t.expand(p));
+            },
+        );
+    }
+
+    // Rank-3
+    let tensor = random_tensor(vec![64, 4, 64]);
+    group.bench_with_input(BenchmarkId::new("pad16", "64x4x64"), &tensor, |b, t| {
+        b.iter_with_large_drop(|| t.expand(&[(16, 16), (0, 0), (16, 16)]));
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_to_contiguous,
@@ -334,5 +372,6 @@ criterion_group!(
     bench_normalize,
     bench_slice,
     bench_concatenate,
+    bench_expand,
 );
 criterion_main!(benches);
