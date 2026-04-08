@@ -5,4 +5,15 @@ exclude_re = [
     "truncate.rs:71.* replace \\+ with -",
     # NativeBackend has no state, so Arc::new(Default::default()) == shared()
     "NativeBackend::shared .* Arc::new",
+    # norm_1: tie-breaking order doesn't affect max value
+    "expm.rs:129.* replace > with >=",
+    # expm validation: nrow=0 caught by downstream non-square check
+    "expm.rs:369.* replace .* with &&",
+    # expm scaling: boundary/branch equivalences (norm==theta gives s=0 either way,
+    # larger s is self-correcting, s<=62 vs s>62 compute same 2^s, s=0 scaling is identity)
+    "expm.rs:419.* replace > with >=",
+    "expm.rs:420.* replace / with",
+    "expm.rs:427.* replace <= with",
+    "expm.rs:432.* replace \\+",
+    "expm.rs:438.* replace > with >=",
 ]
