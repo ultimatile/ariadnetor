@@ -1,4 +1,4 @@
-use arnet_linalg::{linear_combine, norm, normalize, scale, trace};
+use arnet_linalg::{diagonal_scale, linear_combine, norm, normalize, scale, trace};
 use arnet_tensor::Dense;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
@@ -197,6 +197,53 @@ fn bench_trace(c: &mut Criterion) {
     group.finish();
 }
 
+// ==========================================================================
+// diagonal_scale
+// ==========================================================================
+
+fn bench_diagonal_scale(c: &mut Criterion) {
+    let mut group = c.benchmark_group("linalg_diagonal_scale");
+
+    // Scale axis 0 (rows) of a square matrix
+    for s in &shapes_square() {
+        let tensor = random_tensor(s.shape.clone());
+        let weights: Vec<f64> = (0..s.shape[0]).map(|i| (i + 1) as f64).collect();
+        group.bench_with_input(
+            BenchmarkId::new("axis0", s.label),
+            &(&tensor, &weights),
+            |b, (t, w)| {
+                b.iter_with_large_drop(|| diagonal_scale(t, w, 0).unwrap());
+            },
+        );
+    }
+
+    // Scale axis 1 (columns) of a square matrix
+    for s in &shapes_square() {
+        let tensor = random_tensor(s.shape.clone());
+        let weights: Vec<f64> = (0..s.shape[1]).map(|i| (i + 1) as f64).collect();
+        group.bench_with_input(
+            BenchmarkId::new("axis1", s.label),
+            &(&tensor, &weights),
+            |b, (t, w)| {
+                b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
+            },
+        );
+    }
+
+    // Rank-3: scale axis 1
+    let tensor = random_tensor(vec![64, 4, 64]);
+    let weights: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0];
+    group.bench_with_input(
+        BenchmarkId::new("axis1", "64x4x64"),
+        &(&tensor, &weights),
+        |b, (t, w)| {
+            b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
+        },
+    );
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_scale,
@@ -204,5 +251,6 @@ criterion_group!(
     bench_normalize,
     bench_linear_combine,
     bench_trace,
+    bench_diagonal_scale,
 );
 criterion_main!(benches);
