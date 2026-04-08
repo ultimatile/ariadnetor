@@ -249,6 +249,13 @@ where
         let shape = self.shape().to_vec();
         let sub_shape = sub.shape();
         assert_eq!(
+            sub_shape.len(),
+            shape.len(),
+            "replace_slice: sub rank {} doesn't match rank {}",
+            sub_shape.len(),
+            shape.len()
+        );
+        assert_eq!(
             begin.len(),
             shape.len(),
             "replace_slice: begin length {} doesn't match rank {}",
@@ -354,6 +361,7 @@ where
 
         for _ in 0..sub_total {
             debug_assert!(src_flat >= 0 && (src_flat as usize) < sub_raw.len());
+            debug_assert!(dst_flat >= 0 && (dst_flat as usize) < dst_buf.len());
             dst_buf.as_mut_slice()[dst_flat as usize] = sub_raw[src_flat as usize].clone();
 
             for &d in axis_order.iter().rev() {
