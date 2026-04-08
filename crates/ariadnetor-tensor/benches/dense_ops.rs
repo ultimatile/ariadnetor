@@ -361,6 +361,49 @@ fn bench_expand(c: &mut Criterion) {
     group.finish();
 }
 
+// ==========================================================================
+// replace_slice
+// ==========================================================================
+
+fn bench_replace_slice(c: &mut Criterion) {
+    let mut group = c.benchmark_group("replace_slice");
+
+    // Write a 128×128 sub-tensor into a 256×256 tensor
+    let dst = random_tensor(vec![256, 256]);
+    let sub = random_tensor(vec![128, 128]);
+    group.bench_function("128x128_into_256x256", |b| {
+        b.iter_batched_ref(
+            || unique_copy(&dst),
+            |d| d.replace_slice(&sub, &[64, 64]),
+            criterion::BatchSize::LargeInput,
+        );
+    });
+
+    // Write a 512×512 sub-tensor into a 1024×1024 tensor
+    let dst = random_tensor(vec![1024, 1024]);
+    let sub = random_tensor(vec![512, 512]);
+    group.bench_function("512x512_into_1024x1024", |b| {
+        b.iter_batched_ref(
+            || unique_copy(&dst),
+            |d| d.replace_slice(&sub, &[256, 256]),
+            criterion::BatchSize::LargeInput,
+        );
+    });
+
+    // Rank-3: write 32×4×64 into 64×4×64
+    let dst = random_tensor(vec![64, 4, 64]);
+    let sub = random_tensor(vec![32, 4, 64]);
+    group.bench_function("32x4x64_into_64x4x64", |b| {
+        b.iter_batched_ref(
+            || unique_copy(&dst),
+            |d| d.replace_slice(&sub, &[16, 0, 0]),
+            criterion::BatchSize::LargeInput,
+        );
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_to_contiguous,
@@ -373,5 +416,6 @@ criterion_group!(
     bench_slice,
     bench_concatenate,
     bench_expand,
+    bench_replace_slice,
 );
 criterion_main!(benches);
