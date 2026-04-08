@@ -135,6 +135,31 @@ fn test_gemm_f32_basic() {
     assert_eq!(c, [19.0, 22.0, 43.0, 50.0]);
 }
 
+#[test]
+fn test_gemm_f32_alpha_beta() {
+    let backend = NativeBackend::new();
+    let a = [1.0f32, 2.0, 3.0, 4.0];
+    let b = [5.0f32, 6.0, 7.0, 8.0];
+    let mut c = [2.0f32; 4];
+
+    let desc = GemmDescriptor {
+        m: 2,
+        n: 2,
+        k: 2,
+        alpha: 2.0,
+        a: &a,
+        b: &b,
+        beta: 3.0,
+        c: &mut c,
+        trans_a: false,
+        trans_b: false,
+        order: MemoryOrder::RowMajor,
+    };
+    backend.gemm(desc).unwrap();
+    // 2*[19,22,43,50] + 3*[2,2,2,2] = [44,50,92,106]
+    assert_eq!(c, [44.0, 50.0, 92.0, 106.0]);
+}
+
 // --- Complex GEMM tests ---
 
 #[test]
@@ -256,4 +281,177 @@ fn test_gemm_c32_basic() {
 
     assert!((c[0].re - 17.0).abs() < 1e-4);
     assert!((c[0].im - 15.0).abs() < 1e-4);
+}
+
+#[test]
+fn test_gemm_c32_alpha_beta() {
+    let backend = NativeBackend::new();
+    let a = [
+        Complex::new(1.0f32, 0.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(1.0, 0.0),
+    ];
+    let b = [
+        Complex::new(3.0f32, 4.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(3.0, 4.0),
+    ];
+    let mut c = [
+        Complex::new(2.0f32, 3.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(2.0, 3.0),
+    ];
+
+    // C = 2*I*B + i*C_init
+    let desc = GemmDescriptor {
+        m: 2,
+        n: 2,
+        k: 2,
+        alpha: Complex::new(2.0, 0.0),
+        a: &a,
+        b: &b,
+        beta: Complex::new(0.0, 1.0),
+        c: &mut c,
+        trans_a: false,
+        trans_b: false,
+        order: MemoryOrder::RowMajor,
+    };
+    backend.gemm(desc).unwrap();
+
+    // C[0,0] = 2*(3+4i) + i*(2+3i) = (6+8i) + (-3+2i) = 3+10i
+    assert!((c[0].re - 3.0).abs() < 1e-4);
+    assert!((c[0].im - 10.0).abs() < 1e-4);
+}
+
+// --- ColumnMajor tests ---
+// A = [[1,2],[3,4]] col-major: [1,3,2,4]
+// B = [[5,6],[7,8]] col-major: [5,7,6,8]
+// C = A*B = [[19,22],[43,50]] col-major: [19,43,22,50]
+
+#[test]
+fn test_gemm_f64_colmajor() {
+    let backend = NativeBackend::new();
+    let a = [1.0f64, 3.0, 2.0, 4.0];
+    let b = [5.0f64, 7.0, 6.0, 8.0];
+    let mut c = [2.0f64; 4]; // != 1.0 to distinguish * from /
+
+    // C = 2*A*B + 3*C_init
+    let desc = GemmDescriptor {
+        m: 2,
+        n: 2,
+        k: 2,
+        alpha: 2.0,
+        a: &a,
+        b: &b,
+        beta: 3.0,
+        c: &mut c,
+        trans_a: false,
+        trans_b: false,
+        order: MemoryOrder::ColumnMajor,
+    };
+    backend.gemm(desc).unwrap();
+    // 2*[19,43,22,50] + 3*[2,2,2,2] = [44,92,50,106]
+    assert_eq!(c, [44.0, 92.0, 50.0, 106.0]);
+}
+
+#[test]
+fn test_gemm_f32_colmajor() {
+    let backend = NativeBackend::new();
+    let a = [1.0f32, 3.0, 2.0, 4.0];
+    let b = [5.0f32, 7.0, 6.0, 8.0];
+    let mut c = [2.0f32; 4];
+
+    let desc = GemmDescriptor {
+        m: 2,
+        n: 2,
+        k: 2,
+        alpha: 2.0,
+        a: &a,
+        b: &b,
+        beta: 3.0,
+        c: &mut c,
+        trans_a: false,
+        trans_b: false,
+        order: MemoryOrder::ColumnMajor,
+    };
+    backend.gemm(desc).unwrap();
+    assert_eq!(c, [44.0, 92.0, 50.0, 106.0]);
+}
+
+#[test]
+fn test_gemm_c64_colmajor() {
+    let backend = NativeBackend::new();
+    let a = [
+        Complex::new(1.0, 1.0),
+        Complex::new(3.0, 1.0),
+        Complex::new(2.0, 1.0),
+        Complex::new(4.0, 1.0),
+    ];
+    let b = [
+        Complex::new(5.0, 1.0),
+        Complex::new(7.0, 1.0),
+        Complex::new(6.0, 1.0),
+        Complex::new(8.0, 1.0),
+    ];
+    let mut c = [Complex::new(2.0, 3.0); 4];
+
+    // C = 2*A*B + i*C_init
+    let desc = GemmDescriptor {
+        m: 2,
+        n: 2,
+        k: 2,
+        alpha: Complex::new(2.0, 0.0),
+        a: &a,
+        b: &b,
+        beta: Complex::new(0.0, 1.0),
+        c: &mut c,
+        trans_a: false,
+        trans_b: false,
+        order: MemoryOrder::ColumnMajor,
+    };
+    backend.gemm(desc).unwrap();
+
+    // C[0,0] = 2*(17+15i) + i*(2+3i) = (34+30i) + (-3+2i) = 31+32i
+    assert!((c[0].re - 31.0f64).abs() < 1e-10);
+    assert!((c[0].im - 32.0f64).abs() < 1e-10);
+}
+
+#[test]
+fn test_gemm_c32_colmajor() {
+    let backend = NativeBackend::new();
+    let a = [
+        Complex::new(1.0f32, 1.0),
+        Complex::new(3.0, 1.0),
+        Complex::new(2.0, 1.0),
+        Complex::new(4.0, 1.0),
+    ];
+    let b = [
+        Complex::new(5.0f32, 1.0),
+        Complex::new(7.0, 1.0),
+        Complex::new(6.0, 1.0),
+        Complex::new(8.0, 1.0),
+    ];
+    let mut c = [Complex::new(2.0f32, 3.0); 4];
+
+    let desc = GemmDescriptor {
+        m: 2,
+        n: 2,
+        k: 2,
+        alpha: Complex::new(2.0, 0.0),
+        a: &a,
+        b: &b,
+        beta: Complex::new(0.0, 1.0),
+        c: &mut c,
+        trans_a: false,
+        trans_b: false,
+        order: MemoryOrder::ColumnMajor,
+    };
+    backend.gemm(desc).unwrap();
+
+    // C[0,0] = 2*(17+15i) + i*(2+3i) = (34+30i) + (-3+2i) = 31+32i
+    assert!((c[0].re - 31.0).abs() < 1e-3);
+    assert!((c[0].im - 32.0).abs() < 1e-3);
 }
