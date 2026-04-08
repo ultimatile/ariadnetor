@@ -7,7 +7,6 @@ use super::*;
 fn backend() -> NativeBackend {
     NativeBackend
 }
-
 // -- Test tensor constructors ------------------------------------------------
 
 /// Rank-2 U1, identity flux, blocks (0,0): 2×2 and (1,1): 3×3.
@@ -70,7 +69,6 @@ fn sample_u1_nonzero_flux() -> BlockSparse<f64, U1Sector> {
     }
     bs
 }
-
 // -- Dense helpers for verification ------------------------------------------
 
 fn matmul(a: &[f64], m: usize, k: usize, b: &[f64], n: usize) -> Vec<f64> {
@@ -202,7 +200,6 @@ fn sample_rank4_multi_tuple() -> BlockSparse<f64, U1Sector> {
 }
 
 // -- Validation tests --------------------------------------------------------
-
 #[test]
 fn nrow_zero_rejected() {
     let bs = sample_u1_rank2();
@@ -233,7 +230,6 @@ fn trunc_svd_chi_max_zero_rejected() {
 }
 
 // -- SVD tests ---------------------------------------------------------------
-
 #[test]
 fn svd_rank2_reconstruction() {
     let bs = sample_u1_rank2();
@@ -280,7 +276,6 @@ fn svd_nonzero_flux() {
 }
 
 // -- Truncated SVD tests -----------------------------------------------------
-
 #[test]
 fn trunc_svd_chi_max() {
     let bs = sample_u1_rank2();
@@ -310,7 +305,6 @@ fn trunc_svd_no_truncation() {
 }
 
 // -- QR tests ----------------------------------------------------------------
-
 #[test]
 fn qr_rank2_reconstruction() {
     let bs = sample_u1_rank2();
@@ -347,7 +341,6 @@ fn qr_orthogonality() {
 }
 
 // -- LQ tests ----------------------------------------------------------------
-
 #[test]
 fn lq_rank2_reconstruction() {
     let bs = sample_u1_rank2();
@@ -384,7 +377,6 @@ fn lq_orthogonality() {
 }
 
 // -- Exact truncation error tests --------------------------------------------
-
 #[test]
 fn trunc_svd_exact_truncation_error() {
     let bs = sample_known_svs();
@@ -483,7 +475,6 @@ fn trunc_svd_zero_sector_bond_structure() {
 }
 
 // -- Multi-tuple fused sector tests ------------------------------------------
-
 #[test]
 fn svd_rank4_multi_tuple_reconstruction() {
     let bs = sample_rank4_multi_tuple();
@@ -530,7 +521,6 @@ fn trunc_svd_rank4_multi_tuple_reconstruction() {
     assert_eq!(u.rank(), 3);
     assert_eq!(vt.rank(), 3);
 }
-
 // -- Z2 symmetry test --------------------------------------------------------
 
 #[test]
@@ -566,7 +556,6 @@ fn svd_z2_reconstruction() {
     assert_eq!(sv.values.len(), 2);
     verify_svd_reconstruction(&bs, &u, &sv, &vt, 1);
 }
-
 // -- Empty tensor test -------------------------------------------------------
 
 #[test]
@@ -595,3 +584,5 @@ fn trunc_svd_empty_tensor_with_target_err() {
     assert_eq!(vt.num_blocks(), 0);
     assert!(trunc_err.abs() < 1e-15);
 }
+
+mod mutant;
