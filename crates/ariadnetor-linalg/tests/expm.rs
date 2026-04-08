@@ -615,6 +615,50 @@ fn test_expm_1x1_matrix() {
 }
 
 #[test]
+fn test_expm_3x3_large_lower_rows() {
+    // Catches norm_1 index mutation (i*n → i/n): with n=3, mutated norm_1
+    // reads only row 0 (tiny), missing the large entries in rows 1-2.
+    // Correct norm_1 ≈ 20 (scaling needed), mutated ≈ 0.003 (Padé 3, wrong).
+    let backend = NativeBackend::new();
+    #[rustfmt::skip]
+    let a = Dense::<f64>::from_data_with_order(
+        vec![
+            0.001,  0.001,  0.001,
+            0.0,    0.0,    0.0,
+            10.0,   10.0,   10.0,
+        ],
+        vec![3, 3],
+        MemoryOrder::RowMajor,
+    );
+    let result = expm(&backend, &a, 1).unwrap();
+
+    // tr(exp(A)) = sum of exp(eigenvalues)
+    // A has eigenvalues ≈ 0.001, 0, 10.001 (nearly diagonal-dominant)
+    // tr(exp(A)) ≈ 1.001 + 1 + exp(10.001) ≈ 2 + 22028.5
+    let trace = result.get(&[0, 0]) + result.get(&[1, 1]) + result.get(&[2, 2]);
+
+    // det(exp(A)) = exp(tr(A)) = exp(0.001 + 0 + 10) ≈ exp(10.001)
+    let expected_det = (10.001f64).exp();
+    let actual_det = result.get(&[0, 0])
+        * (result.get(&[1, 1]) * result.get(&[2, 2]) - result.get(&[1, 2]) * result.get(&[2, 1]))
+        - result.get(&[0, 1])
+            * (result.get(&[1, 0]) * result.get(&[2, 2])
+                - result.get(&[1, 2]) * result.get(&[2, 0]))
+        + result.get(&[0, 2])
+            * (result.get(&[1, 0]) * result.get(&[2, 1])
+                - result.get(&[1, 1]) * result.get(&[2, 0]));
+
+    assert!(
+        (actual_det - expected_det).abs() / expected_det < 1e-6,
+        "det(exp(A)) = {actual_det}, expected {expected_det}"
+    );
+    assert!(
+        trace > 22000.0,
+        "trace too small: {trace} (expected > 22000)"
+    );
+}
+
+#[test]
 fn test_expm_satisfies_exp_property() {
     // exp(A+B) = exp(A)*exp(B) when [A,B]=0 (commuting matrices)
     // Use A = diag(1, 2), B = diag(3, 4) → both diagonal → they commute
