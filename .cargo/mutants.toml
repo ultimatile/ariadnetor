@@ -3,4 +3,6 @@ exclude_re = [
     "Scalar for f(32|64)>::im .* Default::default",
     # 3rd sweep restores center position; bonds already at chi_max so error is always 0
     "truncate.rs:71.* replace \\+ with -",
+    # NativeBackend has no state, so Arc::new(Default::default()) == shared()
+    "NativeBackend::shared .* Arc::new",
 ]
