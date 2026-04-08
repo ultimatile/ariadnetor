@@ -45,4 +45,6 @@ exclude_re = [
     # Display::fmt for error types: error message content, no functional impact
     "BackendError>::fmt .* Ok",
     "ContractionError>::fmt .* Ok",
+    # norm Mixed arm: optimization shortcut; fallback computes same result via full inner product
+    "inner.rs.*delete match arm.*Mixed.*in norm",
 ]
