@@ -210,6 +210,13 @@ fn is_matmul_false_rank3_inputs() {
 }
 
 #[test]
+fn is_matmul_false_rank1_times_rank2() {
+    // One input has 1 index, 3 unique indices, but not a matrix multiply
+    let expr = EinsumExpr::parse("i,ij->j").unwrap();
+    assert!(!expr.is_matrix_multiply());
+}
+
+#[test]
 fn is_matmul_false_scalar_output() {
     // Output has 0 indices
     let expr = EinsumExpr::parse("ij,ji->").unwrap();
