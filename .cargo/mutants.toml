@@ -34,4 +34,15 @@ exclude_re = [
     # cumulative_offsets: all test inputs have single-tuple fused sectors (dims=[d]),
     # so offsets=[0] regardless of += vs *=. Needs multi-tuple with block_dim > 1.
     "fused_sector.rs:133.* replace \\+= with",
+    # ComputeBackend default impls: NativeBackend overrides all; no other backend exists
+    "ComputeBackend>::is_available",
+    "ComputeBackend>::svd .* Ok",
+    "ComputeBackend>::qr .* Ok",
+    "ComputeBackend>::lq .* Ok",
+    "ComputeBackend>::eigh .* Ok",
+    "ComputeBackend>::eig .* Ok",
+    "ComputeBackend>::solve .* Ok",
+    # Display::fmt for error types: error message content, no functional impact
+    "BackendError>::fmt .* Ok",
+    "ContractionError>::fmt .* Ok",
 ]
