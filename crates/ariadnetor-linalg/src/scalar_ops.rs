@@ -379,7 +379,11 @@ where
 
     let total = tensor.len();
     if total == 0 {
-        return Ok(tensor.clone());
+        return Ok(Dense::from_data_with_order(
+            Vec::new(),
+            tensor.shape().to_vec(),
+            tensor.memory_order(),
+        ));
     }
 
     let order = tensor.memory_order();
