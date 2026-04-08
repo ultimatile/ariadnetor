@@ -16,4 +16,8 @@ exclude_re = [
     "expm.rs:427.* replace <= with",
     "expm.rs:432.* replace \\+",
     "expm.rs:438.* replace > with >=",
+    # einsum: 0-input arm is unreachable (parse always produces >= 1 input)
+    "einsum.rs:63.* delete match arm 0",
+    # einsum: Hadamard is an optimization of batched_contract; both produce same result
+    "einsum.rs:115.* replace == with !=",
 ]
