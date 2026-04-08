@@ -34,6 +34,7 @@
 
 mod block_sparse_contract;
 mod block_sparse_decomp;
+mod block_sparse_scale;
 mod contract;
 mod decomposition;
 mod eigen;
@@ -52,6 +53,7 @@ pub use block_sparse_decomp::{
     BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
     lq_block_sparse, qr_block_sparse, svd_block_sparse, trunc_svd_block_sparse,
 };
+pub use block_sparse_scale::diagonal_scale_block_sparse;
 pub use contract::contract;
 pub use decomposition::{
     LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq, qr, svd, trunc_svd,

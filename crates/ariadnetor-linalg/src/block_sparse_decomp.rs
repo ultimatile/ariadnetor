@@ -37,6 +37,22 @@ pub struct BlockSingularValues<R, S: Sector> {
     pub values: Vec<(S, Vec<R>)>,
 }
 
+impl<R, S: Sector> BlockSingularValues<R, S> {
+    /// Transform each singular value, preserving the sector structure.
+    pub fn map<U, F>(&self, mut f: F) -> BlockSingularValues<U, S>
+    where
+        F: FnMut(&R) -> U,
+    {
+        BlockSingularValues {
+            values: self
+                .values
+                .iter()
+                .map(|(s, vs)| (s.clone(), vs.iter().map(&mut f).collect()))
+                .collect(),
+        }
+    }
+}
+
 /// Result of a block-sparse SVD: `(U, S, Vt)`.
 pub type BlockSparseSvdResult<T, S> = (
     BlockSparse<T, S>,
