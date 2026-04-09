@@ -119,7 +119,8 @@ fn test_diagonal_scale_error_cases() {
     let t = Dense::<f64>::from_data_with_order(vec![1.0; 6], vec![2, 3], MemoryOrder::RowMajor);
     // axis out of range
     assert!(diagonal_scale(&t, &[1.0, 2.0], 2).is_err());
-    // wrong weights length
+    // matching weights length for axis 0
     assert!(diagonal_scale(&t, &[1.0, 2.0], 0).is_ok()); // 2 == shape[0]
+    // wrong weights length for axis 1
     assert!(diagonal_scale(&t, &[1.0, 2.0], 1).is_err()); // 2 != shape[1]=3
 }
