@@ -376,5 +376,35 @@ where
             tensor.shape()[axis]
         ));
     }
-    Ok(tensor.map_with_index(|idx, val| val.clone() * weights[idx[axis]].clone()))
+
+    let total = tensor.len();
+    if total == 0 {
+        return Ok(Dense::from_data_with_order(
+            Vec::new(),
+            tensor.shape().to_vec(),
+            tensor.memory_order(),
+        ));
+    }
+
+    let order = tensor.memory_order();
+    let shape = tensor.shape();
+    let contiguous = tensor.to_contiguous(order);
+    let data = contiguous.data();
+
+    let strip_len: usize = match order {
+        MemoryOrder::RowMajor => shape[axis + 1..].iter().product(),
+        MemoryOrder::ColumnMajor => shape[..axis].iter().product(),
+    };
+    let axis_dim = shape[axis];
+
+    let result: Vec<T> = data
+        .iter()
+        .enumerate()
+        .map(|(i, val)| {
+            let w_idx = (i / strip_len) % axis_dim;
+            val.clone() * weights[w_idx].clone()
+        })
+        .collect();
+
+    Ok(Dense::from_data_with_order(result, shape.to_vec(), order))
 }
