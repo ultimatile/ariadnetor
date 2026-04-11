@@ -128,22 +128,35 @@ fn canonicalize_bsp_preserves_full_chain_state_center_last() {
 }
 
 // --------------------------------------------------------------------------
-// Flux preservation per site
+// Per-site flux after canonicalize
 // --------------------------------------------------------------------------
 
+/// `canonicalize_block_sparse` moves each site's flux along the sweep
+/// direction, concentrating the total chain flux on the orthogonality center.
+/// For the standard zero-flux MPS convention used by `make_4site_u1_mps`,
+/// every site — including the center — must therefore still carry identity
+/// flux afterwards.
 #[test]
-fn canonicalize_bsp_preserves_per_site_flux() {
+fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     let mps = make_4site_u1_mps();
-    let fluxes_before: Vec<U1Sector> = (0..mps.len()).map(|j| *mps.storage(j).flux()).collect();
+    // Precondition: fixture really is a zero-flux chain; this test's intent
+    // relies on it, so make that explicit instead of trusting the constructor.
+    for j in 0..mps.len() {
+        assert_eq!(
+            *mps.storage(j).flux(),
+            U1Sector(0),
+            "fixture site {j} unexpectedly has non-identity flux"
+        );
+    }
 
-    let mut mps_after = mps.clone();
+    let mut mps_after = mps;
     canonicalize_block_sparse(&mut mps_after, 2);
 
-    for (j, expected) in fluxes_before.iter().enumerate() {
+    for j in 0..mps_after.len() {
         assert_eq!(
-            mps_after.storage(j).flux(),
-            expected,
-            "site {j} flux changed through canonicalize"
+            *mps_after.storage(j).flux(),
+            U1Sector(0),
+            "site {j} flux changed through canonicalize of a zero-flux chain"
         );
     }
 }

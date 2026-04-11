@@ -191,6 +191,21 @@ fn absorb_from_right<T: Scalar>(
 /// required: `qr_block_sparse` with `nrow = rank - 1` returns a rank-`rank` Q
 /// and a rank-2 R that matches the original right bond.
 ///
+/// # Per-site flux semantics
+///
+/// `qr_block_sparse` / `lq_block_sparse` return an isometric factor with
+/// `flux = identity()` and push the original site's flux into the residual
+/// R / L factor, which this sweep then absorbs into the neighboring site.
+/// Consequently, a full `canonicalize` pass moves each site's flux along the
+/// sweep direction and leaves the total chain flux concentrated on the
+/// orthogonality center.
+///
+/// The conventional block-sparse MPS convention is that every site already
+/// has `flux = identity()` (total charge carried by the boundary bonds via
+/// their sector structure), in which case this effect is a no-op and per-site
+/// flux is preserved. Callers with non-identity per-site flux should expect
+/// that flux to be gathered at the center site after canonicalize.
+///
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
