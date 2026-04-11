@@ -41,7 +41,7 @@ fn canonicalize_bsp_center_0_all_right_isometric() {
     canonicalize_block_sparse(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
-    // Sites 1..4 must be right-canonical.
+    // All sites past the center must be right-canonical.
     for j in 1..mps.len() {
         assert!(
             is_right_canonical_bsp(mps.storage(j), TOL),

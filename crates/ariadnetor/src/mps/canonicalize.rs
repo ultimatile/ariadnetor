@@ -242,7 +242,7 @@ where
 
     // Absorb R into site j+1: R(new_bond, old_right_bond) × next(old_left_bond, ...)
     // → (new_bond, ...). R's axis 1 is the original right bond of site j, which pairs
-    // with site j+1's axis 0 by construction; block_sparse_contract validates the
+    // with site j+1's axis 0 by construction; contract_block_sparse validates the
     // opposing directions.
     let new_next = {
         let next = chain.storage(j + 1);
