@@ -191,24 +191,28 @@ fn absorb_from_right<T: Scalar>(
 /// required: `qr_block_sparse` with `nrow = rank - 1` returns a rank-`rank` Q
 /// and a rank-2 R that matches the original right bond.
 ///
-/// # Per-site flux semantics
+/// # Precondition: per-site identity flux
 ///
-/// `qr_block_sparse` / `lq_block_sparse` return an isometric factor with
-/// `flux = identity()` and push the original site's flux into the residual
-/// R / L factor, which this sweep then absorbs into the neighboring site.
-/// Consequently, a full `canonicalize` pass moves each site's flux along the
-/// sweep direction and leaves the total chain flux concentrated on the
-/// orthogonality center.
+/// This function requires every site in `chain` to already carry
+/// `flux = identity()`, which matches the conventional block-sparse MPS
+/// encoding (total charge is represented by the boundary bond sectors, not by
+/// per-tensor flux labels).
 ///
-/// The conventional block-sparse MPS convention is that every site already
-/// has `flux = identity()` (total charge carried by the boundary bonds via
-/// their sector structure), in which case this effect is a no-op and per-site
-/// flux is preserved. Callers with non-identity per-site flux should expect
-/// that flux to be gathered at the center site after canonicalize.
+/// The two sweeps are not symmetric in how they propagate non-identity per-
+/// site flux: `qr_block_sparse` returns an isometric `Q` with identity flux
+/// and puts the original flux into `R`, which this sweep then absorbs into
+/// the right neighbor, shifting left-side flux toward the center. In contrast
+/// `lq_block_sparse` puts the original flux on the isometric `Q` and returns
+/// an identity-flux `L`, so the right-to-left sweep leaves right-side flux
+/// untouched. Supporting canonicalization of arbitrarily charged per-site
+/// fluxes requires a different decomposition path and is tracked as future
+/// work; accepting such chains silently would yield an asymmetric result that
+/// is neither what callers expect nor a valid canonical form.
 ///
 /// # Panics
 ///
-/// Panics if `center >= chain.len()` or if the chain is empty.
+/// Panics if `center >= chain.len()`, if the chain is empty, or if any site
+/// has non-identity flux.
 pub fn canonicalize_block_sparse<T, S, B, C>(chain: &mut C, center: usize)
 where
     T: Scalar,
@@ -221,6 +225,17 @@ where
         center < n,
         "center {center} out of range for chain of length {n}"
     );
+
+    // Reject charged per-site flux up front: the sweeps below would otherwise
+    // produce an asymmetric, non-canonical result (see function docstring).
+    let identity = S::identity();
+    for j in 0..n {
+        assert!(
+            *chain.storage(j).flux() == identity,
+            "canonicalize_block_sparse requires site {j} to have identity flux; \
+             charged per-site flux is not yet supported"
+        );
+    }
 
     // Left-to-right QR sweep: make sites 0..center left-canonical.
     for j in 0..center {

@@ -128,19 +128,18 @@ fn canonicalize_bsp_preserves_full_chain_state_center_last() {
 }
 
 // --------------------------------------------------------------------------
-// Per-site flux after canonicalize
+// Per-site identity flux is a documented precondition
 // --------------------------------------------------------------------------
 
-/// `canonicalize_block_sparse` moves each site's flux along the sweep
-/// direction, concentrating the total chain flux on the orthogonality center.
-/// For the standard zero-flux MPS convention used by `make_4site_u1_mps`,
-/// every site — including the center — must therefore still carry identity
-/// flux afterwards.
+/// The standard block-sparse MPS convention is that every site carries
+/// identity flux; `canonicalize_block_sparse` enforces this. This test pins
+/// both halves of the contract: the fixture supplies identity-flux sites, and
+/// canonicalize preserves that labelling end-to-end.
 #[test]
 fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     let mps = make_4site_u1_mps();
-    // Precondition: fixture really is a zero-flux chain; this test's intent
-    // relies on it, so make that explicit instead of trusting the constructor.
+    // Precondition: fixture really is a zero-flux chain. If the fixture
+    // ever changes to carry charge, this test is no longer meaningful.
     for j in 0..mps.len() {
         assert_eq!(
             *mps.storage(j).flux(),
@@ -159,6 +158,31 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
             "site {j} flux changed through canonicalize of a zero-flux chain"
         );
     }
+}
+
+/// `canonicalize_block_sparse` is only defined for chains whose sites all
+/// have identity flux. Passing a site with a non-zero per-site flux must
+/// panic rather than silently produce an asymmetric, non-canonical result.
+#[test]
+#[should_panic(expected = "identity flux")]
+fn canonicalize_bsp_panics_on_charged_site() {
+    use arnet_tensor::block_sparse::{Direction, QNIndex};
+
+    // Rank-3 rank-1-bonds tensor with a single allowed block and flux = 1.
+    // Shapes and sectors chosen minimally — the test only cares that the
+    // precondition guard fires before any sweep work happens.
+    let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
+    let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
+    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(1));
+    // The only allowed block has coord [0, 1, 0] under flux=1.
+    let data = site
+        .block_data_mut(&arnet_tensor::block_sparse::BlockCoord(vec![0, 1, 0]))
+        .expect("allowed block for flux=1");
+    data[0] = 1.0;
+
+    let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
+    canonicalize_block_sparse(&mut mps, 0);
 }
 
 // --------------------------------------------------------------------------
