@@ -2,7 +2,12 @@
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::{contract, lq, qr};
+use arnet_linalg::{
+    BlockSparseContractResult, contract, contract_block_sparse, lq, lq_block_sparse, qr,
+    qr_block_sparse,
+};
+use arnet_tensor::block_sparse::BlockSparse;
+use arnet_tensor::sector::Sector;
 use arnet_tensor::{Dense, MemoryOrder};
 
 use super::chain::TensorChain;
@@ -165,4 +170,164 @@ fn absorb_from_right<T: Scalar>(
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
     result_2d.reshape(new_shape)
+}
+
+// ============================================================================
+// BlockSparse canonicalize — parallel path for Mps<BlockSparse<T, S>, B>
+// ============================================================================
+
+/// Move the orthogonality center of a block-sparse tensor chain.
+///
+/// BlockSparse analogue of [`canonicalize`]. Performs left-to-right QR sweeps
+/// and right-to-left LQ sweeps using [`qr_block_sparse`] / [`lq_block_sparse`]
+/// and [`contract_block_sparse`]. After completion, the canonical form is
+/// `Mixed { center }`.
+///
+/// Works for both MPS (rank-3) and MPO (rank-4) tensor chains whose sites are
+/// `BlockSparse<T, S>`.
+///
+/// Unlike the Dense path, the block-sparse primitives preserve the site rank
+/// across decomposition, so no intermediate reshape / row-major conversion is
+/// required: `qr_block_sparse` with `nrow = rank - 1` returns a rank-`rank` Q
+/// and a rank-2 R that matches the original right bond.
+///
+/// # Panics
+///
+/// Panics if `center >= chain.len()` or if the chain is empty.
+pub fn canonicalize_block_sparse<T, S, B, C>(chain: &mut C, center: usize)
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+    C: TensorChain<BlockSparse<T, S>, B>,
+{
+    let n = chain.len();
+    assert!(
+        center < n,
+        "center {center} out of range for chain of length {n}"
+    );
+
+    // Left-to-right QR sweep: make sites 0..center left-canonical.
+    for j in 0..center {
+        left_qr_step_block_sparse(chain, j);
+    }
+
+    // Right-to-left LQ sweep: make sites center+1..N right-canonical.
+    for j in (center + 1..n).rev() {
+        right_lq_step_block_sparse(chain, j);
+    }
+
+    chain.set_canonical_form(CanonicalForm::Mixed { center });
+}
+
+/// Block-sparse QR step: decompose site j, replace with Q, absorb R into site j+1.
+fn left_qr_step_block_sparse<T, S, B, C>(chain: &mut C, j: usize)
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+    C: TensorChain<BlockSparse<T, S>, B>,
+{
+    // QR decomposition: group all modes except the last as "rows".
+    // For nrow = rank - 1, Q inherits legs [original[..rank-1], new_bond(In)]
+    // and R has legs [new_bond(Out), original[rank-1]].
+    let (q, r) = {
+        let site = chain.storage(j);
+        let rank = site.rank();
+        qr_block_sparse(chain.backend(), site, rank - 1)
+            .expect("qr_block_sparse failed during canonicalize_block_sparse")
+    };
+
+    *chain.storage_mut(j) = q;
+
+    // Absorb R into site j+1: R(new_bond, old_right_bond) × next(old_left_bond, ...)
+    // → (new_bond, ...). R's axis 1 is the original right bond of site j, which pairs
+    // with site j+1's axis 0 by construction; block_sparse_contract validates the
+    // opposing directions.
+    let new_next = {
+        let next = chain.storage(j + 1);
+        absorb_from_left_block_sparse(&r, next, chain.backend())
+    };
+
+    *chain.storage_mut(j + 1) = new_next;
+}
+
+/// Block-sparse LQ step: decompose site j, replace with Q, absorb L into site j-1.
+fn right_lq_step_block_sparse<T, S, B, C>(chain: &mut C, j: usize)
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+    C: TensorChain<BlockSparse<T, S>, B>,
+{
+    // LQ decomposition: group only the first mode as "rows".
+    // For nrow = 1, L has legs [original[0], new_bond(In)] and Q has legs
+    // [new_bond(Out), original[1..]].
+    let (l, q) = {
+        let site = chain.storage(j);
+        lq_block_sparse(chain.backend(), site, 1)
+            .expect("lq_block_sparse failed during canonicalize_block_sparse")
+    };
+
+    *chain.storage_mut(j) = q;
+
+    // Absorb L into site j-1: prev(..., old_right_bond) × L(old_left_bond, new_bond)
+    // → (..., new_bond). prev's last axis pairs with L.axis(0), which is the original
+    // left bond of site j before decomposition.
+    let new_prev = {
+        let prev = chain.storage(j - 1);
+        absorb_from_right_block_sparse(prev, &l, chain.backend())
+    };
+
+    *chain.storage_mut(j - 1) = new_prev;
+}
+
+/// Multiply R into the next site from the left: `R(new, old_right) × next(old_left, ...)`.
+///
+/// Scalar result cannot occur because the output rank is
+/// `r.rank() + next.rank() - 2 >= 3`, so the matcher panic arm is unreachable by
+/// construction.
+fn absorb_from_left_block_sparse<T, S, B>(
+    r: &BlockSparse<T, S>,
+    next: &BlockSparse<T, S>,
+    backend: &B,
+) -> BlockSparse<T, S>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    match contract_block_sparse(backend, r, next, &[1], &[0])
+        .expect("R absorption into next site failed during canonicalize_block_sparse")
+    {
+        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResult::Scalar(_) => {
+            unreachable!("left absorption contraction always produces a tensor")
+        }
+    }
+}
+
+/// Multiply L into the previous site from the right: `prev(..., old_right) × L(old_left, new)`.
+///
+/// Scalar result cannot occur for the same rank accounting reason as
+/// [`absorb_from_left_block_sparse`].
+fn absorb_from_right_block_sparse<T, S, B>(
+    prev: &BlockSparse<T, S>,
+    l: &BlockSparse<T, S>,
+    backend: &B,
+) -> BlockSparse<T, S>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let last = prev.rank() - 1;
+    match contract_block_sparse(backend, prev, l, &[last], &[0])
+        .expect("L absorption into previous site failed during canonicalize_block_sparse")
+    {
+        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResult::Scalar(_) => {
+            unreachable!("right absorption contraction always produces a tensor")
+        }
+    }
 }

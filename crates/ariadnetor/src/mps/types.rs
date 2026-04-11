@@ -6,7 +6,7 @@ use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::TruncSvdParams;
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, TensorRepr};
 
 /// Canonical form of a tensor chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,15 +108,15 @@ pub struct Mps<R = Dense<f64>, B: ComputeBackend = NativeBackend>(pub(crate) Ten
 pub struct Mpo<R = Dense<f64>, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<R, B>);
 
 // ============================================================================
-// Constructors (Dense-specific, any backend)
+// Constructors (storage-agnostic, any backend)
 // ============================================================================
 
-impl<T: Scalar, B: ComputeBackend> Mps<Dense<T>, B> {
+impl<R: TensorRepr, B: ComputeBackend> Mps<R, B> {
     /// Create an MPS from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 3 with shape `(χ_L, d, χ_R)`.
     /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<Dense<T>>, backend: Arc<B>) -> Self {
+    pub fn with_backend(storages: Vec<R>, backend: Arc<B>) -> Self {
         Self(TensorChainData {
             storages,
             backend,
@@ -125,12 +125,12 @@ impl<T: Scalar, B: ComputeBackend> Mps<Dense<T>, B> {
     }
 }
 
-impl<T: Scalar, B: ComputeBackend> Mpo<Dense<T>, B> {
+impl<R: TensorRepr, B: ComputeBackend> Mpo<R, B> {
     /// Create an MPO from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 4 with shape `(χ_L, d_ket, d_bra, χ_R)`.
     /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<Dense<T>>, backend: Arc<B>) -> Self {
+    pub fn with_backend(storages: Vec<R>, backend: Arc<B>) -> Self {
         Self(TensorChainData {
             storages,
             backend,
@@ -140,19 +140,19 @@ impl<T: Scalar, B: ComputeBackend> Mpo<Dense<T>, B> {
 }
 
 // ============================================================================
-// Constructors (Dense-specific, default NativeBackend)
+// Constructors (storage-agnostic, default NativeBackend)
 // ============================================================================
 
-impl<T: Scalar> Mps<Dense<T>, NativeBackend> {
+impl<R: TensorRepr> Mps<R, NativeBackend> {
     /// Create an MPS from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<Dense<T>>) -> Self {
+    pub fn from_storages(storages: Vec<R>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
     }
 }
 
-impl<T: Scalar> Mpo<Dense<T>, NativeBackend> {
+impl<R: TensorRepr> Mpo<R, NativeBackend> {
     /// Create an MPO from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<Dense<T>>) -> Self {
+    pub fn from_storages(storages: Vec<R>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
     }
 }
