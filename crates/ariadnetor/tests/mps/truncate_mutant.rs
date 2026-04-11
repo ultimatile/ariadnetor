@@ -1,7 +1,7 @@
 //! Targeted mutation-testing coverage for truncate.rs.
 //!
 //! Covers: CanonicalForm match arms (Left→n-1, Right→0, Mixed→center,
-//! Unknown→auto-canon), SvdAbsorb::Both sets Unknown form, truncation
+//! Unknown→auto-canonicalize), SvdAbsorb::Both sets Unknown form, truncation
 //! error accumulation arithmetic, and isometry verification.
 
 use approx::assert_abs_diff_eq;
@@ -92,7 +92,7 @@ fn test_truncate_mixed_preserves_center() {
 // --------------------------------------------------------------------------
 
 #[test]
-fn test_truncate_unknown_auto_canon_default_center() {
+fn test_truncate_unknown_auto_canonicalize_default_center() {
     let mut mps = make_4site_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
@@ -110,7 +110,7 @@ fn test_truncate_unknown_auto_canon_default_center() {
 // --------------------------------------------------------------------------
 
 #[test]
-fn test_truncate_partial_auto_canon_explicit_center() {
+fn test_truncate_partial_auto_canonicalize_explicit_center() {
     let mut mps = make_4site_mps();
     mps.set_canonical_form(CanonicalForm::Partial {
         left_end: 1,
