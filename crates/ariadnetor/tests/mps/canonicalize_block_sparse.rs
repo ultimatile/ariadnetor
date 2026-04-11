@@ -160,29 +160,42 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     }
 }
 
-/// `canonicalize_block_sparse` is only defined for chains whose sites all
-/// have identity flux. Passing a site with a non-zero per-site flux must
-/// panic rather than silently produce an asymmetric, non-canonical result.
+/// A charged single-site "chain" is already a valid mixed-canonical form
+/// (there are no bonds to isometrize), so `canonicalize_block_sparse` must
+/// accept non-identity flux there and leave the site data untouched —
+/// only the canonical-form tag should flip. This regression test also pins
+/// the contract that charged input is not silently rejected.
 #[test]
-#[should_panic(expected = "identity flux")]
-fn canonicalize_bsp_panics_on_charged_site() {
-    use arnet_tensor::block_sparse::{Direction, QNIndex};
+fn canonicalize_bsp_accepts_charged_single_site() {
+    use arnet_tensor::block_sparse::{BlockCoord, Direction, QNIndex};
 
-    // Rank-3 rank-1-bonds tensor with a single allowed block and flux = 1.
-    // Shapes and sectors chosen minimally — the test only cares that the
-    // precondition guard fires before any sweep work happens.
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
     let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(1));
-    // The only allowed block has coord [0, 1, 0] under flux=1.
-    let data = site
-        .block_data_mut(&arnet_tensor::block_sparse::BlockCoord(vec![0, 1, 0]))
-        .expect("allowed block for flux=1");
-    data[0] = 1.0;
+    // flux=1 forces the unique allowed block to be (left=0, phys=1, right=0).
+    site.block_data_mut(&BlockCoord(vec![0, 1, 0]))
+        .expect("allowed block for flux=1")[0] = 7.5;
+
+    let data_before: Vec<f64> = site
+        .block_metas()
+        .iter()
+        .flat_map(|m| site.block_data(&m.coord).unwrap().iter().copied())
+        .collect();
 
     let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
     canonicalize_block_sparse(&mut mps, 0);
+
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
+    assert_eq!(*mps.storage(0).flux(), U1Sector(1));
+
+    let data_after: Vec<f64> = mps
+        .storage(0)
+        .block_metas()
+        .iter()
+        .flat_map(|m| mps.storage(0).block_data(&m.coord).unwrap().iter().copied())
+        .collect();
+    assert_eq!(data_before, data_after);
 }
 
 // --------------------------------------------------------------------------
