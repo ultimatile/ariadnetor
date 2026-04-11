@@ -1,4 +1,4 @@
-//! Targeted mutation-testing coverage for orthogonalize.rs.
+//! Targeted mutation-testing coverage for canonicalize.rs.
 //!
 //! Tests arithmetic correctness in left_qr_step, right_lq_step,
 //! absorb_from_left, and absorb_from_right by verifying isometry
@@ -17,7 +17,7 @@ use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_
 #[test]
 fn test_left_sweep_all_sites_left_canonical() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
 
     let tol = 1e-10;
     // Sites 0, 1, 2 must be left-canonical (Q^T Q = I)
@@ -36,7 +36,7 @@ fn test_left_sweep_all_sites_left_canonical() {
 #[test]
 fn test_right_sweep_all_sites_right_canonical() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     let tol = 1e-10;
     // Sites 1, 2, 3 must be right-canonical (Q Q^T = I)
@@ -55,7 +55,7 @@ fn test_right_sweep_all_sites_right_canonical() {
 #[test]
 fn test_mixed_canonical_center_1() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
@@ -75,29 +75,29 @@ fn test_mixed_canonical_center_1() {
 }
 
 // --------------------------------------------------------------------------
-// State preservation: inner product unchanged after orthogonalize
+// State preservation: inner product unchanged after canonicalize
 // --------------------------------------------------------------------------
 
 #[test]
-fn test_orthogonalize_preserves_inner_product_center_0() {
+fn test_canonicalize_preserves_inner_product_center_0() {
     let mps = make_4site_mps();
     let inner_before = mps::inner(&mps, &mps);
 
-    let mut mps_orth = mps.clone();
-    mps::orthogonalize(&mut mps_orth, 0);
-    let inner_after = mps::inner(&mps_orth, &mps_orth);
+    let mut mps_canon = mps.clone();
+    mps::canonicalize(&mut mps_canon, 0);
+    let inner_after = mps::inner(&mps_canon, &mps_canon);
 
     assert_abs_diff_eq!(inner_before, inner_after, epsilon = 1e-10);
 }
 
 #[test]
-fn test_orthogonalize_preserves_inner_product_center_3() {
+fn test_canonicalize_preserves_inner_product_center_3() {
     let mps = make_4site_mps();
     let inner_before = mps::inner(&mps, &mps);
 
-    let mut mps_orth = mps.clone();
-    mps::orthogonalize(&mut mps_orth, 3);
-    let inner_after = mps::inner(&mps_orth, &mps_orth);
+    let mut mps_canon = mps.clone();
+    mps::canonicalize(&mut mps_canon, 3);
+    let inner_after = mps::inner(&mps_canon, &mps_canon);
 
     assert_abs_diff_eq!(inner_before, inner_after, epsilon = 1e-10);
 }
@@ -111,7 +111,7 @@ fn test_state_vector_preserved_center_2() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
     let dense_after = mps_to_dense(&mps);
 
     // Normalize both and compare
@@ -142,7 +142,7 @@ fn test_physical_dims_preserved_all_centers() {
         let mut mps = make_4site_mps();
         let phys: Vec<_> = (0..4).map(|j| mps.storage(j).shape()[1]).collect();
 
-        mps::orthogonalize(&mut mps, center);
+        mps::canonicalize(&mut mps, center);
 
         for (j, &expected) in phys.iter().enumerate() {
             assert_eq!(
@@ -161,13 +161,13 @@ fn test_physical_dims_preserved_all_centers() {
 #[test]
 fn test_tensors_remain_rank_3() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
 
     for j in 0..4 {
         assert_eq!(
             mps.storage(j).rank(),
             3,
-            "site {j} rank changed after orthogonalize"
+            "site {j} rank changed after canonicalize"
         );
     }
 }
@@ -177,10 +177,10 @@ fn test_tensors_remain_rank_3() {
 // --------------------------------------------------------------------------
 
 #[test]
-fn test_bond_dim_compatibility_after_orthogonalize() {
+fn test_bond_dim_compatibility_after_canonicalize() {
     for center in 0..4 {
         let mut mps = make_4site_mps();
-        mps::orthogonalize(&mut mps, center);
+        mps::canonicalize(&mut mps, center);
 
         for j in 0..3 {
             let right_bond = *mps.storage(j).shape().last().unwrap();
@@ -200,7 +200,7 @@ fn test_bond_dim_compatibility_after_orthogonalize() {
 // --------------------------------------------------------------------------
 
 #[test]
-fn test_two_site_orthogonalize_center_0() {
+fn test_two_site_canonicalize_center_0() {
     let storages = vec![
         Dense::from_data_with_order(
             vec![1.0, 2.0, 3.0, 4.0],
@@ -222,7 +222,7 @@ fn test_two_site_orthogonalize_center_0() {
         .sum::<f64>()
         .sqrt();
 
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     // Site 1 should be right-canonical
     assert!(is_right_canonical(mps.storage(1), 1e-10));
@@ -240,7 +240,7 @@ fn test_two_site_orthogonalize_center_0() {
 }
 
 #[test]
-fn test_two_site_orthogonalize_center_1() {
+fn test_two_site_canonicalize_center_1() {
     let storages = vec![
         Dense::from_data_with_order(
             vec![1.0, 2.0, 3.0, 4.0],
@@ -262,7 +262,7 @@ fn test_two_site_orthogonalize_center_1() {
         .sum::<f64>()
         .sqrt();
 
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     // Site 0 should be left-canonical
     assert!(is_left_canonical(mps.storage(0), 1e-10));

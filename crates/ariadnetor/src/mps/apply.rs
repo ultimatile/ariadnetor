@@ -20,7 +20,7 @@ use super::types::{Mpo, Mps, TruncateParams};
 ///   → result[w_L*χ_L, d_bra, w_R*χ_R]
 /// ```
 ///
-/// If `params` is `Some`, the result is orthogonalized and truncated.
+/// If `params` is `Some`, the result is canonicalized and truncated.
 /// If `None`, the exact (lossless) result is returned with `Unknown`
 /// canonical form.
 ///
@@ -73,7 +73,7 @@ where
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::orthogonalize(&mut result_mps, center);
+        super::canonicalize(&mut result_mps, center);
         super::truncate(&mut result_mps, trunc_params);
     }
 

@@ -10,10 +10,10 @@ use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_
 
 #[test]
 fn test_truncate_no_change_within_tolerance() {
-    // Build a small MPS, orthogonalize, then truncate with large chi_max
+    // Build a small MPS, canonicalize, then truncate with large chi_max
     // Bond dims should stay the same since no truncation is needed
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
 
     let bond_dims_before = mps.bond_dims();
 
@@ -34,7 +34,7 @@ fn test_truncate_no_change_within_tolerance() {
 
 #[test]
 fn test_truncate_reduces_bond_dim() {
-    // Build MPS with large bond dims, orthogonalize, then truncate to chi_max=2
+    // Build MPS with large bond dims, canonicalize, then truncate to chi_max=2
     let storages = vec![
         Dense::from_data_with_order(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
@@ -58,7 +58,7 @@ fn test_truncate_reduces_bond_dim() {
         ),
     ];
     let mut mps = Mps::from_storages(storages);
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
@@ -79,7 +79,7 @@ fn test_truncate_reduces_bond_dim() {
 #[test]
 fn test_truncate_preserves_state_approximately() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
     let dense_before = mps_to_dense(&mps);
     let norm_before = mps::norm(&mps);
 
@@ -103,7 +103,7 @@ fn test_truncate_preserves_state_approximately() {
 #[test]
 fn test_truncate_with_cutoff() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: None,
@@ -124,7 +124,7 @@ fn test_truncate_single_site() {
         MemoryOrder::RowMajor,
     )];
     let mut mps = Mps::from_storages(storages);
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
@@ -139,7 +139,7 @@ fn test_truncate_single_site() {
 #[test]
 fn test_truncate_canonical_form_after() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
@@ -167,7 +167,7 @@ fn test_truncate_canonical_form_after() {
 #[test]
 fn test_truncate_absorb_left() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -202,7 +202,7 @@ fn test_truncate_absorb_left() {
 #[test]
 fn test_truncate_absorb_both() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
     let dense_before = mps_to_dense(&mps);
     let norm_before = mps::norm(&mps);
 
@@ -234,12 +234,12 @@ fn test_truncate_absorb_both() {
 }
 
 // ============================================================================
-// Auto-orthogonalize tests
+// Auto-canonicalize tests
 // ============================================================================
 
 #[test]
-fn test_truncate_unknown_auto_orthogonalizes() {
-    // Truncating an Unknown MPS should auto-orthogonalize, not panic
+fn test_truncate_unknown_auto_canonicalizes() {
+    // Truncating an Unknown MPS should auto-canonicalize, not panic
     let mut mps = make_4site_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
@@ -262,7 +262,7 @@ fn test_truncate_unknown_auto_orthogonalizes() {
 
 #[test]
 fn test_truncate_unknown_default_center() {
-    // Without specifying center, auto-orthogonalize defaults to site 0
+    // Without specifying center, auto-canonicalize defaults to site 0
     let mut mps = make_4site_mps();
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -278,7 +278,7 @@ fn test_truncate_unknown_default_center() {
 fn test_truncate_left_canonical_auto() {
     // Left canonical: all sites left-isometric, center should be last site
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -299,7 +299,7 @@ fn test_truncate_left_canonical_auto() {
 fn test_truncate_right_canonical_auto() {
     // Right canonical: all sites right-isometric, center should be site 0
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -322,7 +322,7 @@ fn test_truncate_error_accumulates_correctly() {
     // Truncating to chi_max=1 forces maximal truncation, so error must be
     // strictly positive and the squared-error accumulation (err*err) matters.
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
     let norm_before = mps::norm(&mps);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -348,7 +348,7 @@ fn test_truncate_error_accumulates_correctly() {
 #[test]
 fn test_absorb_left_differs_from_right() {
     let mut mps_l = make_4site_mps();
-    mps::orthogonalize(&mut mps_l, 1);
+    mps::canonicalize(&mut mps_l, 1);
     let mut mps_r = mps_l.clone();
 
     let params_l = TruncateParams {

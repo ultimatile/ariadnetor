@@ -1,4 +1,4 @@
-//! Orthogonalization tests.
+//! Canonicalization tests.
 
 use arnet::mps::{self, CanonicalForm, Mps, TensorChain};
 use arnet_tensor::{Dense, MemoryOrder};
@@ -6,11 +6,11 @@ use arnet_tensor::{Dense, MemoryOrder};
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
 #[test]
-fn test_orthogonalize_center_0() {
+fn test_canonicalize_center_0() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
@@ -43,11 +43,11 @@ fn test_orthogonalize_center_0() {
 }
 
 #[test]
-fn test_orthogonalize_center_middle() {
+fn test_canonicalize_center_middle() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 
@@ -75,10 +75,10 @@ fn test_orthogonalize_center_middle() {
 }
 
 #[test]
-fn test_orthogonalize_center_last() {
+fn test_canonicalize_center_last() {
     let mut mps = make_4site_mps();
 
-    mps::orthogonalize(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
@@ -92,7 +92,7 @@ fn test_orthogonalize_center_last() {
 }
 
 #[test]
-fn test_orthogonalize_single_site() {
+fn test_canonicalize_single_site() {
     let storages = vec![Dense::from_data_with_order(
         vec![1.0, 2.0],
         vec![1, 2, 1],
@@ -100,18 +100,18 @@ fn test_orthogonalize_single_site() {
     )];
     let mut mps = Mps::from_storages(storages);
 
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 
 #[test]
-fn test_orthogonalize_preserves_physical_dims() {
+fn test_canonicalize_preserves_physical_dims() {
     let mut mps = make_4site_mps();
 
     let phys_dims: Vec<usize> = (0..4).map(|j| mps.storage(j).shape()[1]).collect();
 
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     for (j, &expected) in phys_dims.iter().enumerate() {
         assert_eq!(

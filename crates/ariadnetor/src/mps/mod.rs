@@ -9,17 +9,17 @@
 //! - **MPO**: `(χ_L, d_ket, d_bra, χ_R)` — left-bond, ket, bra, right-bond
 
 mod apply;
+mod canonicalize;
 mod chain;
 mod inner;
-mod orthogonalize;
 mod site_ops;
 mod truncate;
 mod types;
 
 pub use apply::apply;
+pub use canonicalize::canonicalize;
 pub use chain::TensorChain;
 pub use inner::{braket, inner, norm};
-pub use orthogonalize::orthogonalize;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use truncate::truncate;
 pub use types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
