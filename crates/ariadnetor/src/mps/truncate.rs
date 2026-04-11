@@ -30,7 +30,7 @@ pub fn truncate<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<T, B>,
+    C: TensorChain<Dense<T>, B>,
 {
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
@@ -93,7 +93,7 @@ fn right_trunc_step<T, B, C>(
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<T, B>,
+    C: TensorChain<Dense<T>, B>,
 {
     let (left_storage, right_factor, err) = {
         let dense = chain.storage(j);
@@ -159,7 +159,7 @@ fn left_trunc_step<T, B, C>(
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<T, B>,
+    C: TensorChain<Dense<T>, B>,
 {
     let (right_storage, left_factor, err) = {
         let dense = chain.storage(j);

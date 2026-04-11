@@ -12,7 +12,7 @@ fn to_col_major(t: &Dense<f64>) -> Dense<f64> {
 }
 
 /// Build the same 4-site MPS as make_4site_mps but with column-major site tensors.
-fn make_4site_mps_col_major() -> Mps<f64> {
+fn make_4site_mps_col_major() -> Mps<Dense<f64>> {
     let rm = make_4site_mps();
     let storages: Vec<Dense<f64>> = (0..rm.len()).map(|j| to_col_major(rm.storage(j))).collect();
     Mps::from_storages(storages)

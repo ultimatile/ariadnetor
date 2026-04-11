@@ -4,7 +4,7 @@ use arnet::mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use arnet_tensor::Dense;
 
 /// Build a simple 3-site MPS with shapes (1,2,4), (4,2,4), (4,2,1).
-fn make_3site_mps() -> Mps<f64> {
+fn make_3site_mps() -> Mps<Dense<f64>> {
     let storages = vec![
         Dense::ones(vec![1, 2, 4]), // site 0
         Dense::ones(vec![4, 2, 4]), // site 1
@@ -141,7 +141,7 @@ fn test_single_site_mps() {
 
 #[test]
 fn test_empty_mps() {
-    let mps = Mps::<f64>::from_storages(vec![]);
+    let mps = Mps::<Dense<f64>>::from_storages(vec![]);
 
     assert_eq!(mps.len(), 0);
     assert!(mps.is_empty());

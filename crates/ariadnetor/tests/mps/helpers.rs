@@ -4,7 +4,7 @@ use arnet::mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::{Dense, MemoryOrder};
 
 /// Build a random-ish 4-site MPS from deterministic data.
-pub fn make_4site_mps() -> Mps<f64> {
+pub fn make_4site_mps() -> Mps<Dense<f64>> {
     let storages = vec![
         Dense::from_data_with_order(
             vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
@@ -76,7 +76,7 @@ pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
 }
 
 /// Compute the full state vector from an MPS by contracting all sites.
-pub fn mps_to_dense(mps: &Mps<f64>) -> Dense<f64> {
+pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
     let backend = arnet_native::NativeBackend::new();
     let n = mps.len();
 
@@ -106,7 +106,7 @@ pub fn mps_to_dense(mps: &Mps<f64>) -> Dense<f64> {
 }
 
 /// Build an identity MPO for a given number of sites and physical dimension.
-pub fn make_identity_mpo(n: usize, d: usize) -> Mpo<f64> {
+pub fn make_identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
     let storages = (0..n)
         .map(|_| {
             let mut data = vec![0.0; d * d];

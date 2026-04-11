@@ -7,7 +7,7 @@ use arnet::mps::{Mps, TensorChain};
 use arnet_tensor::Dense;
 
 /// Two-site MPS with asymmetric bond dimensions to distinguish index choices.
-fn make_2site_mps() -> Mps<f64> {
+fn make_2site_mps() -> Mps<Dense<f64>> {
     // site 0: (1, 2, 3), site 1: (3, 2, 1)
     let storages = vec![Dense::ones(vec![1, 2, 3]), Dense::ones(vec![3, 2, 1])];
     Mps::from_storages(storages)
@@ -19,7 +19,7 @@ fn make_2site_mps() -> Mps<f64> {
 
 #[test]
 fn test_is_empty_true_for_zero_sites() {
-    let mps = Mps::<f64>::from_storages(vec![]);
+    let mps = Mps::<Dense<f64>>::from_storages(vec![]);
     assert!(mps.is_empty());
 }
 
@@ -99,7 +99,7 @@ fn test_bond_dims_four_distinct_bonds() {
 
 #[test]
 fn test_max_bond_dim_zero_sites() {
-    let mps = Mps::<f64>::from_storages(vec![]);
+    let mps = Mps::<Dense<f64>>::from_storages(vec![]);
     assert_eq!(mps.max_bond_dim(), 0);
 }
 
@@ -141,7 +141,7 @@ fn test_max_bond_dim_uniform() {
 
 #[test]
 fn test_len_matches_site_count() {
-    assert_eq!(Mps::<f64>::from_storages(vec![]).len(), 0);
+    assert_eq!(Mps::<Dense<f64>>::from_storages(vec![]).len(), 0);
     assert_eq!(
         Mps::from_storages(vec![Dense::<f64>::ones(vec![1, 2, 1])]).len(),
         1
