@@ -320,8 +320,12 @@ pub fn bsp_mps_contract_full(mps: &Mps<BlockSparse<f64, U1Sector>>) -> BlockSpar
 
 /// Assert that two block-sparse tensors are element-wise close.
 ///
-/// Requires matching rank, flux, logical shape, and block set. Each stored block
-/// in `a` must also be stored in `b` with numerically close data.
+/// Requires matching rank, flux, logical shape, per-axis QN indices
+/// (`Direction` + sector/dimension pairs), and block set. The axis-level
+/// check is what makes `BlockCoord`-based block lookups well-defined across
+/// both tensors: without it, two tensors with the same logical shape but
+/// different sector labeling could share `BlockCoord` indices that point to
+/// semantically unrelated blocks and spuriously compare equal.
 pub fn assert_block_sparse_close(
     a: &BlockSparse<f64, U1Sector>,
     b: &BlockSparse<f64, U1Sector>,
@@ -330,6 +334,20 @@ pub fn assert_block_sparse_close(
     assert_eq!(a.rank(), b.rank(), "rank mismatch");
     assert_eq!(a.flux(), b.flux(), "flux mismatch");
     assert_eq!(a.shape(), b.shape(), "logical shape mismatch");
+
+    for (axis, (ai, bi)) in a.indices().iter().zip(b.indices().iter()).enumerate() {
+        assert_eq!(
+            ai.direction(),
+            bi.direction(),
+            "axis {axis} direction mismatch"
+        );
+        assert_eq!(
+            ai.blocks(),
+            bi.blocks(),
+            "axis {axis} sector / dimension layout mismatch"
+        );
+    }
+
     assert_eq!(a.num_blocks(), b.num_blocks(), "block count mismatch");
 
     for meta in a.block_metas() {
