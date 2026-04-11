@@ -1,4 +1,4 @@
-//! Orthogonalize: move the orthogonality center of a tensor chain via QR/LQ sweeps
+//! Canonicalize: move the orthogonality center of a tensor chain via QR/LQ sweeps
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
@@ -19,7 +19,7 @@ use super::types::CanonicalForm;
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
-pub fn orthogonalize<T, B, C>(chain: &mut C, center: usize)
+pub fn canonicalize<T, B, C>(chain: &mut C, center: usize)
 where
     T: Scalar,
     B: ComputeBackend,
@@ -58,7 +58,7 @@ where
         let orig_shape = dense.shape().to_vec();
 
         let (q, r) = qr(chain.backend(), dense, rank - 1)
-            .expect("QR decomposition failed during orthogonalize");
+            .expect("QR decomposition failed during canonicalize");
 
         // Reshape Q from (m, k) back to (*orig[..rank-1], k).
         // Convert to row-major first so reshape uses standard axis merge order.
@@ -94,7 +94,7 @@ where
         let orig_shape = dense.shape().to_vec();
 
         let (l, q) =
-            lq(chain.backend(), dense, 1).expect("LQ decomposition failed during orthogonalize");
+            lq(chain.backend(), dense, 1).expect("LQ decomposition failed during canonicalize");
 
         // Reshape Q from (k, n) back to (k, *orig[1..]).
         // Convert to row-major first so reshape uses standard axis merge order.
@@ -132,7 +132,7 @@ fn absorb_from_left<T: Scalar>(
 
     let next_2d = next.reshape(vec![first, rest]);
     let result_2d = contract(backend, r, &next_2d, "ab,bc->ac")
-        .expect("R absorption into next site failed during orthogonalize");
+        .expect("R absorption into next site failed during canonicalize");
 
     // Convert to row-major before rank-restoring reshape (axis split semantics).
     let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);
@@ -157,7 +157,7 @@ fn absorb_from_right<T: Scalar>(
 
     let prev_2d = prev.reshape(vec![rest, last]);
     let result_2d = contract(backend, &prev_2d, l, "ab,bc->ac")
-        .expect("L absorption into previous site failed during orthogonalize");
+        .expect("L absorption into previous site failed during canonicalize");
 
     // Convert to row-major before rank-restoring reshape (axis split semantics).
     let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);

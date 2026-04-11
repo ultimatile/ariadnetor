@@ -1,7 +1,7 @@
 //! Targeted mutation-testing coverage for truncate.rs.
 //!
 //! Covers: CanonicalForm match arms (Left→n-1, Right→0, Mixed→center,
-//! Unknown→auto-orth), SvdAbsorb::Both sets Unknown form, truncation
+//! Unknown→auto-canonicalize), SvdAbsorb::Both sets Unknown form, truncation
 //! error accumulation arithmetic, and isometry verification.
 
 use approx::assert_abs_diff_eq;
@@ -19,7 +19,7 @@ use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_
 #[test]
 fn test_truncate_left_form_center_is_last_site() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -47,7 +47,7 @@ fn test_truncate_left_form_center_is_last_site() {
 #[test]
 fn test_truncate_right_form_center_is_zero() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -75,7 +75,7 @@ fn test_truncate_right_form_center_is_zero() {
 #[test]
 fn test_truncate_mixed_preserves_center() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -88,11 +88,11 @@ fn test_truncate_mixed_preserves_center() {
 }
 
 // --------------------------------------------------------------------------
-// CanonicalForm::Unknown → auto-orthogonalizes to default center 0
+// CanonicalForm::Unknown → auto-canonicalizes to default center 0
 // --------------------------------------------------------------------------
 
 #[test]
-fn test_truncate_unknown_auto_orth_default_center() {
+fn test_truncate_unknown_auto_canonicalize_default_center() {
     let mut mps = make_4site_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
@@ -106,11 +106,11 @@ fn test_truncate_unknown_auto_orth_default_center() {
 }
 
 // --------------------------------------------------------------------------
-// CanonicalForm::Partial → auto-orthogonalizes to specified center
+// CanonicalForm::Partial → auto-canonicalizes to specified center
 // --------------------------------------------------------------------------
 
 #[test]
-fn test_truncate_partial_auto_orth_explicit_center() {
+fn test_truncate_partial_auto_canonicalize_explicit_center() {
     let mut mps = make_4site_mps();
     mps.set_canonical_form(CanonicalForm::Partial {
         left_end: 1,
@@ -138,7 +138,7 @@ fn test_truncate_partial_auto_orth_explicit_center() {
 #[test]
 fn test_truncate_absorb_both_sets_unknown() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -156,7 +156,7 @@ fn test_truncate_absorb_both_sets_unknown() {
 #[test]
 fn test_truncate_absorb_both_state_preserved() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
     let dense_before = mps_to_dense(&mps);
     let norm_before = mps::norm(&mps);
 
@@ -187,7 +187,7 @@ fn test_truncate_absorb_both_state_preserved() {
 #[test]
 fn test_truncate_absorb_left_produces_mixed() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -209,7 +209,7 @@ fn test_truncate_absorb_left_produces_mixed() {
 #[test]
 fn test_truncate_absorb_right_isometry_structure() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -243,7 +243,7 @@ fn test_truncate_absorb_right_isometry_structure() {
 #[test]
 fn test_truncation_error_positive_for_lossy_truncation() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
@@ -258,7 +258,7 @@ fn test_truncation_error_positive_for_lossy_truncation() {
 #[test]
 fn test_truncation_error_zero_when_no_truncation() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(100),
@@ -275,7 +275,7 @@ fn test_truncation_error_sqrt_of_sum_of_squares() {
     // discarded SVs), not just the sum. Do this by checking that chi_max=1
     // produces smaller error than chi_max=1 would if we just summed SVs.
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
     let norm_before = mps::norm(&mps);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -306,7 +306,7 @@ fn test_truncate_single_site_returns_zero_error() {
         MemoryOrder::RowMajor,
     )];
     let mut mps = Mps::from_storages(storages);
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
@@ -326,7 +326,7 @@ fn test_truncate_single_site_returns_zero_error() {
 fn test_all_bond_dims_within_chi_max() {
     for chi in [1, 2, 3] {
         let mut mps = make_4site_mps();
-        mps::orthogonalize(&mut mps, 2);
+        mps::canonicalize(&mut mps, 2);
 
         let params = TruncateParams::from(TruncSvdParams {
             chi_max: Some(chi),
@@ -351,7 +351,7 @@ fn test_all_absorb_modes_same_norm() {
 
     for absorb in [SvdAbsorb::Left, SvdAbsorb::Right, SvdAbsorb::Both] {
         let mut mps = base.clone();
-        mps::orthogonalize(&mut mps, 1);
+        mps::canonicalize(&mut mps, 1);
 
         let params = TruncateParams {
             svd: TruncSvdParams {
@@ -384,7 +384,7 @@ fn test_truncate_right_form_ignores_center_param() {
     // Right arm sets center=0, but fallback would use params.center=Some(2).
     // With the arm deleted, center would be 2 instead of 0.
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
     let params = TruncateParams {
@@ -409,7 +409,7 @@ fn test_truncate_right_form_ignores_center_param() {
 #[test]
 fn test_truncation_error_matches_reconstruction_error() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
     let dense_before = mps_to_dense(&mps);
 
     let params = TruncateParams::from(TruncSvdParams {

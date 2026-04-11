@@ -6,8 +6,8 @@ use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, trunc_svd};
 use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{Float, Zero};
 
+use super::canonicalize::canonicalize;
 use super::chain::TensorChain;
-use super::orthogonalize::orthogonalize;
 use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
 /// Truncate bond dimensions of a tensor chain via SVD sweeps.
@@ -16,11 +16,11 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 /// directions, applying truncation at each bond. Returns the total
 /// truncation error (Frobenius norm of discarded singular values).
 ///
-/// If the chain is not in `Mixed` canonical form, auto-orthogonalizes first:
+/// If the chain is not in `Mixed` canonical form, auto-canonicalizes first:
 /// - `Mixed`: uses existing center (no extra work).
 /// - `Left`: treats the last site as center.
 /// - `Right`: treats site 0 as center.
-/// - `Partial` / `Unknown`: orthogonalizes to `params.center` (default 0).
+/// - `Partial` / `Unknown`: canonicalizes to `params.center` (default 0).
 ///
 /// # Panics
 ///
@@ -41,7 +41,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            orthogonalize(chain, c);
+            canonicalize(chain, c);
             c
         }
     };

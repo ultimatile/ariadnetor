@@ -16,7 +16,7 @@ use super::helpers::make_4site_mps;
 #[test]
 fn test_norm_left_returns_one_not_computed() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
     let n = mps::norm(&mps);
@@ -30,7 +30,7 @@ fn test_norm_left_returns_one_not_computed() {
 #[test]
 fn test_norm_right_returns_one_not_computed() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
     let n = mps::norm(&mps);
@@ -44,7 +44,7 @@ fn test_norm_right_returns_one_not_computed() {
 #[test]
 fn test_norm_mixed_center_0() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
     let n = mps::norm(&mps);
@@ -61,7 +61,7 @@ fn test_norm_mixed_center_0() {
 #[test]
 fn test_norm_mixed_center_last() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
     let n = mps::norm(&mps);
@@ -76,7 +76,7 @@ fn test_norm_mixed_center_last() {
 #[test]
 fn test_norm_mixed_center_1() {
     let mut mps = make_4site_mps();
-    mps::orthogonalize(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
     let n_mixed = mps::norm(&mps);

@@ -62,7 +62,7 @@ Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
 
 Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
 
-- `arnet::mps` — MPS/MPO tensor chains: orthogonalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit)
+- `arnet::mps` — MPS/MPO tensor chains: canonicalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit)
 
 ## Usage
 

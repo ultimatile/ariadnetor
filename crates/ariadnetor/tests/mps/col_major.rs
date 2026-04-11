@@ -19,13 +19,13 @@ fn make_4site_mps_col_major() -> Mps<Dense<f64>> {
 }
 
 #[test]
-fn test_col_major_orthogonalize_preserves_state() {
+fn test_col_major_canonicalize_preserves_state() {
     let mps_rm = make_4site_mps();
     let mut mps_cm = make_4site_mps_col_major();
 
     let dense_before = mps_to_dense(&mps_rm).to_contiguous(MemoryOrder::RowMajor);
 
-    mps::orthogonalize(&mut mps_cm, 1);
+    mps::canonicalize(&mut mps_cm, 1);
 
     let dense_after = mps_to_dense(&mps_cm).to_contiguous(MemoryOrder::RowMajor);
     for (a, b) in dense_before.data().iter().zip(dense_after.data().iter()) {
@@ -63,7 +63,7 @@ fn test_col_major_truncate_preserves_state() {
 
     let norm_before = mps::norm(&mps_rm);
 
-    mps::orthogonalize(&mut mps_cm, 1);
+    mps::canonicalize(&mut mps_cm, 1);
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(3),
         target_trunc_err: None,

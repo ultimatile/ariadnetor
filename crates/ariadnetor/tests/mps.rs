@@ -7,24 +7,24 @@ mod helpers;
 mod apply;
 #[path = "mps/basic.rs"]
 mod basic;
+#[path = "mps/canonicalize.rs"]
+mod canonicalize;
 #[path = "mps/col_major.rs"]
 mod col_major;
 #[path = "mps/inner_product.rs"]
 mod inner_product;
 #[path = "mps/operators.rs"]
 mod operators;
-#[path = "mps/orthogonalize.rs"]
-mod orthogonalize;
 #[path = "mps/truncate.rs"]
 mod truncate;
 
 // Mutation-testing coverage modules
+#[path = "mps/canonicalize_mutant.rs"]
+mod canonicalize_mutant;
 #[path = "mps/chain_mutant.rs"]
 mod chain_mutant;
 #[path = "mps/inner_mutant.rs"]
 mod inner_mutant;
-#[path = "mps/orthogonalize_mutant.rs"]
-mod orthogonalize_mutant;
 #[path = "mps/site_ops_mutant.rs"]
 mod site_ops_mutant;
 #[path = "mps/truncate_mutant.rs"]

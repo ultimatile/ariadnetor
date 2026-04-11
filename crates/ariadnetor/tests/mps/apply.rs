@@ -100,7 +100,7 @@ fn test_apply_with_truncation() {
     for d in result.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
     }
-    // Should be canonicalized (orthogonalize + truncate was called)
+    // Should be canonicalized (canonicalize + truncate was called)
     assert_eq!(*result.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 

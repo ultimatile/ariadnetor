@@ -49,7 +49,7 @@ fn test_norm_canonicalized_is_fast() {
     let norm_full = mps::norm(&mps);
 
     // Canonicalize and compute norm (O(1) from center tensor)
-    mps::orthogonalize(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
     let norm_canonical = mps::norm(&mps);
 
     assert_abs_diff_eq!(norm_full, norm_canonical, epsilon = 1e-10);
@@ -72,8 +72,8 @@ fn test_norm_left_canonical_returns_one() {
     let mut mps = make_4site_mps();
     let norm_full = mps::norm(&mps);
 
-    // Orthogonalize to make all sites left-isometric, then mark as Left
-    mps::orthogonalize(&mut mps, 3);
+    // Canonicalize to make all sites left-isometric, then mark as Left
+    mps::canonicalize(&mut mps, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
     let norm_left = mps::norm(&mps);
@@ -90,7 +90,7 @@ fn test_norm_left_canonical_returns_one() {
 fn test_norm_right_canonical_returns_one() {
     let mut mps = make_4site_mps();
 
-    mps::orthogonalize(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
     let norm_right = mps::norm(&mps);
@@ -102,8 +102,8 @@ fn test_norm_mixed_uses_center_tensor() {
     let mut mps = make_4site_mps();
     let norm_full = mps::norm(&mps);
 
-    mps::orthogonalize(&mut mps, 2);
-    // canonical_form is Mixed { center: 2 } after orthogonalize
+    mps::canonicalize(&mut mps, 2);
+    // canonical_form is Mixed { center: 2 } after canonicalize
     let norm_mixed = mps::norm(&mps);
 
     // Both should agree
@@ -114,13 +114,13 @@ fn test_norm_mixed_uses_center_tensor() {
 }
 
 #[test]
-fn test_inner_preserved_by_orthogonalize() {
+fn test_inner_preserved_by_canonicalize() {
     let mps_a = make_4site_mps();
     let mut mps_b = make_4site_mps();
 
     let overlap_before = mps::inner(&mps_a, &mps_b);
 
-    mps::orthogonalize(&mut mps_b, 1);
+    mps::canonicalize(&mut mps_b, 1);
 
     let overlap_after = mps::inner(&mps_a, &mps_b);
 

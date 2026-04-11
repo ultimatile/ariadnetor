@@ -50,7 +50,7 @@ pub struct TruncateParams {
     pub svd: TruncSvdParams,
     /// How to absorb singular values at each step.
     pub absorb: SvdAbsorb,
-    /// Target orthogonality center for auto-orthogonalization.
+    /// Target orthogonality center for auto-canonicalization.
     /// Used when the chain is not already in Mixed canonical form.
     /// Defaults to 0 if None.
     pub center: Option<usize>,
