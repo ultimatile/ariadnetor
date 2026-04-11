@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::contract;
-use arnet_tensor::MemoryOrder;
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::chain::TensorChain;
 use super::types::{Mpo, Mps, TruncateParams};
@@ -28,7 +28,11 @@ use super::types::{Mpo, Mps, TruncateParams};
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub fn apply<T, B>(op: &Mpo<T, B>, psi: &Mps<T, B>, params: Option<&TruncateParams>) -> Mps<T, B>
+pub fn apply<T, B>(
+    op: &Mpo<Dense<T>, B>,
+    psi: &Mps<Dense<T>, B>,
+    params: Option<&TruncateParams>,
+) -> Mps<Dense<T>, B>
 where
     T: Scalar,
     B: ComputeBackend,

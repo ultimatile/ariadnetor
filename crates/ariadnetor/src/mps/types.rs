@@ -78,8 +78,8 @@ pub struct TruncResult<T: Scalar> {
 /// Holds raw tensor storages, a shared backend, and canonical form state.
 /// This type is `pub(crate)` — users interact through `Mps` / `Mpo` newtypes.
 #[derive(Debug, Clone)]
-pub(crate) struct TensorChainData<S, B: ComputeBackend = NativeBackend> {
-    pub(crate) storages: Vec<Dense<S>>,
+pub(crate) struct TensorChainData<R, B: ComputeBackend = NativeBackend> {
+    pub(crate) storages: Vec<R>,
     pub(crate) backend: Arc<B>,
     pub(crate) canonical_form: CanonicalForm,
 }
@@ -93,7 +93,7 @@ pub(crate) struct TensorChainData<S, B: ComputeBackend = NativeBackend> {
 ///
 /// Edge tensors use dummy bonds (dim 1) to maintain rank 3.
 #[derive(Debug, Clone)]
-pub struct Mps<S = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<S, B>);
+pub struct Mps<R = Dense<f64>, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<R, B>);
 
 /// Matrix Product Operator — rank-4 tensor chain.
 ///
@@ -105,18 +105,18 @@ pub struct Mps<S = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChai
 ///
 /// Edge tensors use dummy bonds (dim 1) to maintain rank 4.
 #[derive(Debug, Clone)]
-pub struct Mpo<S = f64, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<S, B>);
+pub struct Mpo<R = Dense<f64>, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<R, B>);
 
 // ============================================================================
-// Constructors (any backend)
+// Constructors (Dense-specific, any backend)
 // ============================================================================
 
-impl<S, B: ComputeBackend> Mps<S, B> {
+impl<T: Scalar, B: ComputeBackend> Mps<Dense<T>, B> {
     /// Create an MPS from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 3 with shape `(χ_L, d, χ_R)`.
     /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<Dense<S>>, backend: Arc<B>) -> Self {
+    pub fn with_backend(storages: Vec<Dense<T>>, backend: Arc<B>) -> Self {
         Self(TensorChainData {
             storages,
             backend,
@@ -125,12 +125,12 @@ impl<S, B: ComputeBackend> Mps<S, B> {
     }
 }
 
-impl<S, B: ComputeBackend> Mpo<S, B> {
+impl<T: Scalar, B: ComputeBackend> Mpo<Dense<T>, B> {
     /// Create an MPO from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 4 with shape `(χ_L, d_ket, d_bra, χ_R)`.
     /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<Dense<S>>, backend: Arc<B>) -> Self {
+    pub fn with_backend(storages: Vec<Dense<T>>, backend: Arc<B>) -> Self {
         Self(TensorChainData {
             storages,
             backend,
@@ -140,19 +140,19 @@ impl<S, B: ComputeBackend> Mpo<S, B> {
 }
 
 // ============================================================================
-// Constructors (default NativeBackend)
+// Constructors (Dense-specific, default NativeBackend)
 // ============================================================================
 
-impl<S> Mps<S, NativeBackend> {
+impl<T: Scalar> Mps<Dense<T>, NativeBackend> {
     /// Create an MPS from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<Dense<S>>) -> Self {
+    pub fn from_storages(storages: Vec<Dense<T>>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
     }
 }
 
-impl<S> Mpo<S, NativeBackend> {
+impl<T: Scalar> Mpo<Dense<T>, NativeBackend> {
     /// Create an MPO from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<Dense<S>>) -> Self {
+    pub fn from_storages(storages: Vec<Dense<T>>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
     }
 }

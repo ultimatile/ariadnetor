@@ -3,7 +3,7 @@
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::contract;
-use arnet_tensor::ComputeBackendTensorExt;
+use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::{Float, One};
 
 use super::chain::TensorChain;
@@ -16,7 +16,7 @@ use super::types::{CanonicalForm, Mpo, Mps};
 /// # Panics
 ///
 /// Panics if the MPS lengths differ or either is empty.
-pub fn inner<T, B>(psi: &Mps<T, B>, phi: &Mps<T, B>) -> T
+pub fn inner<T, B>(psi: &Mps<Dense<T>, B>, phi: &Mps<Dense<T>, B>) -> T
 where
     T: Scalar,
     B: ComputeBackend,
@@ -53,7 +53,7 @@ where
 /// - `Mixed`: returns Frobenius norm of the orthogonality center tensor.
 ///
 /// Otherwise computes the full inner product.
-pub fn norm<T, B>(psi: &Mps<T, B>) -> T::Real
+pub fn norm<T, B>(psi: &Mps<Dense<T>, B>) -> T::Real
 where
     T: Scalar,
     B: ComputeBackend,
@@ -76,7 +76,7 @@ where
 /// # Panics
 ///
 /// Panics if the MPS/MPO lengths differ or any is empty.
-pub fn braket<T, B>(psi: &Mps<T, B>, op: &Mpo<T, B>, phi: &Mps<T, B>) -> T
+pub fn braket<T, B>(psi: &Mps<Dense<T>, B>, op: &Mpo<Dense<T>, B>, phi: &Mps<Dense<T>, B>) -> T
 where
     T: Scalar,
     B: ComputeBackend,

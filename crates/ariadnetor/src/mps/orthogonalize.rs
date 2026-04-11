@@ -23,7 +23,7 @@ pub fn orthogonalize<T, B, C>(chain: &mut C, center: usize)
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<T, B>,
+    C: TensorChain<Dense<T>, B>,
 {
     let n = chain.len();
     assert!(
@@ -49,7 +49,7 @@ fn left_qr_step<T, B, C>(chain: &mut C, j: usize)
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<T, B>,
+    C: TensorChain<Dense<T>, B>,
 {
     // QR decomposition: group all modes except the last as "rows"
     let (q_storage, r) = {
@@ -86,7 +86,7 @@ fn right_lq_step<T, B, C>(chain: &mut C, j: usize)
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<T, B>,
+    C: TensorChain<Dense<T>, B>,
 {
     // LQ decomposition: group only the first mode as "rows"
     let (q_storage, l) = {

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::TensorRepr;
 
 use super::types::{CanonicalForm, Mpo, Mps};
 
@@ -11,7 +11,7 @@ use super::types::{CanonicalForm, Mpo, Mps};
 ///
 /// Provides rank-independent accessors for site storages, bond dimensions,
 /// canonical form tracking, and backend access.
-pub trait TensorChain<S, B: ComputeBackend> {
+pub trait TensorChain<R: TensorRepr, B: ComputeBackend> {
     /// Number of sites.
     fn len(&self) -> usize;
 
@@ -25,7 +25,7 @@ pub trait TensorChain<S, B: ComputeBackend> {
     /// # Panics
     ///
     /// Panics if `site >= len()`.
-    fn storage(&self, site: usize) -> &Dense<S>;
+    fn storage(&self, site: usize) -> &R;
 
     /// Mutable reference to the storage at a given site.
     ///
@@ -34,10 +34,10 @@ pub trait TensorChain<S, B: ComputeBackend> {
     /// # Panics
     ///
     /// Panics if `site >= len()`.
-    fn storage_mut(&mut self, site: usize) -> &mut Dense<S>;
+    fn storage_mut(&mut self, site: usize) -> &mut R;
 
     /// Slice of all site storages.
-    fn storages(&self) -> &[Dense<S>];
+    fn storages(&self) -> &[R];
 
     /// Current canonical form.
     fn canonical_form(&self) -> &CanonicalForm;
@@ -81,21 +81,21 @@ pub trait TensorChain<S, B: ComputeBackend> {
 
 macro_rules! impl_tensor_chain {
     ($type:ident) => {
-        impl<S, B: ComputeBackend> TensorChain<S, B> for $type<S, B> {
+        impl<R: TensorRepr, B: ComputeBackend> TensorChain<R, B> for $type<R, B> {
             fn len(&self) -> usize {
                 self.0.storages.len()
             }
 
-            fn storage(&self, site: usize) -> &Dense<S> {
+            fn storage(&self, site: usize) -> &R {
                 &self.0.storages[site]
             }
 
-            fn storage_mut(&mut self, site: usize) -> &mut Dense<S> {
+            fn storage_mut(&mut self, site: usize) -> &mut R {
                 self.0.canonical_form = CanonicalForm::Unknown;
                 &mut self.0.storages[site]
             }
 
-            fn storages(&self) -> &[Dense<S>] {
+            fn storages(&self) -> &[R] {
                 &self.0.storages
             }
 
