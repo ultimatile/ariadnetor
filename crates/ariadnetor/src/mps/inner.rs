@@ -150,12 +150,20 @@ where
     let backend = psi.backend();
 
     // Initial environment: rank-2 identity tensor matching the left boundaries.
-    // Leg 0 pairs with dagger(psi)'s left bond, leg 1 pairs with phi's left bond.
+    // Leg 0 contracts with dagger(psi)'s left bond (which has flipped direction),
+    //   so env[0] keeps psi's original direction.
+    // Leg 1 contracts with phi's left bond (via step2 result),
+    //   so env[1] has the opposite direction.
     let mut env = {
-        let psi_left = psi.storage(0).indices()[0].clone();
-        let phi_left_blocks = phi.storage(0).indices()[0].blocks().to_vec();
-        let env_leg1 = QNIndex::new(phi_left_blocks, Direction::In);
-        let mut e = BlockSparse::<T, S>::zeros(vec![psi_left, env_leg1], S::identity());
+        let psi_left = &psi.storage(0).indices()[0];
+        let phi_left = &phi.storage(0).indices()[0];
+        let env_leg0 = QNIndex::new(psi_left.blocks().to_vec(), psi_left.direction());
+        let phi_dir_flipped = match phi_left.direction() {
+            Direction::Out => Direction::In,
+            Direction::In => Direction::Out,
+        };
+        let env_leg1 = QNIndex::new(phi_left.blocks().to_vec(), phi_dir_flipped);
+        let mut e = BlockSparse::<T, S>::zeros(vec![env_leg0, env_leg1], S::identity());
         if let Some(d) = e.block_data_mut(&BlockCoord(vec![0, 0])) {
             d[0] = T::one();
         }
