@@ -13,6 +13,8 @@ mod canonicalize;
 mod canonicalize_block_sparse;
 #[path = "mps/col_major.rs"]
 mod col_major;
+#[path = "mps/inner_block_sparse.rs"]
+mod inner_block_sparse;
 #[path = "mps/inner_product.rs"]
 mod inner_product;
 #[path = "mps/operators.rs"]

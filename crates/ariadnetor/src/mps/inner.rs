@@ -2,7 +2,9 @@
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::contract;
+use arnet_linalg::{BlockSparseContractResult, contract, contract_block_sparse};
+use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::sector::Sector;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::{Float, One};
 
@@ -110,4 +112,104 @@ where
     }
 
     env.get(&[0, 0, 0])
+}
+
+// ============================================================================
+// BlockSparse inner product and norm
+// ============================================================================
+
+/// Compute the inner product ⟨ψ|φ⟩ of two block-sparse MPS via the transfer
+/// matrix method.
+///
+/// Uses [`BlockSparse::dagger`] to create the bra tensor with flipped
+/// directions, then contracts left-to-right with two
+/// [`contract_block_sparse`] steps per site:
+///
+/// 1. `contract(env, dagger(ψ_j), [0], [0])` — absorb bra's left bond
+/// 2. `contract(result, φ_j, [0,1], [0,1])` — absorb ket's left bond + physical
+///
+/// Returns `T::zero()` when the MPS states have incompatible total flux
+/// (the final environment has no allowed blocks).
+///
+/// # Panics
+///
+/// Panics if the MPS lengths differ or either is empty.
+pub fn inner_block_sparse<T, S, B>(
+    psi: &Mps<BlockSparse<T, S>, B>,
+    phi: &Mps<BlockSparse<T, S>, B>,
+) -> T
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let n = psi.len();
+    assert_eq!(n, phi.len(), "MPS lengths must match");
+    assert!(n > 0, "MPS must have at least one site");
+
+    let backend = psi.backend();
+
+    // Initial environment: rank-2 identity tensor matching the left boundaries.
+    // Leg 0 pairs with dagger(psi)'s left bond, leg 1 pairs with phi's left bond.
+    let mut env = {
+        let psi_left = psi.storage(0).indices()[0].clone();
+        let phi_left_blocks = phi.storage(0).indices()[0].blocks().to_vec();
+        let env_leg1 = QNIndex::new(phi_left_blocks, Direction::In);
+        let mut e = BlockSparse::<T, S>::zeros(vec![psi_left, env_leg1], S::identity());
+        if let Some(d) = e.block_data_mut(&BlockCoord(vec![0, 0])) {
+            d[0] = T::one();
+        }
+        e
+    };
+
+    for j in 0..n {
+        let bra_j = psi.storage(j).dagger();
+        let phi_j = phi.storage(j);
+
+        // Step 1: env(a,b) × bra(a,d,c) → result(b,d,c)
+        let step1 = match contract_block_sparse(backend, &env, &bra_j, &[0], &[0])
+            .expect("inner product step 1 contraction failed")
+        {
+            BlockSparseContractResult::Tensor(t) => t,
+            BlockSparseContractResult::Scalar(_) => {
+                unreachable!("step 1 always produces a tensor (rank >= 2)")
+            }
+        };
+
+        // Step 2: result(b,d,c) × phi(b,d,e) → new_env(c,e)
+        env = match contract_block_sparse(backend, &step1, phi_j, &[0, 1], &[0, 1])
+            .expect("inner product step 2 contraction failed")
+        {
+            BlockSparseContractResult::Tensor(t) => t,
+            BlockSparseContractResult::Scalar(s) => return s,
+        };
+    }
+
+    // Extract scalar from the final rank-2 env (shape [1, 1]).
+    // Returns zero when flux mismatch leaves no allowed blocks.
+    env.block_data(&BlockCoord(vec![0, 0]))
+        .map(|d| d[0])
+        .unwrap_or_else(T::zero)
+}
+
+/// Compute the norm ‖ψ‖ = √⟨ψ|ψ⟩ for a block-sparse MPS.
+///
+/// Exploits canonical form when available:
+/// - `Left` / `Right`: normalized by construction → 1.0.
+/// - `Mixed { center }`: Frobenius norm of the center tensor.
+/// - Otherwise: full inner product via [`inner_block_sparse`].
+pub fn norm_block_sparse<T, S, B>(psi: &Mps<BlockSparse<T, S>, B>) -> T::Real
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    match psi.canonical_form() {
+        CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
+        CanonicalForm::Mixed { center } => psi.storage(*center).norm(),
+        _ => {
+            let overlap = inner_block_sparse(psi, psi);
+            overlap.re().sqrt()
+        }
+    }
 }
