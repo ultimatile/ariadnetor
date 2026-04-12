@@ -284,7 +284,9 @@ fn absorb_from_right<T: Scalar>(
 /// # Panics
 ///
 /// Panics if the chain is empty, or if `params.center` is `Some(c)` with
-/// `c >= chain.len()`.
+/// `c >= chain.len()` and the chain is not already in `Mixed`, `Left`, or
+/// `Right` canonical form (since those forms determine the center
+/// internally and ignore `params.center`).
 pub fn truncate_block_sparse<T, S, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
@@ -293,7 +295,7 @@ where
     C: TensorChain<BlockSparse<T, S>, B>,
 {
     let n = chain.len();
-    assert!(n > 0, "truncate requires a non-empty chain");
+    assert!(n > 0, "truncate_block_sparse requires a non-empty chain");
 
     let center = match chain.canonical_form() {
         CanonicalForm::Mixed { center } => *center,
