@@ -128,13 +128,15 @@ fn canonicalize_bsp_preserves_full_chain_state_center_last() {
 }
 
 // --------------------------------------------------------------------------
-// Per-site identity flux is a documented precondition
+// Zero-flux fixture is preserved through canonicalize
 // --------------------------------------------------------------------------
 
-/// The standard block-sparse MPS convention is that every site carries
-/// identity flux; `canonicalize_block_sparse` enforces this. This test pins
-/// both halves of the contract: the fixture supplies identity-flux sites, and
-/// canonicalize preserves that labelling end-to-end.
+/// `canonicalize_block_sparse` accepts arbitrary per-site flux, but the
+/// standard MPS convention — and the fixture used throughout this file — is
+/// that every site carries identity flux. This test pins that the fixture
+/// really starts at identity and that canonicalize leaves the labelling
+/// unchanged for the zero-flux case. Charged chains are covered separately
+/// by `canonicalize_bsp_accepts_charged_single_site`.
 #[test]
 fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     let mps = make_4site_u1_mps();
