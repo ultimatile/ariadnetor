@@ -19,6 +19,8 @@ mod inner_product;
 mod operators;
 #[path = "mps/truncate.rs"]
 mod truncate;
+#[path = "mps/truncate_block_sparse.rs"]
+mod truncate_block_sparse;
 
 // Mutation-testing coverage modules
 #[path = "mps/canonicalize_mutant.rs"]
