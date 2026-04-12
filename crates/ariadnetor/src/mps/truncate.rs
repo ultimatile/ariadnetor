@@ -2,11 +2,16 @@
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, trunc_svd};
+use arnet_linalg::{
+    BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
+    diagonal_scale_block_sparse, trunc_svd, trunc_svd_block_sparse,
+};
+use arnet_tensor::block_sparse::BlockSparse;
+use arnet_tensor::sector::Sector;
 use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{Float, Zero};
 
-use super::canonicalize::canonicalize;
+use super::canonicalize::{canonicalize, canonicalize_block_sparse};
 use super::chain::TensorChain;
 use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
@@ -261,4 +266,238 @@ fn absorb_from_right<T: Scalar>(
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
     result_2d.reshape(new_shape)
+}
+
+// ============================================================================
+// BlockSparse truncate — parallel path for Mps<BlockSparse<T, S>, B>
+// ============================================================================
+
+/// Truncate bond dimensions of a block-sparse tensor chain via SVD sweeps.
+///
+/// BlockSparse analogue of [`truncate`]. Uses [`trunc_svd_block_sparse`],
+/// [`diagonal_scale_block_sparse`], and [`contract_block_sparse`] instead of
+/// their Dense counterparts. No reshape or memory-order conversion is needed
+/// because block-sparse SVD preserves the leg structure.
+///
+/// See [`truncate`] for the sweep structure and canonical-form semantics.
+///
+/// # Panics
+///
+/// Panics if the chain is empty, or if `params.center` is `Some(c)` with
+/// `c >= chain.len()` and the chain is not already in `Mixed`, `Left`, or
+/// `Right` canonical form (since those forms determine the center
+/// internally and ignore `params.center`).
+pub fn truncate_block_sparse<T, S, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+    C: TensorChain<BlockSparse<T, S>, B>,
+{
+    let n = chain.len();
+    assert!(n > 0, "truncate_block_sparse requires a non-empty chain");
+
+    let center = match chain.canonical_form() {
+        CanonicalForm::Mixed { center } => *center,
+        CanonicalForm::Left => n - 1,
+        CanonicalForm::Right => 0,
+        _ => {
+            let c = params.center.unwrap_or(0);
+            canonicalize_block_sparse(chain, c);
+            c
+        }
+    };
+    if n <= 1 {
+        chain.set_canonical_form(CanonicalForm::Mixed { center });
+        return TruncResult {
+            error: T::Real::zero(),
+        };
+    }
+
+    let svd_params = &params.svd;
+    let absorb = params.absorb;
+    let mut total_err_sq = T::Real::zero();
+
+    // Right sweep from center to N-2: truncate bonds, center moves to N-1
+    for j in center..n - 1 {
+        total_err_sq = total_err_sq + right_trunc_step_block_sparse(chain, j, svd_params, absorb);
+    }
+
+    // Left sweep from N-1 to 1: truncate all bonds, center moves to 0
+    for j in (1..n).rev() {
+        total_err_sq = total_err_sq + left_trunc_step_block_sparse(chain, j, svd_params, absorb);
+    }
+
+    // Right sweep from 0 to center-1: restore center position
+    for j in 0..center {
+        total_err_sq = total_err_sq + right_trunc_step_block_sparse(chain, j, svd_params, absorb);
+    }
+
+    // Both distributes √S to both sides, breaking isometry on all sites.
+    let form = match absorb {
+        SvdAbsorb::Both => CanonicalForm::Unknown,
+        _ => CanonicalForm::Mixed { center },
+    };
+    chain.set_canonical_form(form);
+    TruncResult {
+        error: total_err_sq.sqrt(),
+    }
+}
+
+/// Right SVD step at site j for block-sparse chains.
+/// Returns squared truncation error.
+fn right_trunc_step_block_sparse<T, S, B, C>(
+    chain: &mut C,
+    j: usize,
+    params: &TruncSvdParams,
+    absorb: SvdAbsorb,
+) -> T::Real
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+    C: TensorChain<BlockSparse<T, S>, B>,
+{
+    let (left_storage, right_factor, err) = {
+        let site = chain.storage(j);
+        let rank = site.rank();
+
+        let (u, s, vt, err) = trunc_svd_block_sparse(chain.backend(), site, rank - 1, params)
+            .expect("trunc_svd_block_sparse failed during truncate");
+
+        match absorb {
+            SvdAbsorb::Right => {
+                // U stays at j (left-canonical), S·Vt absorbed into j+1
+                let svt = diagonal_scale_block_sparse(&vt, &s, 0)
+                    .expect("S·Vt scaling failed during truncate");
+                (u, svt, err)
+            }
+            SvdAbsorb::Left => {
+                // U·S stays at j, Vt absorbed into j+1
+                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1)
+                    .expect("U·S scaling failed during truncate");
+                (us, vt, err)
+            }
+            SvdAbsorb::Both => {
+                // √S applied to both sides
+                let sqrt_s = s.map(|v| (*v).sqrt());
+                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1)
+                    .expect("√S·U scaling failed during truncate");
+                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0)
+                    .expect("√S·Vt scaling failed during truncate");
+                (u_scaled, vt_scaled, err)
+            }
+        }
+    };
+
+    *chain.storage_mut(j) = left_storage;
+
+    let new_next = {
+        let next = chain.storage(j + 1);
+        absorb_from_left_bsp(&right_factor, next, chain.backend())
+    };
+
+    *chain.storage_mut(j + 1) = new_next;
+
+    err * err
+}
+
+/// Left SVD step at site j for block-sparse chains.
+/// Returns squared truncation error.
+fn left_trunc_step_block_sparse<T, S, B, C>(
+    chain: &mut C,
+    j: usize,
+    params: &TruncSvdParams,
+    absorb: SvdAbsorb,
+) -> T::Real
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+    C: TensorChain<BlockSparse<T, S>, B>,
+{
+    let (right_storage, left_factor, err) = {
+        let site = chain.storage(j);
+
+        let (u, s, vt, err) = trunc_svd_block_sparse(chain.backend(), site, 1, params)
+            .expect("trunc_svd_block_sparse failed during truncate");
+
+        match absorb {
+            SvdAbsorb::Right => {
+                // Vt stays at j (right-isometric), U·S absorbed into j-1
+                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1)
+                    .expect("U·S scaling failed during truncate");
+                (vt, us, err)
+            }
+            SvdAbsorb::Left => {
+                // S·Vt stays at j, bare U absorbed into j-1
+                let svt = diagonal_scale_block_sparse(&vt, &s, 0)
+                    .expect("S·Vt scaling failed during truncate");
+                (svt, u, err)
+            }
+            SvdAbsorb::Both => {
+                // √S applied to both sides
+                let sqrt_s = s.map(|v| (*v).sqrt());
+                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0)
+                    .expect("√S·Vt scaling failed during truncate");
+                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1)
+                    .expect("√S·U scaling failed during truncate");
+                (vt_scaled, u_scaled, err)
+            }
+        }
+    };
+
+    *chain.storage_mut(j) = right_storage;
+
+    let new_prev = {
+        let prev = chain.storage(j - 1);
+        absorb_from_right_bsp(prev, &left_factor, chain.backend())
+    };
+
+    *chain.storage_mut(j - 1) = new_prev;
+
+    err * err
+}
+
+/// Multiply a rank-2 factor into the next block-sparse site from the left.
+fn absorb_from_left_bsp<T, S, B>(
+    left: &BlockSparse<T, S>,
+    next: &BlockSparse<T, S>,
+    backend: &B,
+) -> BlockSparse<T, S>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    match contract_block_sparse(backend, left, next, &[1], &[0])
+        .expect("left absorption failed during truncate")
+    {
+        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResult::Scalar(_) => {
+            unreachable!("left absorption contraction always produces a tensor")
+        }
+    }
+}
+
+/// Multiply a rank-2 factor into the previous block-sparse site from the right.
+fn absorb_from_right_bsp<T, S, B>(
+    prev: &BlockSparse<T, S>,
+    right: &BlockSparse<T, S>,
+    backend: &B,
+) -> BlockSparse<T, S>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let last = prev.rank() - 1;
+    match contract_block_sparse(backend, prev, right, &[last], &[0])
+        .expect("right absorption failed during truncate")
+    {
+        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResult::Scalar(_) => {
+            unreachable!("right absorption contraction always produces a tensor")
+        }
+    }
 }
