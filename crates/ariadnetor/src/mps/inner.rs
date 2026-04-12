@@ -189,15 +189,25 @@ where
             .expect("inner product step 2 contraction failed")
         {
             BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(s) => return s,
+            BlockSparseContractResult::Scalar(_) => {
+                unreachable!("step 2 always produces a tensor (output rank is 2)")
+            }
         };
     }
 
     // Extract scalar from the final rank-2 env (shape [1, 1]).
     // Returns zero when flux mismatch leaves no allowed blocks.
-    env.block_data(&BlockCoord(vec![0, 0]))
-        .map(|d| d[0])
-        .unwrap_or_else(T::zero)
+    match env.block_data(&BlockCoord(vec![0, 0])) {
+        None => T::zero(),
+        Some(d) => {
+            assert_eq!(
+                d.len(),
+                1,
+                "final environment must be 1×1 (MPS boundary bonds must be dim 1)"
+            );
+            d[0]
+        }
+    }
 }
 
 /// Compute the norm ‖ψ‖ = √⟨ψ|ψ⟩ for a block-sparse MPS.
