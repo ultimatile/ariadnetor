@@ -210,6 +210,114 @@ where
     }
 }
 
+/// Compute ⟨ψ|A|φ⟩ for block-sparse MPS/MPO via the transfer matrix method.
+///
+/// Uses [`BlockSparse::dagger`] for the bra and three
+/// [`contract_block_sparse`] steps per site:
+///
+/// 1. `contract(env, dagger(ψ_j), [0], [0])` — absorb bra's left bond
+/// 2. `contract(step1, A_j, [0,2], [0,2])` — absorb MPO's left bond + bra physical
+/// 3. `contract(step2, φ_j, [0,2], [0,1])` — absorb ket's left bond + ket physical
+///
+/// The BlockSparse MPO leg direction convention is `(Out, In, Out, In)`
+/// for `(χ_L, d_ket, d_bra, χ_R)`.
+///
+/// Returns `T::zero()` when the states/operator have incompatible flux.
+///
+/// # Panics
+///
+/// Panics if the MPS/MPO lengths differ or any is empty.
+pub fn braket_block_sparse<T, S, B>(
+    psi: &Mps<BlockSparse<T, S>, B>,
+    op: &Mpo<BlockSparse<T, S>, B>,
+    phi: &Mps<BlockSparse<T, S>, B>,
+) -> T
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let n = psi.len();
+    assert_eq!(n, phi.len(), "MPS lengths must match");
+    assert_eq!(n, op.len(), "MPO length must match MPS length");
+    assert!(n > 0, "must have at least one site");
+
+    let backend = psi.backend();
+
+    // Initial environment: rank-3 identity tensor.
+    // Leg 0 contracts with dagger(psi)'s left → same direction as psi's left.
+    // Leg 1 contracts with A's left → opposite direction.
+    // Leg 2 contracts with phi's left (via step3 result) → opposite direction.
+    let mut env = {
+        let psi_left = &psi.storage(0).indices()[0];
+        let a_left = &op.storage(0).indices()[0];
+        let phi_left = &phi.storage(0).indices()[0];
+        let flip = |d: Direction| match d {
+            Direction::Out => Direction::In,
+            Direction::In => Direction::Out,
+        };
+        let env_leg0 = QNIndex::new(psi_left.blocks().to_vec(), psi_left.direction());
+        let env_leg1 = QNIndex::new(a_left.blocks().to_vec(), flip(a_left.direction()));
+        let env_leg2 = QNIndex::new(phi_left.blocks().to_vec(), flip(phi_left.direction()));
+        let mut e = BlockSparse::<T, S>::zeros(vec![env_leg0, env_leg1, env_leg2], S::identity());
+        if let Some(d) = e.block_data_mut(&BlockCoord(vec![0, 0, 0])) {
+            d[0] = T::one();
+        }
+        e
+    };
+
+    for j in 0..n {
+        let bra_j = psi.storage(j).dagger();
+        let a_j = op.storage(j);
+        let phi_j = phi.storage(j);
+
+        // Step 1: env(a,b,c) × bra(a,d,e) → step1(b,c,d,e)
+        let step1 = match contract_block_sparse(backend, &env, &bra_j, &[0], &[0])
+            .expect("braket step 1 contraction failed")
+        {
+            BlockSparseContractResult::Tensor(t) => t,
+            BlockSparseContractResult::Scalar(_) => {
+                unreachable!("step 1 always produces a tensor (rank >= 3)")
+            }
+        };
+
+        // Step 2: step1(b,c,d,e) × A(b,f,d,g) → step2(c,e,f,g)
+        // Contract step1[0] with A[0] (left bonds), step1[2] with A[2] (bra physical)
+        let step2 = match contract_block_sparse(backend, &step1, a_j, &[0, 2], &[0, 2])
+            .expect("braket step 2 contraction failed")
+        {
+            BlockSparseContractResult::Tensor(t) => t,
+            BlockSparseContractResult::Scalar(_) => {
+                unreachable!("step 2 always produces a tensor (rank >= 2)")
+            }
+        };
+
+        // Step 3: step2(c,e,f,g) × phi(c,f,h) → new_env(e,g,h)
+        // Contract step2[0] with phi[0] (phi left bond), step2[2] with phi[1] (ket physical)
+        env = match contract_block_sparse(backend, &step2, phi_j, &[0, 2], &[0, 1])
+            .expect("braket step 3 contraction failed")
+        {
+            BlockSparseContractResult::Tensor(t) => t,
+            BlockSparseContractResult::Scalar(_) => {
+                unreachable!("step 3 always produces a tensor (rank >= 1)")
+            }
+        };
+    }
+
+    // Extract scalar from the final rank-3 env (shape [1, 1, 1]).
+    match env.block_data(&BlockCoord(vec![0, 0, 0])) {
+        None => T::zero(),
+        Some(d) => {
+            assert_eq!(
+                d.len(),
+                1,
+                "final braket environment must be 1×1×1 (boundary bonds must be dim 1)"
+            );
+            d[0]
+        }
+    }
+}
+
 /// Compute the norm ‖ψ‖ = √⟨ψ|ψ⟩ for a block-sparse MPS.
 ///
 /// Exploits canonical form when available:
