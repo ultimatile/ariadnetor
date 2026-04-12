@@ -131,6 +131,87 @@ fn norm_z2_sector() {
 }
 
 // =========================================================================
+// dagger
+// =========================================================================
+
+#[test]
+fn dagger_involution_real() {
+    let bs = sample_u1_rank2();
+    let dd = bs.dagger().dagger();
+    assert_eq!(bs.shape(), dd.shape());
+    assert_eq!(bs.flux(), dd.flux());
+    for (bi, di) in bs.indices().iter().zip(dd.indices().iter()) {
+        assert_eq!(bi.direction(), di.direction());
+        assert_eq!(bi.blocks(), di.blocks());
+    }
+    for meta in bs.block_metas() {
+        let a = bs.block_data(&meta.coord).unwrap();
+        let b = dd.block_data(&meta.coord).unwrap();
+        assert_eq!(a, b);
+    }
+}
+
+#[test]
+fn dagger_involution_complex() {
+    let bs = sample_u1_complex();
+    let dd = bs.dagger().dagger();
+    for meta in bs.block_metas() {
+        let a = bs.block_data(&meta.coord).unwrap();
+        let b = dd.block_data(&meta.coord).unwrap();
+        for (x, y) in a.iter().zip(b.iter()) {
+            assert!((x.re - y.re).abs() < 1e-14);
+            assert!((x.im - y.im).abs() < 1e-14);
+        }
+    }
+}
+
+#[test]
+fn dagger_flips_directions() {
+    let bs = sample_u1_rank2();
+    let dag = bs.dagger();
+    for (orig, flipped) in bs.indices().iter().zip(dag.indices().iter()) {
+        assert_ne!(orig.direction(), flipped.direction());
+        assert_eq!(orig.blocks(), flipped.blocks());
+    }
+}
+
+#[test]
+fn dagger_duals_flux() {
+    // Non-identity flux: rank-2 tensor with flux=U1(1)
+    let row = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
+    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1));
+    // Allowed block: (1, 0) since Out.apply(1) + In.apply(0) = 1 + 0 = 1 = flux
+    bs.block_data_mut(&BlockCoord(vec![1, 0])).unwrap()[0] = 7.0;
+
+    let dag = bs.dagger();
+    assert_eq!(*dag.flux(), U1Sector(-1));
+    // Dagger block data should be conjugated (real → same)
+    let d = dag.block_data(&BlockCoord(vec![1, 0])).unwrap();
+    assert_eq!(d[0], 7.0);
+}
+
+#[test]
+fn dagger_conjugates_complex_elements() {
+    let bs = sample_u1_complex();
+    let dag = bs.dagger();
+    let orig = bs.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    let dagd = dag.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    for (o, d) in orig.iter().zip(dagd.iter()) {
+        assert_eq!(d.re, o.re);
+        assert_eq!(d.im, -o.im);
+    }
+}
+
+#[test]
+fn dagger_preserves_block_count() {
+    let bs = sample_u1_rank2();
+    let dag = bs.dagger();
+    assert_eq!(bs.num_blocks(), dag.num_blocks());
+    assert_eq!(bs.shape(), dag.shape());
+}
+
+// =========================================================================
 // normalize / normalized
 // =========================================================================
 

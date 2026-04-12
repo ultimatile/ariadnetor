@@ -5,7 +5,7 @@ use std::sync::Arc;
 use aligned_vec::{AVec, ConstAlign};
 use num_traits::{Float, One, Zero};
 
-use super::BlockSparse;
+use super::{BlockSparse, Direction, QNIndex};
 use crate::sector::Sector;
 
 impl<T, S> BlockSparse<T, S>
@@ -13,6 +13,42 @@ where
     T: arnet_core::scalar::Scalar,
     S: Sector,
 {
+    /// Hermitian adjoint: element-wise conjugation + flip all QNIndex
+    /// directions (Out↔In) + dual the flux.
+    ///
+    /// Unlike [`conj`](Self::conj) which only conjugates elements, `dagger`
+    /// produces a tensor whose legs have opposing directions, which is
+    /// required by `contract_block_sparse` for computing inner products.
+    ///
+    /// The set of allowed block coordinates is identical to the original
+    /// (abelian group property), so block structure is reused directly.
+    ///
+    /// Involution: `x.dagger().dagger() == x` for all `x`.
+    pub fn dagger(&self) -> Self {
+        let flipped_indices: Vec<QNIndex<S>> = self
+            .indices
+            .iter()
+            .map(|idx| {
+                let new_dir = match idx.direction() {
+                    Direction::Out => Direction::In,
+                    Direction::In => Direction::Out,
+                };
+                QNIndex::new(idx.blocks().to_vec(), new_dir)
+            })
+            .collect();
+        let new_data =
+            AVec::<T, ConstAlign<64>>::from_iter(64, self.data.iter().copied().map(|x| x.conj()));
+
+        Self {
+            data: Arc::new(new_data),
+            blocks: self.blocks.clone(),
+            block_index: self.block_index.clone(),
+            indices: flipped_indices,
+            flux: self.flux.dual(),
+            shape: self.shape.clone(),
+        }
+    }
+
     /// Element-wise complex conjugate.
     pub fn conj(&self) -> Self {
         let new_data =
