@@ -8,41 +8,7 @@ use arnet::mps::{
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::sector::U1Sector;
 
-use super::helpers::{bsp_mps_contract_full, make_4site_u1_mps};
-
-/// Frobenius norm of a block-sparse tensor.
-fn bsp_norm(t: &BlockSparse<f64, U1Sector>) -> f64 {
-    let mut sum_sq = 0.0;
-    for meta in t.block_metas() {
-        for &v in t.block_data(&meta.coord).unwrap() {
-            sum_sq += v * v;
-        }
-    }
-    sum_sq.sqrt()
-}
-
-/// Build a 2-site U(1)-symmetric MPS in the total-charge-1 sector.
-///
-/// Physical charges {0, 1}, boundary left={0:1}, right={1:1}.
-/// State: 1·3 |01⟩ + 2·4 |10⟩ = 3|01⟩ + 8|10⟩.
-/// Bond dim 2 with genuine entanglement.
-fn make_2site_entangled_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
-    let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site0 = BlockSparse::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
-    site0.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
-    site0.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 2.0;
-
-    let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right1 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-    let mut site1 = BlockSparse::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
-    site1.block_data_mut(&BlockCoord(vec![0, 1, 0])).unwrap()[0] = 3.0;
-    site1.block_data_mut(&BlockCoord(vec![1, 0, 0])).unwrap()[0] = 4.0;
-
-    Mps::from_storages(vec![site0, site1])
-}
+use super::helpers::{bsp_mps_contract_full, make_2site_entangled_u1_mps, make_4site_u1_mps};
 
 // --------------------------------------------------------------------------
 // inner_block_sparse
@@ -61,7 +27,7 @@ fn inner_self_equals_frobenius_norm_squared() {
     // For a 1D Hilbert space (4-site zero-charge), inner = norm² = Frobenius²
     let mps = make_4site_u1_mps();
     let state = bsp_mps_contract_full(&mps);
-    let frob = bsp_norm(&state);
+    let frob = state.norm();
     let overlap = inner_block_sparse(&mps, &mps);
     assert_abs_diff_eq!(overlap, frob * frob, epsilon = 1e-10);
 }
@@ -147,6 +113,6 @@ fn norm_unknown_uses_full_contraction() {
 
     let n = norm_block_sparse(&mps);
     let state = bsp_mps_contract_full(&mps);
-    let frob = bsp_norm(&state);
+    let frob = state.norm();
     assert_abs_diff_eq!(n, frob, epsilon = 1e-10);
 }
