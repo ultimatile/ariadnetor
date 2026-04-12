@@ -18,10 +18,10 @@ where
     ///
     /// Unlike [`conj`](Self::conj) which only conjugates elements, `dagger`
     /// produces a tensor whose legs have opposing directions, which is
-    /// required by [`contract_block_sparse`] for computing inner products.
+    /// required by `contract_block_sparse` for computing inner products.
     ///
     /// The set of allowed block coordinates is identical to the original
-    /// (abelian group property), so block data is copied one-to-one.
+    /// (abelian group property), so block structure is reused directly.
     ///
     /// Involution: `x.dagger().dagger() == x` for all `x`.
     pub fn dagger(&self) -> Self {
@@ -36,19 +36,17 @@ where
                 QNIndex::new(idx.blocks().to_vec(), new_dir)
             })
             .collect();
-        let dual_flux = self.flux.dual();
+        let new_data =
+            AVec::<T, ConstAlign<64>>::from_iter(64, self.data.iter().copied().map(|x| x.conj()));
 
-        let mut result = Self::zeros(flipped_indices, dual_flux);
-        for meta in self.block_metas() {
-            let src = self.block_data(&meta.coord).expect("source block exists");
-            let dst = result
-                .block_data_mut(&meta.coord)
-                .expect("dagger preserves allowed blocks");
-            for (d, s) in dst.iter_mut().zip(src.iter()) {
-                *d = s.conj();
-            }
+        Self {
+            data: Arc::new(new_data),
+            blocks: self.blocks.clone(),
+            block_index: self.block_index.clone(),
+            indices: flipped_indices,
+            flux: self.flux.dual(),
+            shape: self.shape.clone(),
         }
-        result
     }
 
     /// Element-wise complex conjugate.
