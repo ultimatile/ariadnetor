@@ -17,7 +17,7 @@ mod truncate;
 mod types;
 
 pub use apply::apply;
-pub use canonicalize::canonicalize;
+pub use canonicalize::{canonicalize, canonicalize_block_sparse};
 pub use chain::TensorChain;
 pub use inner::{braket, inner, norm};
 pub use site_ops::{Qubit, SiteOps, SpinHalf};

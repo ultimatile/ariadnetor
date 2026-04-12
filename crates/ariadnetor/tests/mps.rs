@@ -9,6 +9,8 @@ mod apply;
 mod basic;
 #[path = "mps/canonicalize.rs"]
 mod canonicalize;
+#[path = "mps/canonicalize_block_sparse.rs"]
+mod canonicalize_block_sparse;
 #[path = "mps/col_major.rs"]
 mod col_major;
 #[path = "mps/inner_product.rs"]
