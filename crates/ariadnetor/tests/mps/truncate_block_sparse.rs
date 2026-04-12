@@ -164,7 +164,7 @@ fn truncate_bsp_absorb_right_isometry() {
     truncate_block_sparse(&mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
-    // Sites 0..2 left-canonical, site 3 right-canonical
+    // Sites 0 and 1 left-canonical, site 2 is center, site 3 right-canonical
     for j in 0..2 {
         assert!(
             is_left_canonical_bsp(mps.storage(j), TOL),
