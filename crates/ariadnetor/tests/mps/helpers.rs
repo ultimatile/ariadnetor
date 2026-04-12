@@ -375,3 +375,27 @@ pub fn assert_block_sparse_close(
         }
     }
 }
+
+/// Build a 2-site U(1)-symmetric MPS in the total-charge-1 sector.
+///
+/// Physical charges {0, 1}, boundary left={0:1}, right={1:1}.
+/// The state spans two basis vectors: |01⟩ (coeff 3) and |10⟩ (coeff 8),
+/// giving bond dim 2 with two non-zero singular values — genuine
+/// entanglement that truncation can meaningfully discard.
+pub fn make_2site_entangled_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
+    let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
+    let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let mut site0 = BlockSparse::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
+    site0.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
+    site0.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 2.0;
+
+    let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let right1 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
+    let mut site1 = BlockSparse::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
+    site1.block_data_mut(&BlockCoord(vec![0, 1, 0])).unwrap()[0] = 3.0;
+    site1.block_data_mut(&BlockCoord(vec![1, 0, 0])).unwrap()[0] = 4.0;
+
+    Mps::from_storages(vec![site0, site1])
+}

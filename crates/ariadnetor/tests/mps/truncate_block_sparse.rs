@@ -14,51 +14,8 @@ use arnet_tensor::sector::U1Sector;
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, is_left_canonical_bsp,
-    is_right_canonical_bsp, make_4site_u1_mps,
+    is_right_canonical_bsp, make_2site_entangled_u1_mps, make_4site_u1_mps,
 };
-
-/// Frobenius norm of a block-sparse tensor (sum of squared elements, then sqrt).
-fn bsp_frobenius_norm(t: &BlockSparse<f64, U1Sector>) -> f64 {
-    let mut sum_sq = 0.0;
-    for meta in t.block_metas() {
-        for &v in t.block_data(&meta.coord).unwrap() {
-            sum_sq += v * v;
-        }
-    }
-    sum_sq.sqrt()
-}
-
-/// Build a 2-site U(1)-symmetric MPS in the total-charge-1 sector.
-///
-/// Physical charges {0, 1}, boundary left={0:1}, right={1:1}.
-/// The state spans two basis vectors: |01⟩ (coeff 3) and |10⟩ (coeff 8),
-/// giving bond dim 2 with two non-zero singular values — genuine
-/// entanglement that truncation can meaningfully discard.
-fn make_2site_entangled_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
-    use arnet_tensor::block_sparse::{BlockCoord, Direction, QNIndex};
-
-    // Site 0: left{0:1}(Out), phys{0:1,1:1}(Out), right{0:1,1:1}(In), flux=0
-    let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site0 = BlockSparse::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
-    // Block (0,0,0): left=0 + phys=0 - right=0 = 0 ✓
-    site0.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
-    // Block (0,1,1): left=0 + phys=1 - right=1 = 0 ✓
-    site0.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 2.0;
-
-    // Site 1: left{0:1,1:1}(Out), phys{0:1,1:1}(Out), right{1:1}(In), flux=0
-    let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right1 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-    let mut site1 = BlockSparse::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
-    // Block (0,1,0): left=0 + phys=1 - right=1 = 0 ✓  (|01⟩ path)
-    site1.block_data_mut(&BlockCoord(vec![0, 1, 0])).unwrap()[0] = 3.0;
-    // Block (1,0,0): left=1 + phys=0 - right=1 = 0 ✓  (|10⟩ path)
-    site1.block_data_mut(&BlockCoord(vec![1, 0, 0])).unwrap()[0] = 4.0;
-
-    Mps::from_storages(vec![site0, site1])
-}
 
 const TOL: f64 = 1e-10;
 
@@ -103,7 +60,7 @@ fn truncate_bsp_preserves_state_approximately() {
     let mut mps = make_2site_entangled_u1_mps();
     canonicalize_block_sparse(&mut mps, 0);
     let state_before = bsp_mps_contract_full(&mps);
-    let norm_before = bsp_frobenius_norm(&state_before);
+    let norm_before = state_before.norm();
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
@@ -111,7 +68,7 @@ fn truncate_bsp_preserves_state_approximately() {
     });
     truncate_block_sparse(&mut mps, &params);
     let state_after = bsp_mps_contract_full(&mps);
-    let norm_after = bsp_frobenius_norm(&state_after);
+    let norm_after = state_after.norm();
 
     // Compute per-block overlap (normalized)
     let mut overlap = 0.0;
@@ -294,7 +251,7 @@ fn truncate_bsp_auto_canonicalizes_from_unknown() {
 fn truncate_bsp_error_is_positive_when_truncated() {
     let mut mps = make_2site_entangled_u1_mps();
     canonicalize_block_sparse(&mut mps, 0);
-    let norm_before = bsp_frobenius_norm(&bsp_mps_contract_full(&mps));
+    let norm_before = bsp_mps_contract_full(&mps).norm();
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
