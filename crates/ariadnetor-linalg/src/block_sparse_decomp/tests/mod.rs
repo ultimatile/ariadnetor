@@ -1,3 +1,4 @@
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_native::NativeBackend;
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::sector::{U1Sector, Z2Sector};
@@ -6,6 +7,10 @@ use super::*;
 
 fn backend() -> NativeBackend {
     NativeBackend
+}
+
+fn order() -> MemoryOrder {
+    backend().preferred_order()
 }
 // -- Test tensor constructors ------------------------------------------------
 
@@ -71,25 +76,33 @@ fn sample_u1_nonzero_flux() -> BlockSparse<f64, U1Sector> {
 }
 // -- Dense helpers for verification ------------------------------------------
 
-fn matmul(a: &[f64], m: usize, k: usize, b: &[f64], n: usize) -> Vec<f64> {
+fn mat_idx(row: usize, col: usize, rows: usize, cols: usize, order: MemoryOrder) -> usize {
+    match order {
+        MemoryOrder::RowMajor => row * cols + col,
+        MemoryOrder::ColumnMajor => col * rows + row,
+    }
+}
+
+fn matmul(a: &[f64], m: usize, k: usize, b: &[f64], n: usize, order: MemoryOrder) -> Vec<f64> {
     let mut c = vec![0.0; m * n];
     for i in 0..m {
         for j in 0..n {
             let mut sum = 0.0;
             for p in 0..k {
-                sum += a[i * k + p] * b[p * n + j];
+                sum += a[mat_idx(i, p, m, k, order)] * b[mat_idx(p, j, k, n, order)];
             }
-            c[i * n + j] = sum;
+            c[mat_idx(i, j, m, n, order)] = sum;
         }
     }
     c
 }
 
-fn diag_scale_vt(s: &[f64], vt: &[f64], k: usize, n: usize) -> Vec<f64> {
+fn diag_scale_vt(s: &[f64], vt: &[f64], k: usize, n: usize, order: MemoryOrder) -> Vec<f64> {
     let mut result = vt.to_vec();
-    for i in 0..k {
+    for (i, &si) in s.iter().enumerate().take(k) {
         for j in 0..n {
-            result[i * n + j] *= s[i];
+            let idx = mat_idx(i, j, k, n, order);
+            result[idx] *= si;
         }
     }
     result
@@ -119,10 +132,11 @@ fn verify_svd_reconstruction<S: Sector + PartialEq>(
     sv: &BlockSingularValues<f64, S>,
     vt: &BlockSparse<f64, S>,
     nrow: usize,
+    order: MemoryOrder,
 ) {
     let groups = compute_fused_sector_groups(tensor, nrow);
     for group in &groups {
-        let original = assemble_sector_matrix(tensor, group);
+        let original = assemble_sector_matrix(tensor, group, order);
         let s_data: &[f64] = sv
             .values
             .iter()
@@ -132,12 +146,12 @@ fn verify_svd_reconstruction<S: Sector + PartialEq>(
         let k_s = s_data.len();
         let u_groups = compute_fused_sector_groups(u, nrow);
         let u_g = u_groups.iter().find(|g| g.sector == group.sector).unwrap();
-        let u_mat = assemble_sector_matrix(u, u_g);
+        let u_mat = assemble_sector_matrix(u, u_g, order);
         let vt_groups = compute_fused_sector_groups(vt, 1);
         let vt_g = vt_groups.iter().find(|g| g.sector == group.sector).unwrap();
-        let vt_mat = assemble_sector_matrix(vt, vt_g);
-        let sv_vt = diag_scale_vt(s_data, &vt_mat, k_s, vt_g.n);
-        let reconstructed = matmul(&u_mat, u_g.m, k_s, &sv_vt, vt_g.n);
+        let vt_mat = assemble_sector_matrix(vt, vt_g, order);
+        let sv_vt = diag_scale_vt(s_data, &vt_mat, k_s, vt_g.n, order);
+        let reconstructed = matmul(&u_mat, u_g.m, k_s, &sv_vt, vt_g.n, order);
         assert_approx_eq(&reconstructed, &original, 1e-10);
     }
 }
@@ -148,18 +162,19 @@ fn verify_two_factor_reconstruction<S: Sector + PartialEq>(
     left: &BlockSparse<f64, S>,
     right: &BlockSparse<f64, S>,
     nrow: usize,
+    order: MemoryOrder,
 ) {
     let groups = compute_fused_sector_groups(tensor, nrow);
     for group in &groups {
-        let original = assemble_sector_matrix(tensor, group);
+        let original = assemble_sector_matrix(tensor, group, order);
         let k = group.m.min(group.n);
         let l_groups = compute_fused_sector_groups(left, nrow);
         let l_g = l_groups.iter().find(|g| g.sector == group.sector).unwrap();
-        let l_mat = assemble_sector_matrix(left, l_g);
+        let l_mat = assemble_sector_matrix(left, l_g, order);
         let r_groups = compute_fused_sector_groups(right, 1);
         let r_g = r_groups.iter().find(|g| g.sector == group.sector).unwrap();
-        let r_mat = assemble_sector_matrix(right, r_g);
-        let reconstructed = matmul(&l_mat, l_g.m, k, &r_mat, r_g.n);
+        let r_mat = assemble_sector_matrix(right, r_g, order);
+        let reconstructed = matmul(&l_mat, l_g.m, k, &r_mat, r_g.n, order);
         assert_approx_eq(&reconstructed, &original, 1e-10);
     }
 }
@@ -247,7 +262,7 @@ fn svd_rank2_reconstruction() {
             assert!(w[0] >= w[1]);
         }
     }
-    verify_svd_reconstruction(&bs, &u, &sv, &vt, 1);
+    verify_svd_reconstruction(&bs, &u, &sv, &vt, 1, order());
 }
 
 #[test]
@@ -260,7 +275,7 @@ fn svd_rank3_fused_sectors() {
     assert_eq!(sv.values.len(), 2);
     assert_eq!(sv.values[0].1.len(), 2); // sector 0: m=6, n=2 → k=2
     assert_eq!(sv.values[1].1.len(), 3); // sector 1: m=7, n=3 → k=3
-    verify_svd_reconstruction(&bs, &u, &sv, &vt, 2);
+    verify_svd_reconstruction(&bs, &u, &sv, &vt, 2, order());
 }
 
 #[test]
@@ -272,7 +287,7 @@ fn svd_nonzero_flux() {
     assert_eq!(sv.values.len(), 1);
     assert_eq!(sv.values[0].0, U1Sector(1));
     assert_eq!(sv.values[0].1.len(), 3); // 3×4 → k=3
-    verify_svd_reconstruction(&bs, &u, &sv, &vt, 1);
+    verify_svd_reconstruction(&bs, &u, &sv, &vt, 1, order());
 }
 
 // -- Truncated SVD tests -----------------------------------------------------
@@ -313,21 +328,24 @@ fn qr_rank2_reconstruction() {
     assert_eq!(*q.flux(), U1Sector(0));
     assert_eq!(r.rank(), 2);
     assert_eq!(*r.flux(), U1Sector(0));
-    verify_two_factor_reconstruction(&bs, &q, &r, 1);
+    verify_two_factor_reconstruction(&bs, &q, &r, 1, order());
 }
 
 #[test]
 fn qr_orthogonality() {
+    let ord = order();
     let (q, _) = qr_block_sparse(&backend(), &sample_u1_rank2(), 1).unwrap();
     let q_groups = compute_fused_sector_groups(&q, 1);
     for g in &q_groups {
-        let q_mat = assemble_sector_matrix(&q, g);
+        let q_mat = assemble_sector_matrix(&q, g, ord);
         let (m, k) = (g.m, g.n);
+        // Q^T * Q should be identity (k × k)
         let mut qtq = vec![0.0; k * k];
         for i in 0..k {
             for j in 0..k {
                 for p in 0..m {
-                    qtq[i * k + j] += q_mat[p * k + i] * q_mat[p * k + j];
+                    qtq[i * k + j] +=
+                        q_mat[mat_idx(p, i, m, k, ord)] * q_mat[mat_idx(p, j, m, k, ord)];
                 }
             }
         }
@@ -349,21 +367,24 @@ fn lq_rank2_reconstruction() {
     assert_eq!(*l.flux(), U1Sector(0));
     assert_eq!(q.rank(), 2);
     assert_eq!(*q.flux(), U1Sector(0));
-    verify_two_factor_reconstruction(&bs, &l, &q, 1);
+    verify_two_factor_reconstruction(&bs, &l, &q, 1, order());
 }
 
 #[test]
 fn lq_orthogonality() {
+    let ord = order();
     let (_, q) = lq_block_sparse(&backend(), &sample_u1_rank2(), 1).unwrap();
     let q_groups = compute_fused_sector_groups(&q, 1);
     for g in &q_groups {
-        let q_mat = assemble_sector_matrix(&q, g);
+        let q_mat = assemble_sector_matrix(&q, g, ord);
         let (k, n) = (g.m, g.n);
+        // Q * Q^T should be identity (k × k)
         let mut qqt = vec![0.0; k * k];
         for i in 0..k {
             for j in 0..k {
                 for p in 0..n {
-                    qqt[i * k + j] += q_mat[i * n + p] * q_mat[j * n + p];
+                    qqt[i * k + j] +=
+                        q_mat[mat_idx(i, p, k, n, ord)] * q_mat[mat_idx(j, p, k, n, ord)];
                 }
             }
         }
@@ -481,7 +502,7 @@ fn svd_rank4_multi_tuple_reconstruction() {
     let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 2).unwrap();
     assert_eq!(u.rank(), 3);
     assert_eq!(vt.rank(), 3);
-    verify_svd_reconstruction(&bs, &u, &sv, &vt, 2);
+    verify_svd_reconstruction(&bs, &u, &sv, &vt, 2, order());
 }
 
 #[test]
@@ -490,7 +511,7 @@ fn qr_rank4_multi_tuple_reconstruction() {
     let (q, r) = qr_block_sparse(&backend(), &bs, 2).unwrap();
     assert_eq!(q.rank(), 3);
     assert_eq!(r.rank(), 3);
-    verify_two_factor_reconstruction(&bs, &q, &r, 2);
+    verify_two_factor_reconstruction(&bs, &q, &r, 2, order());
 }
 
 #[test]
@@ -499,7 +520,7 @@ fn lq_rank4_multi_tuple_reconstruction() {
     let (l, q) = lq_block_sparse(&backend(), &bs, 2).unwrap();
     assert_eq!(l.rank(), 3);
     assert_eq!(q.rank(), 3);
-    verify_two_factor_reconstruction(&bs, &l, &q, 2);
+    verify_two_factor_reconstruction(&bs, &l, &q, 2, order());
 }
 
 #[test]
@@ -554,7 +575,7 @@ fn svd_z2_reconstruction() {
     assert_eq!(*u.flux(), Z2Sector::new(0));
     assert_eq!(*vt.flux(), Z2Sector::new(0));
     assert_eq!(sv.values.len(), 2);
-    verify_svd_reconstruction(&bs, &u, &sv, &vt, 1);
+    verify_svd_reconstruction(&bs, &u, &sv, &vt, 1, order());
 }
 // -- Empty tensor test -------------------------------------------------------
 

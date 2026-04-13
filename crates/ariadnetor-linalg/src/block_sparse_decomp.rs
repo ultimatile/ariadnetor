@@ -87,6 +87,7 @@ pub fn svd_block_sparse<T: Scalar, S: Sector>(
     nrow: usize,
 ) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
+    let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
 
     let mut u_matrices = Vec::with_capacity(groups.len());
@@ -95,17 +96,23 @@ pub fn svd_block_sparse<T: Scalar, S: Sector>(
     let mut k_per_sector = Vec::with_capacity(groups.len());
 
     for group in &groups {
-        let matrix = assemble_sector_matrix(tensor, group);
-        let dense =
-            Dense::from_data_with_order(matrix, vec![group.m, group.n], MemoryOrder::RowMajor);
+        let matrix = assemble_sector_matrix(tensor, group, order);
+        let dense = Dense::from_data_with_order(matrix, vec![group.m, group.n], order);
         let (u, s, vt) = crate::decomposition::svd(backend, &dense, 1)?;
         k_per_sector.push(group.m.min(group.n));
-        u_matrices.push(to_row_major_vec(&u));
+        u_matrices.push(to_vec_in_order(&u, order));
         s_values.push((group.sector.clone(), s.data().to_vec()));
-        vt_matrices.push(to_row_major_vec(&vt));
+        vt_matrices.push(to_vec_in_order(&vt, order));
     }
 
-    let u_tensor = build_left_tensor(&groups, &u_matrices, &k_per_sector, tensor.indices(), nrow);
+    let u_tensor = build_left_tensor(
+        &groups,
+        &u_matrices,
+        &k_per_sector,
+        tensor.indices(),
+        nrow,
+        order,
+    );
     let vt_tensor = build_right_tensor(
         &groups,
         &vt_matrices,
@@ -113,6 +120,7 @@ pub fn svd_block_sparse<T: Scalar, S: Sector>(
         tensor.indices(),
         nrow,
         tensor.flux().clone(),
+        order,
     );
 
     Ok((
@@ -137,6 +145,7 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
     params: &TruncSvdParams,
 ) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
+    let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
 
     // Per-sector full SVD
@@ -146,14 +155,13 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
     let mut k_full = Vec::with_capacity(groups.len());
 
     for group in &groups {
-        let matrix = assemble_sector_matrix(tensor, group);
-        let dense =
-            Dense::from_data_with_order(matrix, vec![group.m, group.n], MemoryOrder::RowMajor);
+        let matrix = assemble_sector_matrix(tensor, group, order);
+        let dense = Dense::from_data_with_order(matrix, vec![group.m, group.n], order);
         let (u, s, vt) = crate::decomposition::svd(backend, &dense, 1)?;
         k_full.push(group.m.min(group.n));
-        u_matrices.push(to_row_major_vec(&u));
+        u_matrices.push(to_vec_in_order(&u, order));
         all_s.push(s.data().to_vec());
-        vt_matrices.push(to_row_major_vec(&vt));
+        vt_matrices.push(to_vec_in_order(&vt, order));
     }
 
     // Global cross-sector truncation
@@ -177,19 +185,51 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
             vt_trunc.push(vt_matrices[gi].clone());
         } else {
             let m = group.m;
-            let mut u_t = vec![T::zero(); m * k_t];
-            for r in 0..m {
-                u_t[r * k_t..(r + 1) * k_t]
-                    .copy_from_slice(&u_matrices[gi][r * k_f..r * k_f + k_t]);
-            }
+            let n = group.n;
+            // Truncate U (m×k_f → m×k_t): keep first k_t columns
+            let u_t = match order {
+                MemoryOrder::RowMajor => {
+                    let mut buf = vec![T::zero(); m * k_t];
+                    for r in 0..m {
+                        buf[r * k_t..(r + 1) * k_t]
+                            .copy_from_slice(&u_matrices[gi][r * k_f..r * k_f + k_t]);
+                    }
+                    buf
+                }
+                MemoryOrder::ColumnMajor => {
+                    // Columns are contiguous; take first k_t columns (k_t * m elements)
+                    u_matrices[gi][..k_t * m].to_vec()
+                }
+            };
             u_trunc.push(u_t);
             s_trunc_values.push(all_s[gi][..k_t].to_vec());
-            let n = group.n;
-            vt_trunc.push(vt_matrices[gi][..k_t * n].to_vec());
+            // Truncate Vt (k_f×n → k_t×n): keep first k_t rows
+            let vt_t = match order {
+                MemoryOrder::RowMajor => {
+                    // Rows are contiguous; take first k_t rows (k_t * n elements)
+                    vt_matrices[gi][..k_t * n].to_vec()
+                }
+                MemoryOrder::ColumnMajor => {
+                    let mut buf = vec![T::zero(); k_t * n];
+                    for c in 0..n {
+                        buf[c * k_t..(c + 1) * k_t]
+                            .copy_from_slice(&vt_matrices[gi][c * k_f..c * k_f + k_t]);
+                    }
+                    buf
+                }
+            };
+            vt_trunc.push(vt_t);
         }
     }
 
-    let u_tensor = build_left_tensor(&groups, &u_trunc, &k_per_sector, tensor.indices(), nrow);
+    let u_tensor = build_left_tensor(
+        &groups,
+        &u_trunc,
+        &k_per_sector,
+        tensor.indices(),
+        nrow,
+        order,
+    );
     let vt_tensor = build_right_tensor(
         &groups,
         &vt_trunc,
@@ -197,6 +237,7 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
         tensor.indices(),
         nrow,
         tensor.flux().clone(),
+        order,
     );
 
     let sv_pairs: Vec<(S, Vec<T::Real>)> = groups
@@ -229,11 +270,14 @@ pub fn qr_block_sparse<T: Scalar, S: Sector>(
     nrow: usize,
 ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
+    let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
-    let (q_mats, r_mats, k_per) = decompose_per_sector(&groups, tensor, nrow, backend, |b, d| {
-        crate::decomposition::qr(b, d, 1).map(|(q, r)| (to_row_major_vec(&q), to_row_major_vec(&r)))
-    })?;
-    let q = build_left_tensor(&groups, &q_mats, &k_per, tensor.indices(), nrow);
+    let (q_mats, r_mats, k_per) =
+        decompose_per_sector(&groups, tensor, nrow, backend, order, |b, d| {
+            crate::decomposition::qr(b, d, 1)
+                .map(|(q, r)| (to_vec_in_order(&q, order), to_vec_in_order(&r, order)))
+        })?;
+    let q = build_left_tensor(&groups, &q_mats, &k_per, tensor.indices(), nrow, order);
     let r = build_right_tensor(
         &groups,
         &r_mats,
@@ -241,6 +285,7 @@ pub fn qr_block_sparse<T: Scalar, S: Sector>(
         tensor.indices(),
         nrow,
         tensor.flux().clone(),
+        order,
     );
     Ok((q, r))
 }
@@ -256,11 +301,14 @@ pub fn lq_block_sparse<T: Scalar, S: Sector>(
     nrow: usize,
 ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
+    let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
-    let (l_mats, q_mats, k_per) = decompose_per_sector(&groups, tensor, nrow, backend, |b, d| {
-        crate::decomposition::lq(b, d, 1).map(|(l, q)| (to_row_major_vec(&l), to_row_major_vec(&q)))
-    })?;
-    let l = build_left_tensor(&groups, &l_mats, &k_per, tensor.indices(), nrow);
+    let (l_mats, q_mats, k_per) =
+        decompose_per_sector(&groups, tensor, nrow, backend, order, |b, d| {
+            crate::decomposition::lq(b, d, 1)
+                .map(|(l, q)| (to_vec_in_order(&l, order), to_vec_in_order(&q, order)))
+        })?;
+    let l = build_left_tensor(&groups, &l_mats, &k_per, tensor.indices(), nrow, order);
     let q = build_right_tensor(
         &groups,
         &q_mats,
@@ -268,6 +316,7 @@ pub fn lq_block_sparse<T: Scalar, S: Sector>(
         tensor.indices(),
         nrow,
         tensor.flux().clone(),
+        order,
     );
     Ok((l, q))
 }
@@ -292,6 +341,7 @@ fn decompose_per_sector<T, S, B, F>(
     tensor: &BlockSparse<T, S>,
     _nrow: usize,
     backend: &B,
+    order: MemoryOrder,
     decompose: F,
 ) -> Result<(Vec<Vec<T>>, Vec<Vec<T>>, Vec<usize>), LinalgError>
 where
@@ -304,9 +354,8 @@ where
     let mut right_mats = Vec::with_capacity(groups.len());
     let mut k_per = Vec::with_capacity(groups.len());
     for group in groups {
-        let matrix = assemble_sector_matrix(tensor, group);
-        let dense =
-            Dense::from_data_with_order(matrix, vec![group.m, group.n], MemoryOrder::RowMajor);
+        let matrix = assemble_sector_matrix(tensor, group, order);
+        let dense = Dense::from_data_with_order(matrix, vec![group.m, group.n], order);
         let (l, r) = decompose(backend, &dense)?;
         k_per.push(group.m.min(group.n));
         left_mats.push(l);
@@ -379,8 +428,8 @@ fn cross_sector_truncate<T: Scalar>(
     Ok((k_per_sector, err_sq.sqrt()))
 }
 
-fn to_row_major_vec<T: Scalar>(tensor: &Dense<T>) -> Vec<T> {
-    tensor.to_contiguous(MemoryOrder::RowMajor).data().to_vec()
+fn to_vec_in_order<T: Scalar>(tensor: &Dense<T>, order: MemoryOrder) -> Vec<T> {
+    tensor.to_contiguous(order).data().to_vec()
 }
 
 #[cfg(test)]

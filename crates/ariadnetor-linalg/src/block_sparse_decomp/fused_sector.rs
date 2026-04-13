@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use arnet_core::backend::MemoryOrder;
 use arnet_core::scalar::Scalar;
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::sector::Sector;
@@ -135,13 +136,17 @@ fn cumulative_offsets(dims: &[usize]) -> Vec<usize> {
     offsets
 }
 
-/// Assemble a dense row-major matrix from all blocks in one fused sector group.
+/// Assemble a dense matrix from all blocks in one fused sector group.
+///
+/// The output matrix layout follows the given `order`.
 pub(super) fn assemble_sector_matrix<T: Scalar, S: Sector>(
     tensor: &BlockSparse<T, S>,
     group: &FusedSectorGroup<S>,
+    order: MemoryOrder,
 ) -> Vec<T> {
+    let m = group.m;
     let n = group.n;
-    let mut matrix = vec![T::zero(); group.m * n];
+    let mut matrix = vec![T::zero(); m * n];
 
     for (li, left_tup) in group.left_tuples.iter().enumerate() {
         let row_off = group.left_offsets[li];
@@ -157,10 +162,21 @@ pub(super) fn assemble_sector_matrix<T: Scalar, S: Sector>(
             let coord = BlockCoord(coord_vec);
 
             if let Some(block_data) = tensor.block_data(&coord) {
-                for r in 0..m_i {
-                    let dst = (row_off + r) * n + col_off;
-                    let src = r * n_j;
-                    matrix[dst..dst + n_j].copy_from_slice(&block_data[src..src + n_j]);
+                match order {
+                    MemoryOrder::RowMajor => {
+                        for r in 0..m_i {
+                            let dst = (row_off + r) * n + col_off;
+                            let src = r * n_j;
+                            matrix[dst..dst + n_j].copy_from_slice(&block_data[src..src + n_j]);
+                        }
+                    }
+                    MemoryOrder::ColumnMajor => {
+                        for c in 0..n_j {
+                            let dst = (col_off + c) * m + row_off;
+                            let src = c * m_i;
+                            matrix[dst..dst + m_i].copy_from_slice(&block_data[src..src + m_i]);
+                        }
+                    }
                 }
             }
         }
@@ -171,12 +187,14 @@ pub(super) fn assemble_sector_matrix<T: Scalar, S: Sector>(
 /// Build the left output tensor (U, Q, or L) from per-sector matrices.
 ///
 /// Legs: `[original_left_legs..., bond(In)]`, flux = identity.
+/// `order` specifies the memory layout of both source matrices and output block data.
 pub(super) fn build_left_tensor<T: Scalar, S: Sector>(
     groups: &[FusedSectorGroup<S>],
     left_matrices: &[Vec<T>],
     k_per_sector: &[usize],
     original_indices: &[QNIndex<S>],
     nrow: usize,
+    order: MemoryOrder,
 ) -> BlockSparse<T, S> {
     let bond_blocks: Vec<(S, usize)> = groups
         .iter()
@@ -196,6 +214,7 @@ pub(super) fn build_left_tensor<T: Scalar, S: Sector>(
         if k == 0 {
             continue;
         }
+        let m = group.m;
         let mat = &left_matrices[gi];
         for (li, left_tup) in group.left_tuples.iter().enumerate() {
             let row_off = group.left_offsets[li];
@@ -206,10 +225,21 @@ pub(super) fn build_left_tensor<T: Scalar, S: Sector>(
             let block_data = output
                 .block_data_mut(&coord)
                 .expect("internal error: missing output block in build_left_tensor");
-            for r in 0..m_i {
-                let src = (row_off + r) * k;
-                let dst = r * k;
-                block_data[dst..dst + k].copy_from_slice(&mat[src..src + k]);
+            match order {
+                MemoryOrder::RowMajor => {
+                    for r in 0..m_i {
+                        let src = (row_off + r) * k;
+                        let dst = r * k;
+                        block_data[dst..dst + k].copy_from_slice(&mat[src..src + k]);
+                    }
+                }
+                MemoryOrder::ColumnMajor => {
+                    for c in 0..k {
+                        let src = c * m + row_off;
+                        let dst = c * m_i;
+                        block_data[dst..dst + m_i].copy_from_slice(&mat[src..src + m_i]);
+                    }
+                }
             }
         }
         bond_idx += 1;
@@ -220,6 +250,7 @@ pub(super) fn build_left_tensor<T: Scalar, S: Sector>(
 /// Build the right output tensor (Vt, R, or Q) from per-sector matrices.
 ///
 /// Legs: `[bond(Out), original_right_legs...]`, flux = original flux.
+/// `order` specifies the memory layout of both source matrices and output block data.
 pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
     groups: &[FusedSectorGroup<S>],
     right_matrices: &[Vec<T>],
@@ -227,6 +258,7 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
     original_indices: &[QNIndex<S>],
     nrow: usize,
     flux: S,
+    order: MemoryOrder,
 ) -> BlockSparse<T, S> {
     let bond_blocks: Vec<(S, usize)> = groups
         .iter()
@@ -257,10 +289,21 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
             let block_data = output
                 .block_data_mut(&coord)
                 .expect("internal error: missing output block in build_right_tensor");
-            for r in 0..k {
-                let src = r * n + col_off;
-                let dst = r * n_j;
-                block_data[dst..dst + n_j].copy_from_slice(&mat[src..src + n_j]);
+            match order {
+                MemoryOrder::RowMajor => {
+                    for r in 0..k {
+                        let src = r * n + col_off;
+                        let dst = r * n_j;
+                        block_data[dst..dst + n_j].copy_from_slice(&mat[src..src + n_j]);
+                    }
+                }
+                MemoryOrder::ColumnMajor => {
+                    for c in 0..n_j {
+                        let src = (col_off + c) * k;
+                        let dst = c * k;
+                        block_data[dst..dst + k].copy_from_slice(&mat[src..src + k]);
+                    }
+                }
             }
         }
         bond_idx += 1;
