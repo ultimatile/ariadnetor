@@ -1,10 +1,48 @@
 use super::*;
+use arnet_core::backend::ComputeBackend;
 use arnet_native::NativeBackend;
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::sector::{U1Sector, Z2Sector};
 
 fn b() -> NativeBackend {
     NativeBackend
+}
+
+fn order() -> MemoryOrder {
+    b().preferred_order()
+}
+
+/// Compute flat index from multi-index in the backend's preferred order.
+fn flat_idx(multi: &[usize], shape: &[usize]) -> usize {
+    let strides = compute_strides(shape, order());
+    multi.iter().zip(strides.iter()).map(|(&m, &s)| m * s).sum()
+}
+
+/// Convert data from conceptual RowMajor layout to the backend's preferred order.
+/// This preserves the mathematical meaning of the data regardless of backend convention.
+fn to_order(data: &[f64], shape: &[usize]) -> Vec<f64> {
+    let ord = order();
+    if matches!(ord, MemoryOrder::RowMajor) || shape.len() <= 1 {
+        return data.to_vec();
+    }
+    let rm_strides = compute_strides(shape, MemoryOrder::RowMajor);
+    let cm_strides = compute_strides(shape, MemoryOrder::ColumnMajor);
+    let mut result = vec![0.0; data.len()];
+    for (flat_rm, &val) in data.iter().enumerate() {
+        let mut multi = vec![0; shape.len()];
+        let mut rem = flat_rm;
+        for i in 0..shape.len() {
+            multi[i] = rem / rm_strides[i];
+            rem %= rm_strides[i];
+        }
+        let flat_cm: usize = multi
+            .iter()
+            .zip(cm_strides.iter())
+            .map(|(&m, &s)| m * s)
+            .sum();
+        result[flat_cm] = val;
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -87,21 +125,22 @@ fn rank2_single_block_matmul() {
     let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![row.clone(), col.clone()], U1Sector(0));
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+        .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
 
     let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[5.0, 6.0, 7.0, 8.0]);
+        .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
 
     match contract_block_sparse(&b(), &a, &c, &[1], &[0]).unwrap() {
         BlockSparseContractResult::Tensor(out) => {
             let d = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
             // [[1,2],[3,4]] × [[5,6],[7,8]] = [[19,22],[43,50]]
-            assert!((d[0] - 19.0).abs() < 1e-10);
-            assert!((d[1] - 22.0).abs() < 1e-10);
-            assert!((d[2] - 43.0).abs() < 1e-10);
-            assert!((d[3] - 50.0).abs() < 1e-10);
+            let expected = to_order(&[19.0, 22.0, 43.0, 50.0], &[2, 2]);
+            assert!((d[0] - expected[0]).abs() < 1e-10);
+            assert!((d[1] - expected[1]).abs() < 1e-10);
+            assert!((d[2] - expected[2]).abs() < 1e-10);
+            assert!((d[3] - expected[3]).abs() < 1e-10);
         }
         _ => panic!("expected tensor"),
     }
@@ -115,7 +154,7 @@ fn rank2_multi_block_matmul() {
     let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![row.clone(), col.clone()], U1Sector(0));
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+        .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
     a.block_data_mut(&BlockCoord(vec![1, 1]))
         .unwrap()
         .copy_from_slice(&[5.0]);
@@ -123,7 +162,7 @@ fn rank2_multi_block_matmul() {
     let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[6.0, 7.0, 8.0, 9.0]);
+        .copy_from_slice(&to_order(&[6.0, 7.0, 8.0, 9.0], &[2, 2]));
     c.block_data_mut(&BlockCoord(vec![1, 1]))
         .unwrap()
         .copy_from_slice(&[10.0]);
@@ -131,11 +170,12 @@ fn rank2_multi_block_matmul() {
     match contract_block_sparse(&b(), &a, &c, &[1], &[0]).unwrap() {
         BlockSparseContractResult::Tensor(out) => {
             // Block (0,0): [[1,2],[3,4]]×[[6,7],[8,9]] = [[22,25],[50,57]]
+            let e00 = to_order(&[22.0, 25.0, 50.0, 57.0], &[2, 2]);
             let d00 = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
-            assert!((d00[0] - 22.0).abs() < 1e-10);
-            assert!((d00[1] - 25.0).abs() < 1e-10);
-            assert!((d00[2] - 50.0).abs() < 1e-10);
-            assert!((d00[3] - 57.0).abs() < 1e-10);
+            assert!((d00[0] - e00[0]).abs() < 1e-10);
+            assert!((d00[1] - e00[1]).abs() < 1e-10);
+            assert!((d00[2] - e00[2]).abs() < 1e-10);
+            assert!((d00[3] - e00[3]).abs() < 1e-10);
             // Block (1,1): [5]×[10] = [50]
             let d11 = out.block_data(&BlockCoord(vec![1, 1])).unwrap();
             assert!((d11[0] - 50.0).abs() < 1e-10);
@@ -194,12 +234,12 @@ fn full_contraction_scalar() {
     let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![row.clone(), col.clone()], U1Sector(0));
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+        .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
 
     let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[5.0, 6.0, 7.0, 8.0]);
+        .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
 
     // axes_lhs=[0,1], axes_rhs=[1,0] so Out↔In pairing is correct
     // Σ_{i,j} A[i,j] * B[j,i] = 1*5+2*7+3*6+4*8 = 5+14+18+32 = 69
@@ -266,10 +306,11 @@ fn accumulation_multiple_pairs_to_same_block() {
             let d = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
             // C = [[1],[2]]×[[3,4]] + [[5],[6]]×[[7,8]]
             //   = [[3,4],[6,8]] + [[35,40],[42,48]] = [[38,44],[48,56]]
-            assert!((d[0] - 38.0).abs() < 1e-10);
-            assert!((d[1] - 44.0).abs() < 1e-10);
-            assert!((d[2] - 48.0).abs() < 1e-10);
-            assert!((d[3] - 56.0).abs() < 1e-10);
+            let expected = to_order(&[38.0, 44.0, 48.0, 56.0], &[2, 2]);
+            assert!((d[0] - expected[0]).abs() < 1e-10);
+            assert!((d[1] - expected[1]).abs() < 1e-10);
+            assert!((d[2] - expected[2]).abs() < 1e-10);
+            assert!((d[3] - expected[3]).abs() < 1e-10);
         }
         _ => panic!("expected tensor"),
     }
@@ -287,19 +328,20 @@ fn contraction_with_axis_transpose() {
     let a2 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![a0, a1, a2], U1Sector(0));
     // Block (0,0,0) shape [2,3,2] = 12 elements
-    let ad = a.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap();
-    for (i, v) in ad.iter_mut().enumerate() {
-        *v = (i + 1) as f64;
-    }
+    // Conceptually RowMajor: A[i,j,k] = i*6+j*2+k+1
+    let a_rm: Vec<f64> = (1..=12).map(|x| x as f64).collect();
+    a.block_data_mut(&BlockCoord(vec![0, 0, 0]))
+        .unwrap()
+        .copy_from_slice(&to_order(&a_rm, &[2, 3, 2]));
 
     // B: rank 2, contract axis 1 → rhs_perm = [1,0] (non-trivial)
     let b0 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let b1 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![b0, b1], U1Sector(0));
-    let bd = c.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
-    for (i, v) in bd.iter_mut().enumerate() {
-        *v = (i + 1) as f64;
-    }
+    let b_rm: Vec<f64> = (1..=6).map(|x| x as f64).collect();
+    c.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&to_order(&b_rm, &[3, 2]));
 
     // Contract A axis 0 (Out) with B axis 1 (In)
     match contract_block_sparse(&b(), &a, &c, &[0], &[1]).unwrap() {
@@ -309,12 +351,11 @@ fn contraction_with_axis_transpose() {
             assert_eq!(d.len(), 18); // 3×2×3
 
             // C[j,k,l] = Σ_i A[i,j,k] * B[l,i]
-            // A data row-major [2,3,2]: A[0,0,0]=1..A[1,2,1]=12
-            // B data row-major [3,2]: B[0,0]=1,B[0,1]=2,B[1,0]=3,...B[2,1]=6
-            // C[0,0,0] = A[0,0,0]*B[0,0] + A[1,0,0]*B[0,1] = 1*1 + 7*2 = 15
-            assert!((d[0] - 15.0).abs() < 1e-10);
+            // A[0,0,0]=1, A[1,0,0]=7, B[0,0]=1, B[0,1]=2
+            // C[0,0,0] = 1*1 + 7*2 = 15
+            assert!((d[flat_idx(&[0, 0, 0], &[3, 2, 3])] - 15.0).abs() < 1e-10);
             // C[2,1,2] = A[0,2,1]*B[2,0] + A[1,2,1]*B[2,1] = 6*5 + 12*6 = 102
-            assert!((d[17] - 102.0).abs() < 1e-10);
+            assert!((d[flat_idx(&[2, 1, 2], &[3, 2, 3])] - 102.0).abs() < 1e-10);
         }
         _ => panic!("expected tensor"),
     }
@@ -335,12 +376,12 @@ fn full_contraction_identity_perm() {
         BlockSparse::<f64, U1Sector>::zeros(vec![out_idx.clone(), in_idx.clone()], U1Sector(0));
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+        .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
 
     let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![in_idx, out_idx], U1Sector(0));
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[5.0, 6.0, 7.0, 8.0]);
+        .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
 
     // Σ A[i,j]*B[i,j] = 1*5 + 2*6 + 3*7 + 4*8 = 70
     match contract_block_sparse(&b(), &a, &c, &[0, 1], &[0, 1]).unwrap() {
@@ -360,7 +401,7 @@ fn full_contraction_identity_perm_multi_block() {
         BlockSparse::<f64, U1Sector>::zeros(vec![out_idx.clone(), in_idx.clone()], U1Sector(0));
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+        .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
     a.block_data_mut(&BlockCoord(vec![1, 1]))
         .unwrap()
         .copy_from_slice(&[5.0]);
@@ -368,7 +409,7 @@ fn full_contraction_identity_perm_multi_block() {
     let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![in_idx, out_idx], U1Sector(0));
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[2.0, 0.0, 0.0, 3.0]);
+        .copy_from_slice(&to_order(&[2.0, 0.0, 0.0, 3.0], &[2, 2]));
     c.block_data_mut(&BlockCoord(vec![1, 1]))
         .unwrap()
         .copy_from_slice(&[4.0]);
@@ -394,19 +435,19 @@ fn contraction_rank2_with_rank1() {
     let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]));
 
     let v_out = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let mut v = BlockSparse::<f64, U1Sector>::zeros(vec![v_out], U1Sector(0));
     v.block_data_mut(&BlockCoord(vec![0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 0.0, 1.0]);
+        .copy_from_slice(&[1.0, 0.0, 1.0]); // rank-1: order doesn't matter
 
     match contract_block_sparse(&b(), &a, &v, &[1], &[0]).unwrap() {
         BlockSparseContractResult::Tensor(out) => {
             assert_eq!(out.rank(), 1);
             let d = out.block_data(&BlockCoord(vec![0])).unwrap();
-            // [1*1+2*0+3*1, 4*1+5*0+6*1] = [4, 10]
+            // [[1,2,3],[4,5,6]] × [1,0,1] = [1+0+3, 4+0+6] = [4, 10]
             assert!((d[0] - 4.0).abs() < 1e-10);
             assert!((d[1] - 10.0).abs() < 1e-10);
         }
@@ -433,7 +474,7 @@ fn z2_rank2_matmul() {
         BlockSparse::<f64, Z2Sector>::zeros(vec![row.clone(), col.clone()], Z2Sector::new(0));
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+        .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
     a.block_data_mut(&BlockCoord(vec![1, 1]))
         .unwrap()
         .copy_from_slice(&[5.0]);
@@ -441,7 +482,7 @@ fn z2_rank2_matmul() {
     let mut c = BlockSparse::<f64, Z2Sector>::zeros(vec![row, col], Z2Sector::new(0));
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
-        .copy_from_slice(&[2.0, 0.0, 0.0, 2.0]); // 2*I
+        .copy_from_slice(&to_order(&[2.0, 0.0, 0.0, 2.0], &[2, 2])); // 2*I
     c.block_data_mut(&BlockCoord(vec![1, 1]))
         .unwrap()
         .copy_from_slice(&[3.0]);
@@ -449,9 +490,10 @@ fn z2_rank2_matmul() {
     match contract_block_sparse(&b(), &a, &c, &[1], &[0]).unwrap() {
         BlockSparseContractResult::Tensor(out) => {
             // (0,0): [[1,2],[3,4]]×2I = [[2,4],[6,8]]
+            let e00 = to_order(&[2.0, 4.0, 6.0, 8.0], &[2, 2]);
             let d00 = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
-            assert!((d00[0] - 2.0).abs() < 1e-10);
-            assert!((d00[3] - 8.0).abs() < 1e-10);
+            assert!((d00[0] - e00[0]).abs() < 1e-10);
+            assert!((d00[3] - e00[3]).abs() < 1e-10);
             // (1,1): [5]×[3] = [15]
             let d11 = out.block_data(&BlockCoord(vec![1, 1])).unwrap();
             assert!((d11[0] - 15.0).abs() < 1e-10);

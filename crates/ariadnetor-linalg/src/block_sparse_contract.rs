@@ -56,7 +56,8 @@ pub fn contract_block_sparse<T: Scalar, S: Sector>(
     let rhs_groups = group_by_contracted_key(rhs, axes_rhs);
 
     if output_rank == 0 {
-        return contract_to_scalar(lhs, rhs, axes_lhs, axes_rhs, &rhs_groups);
+        let order = backend.preferred_order();
+        return contract_to_scalar(lhs, rhs, axes_lhs, axes_rhs, &rhs_groups, order);
     }
 
     contract_to_tensor(
@@ -181,6 +182,7 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
+    order: MemoryOrder,
 ) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
     if lhs.flux().fuse(rhs.flux()) != S::identity() {
         return Ok(BlockSparseContractResult::Scalar(T::zero()));
@@ -217,7 +219,7 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
                 let rhs_shape: Vec<usize> = (0..rhs.rank())
                     .map(|a| rhs.indices()[a].block_dim(rhs_meta.coord.0[a]))
                     .collect();
-                let rhs_t = transpose_block_data(rhs_data, &rhs_shape, &rhs_perm);
+                let rhs_t = transpose_block_data(rhs_data, &rhs_shape, &rhs_perm, order);
                 for (&a, &b) in lhs_data.iter().zip(rhs_t.iter()) {
                     sum = sum + a * b;
                 }
@@ -289,8 +291,9 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 
         let lhs_data = lhs.block_data(&lhs_meta.coord).unwrap();
         let lhs_buf;
+        let order = backend.preferred_order();
         let lhs_slice: &[T] = if lhs_needs_t {
-            lhs_buf = transpose_block_data(lhs_data, &lhs_block_shape, &lhs_perm);
+            lhs_buf = transpose_block_data(lhs_data, &lhs_block_shape, &lhs_perm, order);
             &lhs_buf
         } else {
             lhs_data
@@ -324,15 +327,15 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
             let rhs_data = rhs.block_data(&rhs_meta.coord).unwrap();
             let rhs_buf;
             let rhs_slice: &[T] = if rhs_needs_t {
-                rhs_buf = transpose_block_data(rhs_data, &rhs_block_shape, &rhs_perm);
+                rhs_buf = transpose_block_data(rhs_data, &rhs_block_shape, &rhs_perm, order);
                 &rhs_buf
             } else {
                 rhs_data
             };
 
-            // Block data is row-major (last axis fastest), unlike Dense which
-            // tracks its own MemoryOrder. The descriptor's order field tells the
-            // backend the actual layout of the provided slices.
+            // Block data layout follows the backend's preferred order.
+            // The descriptor's order field tells the backend the actual
+            // layout of the provided slices.
             backend.gemm(GemmDescriptor {
                 m,
                 n,
@@ -344,7 +347,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 c: out_data,
                 trans_a: false,
                 trans_b: false,
-                order: MemoryOrder::RowMajor,
+                order,
             })?;
         }
     }
@@ -356,30 +359,43 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Transpose block data stored in row-major layout.
+/// Transpose block data in the given memory order layout.
 ///
 /// Convention: `perm[new_axis] = old_axis`.
-fn transpose_block_data<T: Copy>(data: &[T], shape: &[usize], perm: &[usize]) -> Vec<T> {
+fn transpose_block_data<T: Copy>(
+    data: &[T],
+    shape: &[usize],
+    perm: &[usize],
+    order: MemoryOrder,
+) -> Vec<T> {
     let rank = shape.len();
     if rank <= 1 || data.is_empty() {
         return data.to_vec();
     }
 
     let total = data.len();
-    let old_strides = row_major_strides(shape);
+    let old_strides = compute_strides(shape, order);
     let perm_strides: Vec<usize> = perm.iter().map(|&p| old_strides[p]).collect();
 
     let new_shape: Vec<usize> = perm.iter().map(|&p| shape[p]).collect();
-    let new_strides = row_major_strides(&new_shape);
+    let new_strides = compute_strides(&new_shape, order);
+
+    // Axis iteration order for flat→multi-index decomposition:
+    // RowMajor strides are descending → process 0..rank
+    // ColumnMajor strides are ascending → process (0..rank).rev()
+    let decomp_order: Vec<usize> = match order {
+        MemoryOrder::RowMajor => (0..rank).collect(),
+        MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+    };
 
     let mut result = vec![data[0]; total];
     let mut idx = vec![0usize; rank];
 
     for (flat, out) in result.iter_mut().enumerate() {
         let mut rem = flat;
-        for i in 0..rank {
-            idx[i] = rem / new_strides[i];
-            rem %= new_strides[i];
+        for &ax in &decomp_order {
+            idx[ax] = rem / new_strides[ax];
+            rem %= new_strides[ax];
         }
         let old_flat: usize = idx
             .iter()
@@ -392,11 +408,21 @@ fn transpose_block_data<T: Copy>(data: &[T], shape: &[usize], perm: &[usize]) ->
     result
 }
 
-fn row_major_strides(shape: &[usize]) -> Vec<usize> {
+/// Compute strides for the given memory order.
+pub(crate) fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
     let rank = shape.len();
     let mut strides = vec![1usize; rank];
-    for i in (0..rank.saturating_sub(1)).rev() {
-        strides[i] = strides[i + 1] * shape[i + 1];
+    match order {
+        MemoryOrder::RowMajor => {
+            for i in (0..rank.saturating_sub(1)).rev() {
+                strides[i] = strides[i + 1] * shape[i + 1];
+            }
+        }
+        MemoryOrder::ColumnMajor => {
+            for i in 1..rank {
+                strides[i] = strides[i - 1] * shape[i - 1];
+            }
+        }
     }
     strides
 }

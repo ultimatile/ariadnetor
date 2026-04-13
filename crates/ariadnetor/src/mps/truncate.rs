@@ -358,6 +358,7 @@ where
     B: ComputeBackend,
     C: TensorChain<BlockSparse<T, S>, B>,
 {
+    let order = chain.backend().preferred_order();
     let (left_storage, right_factor, err) = {
         let site = chain.storage(j);
         let rank = site.rank();
@@ -368,22 +369,22 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 // U stays at j (left-canonical), S·Vt absorbed into j+1
-                let svt = diagonal_scale_block_sparse(&vt, &s, 0)
+                let svt = diagonal_scale_block_sparse(&vt, &s, 0, order)
                     .expect("S·Vt scaling failed during truncate");
                 (u, svt, err)
             }
             SvdAbsorb::Left => {
                 // U·S stays at j, Vt absorbed into j+1
-                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1)
+                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1, order)
                     .expect("U·S scaling failed during truncate");
                 (us, vt, err)
             }
             SvdAbsorb::Both => {
                 // √S applied to both sides
                 let sqrt_s = s.map(|v| (*v).sqrt());
-                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1)
+                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1, order)
                     .expect("√S·U scaling failed during truncate");
-                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0)
+                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0, order)
                     .expect("√S·Vt scaling failed during truncate");
                 (u_scaled, vt_scaled, err)
             }
@@ -416,6 +417,7 @@ where
     B: ComputeBackend,
     C: TensorChain<BlockSparse<T, S>, B>,
 {
+    let order = chain.backend().preferred_order();
     let (right_storage, left_factor, err) = {
         let site = chain.storage(j);
 
@@ -425,22 +427,22 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 // Vt stays at j (right-isometric), U·S absorbed into j-1
-                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1)
+                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1, order)
                     .expect("U·S scaling failed during truncate");
                 (vt, us, err)
             }
             SvdAbsorb::Left => {
                 // S·Vt stays at j, bare U absorbed into j-1
-                let svt = diagonal_scale_block_sparse(&vt, &s, 0)
+                let svt = diagonal_scale_block_sparse(&vt, &s, 0, order)
                     .expect("S·Vt scaling failed during truncate");
                 (svt, u, err)
             }
             SvdAbsorb::Both => {
                 // √S applied to both sides
                 let sqrt_s = s.map(|v| (*v).sqrt());
-                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0)
+                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0, order)
                     .expect("√S·Vt scaling failed during truncate");
-                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1)
+                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1, order)
                     .expect("√S·U scaling failed during truncate");
                 (vt_scaled, u_scaled, err)
             }
