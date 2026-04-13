@@ -265,6 +265,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let lhs_needs_t = !is_identity_perm(&lhs_perm);
     let rhs_needs_t = !is_identity_perm(&rhs_perm);
 
+    let order = backend.preferred_order();
     let rhs_metas = rhs.block_metas();
     let mut key = Vec::with_capacity(axes_lhs.len());
 
@@ -291,7 +292,6 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 
         let lhs_data = lhs.block_data(&lhs_meta.coord).unwrap();
         let lhs_buf;
-        let order = backend.preferred_order();
         let lhs_slice: &[T] = if lhs_needs_t {
             lhs_buf = transpose_block_data(lhs_data, &lhs_block_shape, &lhs_perm, order);
             &lhs_buf
