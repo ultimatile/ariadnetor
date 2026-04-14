@@ -1,5 +1,5 @@
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, MemoryOrder};
-use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::Zero;
 

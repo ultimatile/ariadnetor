@@ -1,6 +1,6 @@
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
-use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_core::scalar::Scalar;
+use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;

@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_core::scalar::Scalar;
 use arnet_tensor::block_sparse::BlockSparse;
 use arnet_tensor::sector::Sector;
 

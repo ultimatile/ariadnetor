@@ -16,11 +16,11 @@ mod transpose;
 
 use std::sync::{Arc, OnceLock};
 
+use arnet_core::Scalar;
 use arnet_core::backend::{
     BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor,
     LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor,
 };
-use arnet_core::scalar::Scalar;
 use num_complex::Complex;
 
 /// Native backend using faer for GEMM and HPTT for transpose.

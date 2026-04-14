@@ -1,5 +1,5 @@
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder, SolveDescriptor};
-use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;

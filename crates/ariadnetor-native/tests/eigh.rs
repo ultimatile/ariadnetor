@@ -1,7 +1,7 @@
 //! Self-adjoint eigenvalue decomposition tests for all scalar types
 
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, EighDescriptor};
-use arnet_core::scalar::Scalar;
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 use num_traits::One;

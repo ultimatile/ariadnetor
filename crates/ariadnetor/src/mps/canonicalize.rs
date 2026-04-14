@@ -1,7 +1,7 @@
 //! Canonicalize: move the orthogonality center of a tensor chain via QR/LQ sweeps
 
+use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_core::scalar::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, contract, contract_block_sparse, lq, lq_block_sparse, qr,
     qr_block_sparse,

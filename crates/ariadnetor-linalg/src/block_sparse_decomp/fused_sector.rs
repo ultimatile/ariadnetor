@@ -4,8 +4,8 @@
 
 use std::collections::BTreeMap;
 
+use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
-use arnet_core::scalar::Scalar;
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::sector::Sector;
 

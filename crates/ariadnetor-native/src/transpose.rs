@@ -1,7 +1,7 @@
 //! Transpose dispatch: HPTT for supported types, naive fallback otherwise
 
+use arnet_core::Scalar;
 use arnet_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
-use arnet_core::scalar::Scalar;
 
 /// Dispatch transpose to the best available implementation.
 ///

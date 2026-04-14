@@ -7,8 +7,8 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_core::scalar::Scalar;
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
 

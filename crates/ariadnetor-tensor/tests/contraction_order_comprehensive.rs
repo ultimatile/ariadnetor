@@ -5,7 +5,7 @@
 // migrated to ariadnetor-linalg/tests/contraction.rs since contraction
 // now goes through ComputeBackend.
 
-use arnet_tensor::einsum::{ContractionPlan, EinsumExpr};
+use arnet_tensor::{ContractionPlan, EinsumExpr};
 
 #[test]
 fn test_contracted_indices_preserve_lhs_order() {

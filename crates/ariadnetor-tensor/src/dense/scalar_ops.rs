@@ -6,7 +6,7 @@ use super::Dense;
 
 impl<T> Dense<T>
 where
-    T: arnet_core::scalar::Scalar,
+    T: arnet_core::Scalar,
 {
     /// Element-wise complex conjugate.
     pub fn conj(&self) -> Self {

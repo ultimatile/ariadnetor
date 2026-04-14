@@ -7,10 +7,10 @@
 //! - `EinsumExpr`, `ContractionPlan`: Einsum parsing and analysis
 
 pub mod backend;
-pub mod contraction_error;
-pub mod einsum;
-pub mod label;
-pub mod scalar;
+mod contraction_error;
+mod einsum;
+mod label;
+mod scalar;
 
 pub use backend::{ComputeBackend, MemoryOrder};
 pub use contraction_error::ContractionError;

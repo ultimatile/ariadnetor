@@ -10,7 +10,7 @@ use crate::sector::Sector;
 
 impl<T, S> BlockSparse<T, S>
 where
-    T: arnet_core::scalar::Scalar,
+    T: arnet_core::Scalar,
     S: Sector,
 {
     /// Hermitian adjoint: element-wise conjugation + flip all QNIndex
