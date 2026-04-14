@@ -85,6 +85,75 @@ fn fuse_leading_axes_rank3() {
 }
 
 // ---------------------------------------------------------------------------
+// Contract: fused tuple offsets follow lexicographic order
+// ---------------------------------------------------------------------------
+
+/// Multiple tuples fuse to the same sector. Verify that fused data within
+/// a block follows lexicographic tuple order, not block_metas encounter order.
+/// This is a regression test for a bug where tuple offsets depended on
+/// block_metas iteration order rather than the canonical lexicographic order.
+#[test]
+fn fuse_tuple_offset_is_lexicographic() {
+    // Rank-3 tensor with axes Out(0:1, 1:1), Out(0:1, 1:1), In(0:1).
+    // Flux = 0. With Out+Out fuse → sector can be 0+0=0 or 1+1=2. Sector 0
+    // should have tuples (0,0) before (1,1) would be a different sector.
+    // Use a case where multiple tuples map to the SAME fused sector:
+    // Out(0:1, 1:1), In(0:1, 1:1), fusing these two with direction Out
+    // Tuples: (0,0)→fuse(0,0)=0 dim=1, (0,1)→fuse(0,-1)=-1 dim=1,
+    //         (1,0)→fuse(1,0)=1 dim=1, (1,1)→fuse(1,-1)=0 dim=1
+    // Sector 0 has tuples (0,0) and (1,1), both dim=1 → fused dim=2
+    let i0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let i1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let i2 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::In);
+    // flux = 0, so allowed blocks must satisfy Out(s0).fuse(In(s1)).fuse(In(s2)) = 0
+    // s2 = 0 always. So Out(s0).fuse(In(s1)) = 0 → s0 - s1 = 0 → s0 == s1
+    // Blocks: (0,0,0) and (1,1,0)
+    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(0));
+    // Block (0,0,0): 1×1×3 = 3 elements, fill with [10, 20, 30]
+    bs.block_data_mut(&BlockCoord(vec![0, 0, 0]))
+        .unwrap()
+        .copy_from_slice(&[10.0, 20.0, 30.0]);
+    // Block (1,1,0): 1×1×3 = 3 elements, fill with [40, 50, 60]
+    bs.block_data_mut(&BlockCoord(vec![1, 1, 0]))
+        .unwrap()
+        .copy_from_slice(&[40.0, 50.0, 60.0]);
+
+    // Fuse axes (0,1) with Out direction
+    let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+
+    assert_eq!(fused.rank(), 2);
+    // Fused sector 0 (Out) has dim=2 (tuple (0,0) dim=1 + tuple (1,1) dim=1)
+    // Remaining axis: In(0:3)
+    // Output block (sector_0_idx, 0) should have shape [2, 3]
+
+    // Find the block for fused sector 0
+    let fused_block = fused.block_metas().iter().find(|m| m.size == 6).unwrap();
+    let data = fused.block_data(&fused_block.coord).unwrap();
+
+    // Lexicographic order: tuple (0,0) comes before (1,1).
+    // In the NativeBackend (column-major), data layout for [2, 3]:
+    // CM: col0=[row0,row1], col1=[row0,row1], col2=[row0,row1]
+    // = [10, 40, 20, 50, 30, 60]
+    // In RM: [10, 20, 30, 40, 50, 60]
+    // Either way, the tuple (0,0) data should come in the fused-dim-0 position
+    // and (1,1) in fused-dim-1. Verify the multiset is correct.
+    let mut sorted = data.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(sorted, vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
+
+    // Stronger check: verify ordering depends on fused dimension, not encounter order.
+    // In CM [2,3]: element (fused_idx, col) at flat = fused_idx + 2*col
+    // So fused_idx=0 elements: data[0], data[2], data[4] should be 10, 20, 30
+    // fused_idx=1 elements: data[1], data[3], data[5] should be 40, 50, 60
+    assert_eq!(data[0], 10.0, "fused_idx=0, col=0");
+    assert_eq!(data[2], 20.0, "fused_idx=0, col=1");
+    assert_eq!(data[4], 30.0, "fused_idx=0, col=2");
+    assert_eq!(data[1], 40.0, "fused_idx=1, col=0");
+    assert_eq!(data[3], 50.0, "fused_idx=1, col=1");
+    assert_eq!(data[5], 60.0, "fused_idx=1, col=2");
+}
+
+// ---------------------------------------------------------------------------
 // Fuse trailing axes of rank-3
 // ---------------------------------------------------------------------------
 
