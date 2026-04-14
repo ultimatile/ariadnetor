@@ -3,8 +3,8 @@
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{BlockSparseContractResult, contract, contract_block_sparse};
-use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
-use arnet_tensor::sector::Sector;
+use arnet_tensor::Sector;
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::{Float, One};
 

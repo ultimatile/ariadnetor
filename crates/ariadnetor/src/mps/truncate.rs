@@ -6,8 +6,8 @@ use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
     diagonal_scale_block_sparse, trunc_svd, trunc_svd_block_sparse,
 };
-use arnet_tensor::block_sparse::BlockSparse;
-use arnet_tensor::sector::Sector;
+use arnet_tensor::BlockSparse;
+use arnet_tensor::Sector;
 use arnet_tensor::{Dense, reorder};
 use num_traits::{Float, Zero};
 
