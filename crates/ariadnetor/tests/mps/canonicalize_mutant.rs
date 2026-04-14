@@ -202,16 +202,8 @@ fn test_bond_dim_compatibility_after_canonicalize() {
 #[test]
 fn test_two_site_canonicalize_center_0() {
     let storages = vec![
-        Dense::from_data_with_order(
-            vec![1.0, 2.0, 3.0, 4.0],
-            vec![1, 2, 2],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            vec![1.0, 0.5, 0.3, 0.1],
-            vec![2, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
+        Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![1, 2, 2]),
+        Dense::new(vec![1.0, 0.5, 0.3, 0.1], vec![2, 2, 1]),
     ];
     let mut mps = Mps::from_storages(storages);
     let dense_before = mps_to_dense(&mps);
@@ -242,16 +234,8 @@ fn test_two_site_canonicalize_center_0() {
 #[test]
 fn test_two_site_canonicalize_center_1() {
     let storages = vec![
-        Dense::from_data_with_order(
-            vec![1.0, 2.0, 3.0, 4.0],
-            vec![1, 2, 2],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            vec![1.0, 0.5, 0.3, 0.1],
-            vec![2, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
+        Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![1, 2, 2]),
+        Dense::new(vec![1.0, 0.5, 0.3, 0.1], vec![2, 2, 1]),
     ];
     let mut mps = Mps::from_storages(storages);
     let dense_before = mps_to_dense(&mps);

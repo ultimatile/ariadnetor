@@ -1,8 +1,9 @@
-//! Dense tensor storage with strides-based memory layout
+//! Dense tensor storage with flat contiguous data
 //!
-//! Provides a dense tensor with explicit strides and Arc-based shared ownership.
-//! The tensor is self-describing regarding its memory layout — code should not
-//! assume row-major or column-major without checking.
+//! Provides a dense tensor with Arc-based shared ownership.
+//! Dense is pure storage — it holds `data` and `shape` only.
+//! Memory layout interpretation (row-major vs column-major) is
+//! delegated to the compute backend at operation time.
 
 mod access;
 mod constructors;
@@ -18,16 +19,14 @@ use std::sync::Arc;
 /// 64-byte alignment for SIMD (AVX-512)
 type Align64 = ConstAlign<64>;
 
-pub use access::{DenseIter, StridedIter};
 pub use arnet_core::MemoryOrder;
 
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
 ///
-/// # Memory Layout
-///
-/// Each tensor carries explicit `strides` and `offset` describing how logical
-/// indices map to positions in the underlying data buffer. Constructors default
-/// to row-major (C-contiguous) layout, but backends may produce other layouts.
+/// Dense is pure contiguous storage: a flat data buffer plus its shape.
+/// It carries no layout information (no strides, no offset, no memory order).
+/// Layout interpretation is the responsibility of the compute backend,
+/// mediated through `Tensor<Dense, B>` or explicit `MemoryOrder` parameters.
 ///
 /// # Type Parameters
 ///
@@ -37,14 +36,6 @@ pub struct Dense<T = f64> {
     data: Arc<AVec<T, Align64>>,
     /// Tensor shape
     shape: Vec<usize>,
-    /// Strides for each axis (element count, signed for future negative strides)
-    strides: Vec<isize>,
-    /// Offset into the data buffer (element index of the first logical element)
-    offset: usize,
-    /// The memory order this tensor was created with.
-    /// Needed to disambiguate layouts where strides alone are ambiguous
-    /// (e.g., 1D tensors, tensors with size-1 dimensions).
-    order: MemoryOrder,
 }
 
 // Manual Clone impl: all fields are Clone regardless of T
@@ -55,9 +46,6 @@ impl<T> Clone for Dense<T> {
         Self {
             data: Arc::clone(&self.data),
             shape: self.shape.clone(),
-            strides: self.strides.clone(),
-            offset: self.offset,
-            order: self.order,
         }
     }
 }
@@ -115,91 +103,6 @@ impl<T> Dense<T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
-    /// Get the strides of the tensor
-    pub fn strides(&self) -> &[isize] {
-        &self.strides
-    }
-
-    /// Get the offset into the data buffer
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-
-    // ========================================================================
-    // Layout queries
-    // ========================================================================
-
-    /// Check if the tensor is contiguous in any standard order.
-    pub fn is_contiguous(&self) -> bool {
-        self.is_row_major() || self.is_column_major()
-    }
-
-    /// Check if strides match row-major (C-order) layout.
-    pub fn is_row_major(&self) -> bool {
-        self.strides == row_major_strides(&self.shape)
-    }
-
-    /// Check if strides match column-major (Fortran-order) layout.
-    pub fn is_column_major(&self) -> bool {
-        self.strides == column_major_strides(&self.shape)
-    }
-
-    /// The memory order this tensor was created with.
-    ///
-    /// Unlike `is_row_major()` / `is_column_major()` which check strides,
-    /// this returns the authoritative order that disambiguates cases where
-    /// strides are ambiguous (e.g., 1D tensors or tensors with size-1 dims).
-    pub fn memory_order(&self) -> MemoryOrder {
-        self.order
-    }
-
-    /// Determine the memory order of this tensor, if contiguous.
-    ///
-    /// When strides unambiguously identify one layout (row-major xor
-    /// column-major), trust the strides.  When both match (1D, all-ones
-    /// shape), fall back to the authoritative `order` field.
-    fn contiguous_order(&self) -> Option<MemoryOrder> {
-        let rm = self.is_row_major();
-        let cm = self.is_column_major();
-        match (rm, cm) {
-            (true, true) => Some(self.order), // ambiguous: defer to order field
-            (true, false) => Some(MemoryOrder::RowMajor),
-            (false, true) => Some(MemoryOrder::ColumnMajor),
-            (false, false) => None,
-        }
-    }
-
-    // ========================================================================
-    // Private helpers
-    // ========================================================================
-
-    /// Convert multi-dimensional indices to flat index using strides and offset.
-    fn flat_index(&self, indices: &[usize]) -> usize {
-        assert_eq!(
-            indices.len(),
-            self.shape.len(),
-            "Number of indices {} doesn't match tensor rank {}",
-            indices.len(),
-            self.shape.len()
-        );
-
-        indices.iter().zip(&self.shape).for_each(|(&idx, &dim)| {
-            assert!(
-                idx < dim,
-                "Index {} out of bounds for dimension {}",
-                idx,
-                dim
-            )
-        });
-
-        let raw: isize = indices
-            .iter()
-            .zip(&self.strides)
-            .map(|(&idx, &stride)| idx as isize * stride)
-            .sum();
-        (self.offset as isize + raw) as usize
-    }
 }
 
 // ============================================================================
@@ -208,14 +111,7 @@ impl<T> Dense<T> {
 
 impl<T> fmt::Debug for Dense<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Dense(shape={:?}, strides={:?}, offset={}, elements={})",
-            self.shape,
-            self.strides,
-            self.offset,
-            self.len()
-        )
+        write!(f, "Dense(shape={:?}, elements={})", self.shape, self.len())
     }
 }
 

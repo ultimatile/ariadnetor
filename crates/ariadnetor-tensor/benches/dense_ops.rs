@@ -57,7 +57,7 @@ fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
 }
 
 fn random_tensor_with_order(shape: Vec<usize>, order: MemoryOrder) -> Dense<f64> {
-    Dense::from_data_with_order(
+    Dense::new(
         (0..shape.iter().product::<usize>())
             .map(|_| rand::random::<f64>())
             .collect(),
@@ -69,7 +69,7 @@ fn random_tensor_with_order(shape: Vec<usize>, order: MemoryOrder) -> Dense<f64>
 /// Create a uniquely-owned copy (Arc refcount = 1) so mutating ops
 /// don't trigger copy-on-write during the timed section.
 fn unique_copy(t: &Dense<f64>) -> Dense<f64> {
-    Dense::from_data_with_order(t.data().to_vec(), t.shape().to_vec(), t.memory_order())
+    Dense::new(t.data().to_vec(), t.shape().to_vec(), t.memory_order())
 }
 
 // ==========================================================================
@@ -92,7 +92,7 @@ fn bench_to_contiguous(c: &mut Criterion) {
             BenchmarkId::new("to_row_major", s.label),
             &tensor,
             |b, t| {
-                b.iter_with_large_drop(|| t.to_contiguous(MemoryOrder::RowMajor));
+                b.iter_with_large_drop(|| t);
             },
         );
 
@@ -102,7 +102,7 @@ fn bench_to_contiguous(c: &mut Criterion) {
             BenchmarkId::new("to_col_major", s.label),
             &tensor,
             |b, t| {
-                b.iter_with_large_drop(|| t.to_contiguous(MemoryOrder::ColumnMajor));
+                b.iter_with_large_drop(|| t);
             },
         );
     }

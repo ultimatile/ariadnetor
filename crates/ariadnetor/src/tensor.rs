@@ -129,13 +129,27 @@ where
     }
 
     /// Get element at given indices.
+    ///
+    /// Computes the flat index using the backend's preferred memory order.
     pub fn get(&self, indices: &[usize]) -> S {
-        self.storage.get(indices)
+        let idx = arnet_linalg::flat_index(
+            indices,
+            self.storage.shape(),
+            self.backend.preferred_order(),
+        );
+        self.storage.data()[idx].clone()
     }
 
     /// Set element at given indices.
+    ///
+    /// Computes the flat index using the backend's preferred memory order.
     pub fn set(&mut self, indices: &[usize], value: S) {
-        self.storage.set(indices, value)
+        let idx = arnet_linalg::flat_index(
+            indices,
+            self.storage.shape(),
+            self.backend.preferred_order(),
+        );
+        self.storage.data_mut()[idx] = value;
     }
 
     /// Fill tensor with a constant value.

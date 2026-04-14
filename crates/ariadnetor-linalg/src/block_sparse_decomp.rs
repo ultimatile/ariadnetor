@@ -12,15 +12,16 @@
 
 mod fused_sector;
 
-use arnet_core::backend::ComputeBackend;
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::scalar::Scalar;
+use arnet_tensor::Dense;
 use arnet_tensor::block_sparse::BlockSparse;
 use arnet_tensor::sector::Sector;
-use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
+use crate::reorder::reorder;
 use fused_sector::*;
 
 // ---------------------------------------------------------------------------
@@ -72,7 +73,7 @@ pub type BlockSparseTruncSvdResult<T, S> = (
 pub type BlockSparseQrResult<T, S> = (BlockSparse<T, S>, BlockSparse<T, S>);
 
 // ---------------------------------------------------------------------------
-// Public API — SVD
+// Public API -- SVD
 // ---------------------------------------------------------------------------
 
 /// Thin SVD of a block-sparse tensor via fused sector method.
@@ -97,7 +98,7 @@ pub fn svd_block_sparse<T: Scalar, S: Sector>(
 
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::from_data_with_order(matrix, vec![group.m, group.n], order);
+        let dense = Dense::new(matrix, vec![group.m, group.n]);
         let (u, s, vt) = crate::decomposition::svd(backend, &dense, 1)?;
         k_per_sector.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
@@ -156,7 +157,7 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
 
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::from_data_with_order(matrix, vec![group.m, group.n], order);
+        let dense = Dense::new(matrix, vec![group.m, group.n]);
         let (u, s, vt) = crate::decomposition::svd(backend, &dense, 1)?;
         k_full.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
@@ -186,7 +187,7 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
         } else {
             let m = group.m;
             let n = group.n;
-            // Truncate U (m×k_f → m×k_t): keep first k_t columns
+            // Truncate U (m x k_f -> m x k_t): keep first k_t columns
             let u_t = match order {
                 MemoryOrder::RowMajor => {
                     let mut buf = vec![T::zero(); m * k_t];
@@ -203,7 +204,7 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
             };
             u_trunc.push(u_t);
             s_trunc_values.push(all_s[gi][..k_t].to_vec());
-            // Truncate Vt (k_f×n → k_t×n): keep first k_t rows
+            // Truncate Vt (k_f x n -> k_t x n): keep first k_t rows
             let vt_t = match order {
                 MemoryOrder::RowMajor => {
                     // Rows are contiguous; take first k_t rows (k_t * n elements)
@@ -256,7 +257,7 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
 }
 
 // ---------------------------------------------------------------------------
-// Public API — QR / LQ
+// Public API -- QR / LQ
 // ---------------------------------------------------------------------------
 
 /// QR decomposition of a block-sparse tensor via fused sector method.
@@ -355,7 +356,7 @@ where
     let mut k_per = Vec::with_capacity(groups.len());
     for group in groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::from_data_with_order(matrix, vec![group.m, group.n], order);
+        let dense = Dense::new(matrix, vec![group.m, group.n]);
         let (l, r) = decompose(backend, &dense)?;
         k_per.push(group.m.min(group.n));
         left_mats.push(l);
@@ -428,8 +429,12 @@ fn cross_sector_truncate<T: Scalar>(
     Ok((k_per_sector, err_sq.sqrt()))
 }
 
+/// Extract tensor data in the specified memory order.
 fn to_vec_in_order<T: Scalar>(tensor: &Dense<T>, order: MemoryOrder) -> Vec<T> {
-    tensor.to_contiguous(order).data().to_vec()
+    // Dense data is already in the backend's preferred order (which is `order`
+    // since callers pass backend.preferred_order()). No reorder needed for
+    // the same order; reorder is a no-op (clone) when from == to.
+    reorder(tensor, order, order).data().to_vec()
 }
 
 #[cfg(test)]

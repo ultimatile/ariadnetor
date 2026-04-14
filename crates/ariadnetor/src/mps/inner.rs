@@ -45,7 +45,8 @@ where
             .expect("inner product contraction failed");
     }
 
-    env.get(&[0, 0])
+    // Final environment is 1x1; extract the single element.
+    env.data()[0]
 }
 
 /// Compute the norm ‖ψ‖ = √⟨ψ|ψ⟩.
@@ -111,7 +112,8 @@ where
             .expect("expect contraction step 3 failed");
     }
 
-    env.get(&[0, 0, 0])
+    // Final environment is 1x1x1; extract the single element.
+    env.data()[0]
 }
 
 // ============================================================================

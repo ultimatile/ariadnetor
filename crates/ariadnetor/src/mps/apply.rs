@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::contract;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_linalg::{contract, reorder};
+use arnet_tensor::Dense;
 
 use super::chain::TensorChain;
 use super::types::{Mpo, Mps, TruncateParams};
@@ -62,9 +62,12 @@ where
         let chi_r = shape[4];
 
         // Fuse bond dimensions: (w_L*χ_L, d_bra, w_R*χ_R)
-        // Convert to row-major so reshape uses standard axis merge order.
-        let result = result.to_contiguous(MemoryOrder::RowMajor);
-        let fused = result.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
+        // Reorder to RM for correct axis-merge semantics, reshape, then back.
+        let order = backend.preferred_order();
+        let rm = arnet_core::MemoryOrder::RowMajor;
+        let result_rm = reorder(&result, order, rm);
+        let fused_rm = result_rm.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
+        let fused = reorder(&fused_rm, rm, order);
 
         storages.push(fused);
     }

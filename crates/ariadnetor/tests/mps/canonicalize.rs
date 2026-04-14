@@ -93,11 +93,7 @@ fn test_canonicalize_center_last() {
 
 #[test]
 fn test_canonicalize_single_site() {
-    let storages = vec![Dense::from_data_with_order(
-        vec![1.0, 2.0],
-        vec![1, 2, 1],
-        MemoryOrder::RowMajor,
-    )];
+    let storages = vec![Dense::new(vec![1.0, 2.0], vec![1, 2, 1])];
     let mut mps = Mps::from_storages(storages);
 
     mps::canonicalize(&mut mps, 0);

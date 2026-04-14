@@ -1,9 +1,10 @@
-use arnet_core::backend::{ComputeBackend, LqDescriptor, QrDescriptor, SvdDescriptor};
+use arnet_core::backend::{ComputeBackend, LqDescriptor, MemoryOrder, QrDescriptor, SvdDescriptor};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, Dense, MemoryOrder};
+use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
+use crate::reorder::reorder;
 
 /// Result of a thin SVD decomposition: `(U, S, Vt)`.
 ///
@@ -17,7 +18,7 @@ pub type SvdResult<T> = (Dense<T>, Dense<<T as Scalar>::Real>, Dense<T>);
 /// - `U`: Left singular vectors (truncated)
 /// - `S`: Singular values (real-valued, descending, truncated)
 /// - `Vt`: Right singular vectors transposed (truncated)
-/// - `trunc_err`: Truncation error — Frobenius norm of discarded singular values
+/// - `trunc_err`: Truncation error -- Frobenius norm of discarded singular values
 pub type TruncSvdResult<T> = (
     Dense<T>,
     Dense<<T as Scalar>::Real>,
@@ -40,7 +41,7 @@ pub struct TruncSvdParams {
     pub target_trunc_err: Option<f64>,
 }
 
-/// Reshape tensor to 2D (m×n) using row-major axis merge, then convert to target order.
+/// Reshape tensor to 2D (m x n) using row-major axis merge, then convert to target order.
 ///
 /// For rank > 2 tensors, direct column-major flattening merges axes in
 /// column-major order, which differs from the standard mathematical reshape.
@@ -51,18 +52,18 @@ fn reshape_for_backend<T: Scalar>(
     n: usize,
     order: MemoryOrder,
 ) -> Dense<T> {
-    // Row-major reshape to 2D (standard mathematical convention)
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d = Dense::from_data_with_order(rm.data().to_vec(), vec![m, n], MemoryOrder::RowMajor);
-    // Convert to backend's preferred order
-    mat_2d.to_contiguous(order)
+    // Reorder to RowMajor layout, reshape to 2D, then reorder to backend order
+    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    let mat_2d = Dense::new(rm.data().to_vec(), vec![m, n]);
+    // mat_2d data is in RowMajor; convert to backend's preferred order
+    reorder(&mat_2d, MemoryOrder::RowMajor, order)
 }
 
 /// Compute thin SVD of a tensor reshaped as a matrix.
 ///
 /// The tensor is reshaped to a matrix with the first `nrow` axes
 /// forming the row dimension and the remaining axes forming the column dimension.
-/// Returns `(U, S, Vt)` where A ≈ U * diag(S) * Vt.
+/// Returns `(U, S, Vt)` where A ~ U * diag(S) * Vt.
 ///
 /// # Arguments
 ///
@@ -118,7 +119,7 @@ pub fn svd<T: Scalar>(
     backend.svd(desc)?;
 
     let u_tensor = backend.make_tensor(u_data, vec![m, k]);
-    let s_tensor = Dense::from_data_with_order(s_data, vec![k], MemoryOrder::RowMajor);
+    let s_tensor = Dense::new(s_data, vec![k]);
     let vt_tensor = backend.make_tensor(vt_data, vec![k, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor))
@@ -174,13 +175,13 @@ pub fn trunc_svd<T: Scalar>(
         chi = chi.min(chi_max);
     }
 
-    // S is always 1D — data() works for any 1D contiguous tensor
+    // S is always 1D -- data() works for any 1D contiguous tensor
     let s_data = s_full.data();
 
     // Apply target_trunc_err bound: keep the largest singular values
     // such that the norm of discarded values stays within the threshold
     if let Some(target_err) = params.target_trunc_err {
-        // Accumulate discarded norm² from the smallest singular value upward.
+        // Accumulate discarded norm^2 from the smallest singular value upward.
         // Compare in f64 to avoid precision issues with the user-specified threshold.
         let target_sq = target_err * target_err;
         let mut discarded_sq = 0.0_f64;
@@ -211,7 +212,7 @@ pub fn trunc_svd<T: Scalar>(
     }
     let trunc_err = err_sq.sqrt();
 
-    // Truncate S: [k_full] → [chi]
+    // Truncate S: [k_full] -> [chi]
     let s_trunc: Vec<T::Real> = s_data[..chi].to_vec();
 
     // Layout-aware truncation of U and Vt
@@ -220,15 +221,15 @@ pub fn trunc_svd<T: Scalar>(
     let vt_raw = vt_full.data();
 
     let (u_trunc, vt_trunc) = match order {
-        // TODO: untested — no RowMajor backend exists yet
+        // TODO: untested -- no RowMajor backend exists yet
         //
-        // U row-major [m, k_full] → [m, chi]: copy first chi elements per row
+        // U row-major [m, k_full] -> [m, chi]: copy first chi elements per row
         // let mut u_t = vec![T::zero(); m * chi];
         // for i in 0..m {
         //     u_t[i * chi..(i + 1) * chi]
         //         .copy_from_slice(&u_raw[i * k_full..i * k_full + chi]);
         // }
-        // Vt row-major [k_full, n] → [chi, n]: take first chi rows
+        // Vt row-major [k_full, n] -> [chi, n]: take first chi rows
         // let vt_t: Vec<T> = vt_raw[..chi * n].to_vec();
         // (u_t, vt_t)
         MemoryOrder::RowMajor => {
@@ -249,7 +250,7 @@ pub fn trunc_svd<T: Scalar>(
     };
 
     let u_tensor = backend.make_tensor(u_trunc, vec![m, chi]);
-    let s_tensor = Dense::from_data_with_order(s_trunc, vec![chi], MemoryOrder::RowMajor);
+    let s_tensor = Dense::new(s_trunc, vec![chi]);
     let vt_tensor = backend.make_tensor(vt_trunc, vec![chi, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor, trunc_err))

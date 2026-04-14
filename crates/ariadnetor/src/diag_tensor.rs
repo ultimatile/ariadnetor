@@ -10,7 +10,7 @@ use std::sync::Arc;
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 
 use crate::Tensor;
 
@@ -77,7 +77,7 @@ impl<S: Clone, B: ComputeBackend> DiagTensor<S, B> {
     /// Create a `DiagTensor` from a vector and an explicit backend.
     pub fn from_vec_with_backend(diag: Vec<S>, backend: Arc<B>) -> Self {
         let n = diag.len();
-        let storage = Dense::from_data_with_order(diag, vec![n], MemoryOrder::RowMajor);
+        let storage = Dense::new(diag, vec![n]);
         Self(Tensor::with_backend(storage, backend))
     }
 
@@ -98,14 +98,10 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
     ///
     /// ```
     /// use arnet::{Dense, DiagTensor, Tensor};
-    /// use arnet_tensor::MemoryOrder;
     /// use arnet_native::NativeBackend;
     ///
-    /// let dense = Dense::from_data_with_order(
-    ///     vec![1.0, 0.0, 0.0, 2.0],
-    ///     vec![2, 2],
-    ///     MemoryOrder::RowMajor,
-    /// );
+    /// // Diagonal matrix: data stored in column-major (NativeBackend order)
+    /// let dense = Dense::new(vec![1.0, 0.0, 0.0, 2.0], vec![2, 2]);
     /// let t = Tensor::with_backend(dense, NativeBackend::shared());
     /// let d = DiagTensor::from_matrix(&t).unwrap();
     /// assert_eq!(d.data(), &[1.0, 2.0]);
@@ -133,7 +129,9 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
 
     /// Expand to a full n×n dense matrix.
     ///
-    /// Off-diagonal elements are zero.
+    /// Off-diagonal elements are zero. Data layout is order-agnostic:
+    /// for diagonal matrices, RM and CM flat layouts are identical
+    /// (`data[i*n + i]` holds the diagonal element for both orders).
     ///
     /// # Examples
     ///
@@ -155,7 +153,7 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
         for i in 0..n {
             data[i * n + i] = diag[i];
         }
-        let dense = Dense::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor);
+        let dense = Dense::new(data, vec![n, n]);
         Tensor::with_backend(dense, Arc::clone(self.0.backend_arc()))
     }
 }
@@ -295,10 +293,11 @@ mod tests {
 
     #[test]
     fn from_matrix_extracts_diagonal() {
-        let dense = Dense::from_data_with_order(
+        // Data layout: diag extraction is order-agnostic for square matrices
+        // (diagonal elements have equal row/col indices → same flat index in both RM and CM)
+        let dense = Dense::new(
             vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
             vec![3, 3],
-            MemoryOrder::RowMajor,
         );
         let t = Tensor::with_backend(dense, NativeBackend::shared());
         let d = DiagTensor::from_matrix(&t).unwrap();
@@ -307,11 +306,7 @@ mod tests {
 
     #[test]
     fn from_matrix_rejects_non_square() {
-        let dense = Dense::from_data_with_order(
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            vec![2, 3],
-            MemoryOrder::RowMajor,
-        );
+        let dense = Dense::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
         let t = Tensor::with_backend(dense, NativeBackend::shared());
         assert!(DiagTensor::<f64>::from_matrix(&t).is_err());
     }

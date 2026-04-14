@@ -52,14 +52,13 @@ fn transpose_inner<T: Scalar>(
     let total = tensor.len();
 
     if total == 0 {
-        return Ok(Dense::from_data_with_order(vec![], new_shape, order));
+        return Ok(Dense::new(vec![], new_shape));
     }
 
-    let contiguous = tensor.to_contiguous(order);
     let mut output = vec![T::zero(); total];
 
     let desc = TransposeDescriptor {
-        input: contiguous.data(),
+        input: tensor.data(),
         output: &mut output,
         shape: tensor.shape(),
         perm,
@@ -69,5 +68,5 @@ fn transpose_inner<T: Scalar>(
 
     backend.transpose(desc)?;
 
-    Ok(Dense::from_data_with_order(output, new_shape, order))
+    Ok(Dense::new(output, new_shape))
 }

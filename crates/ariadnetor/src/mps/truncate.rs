@@ -4,11 +4,11 @@ use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
-    diagonal_scale_block_sparse, trunc_svd, trunc_svd_block_sparse,
+    diagonal_scale_block_sparse, reorder, trunc_svd, trunc_svd_block_sparse,
 };
+use arnet_tensor::Dense;
 use arnet_tensor::block_sparse::BlockSparse;
 use arnet_tensor::sector::Sector;
-use arnet_tensor::{Dense, MemoryOrder};
 use num_traits::{Float, Zero};
 
 use super::canonicalize::{canonicalize, canonicalize_block_sparse};
@@ -100,6 +100,9 @@ where
     B: ComputeBackend,
     C: TensorChain<Dense<T>, B>,
 {
+    let order = chain.backend().preferred_order();
+    let rm = arnet_core::MemoryOrder::RowMajor;
+
     let (left_storage, right_factor, err) = {
         let dense = chain.storage(j);
         let rank = dense.rank();
@@ -108,35 +111,39 @@ where
         let (u, s, vt, err) = trunc_svd(chain.backend(), dense, rank - 1, params)
             .expect("trunc_svd failed during truncate");
 
-        let u_rm = u.to_contiguous(MemoryOrder::RowMajor);
-        let chi = u_rm.shape()[1];
+        let chi = u.shape()[1];
         let mut u_shape = orig_shape[..rank - 1].to_vec();
         u_shape.push(chi);
+
+        // Helper: reshape U from 2D backend-order to multi-dim in backend order.
+        // Converts to RM for axis-split semantics, then back.
+        let reshape_u = |u_2d: Dense<T>| -> Dense<T> {
+            let u_rm = reorder(&u_2d, order, rm);
+            let multi = u_rm.reshape(u_shape.clone());
+            reorder(&multi, rm, order)
+        };
 
         match absorb {
             SvdAbsorb::Right => {
                 // U stays at j (left-canonical), S·Vt absorbed into j+1
                 let svt =
                     diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
-                (u_rm.reshape(u_shape), svt, err)
+                (reshape_u(u), svt, err)
             }
             SvdAbsorb::Left => {
                 // U·S stays at j, Vt absorbed into j+1 (right-canonical Vt)
                 let us =
-                    diagonal_scale(&u_rm, s.data(), 1).expect("U·S scaling failed during truncate");
-                let us = us.to_contiguous(MemoryOrder::RowMajor);
-                let us_reshaped = us.reshape(u_shape);
-                (us_reshaped, vt, err)
+                    diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
+                (reshape_u(us), vt, err)
             }
             SvdAbsorb::Both => {
-                // √S applied to both sides
+                // sqrt(S) applied to both sides
                 let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
-                let u_scaled =
-                    diagonal_scale(&u_rm, &sqrt_s, 1).expect("√S·U scaling failed during truncate");
-                let u_scaled = u_scaled.to_contiguous(MemoryOrder::RowMajor);
-                let vt_scaled =
-                    diagonal_scale(&vt, &sqrt_s, 0).expect("√S·Vt scaling failed during truncate");
-                (u_scaled.reshape(u_shape), vt_scaled, err)
+                let u_scaled = diagonal_scale(&u, &sqrt_s, 1)
+                    .expect("sqrt(S)*U scaling failed during truncate");
+                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0)
+                    .expect("sqrt(S)*Vt scaling failed during truncate");
+                (reshape_u(u_scaled), vt_scaled, err)
             }
         }
     };
@@ -166,6 +173,9 @@ where
     B: ComputeBackend,
     C: TensorChain<Dense<T>, B>,
 {
+    let order = chain.backend().preferred_order();
+    let rm = arnet_core::MemoryOrder::RowMajor;
+
     let (right_storage, left_factor, err) = {
         let dense = chain.storage(j);
         let orig_shape = dense.shape().to_vec();
@@ -173,10 +183,16 @@ where
         let (u, s, vt, err) =
             trunc_svd(chain.backend(), dense, 1, params).expect("trunc_svd failed during truncate");
 
-        let vt_rm = vt.to_contiguous(MemoryOrder::RowMajor);
-        let chi = vt_rm.shape()[0];
+        let chi = vt.shape()[0];
         let mut vt_shape = vec![chi];
         vt_shape.extend_from_slice(&orig_shape[1..]);
+
+        // Helper: reshape Vt from 2D backend-order to multi-dim in backend order.
+        let reshape_vt = |vt_2d: Dense<T>| -> Dense<T> {
+            let vt_rm = reorder(&vt_2d, order, rm);
+            let multi = vt_rm.reshape(vt_shape.clone());
+            reorder(&multi, rm, order)
+        };
 
         match absorb {
             SvdAbsorb::Right => {
@@ -184,26 +200,23 @@ where
                 // S accompanies the sweep direction (leftward), producing mixed-canonical form.
                 let us =
                     diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
-                (vt_rm.reshape(vt_shape), us, err)
+                (reshape_vt(vt), us, err)
             }
             SvdAbsorb::Left => {
                 // S·Vt stays at j, bare U absorbed into j-1
                 // S stays against the sweep direction.
-                let svt = diagonal_scale(&vt_rm, s.data(), 0)
-                    .expect("S·Vt scaling failed during truncate");
-                let svt = svt.to_contiguous(MemoryOrder::RowMajor);
-                let svt_reshaped = svt.reshape(vt_shape);
-                (svt_reshaped, u, err)
+                let svt =
+                    diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
+                (reshape_vt(svt), u, err)
             }
             SvdAbsorb::Both => {
-                // √S applied to both sides
+                // sqrt(S) applied to both sides
                 let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
-                let vt_scaled = diagonal_scale(&vt_rm, &sqrt_s, 0)
-                    .expect("√S·Vt scaling failed during truncate");
-                let vt_scaled = vt_scaled.to_contiguous(MemoryOrder::RowMajor);
-                let u_scaled =
-                    diagonal_scale(&u, &sqrt_s, 1).expect("√S·U scaling failed during truncate");
-                (vt_scaled.reshape(vt_shape), u_scaled, err)
+                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0)
+                    .expect("sqrt(S)*Vt scaling failed during truncate");
+                let u_scaled = diagonal_scale(&u, &sqrt_s, 1)
+                    .expect("sqrt(S)*U scaling failed during truncate");
+                (reshape_vt(vt_scaled), u_scaled, err)
             }
         }
     };
@@ -226,22 +239,26 @@ fn absorb_from_left<T: Scalar>(
     next: &Dense<T>,
     backend: &impl ComputeBackend,
 ) -> Dense<T> {
-    // Ensure row-major so reshape uses standard axis merge order.
-    let next = next.to_contiguous(MemoryOrder::RowMajor);
-    let next_shape = next.shape().to_vec();
+    let order = backend.preferred_order();
+    let rm = arnet_core::MemoryOrder::RowMajor;
+    // Reorder to RM for correct axis-merge semantics in reshape.
+    let next_rm = reorder(next, order, rm);
+    let next_shape = next_rm.shape().to_vec();
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
 
-    let next_2d = next.reshape(vec![first, rest]);
+    let next_2d_rm = next_rm.reshape(vec![first, rest]);
+    let next_2d = reorder(&next_2d_rm, rm, order);
     let result_2d = contract(backend, left, &next_2d, "ab,bc->ac")
         .expect("left absorption failed during truncate");
 
-    // Convert to row-major before rank-restoring reshape (axis split semantics).
-    let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);
+    // Reorder result to RM for axis-split reshape, then back to backend order.
+    let result_2d_rm = reorder(&result_2d, order, rm);
     let k = left.shape()[0];
     let mut new_shape = next_shape;
     new_shape[0] = k;
-    result_2d.reshape(new_shape)
+    let result_multi = result_2d_rm.reshape(new_shape);
+    reorder(&result_multi, rm, order)
 }
 
 /// Multiply a 2D matrix into the previous site tensor from the right.
@@ -250,22 +267,26 @@ fn absorb_from_right<T: Scalar>(
     right: &Dense<T>,
     backend: &impl ComputeBackend,
 ) -> Dense<T> {
-    // Ensure row-major so reshape uses standard axis merge order.
-    let prev = prev.to_contiguous(MemoryOrder::RowMajor);
-    let prev_shape = prev.shape().to_vec();
+    let order = backend.preferred_order();
+    let rm = arnet_core::MemoryOrder::RowMajor;
+    // Reorder to RM for correct axis-merge semantics in reshape.
+    let prev_rm = reorder(prev, order, rm);
+    let prev_shape = prev_rm.shape().to_vec();
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
 
-    let prev_2d = prev.reshape(vec![rest, last]);
+    let prev_2d_rm = prev_rm.reshape(vec![rest, last]);
+    let prev_2d = reorder(&prev_2d_rm, rm, order);
     let result_2d = contract(backend, &prev_2d, right, "ab,bc->ac")
         .expect("right absorption failed during truncate");
 
-    // Convert to row-major before rank-restoring reshape (axis split semantics).
-    let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);
+    // Reorder result to RM for axis-split reshape, then back to backend order.
+    let result_2d_rm = reorder(&result_2d, order, rm);
     let k = right.shape()[1];
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
-    result_2d.reshape(new_shape)
+    let result_multi = result_2d_rm.reshape(new_shape);
+    reorder(&result_multi, rm, order)
 }
 
 // ============================================================================

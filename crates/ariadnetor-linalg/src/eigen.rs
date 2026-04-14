@@ -4,6 +4,7 @@ use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
+use crate::reorder::reorder;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
@@ -51,15 +52,15 @@ pub fn eigh<T: Scalar>(
 
     if m != n {
         return Err(LinalgError::InvalidArgument(format!(
-            "eigh requires a square matrix, got {m}×{n}"
+            "eigh requires a square matrix, got {m}x{n}"
         )));
     }
 
     let order = backend.preferred_order();
     // Ensure row-major reshape to 2D, then convert to backend order
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d = Dense::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let contiguous = mat_2d.to_contiguous(order);
+    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    let mat_2d = Dense::new(rm.data().to_vec(), vec![n, n]);
+    let contiguous = reorder(&mat_2d, MemoryOrder::RowMajor, order);
 
     let mut w_data = vec![T::Real::zero(); n];
     let mut v_data = vec![T::zero(); n * n];
@@ -73,7 +74,7 @@ pub fn eigh<T: Scalar>(
 
     backend.eigh(desc)?;
 
-    let w_tensor = Dense::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
+    let w_tensor = Dense::new(w_data, vec![n]);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))
@@ -152,14 +153,14 @@ pub fn eig<T: Scalar>(
 
     if m != n {
         return Err(LinalgError::InvalidArgument(format!(
-            "eig requires a square matrix, got {m}×{n}"
+            "eig requires a square matrix, got {m}x{n}"
         )));
     }
 
     let order = backend.preferred_order();
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let mat_2d = Dense::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let contiguous = mat_2d.to_contiguous(order);
+    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    let mat_2d = Dense::new(rm.data().to_vec(), vec![n, n]);
+    let contiguous = reorder(&mat_2d, MemoryOrder::RowMajor, order);
 
     let mut w_data = vec![T::Complex::zero(); n];
     let mut v_data = vec![T::Complex::zero(); n * n];
@@ -173,7 +174,7 @@ pub fn eig<T: Scalar>(
 
     backend.eig(desc)?;
 
-    let w_tensor = Dense::from_data_with_order(w_data, vec![n], MemoryOrder::RowMajor);
+    let w_tensor = Dense::new(w_data, vec![n]);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))

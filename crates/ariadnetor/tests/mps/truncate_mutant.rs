@@ -300,11 +300,7 @@ fn test_truncation_error_sqrt_of_sum_of_squares() {
 
 #[test]
 fn test_truncate_single_site_returns_zero_error() {
-    let storages = vec![Dense::from_data_with_order(
-        vec![3.0, 4.0],
-        vec![1, 2, 1],
-        MemoryOrder::RowMajor,
-    )];
+    let storages = vec![Dense::new(vec![3.0, 4.0], vec![1, 2, 1])];
     let mut mps = Mps::from_storages(storages);
     mps::canonicalize(&mut mps, 0);
 

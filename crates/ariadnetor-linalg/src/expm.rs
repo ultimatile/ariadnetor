@@ -1,20 +1,21 @@
 use std::any::TypeId;
 
-use arnet_core::backend::ComputeBackend;
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract;
 use crate::eigen::eigh;
 use crate::error::LinalgError;
+use crate::reorder::reorder;
 use crate::scalar_ops::{diagonal_scale, linear_combine};
 use crate::solve::solve;
 use crate::transpose::conjugate_transpose;
 
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
 ///
-/// Computes `exp(A) = V diag(exp(λ)) V†` where `A = V diag(λ) V†` is the
+/// Computes `exp(A) = V diag(exp(lambda)) V dagger` where `A = V diag(lambda) V dagger` is the
 /// eigendecomposition obtained from [`eigh`].
 ///
 /// # Arguments
@@ -25,7 +26,7 @@ use crate::transpose::conjugate_transpose;
 ///
 /// # Returns
 ///
-/// Matrix exponential with the same shape as the input (n×n).
+/// Matrix exponential with the same shape as the input (n x n).
 ///
 /// # Errors
 ///
@@ -38,11 +39,11 @@ pub fn expm_hermitian<T: Scalar>(
 ) -> Result<Dense<T>, LinalgError> {
     let (w, v) = eigh(backend, tensor, nrow)?;
 
-    // V_scaled[i,j] = V[i,j] * exp(λ_j)
+    // V_scaled[i,j] = V[i,j] * exp(lambda_j)
     let exp_w: Vec<T::Real> = w.data().iter().map(|&lam| lam.exp()).collect();
     let v_scaled = diagonal_scale(&v, &exp_w, 1).map_err(LinalgError::InvalidArgument)?;
 
-    // V† = conjugate transpose of V
+    // V dagger = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
 
     contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
@@ -50,10 +51,10 @@ pub fn expm_hermitian<T: Scalar>(
 
 /// Matrix exponential for anti-Hermitian (skew-adjoint) matrices via eigendecomposition.
 ///
-/// For anti-Hermitian A (where A† = -A), computes `exp(A)` by noting that
+/// For anti-Hermitian A (where A dagger = -A), computes `exp(A)` by noting that
 /// `H = iA` is Hermitian and using [`eigh`] on H.
 ///
-/// The result satisfies `exp(A) = V diag(exp(-iλ)) V†` where `H = V diag(λ) V†`.
+/// The result satisfies `exp(A) = V diag(exp(-i*lambda)) V dagger` where `H = V diag(lambda) V dagger`.
 ///
 /// # Arguments
 ///
@@ -63,7 +64,7 @@ pub fn expm_hermitian<T: Scalar>(
 ///
 /// # Returns
 ///
-/// Matrix exponential with the same shape as the input (n×n). The result is unitary.
+/// Matrix exponential with the same shape as the input (n x n). The result is unitary.
 ///
 /// # Errors
 ///
@@ -74,7 +75,7 @@ pub fn expm_antihermitian<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<Dense<T>, LinalgError> {
-    // Reject real types — multiplication by i is not representable
+    // Reject real types -- multiplication by i is not representable
     let tid = TypeId::of::<T>();
     if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
         return Err(LinalgError::InvalidArgument(
@@ -82,7 +83,10 @@ pub fn expm_antihermitian<T: Scalar>(
         ));
     }
 
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+    let order = backend.preferred_order();
+
+    // Reorder to RowMajor for element-wise iA computation
+    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
     let data = rm.data();
     let shape = tensor.shape();
 
@@ -92,13 +96,15 @@ pub fn expm_antihermitian<T: Scalar>(
         .iter()
         .map(|&x| T::from_real_imag(-x.im(), x.re()))
         .collect();
-    let ia = Dense::from_data_with_order(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
+    // ia data is in RowMajor; reorder to preferred_order for backend consumption
+    let ia_rm = Dense::new(ia_data, shape.to_vec());
+    let ia = reorder(&ia_rm, MemoryOrder::RowMajor, order);
 
-    // eigh(iA) → real eigenvalues λ, eigenvectors V
+    // eigh(iA) -> real eigenvalues lambda, eigenvectors V
     let (w, v_orig) = eigh(backend, &ia, nrow)?;
 
-    // V_scaled[i,j] = V[i,j] * exp(-iλ_j)
-    // exp(-iλ) = cos(λ) - i*sin(λ)
+    // V_scaled[i,j] = V[i,j] * exp(-i*lambda_j)
+    // exp(-i*lambda) = cos(lambda) - i*sin(lambda)
     let exp_neg_i_w: Vec<T> = w
         .data()
         .iter()
@@ -108,17 +114,17 @@ pub fn expm_antihermitian<T: Scalar>(
     let v_scaled =
         diagonal_scale(&v_orig, &exp_neg_i_w, 1).map_err(LinalgError::InvalidArgument)?;
 
-    // V† = conjugate transpose of V
+    // V dagger = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v_orig, &[1, 0])?;
 
     contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }
 
 // ---------------------------------------------------------------------------
-// General matrix exponential via Scaling and Squaring + Padé approximation
+// General matrix exponential via Scaling and Squaring + Pade approximation
 // ---------------------------------------------------------------------------
 
-/// 1-norm of an n×n row-major matrix (maximum absolute column sum).
+/// 1-norm of an n x n row-major matrix (maximum absolute column sum).
 fn norm_1<T: Scalar>(data: &[T], n: usize) -> T::Real {
     let mut max_col_sum = <T::Real as Zero>::zero();
     for j in 0..n {
@@ -133,7 +139,7 @@ fn norm_1<T: Scalar>(data: &[T], n: usize) -> T::Real {
     max_col_sum
 }
 
-/// Matrix multiplication helper: C = A * B (both n×n, stored as Dense).
+/// Matrix multiplication helper: C = A * B (both n x n, stored as Dense).
 fn matmul<T: Scalar>(
     backend: &impl ComputeBackend,
     a: &Dense<T>,
@@ -144,12 +150,15 @@ fn matmul<T: Scalar>(
 
 /// Scale each element of a tensor by a real factor.
 fn scale_real<T: Scalar>(tensor: &Dense<T>, factor: T::Real) -> Dense<T> {
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let data: Vec<T> = rm.data().iter().map(|&x| x.scale_real(factor)).collect();
-    Dense::from_data_with_order(data, tensor.shape().to_vec(), MemoryOrder::RowMajor)
+    let data: Vec<T> = tensor
+        .data()
+        .iter()
+        .map(|&x| x.scale_real(factor))
+        .collect();
+    Dense::new(data, tensor.shape().to_vec())
 }
 
-/// Padé approximant coefficients b_0..b_m for [m/m] approximant.
+/// Pade approximant coefficients b_0..b_m for [m/m] approximant.
 /// b_k = (2m-k)! * m! / ((2m)! * k! * (m-k)!)
 fn pade_coefficients(m: usize) -> Vec<f64> {
     let mut b = vec![1.0; m + 1];
@@ -164,9 +173,9 @@ fn coeff<T: Scalar>(c: f64) -> T {
     T::one().scale_real(<T::Real as NumCast>::from(c).unwrap())
 }
 
-/// Evaluate Padé [m/m] approximant for small m ∈ {3, 5, 7, 9}.
+/// Evaluate Pade [m/m] approximant for small m in {3, 5, 7, 9}.
 ///
-/// Computes U (odd part) and V (even part) such that exp(A) ≈ (V+U)(V-U)^{-1}.
+/// Computes U (odd part) and V (even part) such that exp(A) ~ (V+U)(V-U)^{-1}.
 /// Uses Horner-like evaluation to minimize matrix multiplications.
 fn pade_uv_small<T: Scalar>(
     backend: &impl ComputeBackend,
@@ -181,12 +190,12 @@ fn pade_uv_small<T: Scalar>(
     let a2 = matmul(backend, a, a)?;
 
     // Build even polynomial P_even and odd polynomial P_odd
-    // V = b_0 I + b_2 A² + b_4 A⁴ + ...
-    // U = A(b_1 I + b_3 A² + b_5 A⁴ + ...)
+    // V = b_0 I + b_2 A^2 + b_4 A^4 + ...
+    // U = A(b_1 I + b_3 A^2 + b_5 A^4 + ...)
     match m {
         3 => {
-            // V = b_0 I + b_2 A²
-            // U = A(b_1 I + b_3 A²)
+            // V = b_0 I + b_2 A^2
+            // U = A(b_1 I + b_3 A^2)
             let v = linear_combine(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])
                 .map_err(LinalgError::InvalidArgument)?;
             let u_inner = linear_combine(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])
@@ -270,9 +279,9 @@ fn pade_uv_small<T: Scalar>(
     }
 }
 
-/// Evaluate Padé [13/13] approximant (Higham 2005, Algorithm 2.3).
+/// Evaluate Pade [13/13] approximant (Higham 2005, Algorithm 2.3).
 ///
-/// Efficient evaluation using only A², A⁴, A⁶ (3 multiplications for powers,
+/// Efficient evaluation using only A^2, A^4, A^6 (3 multiplications for powers,
 /// plus 3 for the polynomial evaluation = 6 total).
 fn pade_uv_13<T: Scalar>(
     backend: &impl ComputeBackend,
@@ -286,14 +295,14 @@ fn pade_uv_13<T: Scalar>(
     let a4 = matmul(backend, &a2, &a2)?;
     let a6 = matmul(backend, &a4, &a2)?;
 
-    // W₁ = b₁₃ A⁶ + b₁₁ A⁴ + b₉ A²
+    // W1 = b13 A^6 + b11 A^4 + b9 A^2
     let w1 = linear_combine(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[13]), coeff::<T>(b[11]), coeff::<T>(b[9])],
     )
     .map_err(LinalgError::InvalidArgument)?;
 
-    // W₂ = b₇ A⁶ + b₅ A⁴ + b₃ A² + b₁ I
+    // W2 = b7 A^6 + b5 A^4 + b3 A^2 + b1 I
     let w2 = linear_combine(
         &[&a6, &a4, &a2, &id],
         &[
@@ -305,20 +314,20 @@ fn pade_uv_13<T: Scalar>(
     )
     .map_err(LinalgError::InvalidArgument)?;
 
-    // U = A (A⁶ W₁ + W₂)
+    // U = A (A^6 W1 + W2)
     let a6w1 = matmul(backend, &a6, &w1)?;
     let u_inner = linear_combine(&[&a6w1, &w2], &[T::one(), T::one()])
         .map_err(LinalgError::InvalidArgument)?;
     let u = matmul(backend, a, &u_inner)?;
 
-    // W₃ = b₁₂ A⁶ + b₁₀ A⁴ + b₈ A²
+    // W3 = b12 A^6 + b10 A^4 + b8 A^2
     let w3 = linear_combine(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[12]), coeff::<T>(b[10]), coeff::<T>(b[8])],
     )
     .map_err(LinalgError::InvalidArgument)?;
 
-    // W₄ = b₆ A⁶ + b₄ A⁴ + b₂ A² + b₀ I
+    // W4 = b6 A^6 + b4 A^4 + b2 A^2 + b0 I
     let w4 = linear_combine(
         &[&a6, &a4, &a2, &id],
         &[
@@ -330,7 +339,7 @@ fn pade_uv_13<T: Scalar>(
     )
     .map_err(LinalgError::InvalidArgument)?;
 
-    // V = A⁶ W₃ + W₄
+    // V = A^6 W3 + W4
     let a6w3 = matmul(backend, &a6, &w3)?;
     let v = linear_combine(&[&a6w3, &w4], &[T::one(), T::one()])
         .map_err(LinalgError::InvalidArgument)?;
@@ -339,9 +348,9 @@ fn pade_uv_13<T: Scalar>(
 }
 
 /// Matrix exponential for general square matrices via scaling and squaring
-/// with Padé approximation (Higham 2005).
+/// with Pade approximation (Higham 2005).
 ///
-/// Automatically selects the optimal Padé order based on the 1-norm of the
+/// Automatically selects the optimal Pade order based on the 1-norm of the
 /// input matrix, then applies scaling and squaring for numerical stability.
 ///
 /// # Arguments
@@ -352,7 +361,7 @@ fn pade_uv_13<T: Scalar>(
 ///
 /// # Returns
 ///
-/// Matrix exponential with the same shape as the input (n×n).
+/// Matrix exponential with the same shape as the input (n x n).
 ///
 /// # Errors
 ///
@@ -377,17 +386,23 @@ pub fn expm<T: Scalar>(
 
     if m_dim != n_dim {
         return Err(LinalgError::InvalidArgument(format!(
-            "expm requires a square matrix, got {m_dim}×{n_dim}"
+            "expm requires a square matrix, got {m_dim}x{n_dim}"
         )));
     }
 
     let n = m_dim;
+    let order = backend.preferred_order();
 
-    // Flatten to n×n row-major for internal computation
-    let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let a = Dense::from_data_with_order(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    // Flatten to n x n row-major for internal computation (norm_1 expects row-major)
+    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    // Construct the working matrix in preferred_order for backend operations
+    let a = reorder(
+        &Dense::new(rm.data().to_vec(), vec![n, n]),
+        MemoryOrder::RowMajor,
+        order,
+    );
 
-    let norm = norm_1::<T>(a.data(), n);
+    let norm = norm_1::<T>(rm.data(), n);
 
     // Norm thresholds from Higham (2005), Table 2.3
     // Converted to T::Real for comparison
@@ -399,22 +414,19 @@ pub fn expm<T: Scalar>(
         (13, 5.371_920_351_148_152),
     ];
 
-    // Try lower-order Padé first (fewer matrix multiplications)
-    for &(order, thresh) in &theta[..4] {
+    // Try lower-order Pade first (fewer matrix multiplications)
+    for &(pade_order, thresh) in &theta[..4] {
         let thresh_real: T::Real = <T::Real as num_traits::NumCast>::from(thresh).unwrap();
         if norm <= thresh_real {
-            let (u, v) = pade_uv_small(backend, &a, n, order)?;
+            let (u, v) = pade_uv_small(backend, &a, n, pade_order)?;
             let result = solve_pade(backend, &u, &v)?;
-            let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-            return Ok(Dense::from_data_with_order(
-                result_rm.data().to_vec(),
-                shape.to_vec(),
-                MemoryOrder::RowMajor,
-            ));
+            // Reorder result to RowMajor, then reshape to original shape
+            let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
+            return Ok(Dense::new(result_rm.data().to_vec(), shape.to_vec()));
         }
     }
 
-    // Use [13/13] Padé with scaling
+    // Use [13/13] Pade with scaling
     let theta_13: T::Real = <T::Real as num_traits::NumCast>::from(theta[4].1).unwrap();
     let s = if norm > theta_13 {
         let ratio = norm / theta_13;
@@ -444,20 +456,16 @@ pub fn expm<T: Scalar>(
     let (u, v) = pade_uv_13(backend, &b, n)?;
     let mut result = solve_pade(backend, &u, &v)?;
 
-    // Repeated squaring: R = R² for s iterations
+    // Repeated squaring: R = R^2 for s iterations
     for _ in 0..s {
         result = matmul(backend, &result, &result)?;
     }
 
-    let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-    Ok(Dense::from_data_with_order(
-        result_rm.data().to_vec(),
-        shape.to_vec(),
-        MemoryOrder::RowMajor,
-    ))
+    let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
+    Ok(Dense::new(result_rm.data().to_vec(), shape.to_vec()))
 }
 
-/// Solve (V - U) X = V + U for the Padé approximant.
+/// Solve (V - U) X = V + U for the Pade approximant.
 fn solve_pade<T: Scalar>(
     backend: &impl ComputeBackend,
     u: &Dense<T>,
@@ -472,6 +480,6 @@ fn solve_pade<T: Scalar>(
     let rhs =
         linear_combine(&[v, u], &[T::one(), T::one()]).map_err(LinalgError::InvalidArgument)?;
 
-    // Reshape rhs to n×n for solve (nrow_a=1 since shape is [n, n])
+    // Reshape rhs to n x n for solve (nrow_a=1 since shape is [n, n])
     solve(backend, &lhs, &rhs, 1)
 }

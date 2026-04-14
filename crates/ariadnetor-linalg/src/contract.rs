@@ -4,6 +4,7 @@ use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
+use crate::reorder::reorder;
 use crate::transpose::transpose;
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
@@ -14,8 +15,7 @@ use crate::transpose::transpose;
 /// or Hadamard patterns.
 ///
 /// Output is returned in `backend.preferred_order()`, consistent with
-/// decomposition functions. Callers that need RowMajor (e.g., for reshape
-/// with correct axis merge semantics) should call `to_contiguous(RowMajor)`.
+/// decomposition functions.
 ///
 /// # Arguments
 ///
@@ -102,9 +102,9 @@ pub fn contract<T: Scalar>(
 
     let order = backend.preferred_order();
 
-    // Prepare operands for GEMM: reshape to 2D and convert to preferred_order.
-    // rank <= 2: no axis merge needed, go directly to preferred_order.
-    // rank > 2: RowMajor reshape (correct axis merge semantics), then preferred_order.
+    // Prepare operands for GEMM: reshape to 2D.
+    // rank <= 2: no axis merge needed, data is already in preferred_order.
+    // rank > 2: RowMajor reshape (correct axis merge semantics) required.
     let lhs_ready = prepare_for_gemm(&lhs_permuted, m, k, order);
     let rhs_ready = prepare_for_gemm(&rhs_permuted, k, n, order);
 
@@ -131,15 +131,11 @@ pub fn contract<T: Scalar>(
     let result = if output_shape.len() <= 2 {
         backend.make_tensor(c_data, output_shape)
     } else {
-        // 2D preferred_order → RowMajor 2D → reshape to multi-dim → preferred_order
-        let result_2d = backend.make_tensor(c_data, vec![m, n]);
-        let result_rm = result_2d.to_contiguous(MemoryOrder::RowMajor);
-        Dense::from_data_with_order(
-            result_rm.data().to_vec(),
-            output_shape,
-            MemoryOrder::RowMajor,
-        )
-        .to_contiguous(order)
+        // 2D preferred_order -> RowMajor 2D -> reshape to multi-dim -> preferred_order
+        let result_2d = Dense::new(c_data, vec![m, n]);
+        let result_rm = reorder(&result_2d, order, MemoryOrder::RowMajor);
+        let multi_dim = Dense::new(result_rm.data().to_vec(), output_shape);
+        reorder(&multi_dim, MemoryOrder::RowMajor, order)
     };
 
     // Reorder output dimensions to match the requested output index order.
@@ -149,8 +145,8 @@ pub fn contract<T: Scalar>(
 
 /// Reshape a permuted operand to 2D and convert to the target memory order.
 ///
-/// For rank <= 2, no axis merge is needed — directly convert to target order.
-/// For rank > 2, RowMajor reshape ensures correct axis merge semantics.
+/// For rank <= 2, no axis merge is needed — data is already in preferred_order.
+/// For rank > 2, reorder to RowMajor, reshape (correct axis merge), then back.
 fn prepare_for_gemm<T: Scalar>(
     tensor: &Dense<T>,
     rows: usize,
@@ -158,13 +154,13 @@ fn prepare_for_gemm<T: Scalar>(
     order: MemoryOrder,
 ) -> Dense<T> {
     if tensor.rank() <= 2 {
-        // No axis merge: directly convert to preferred_order (zero-copy if already correct)
-        tensor.to_contiguous(order)
+        // No axis merge needed; data is already in preferred_order
+        tensor.clone()
     } else {
         // Axis merge requires RowMajor reshape, then convert to preferred_order
-        let rm = tensor.to_contiguous(MemoryOrder::RowMajor);
+        let rm = reorder(tensor, order, MemoryOrder::RowMajor);
         let reshaped = rm.reshape(vec![rows, cols]);
-        reshaped.to_contiguous(order)
+        reorder(&reshaped, MemoryOrder::RowMajor, order)
     }
 }
 
@@ -218,7 +214,7 @@ fn compute_output_shape(
         output_shape.push(dim_of(idx, expr.rhs_indices(), rhs_shape));
     }
 
-    // Scalar result (no free indices) → shape [1]
+    // Scalar result (no free indices) -> shape [1]
     if output_shape.is_empty() {
         output_shape.push(1);
     }

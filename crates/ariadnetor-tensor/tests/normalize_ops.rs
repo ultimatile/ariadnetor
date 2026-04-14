@@ -7,6 +7,11 @@
 use arnet_tensor::{Dense, MemoryOrder};
 use num_complex::Complex;
 
+/// Compute row-major flat index for (i, j) in shape [rows, cols]
+fn rm(i: usize, j: usize, cols: usize) -> usize {
+    i * cols + j
+}
+
 const EPSILON: f64 = 1e-10;
 
 // ============================================================================
@@ -51,7 +56,7 @@ fn test_norm_complex_f64() {
         Complex::new(2.0, 0.0),
         Complex::new(0.0, 2.0),
     ];
-    let tensor = Dense::from_data_with_order(data, vec![2, 2], MemoryOrder::RowMajor);
+    let tensor = Dense::new(data, vec![2, 2]);
     let norm = tensor.norm();
     assert!((norm - 10.0f64.sqrt()).abs() < EPSILON);
 }
@@ -127,7 +132,7 @@ fn test_normalize_f32() {
 fn test_normalize_complex_f64() {
     // [2+0i, 0+2i]: |2+0i|^2 = 4, |0+2i|^2 = 4, sum = 8, norm = sqrt(8) = 2*sqrt(2)
     let data: Vec<Complex<f64>> = vec![Complex::new(2.0, 0.0), Complex::new(0.0, 2.0)];
-    let mut tensor = Dense::from_data_with_order(data, vec![2], MemoryOrder::RowMajor);
+    let mut tensor = Dense::new(data, vec![2]);
 
     let norm = tensor.normalize();
     assert!((norm - 8.0f64.sqrt()).abs() < EPSILON);

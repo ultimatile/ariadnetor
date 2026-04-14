@@ -36,26 +36,10 @@ fn test_truncate_no_change_within_tolerance() {
 fn test_truncate_reduces_bond_dim() {
     // Build MPS with large bond dims, canonicalize, then truncate to chi_max=2
     let storages = vec![
-        Dense::from_data_with_order(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![1, 2, 4],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            (1..=32).map(|i| i as f64 * 0.1).collect(),
-            vec![4, 2, 4],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            (1..=32).map(|i| i as f64 * 0.01).collect(),
-            vec![4, 2, 4],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![4, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
+        Dense::new((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 4]),
+        Dense::new((1..=32).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 4]),
+        Dense::new((1..=32).map(|i| i as f64 * 0.01).collect(), vec![4, 2, 4]),
+        Dense::new((1..=8).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 1]),
     ];
     let mut mps = Mps::from_storages(storages);
     mps::canonicalize(&mut mps, 1);
@@ -118,11 +102,7 @@ fn test_truncate_with_cutoff() {
 
 #[test]
 fn test_truncate_single_site() {
-    let storages = vec![Dense::from_data_with_order(
-        vec![3.0, 4.0],
-        vec![1, 2, 1],
-        MemoryOrder::RowMajor,
-    )];
+    let storages = vec![Dense::new(vec![3.0, 4.0], vec![1, 2, 1])];
     let mut mps = Mps::from_storages(storages);
     mps::canonicalize(&mut mps, 0);
 
