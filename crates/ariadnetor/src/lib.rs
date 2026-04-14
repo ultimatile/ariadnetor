@@ -12,11 +12,11 @@
 //! assert_eq!(b.shape(), &[3, 2]);
 //! ```
 
-pub mod diag_tensor;
+mod diag_tensor;
 #[cfg(feature = "mps")]
 pub mod mps;
-pub mod ops;
-pub mod tensor;
+mod ops;
+mod tensor;
 
 // Main types
 pub use diag_tensor::DiagTensor;
