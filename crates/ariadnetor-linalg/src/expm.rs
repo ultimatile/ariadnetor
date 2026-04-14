@@ -1,7 +1,7 @@
 use std::any::TypeId;
 
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_core::scalar::Scalar;
 use arnet_tensor::Dense;
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 

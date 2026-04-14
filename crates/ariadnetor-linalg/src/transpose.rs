@@ -1,5 +1,5 @@
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, TransposeDescriptor};
-use arnet_core::scalar::Scalar;
 use arnet_tensor::Dense;
 
 use crate::error::LinalgError;

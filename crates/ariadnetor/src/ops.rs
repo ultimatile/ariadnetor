@@ -6,8 +6,8 @@
 use std::ops::Mul;
 use std::sync::Arc;
 
+use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_core::scalar::Scalar;
 use arnet_linalg::LinalgError;
 use arnet_tensor::Dense;
 use num_traits::Zero;

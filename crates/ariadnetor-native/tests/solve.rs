@@ -1,7 +1,7 @@
 //! Linear solve tests for all scalar types
 
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, SolveDescriptor};
-use arnet_core::scalar::Scalar;
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 

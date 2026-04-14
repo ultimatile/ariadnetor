@@ -1,7 +1,7 @@
 //! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps
 
+use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_core::scalar::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
     diagonal_scale_block_sparse, trunc_svd, trunc_svd_block_sparse,

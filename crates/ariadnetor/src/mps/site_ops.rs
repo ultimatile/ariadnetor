@@ -4,7 +4,7 @@
 //! `NativeBackend::preferred_order()`. For a 2x2 matrix `[[a, b], [c, d]]`,
 //! the flat layout is `[a, c, b, d]`.
 
-use arnet_core::scalar::Scalar;
+use arnet_core::Scalar;
 use arnet_tensor::Dense;
 use num_traits::{NumCast, Zero};
 

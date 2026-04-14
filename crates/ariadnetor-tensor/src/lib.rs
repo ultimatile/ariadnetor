@@ -16,7 +16,7 @@ pub mod sector;
 // Re-export from ariadnetor-core
 pub use arnet_core::{
     Complex, ComputeBackend, ContractionError, ContractionPlan, EinsumExpr, FloatCompute,
-    MemoryOrder, Scalar, compute_permutation, contraction_error, einsum, scalar,
+    MemoryOrder, Scalar, compute_permutation,
 };
 
 pub use dense::{Dense, column_major_strides, row_major_strides};

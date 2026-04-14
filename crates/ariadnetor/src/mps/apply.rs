@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
+use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_core::scalar::Scalar;
 use arnet_linalg::contract;
 use arnet_tensor::{Dense, reorder};
 
