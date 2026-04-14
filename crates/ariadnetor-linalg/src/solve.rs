@@ -3,7 +3,7 @@ use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
-use crate::reorder::reorder;
+use arnet_tensor::reorder;
 
 /// Solve the linear system AX = B via LU decomposition.
 ///

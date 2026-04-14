@@ -9,6 +9,7 @@
 
 pub mod block_sparse;
 pub mod dense;
+pub mod reorder;
 pub mod repr;
 pub mod sector;
 
@@ -19,6 +20,7 @@ pub use arnet_core::{
 };
 
 pub use dense::{Dense, column_major_strides, row_major_strides};
+pub use reorder::{flat_index, reorder};
 pub use repr::TensorRepr;
 
 /// Extension trait for backend-aware tensor construction.

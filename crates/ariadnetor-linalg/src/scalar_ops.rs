@@ -1,10 +1,11 @@
-use arnet_core::backend::MemoryOrder;
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::Dense;
 use num_traits::{Float, One, Zero};
 use std::ops::{Add, Mul};
 
-use crate::reorder::flat_index;
+use crate::error::LinalgError;
+use arnet_tensor::flat_index;
 
 /// Scale tensor by a scalar factor (out-of-place).
 ///
@@ -328,50 +329,60 @@ pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, String> {
 /// `result[..., i, ...] = tensor[..., i, ...] * weights[i]` where `i`
 /// is the index along `axis`.
 ///
-/// The `order` parameter specifies the memory layout of the tensor data.
-/// Since Dense no longer stores its layout, callers must provide it
-/// (typically `backend.preferred_order()`).
+/// Memory layout is determined by the backend's `preferred_order()`.
 ///
 /// # Errors
 ///
-/// Returns an error if `axis` is out of range or `weights.len()` does not
-/// match the dimension along `axis`.
+/// Returns [`LinalgError::InvalidArgument`] if `axis` is out of range or
+/// `weights.len()` does not match the dimension along `axis`.
 ///
 /// # Examples
 ///
 /// ```rust,ignore
 /// use arnet_linalg::diagonal_scale;
-/// use arnet_tensor::{Dense, MemoryOrder};
+/// use arnet_native::NativeBackend;
+/// use arnet_tensor::Dense;
 ///
-/// // 2x3 matrix, scale along axis 1 by [1, 2, 3]
-/// let m = Dense::new(
-///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-///     vec![2, 3],
-/// );
-/// let scaled = diagonal_scale(&m, &[1.0, 2.0, 3.0], 1, MemoryOrder::ColumnMajor).unwrap();
+/// let backend = NativeBackend::new();
+/// let m = Dense::new(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], vec![2, 3]);
+/// let scaled = diagonal_scale(&backend, &m, &[1.0, 2.0, 3.0], 1).unwrap();
 /// ```
 pub fn diagonal_scale<T, S>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    weights: &[S],
+    axis: usize,
+) -> Result<Dense<T>, LinalgError>
+where
+    T: Clone + Mul<S, Output = T> + 'static,
+    S: Clone,
+{
+    diagonal_scale_inner(tensor, weights, axis, backend.preferred_order())
+}
+
+/// Inner implementation with explicit memory order (for internal use and testing).
+fn diagonal_scale_inner<T, S>(
     tensor: &Dense<T>,
     weights: &[S],
     axis: usize,
     order: MemoryOrder,
-) -> Result<Dense<T>, String>
+) -> Result<Dense<T>, LinalgError>
 where
     T: Clone + Mul<S, Output = T> + 'static,
     S: Clone,
 {
     if axis >= tensor.rank() {
-        return Err(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "axis {axis} out of range for rank {}",
             tensor.rank()
-        ));
+        )));
     }
     if weights.len() != tensor.shape()[axis] {
-        return Err(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "weights length {} doesn't match axis {axis} dimension {}",
             weights.len(),
             tensor.shape()[axis]
-        ));
+        )));
     }
 
     let total = tensor.len();
@@ -398,4 +409,65 @@ where
         .collect();
 
     Ok(Dense::new(result, shape.to_vec()))
+}
+
+#[cfg(test)]
+mod diagonal_scale_tests {
+    use super::*;
+    use arnet_tensor::{MemoryOrder, reorder};
+
+    /// RM/CM invariance: the same logical tensor, laid out in RM and CM,
+    /// should produce logically identical results.
+    #[test]
+    fn rm_cm_invariance_axis0() {
+        let rm_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let cm_data = vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0];
+        let t_rm = Dense::new(rm_data, vec![2, 3]);
+        let t_cm = Dense::new(cm_data, vec![2, 3]);
+        let weights = [10.0, 20.0];
+
+        let r_rm = diagonal_scale_inner(&t_rm, &weights, 0, MemoryOrder::RowMajor).unwrap();
+        let r_cm = diagonal_scale_inner(&t_cm, &weights, 0, MemoryOrder::ColumnMajor).unwrap();
+
+        let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+        assert_eq!(r_rm.data(), r_cm_as_rm.data(), "axis0 RM/CM mismatch");
+    }
+
+    #[test]
+    fn rm_cm_invariance_axis1() {
+        let rm_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let cm_data = vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0];
+        let t_rm = Dense::new(rm_data, vec![2, 3]);
+        let t_cm = Dense::new(cm_data, vec![2, 3]);
+        let weights = [10.0, 20.0, 30.0];
+
+        let r_rm = diagonal_scale_inner(&t_rm, &weights, 1, MemoryOrder::RowMajor).unwrap();
+        let r_cm = diagonal_scale_inner(&t_cm, &weights, 1, MemoryOrder::ColumnMajor).unwrap();
+
+        let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+        assert_eq!(r_rm.data(), r_cm_as_rm.data(), "axis1 RM/CM mismatch");
+    }
+
+    #[test]
+    fn rm_cm_invariance_rank3() {
+        let rm_data: Vec<f64> = (1..=8).map(|x| x as f64).collect();
+        let t_rm = Dense::new(rm_data, vec![2, 2, 2]);
+
+        let cm_data = vec![1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0];
+        let t_cm = Dense::new(cm_data, vec![2, 2, 2]);
+
+        let weights = [3.0, 7.0];
+
+        let r_rm = diagonal_scale_inner(&t_rm, &weights, 1, MemoryOrder::RowMajor).unwrap();
+        let r_cm = diagonal_scale_inner(&t_cm, &weights, 1, MemoryOrder::ColumnMajor).unwrap();
+
+        let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+
+        for (a, b) in r_rm.data().iter().zip(r_cm_as_rm.data()) {
+            assert!(
+                (a - b).abs() < 1e-10,
+                "rank3 axis1 RM/CM mismatch: {a} vs {b}"
+            );
+        }
+    }
 }

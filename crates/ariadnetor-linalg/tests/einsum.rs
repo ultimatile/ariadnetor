@@ -7,12 +7,12 @@ use arnet_tensor::{Dense, MemoryOrder};
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
 fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
     let rm = Dense::new(data, shape);
-    arnet_linalg::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
+    arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
 /// Convert column-major Dense back to row-major so `.get()` returns correct values.
 fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
-    arnet_linalg::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
+    arnet_tensor::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
 }
 
 // ============================================================================

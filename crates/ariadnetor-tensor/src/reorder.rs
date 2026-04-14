@@ -1,5 +1,5 @@
+use crate::Dense;
 use arnet_core::backend::MemoryOrder;
-use arnet_tensor::Dense;
 
 /// Reorder flat data between memory layouts.
 ///

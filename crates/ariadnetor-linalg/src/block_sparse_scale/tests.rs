@@ -1,4 +1,3 @@
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_native::NativeBackend;
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::sector::U1Sector;
@@ -11,10 +10,6 @@ use super::diagonal_scale_block_sparse;
 
 fn backend() -> NativeBackend {
     NativeBackend
-}
-
-fn order() -> MemoryOrder {
-    backend().preferred_order()
 }
 
 /// Rank-2 U1, flux=0, blocks (0,0):2×2 and (1,1):3×3.
@@ -83,7 +78,7 @@ fn scale_vt_axis0() {
     )
     .unwrap();
 
-    let svt = diagonal_scale_block_sparse(&vt, &sv, 0, order()).unwrap();
+    let svt = diagonal_scale_block_sparse(&backend(), &vt, &sv, 0).unwrap();
     let recon = contract_uv(&u, &svt);
     assert_bs_approx(&recon, &bs, 1e-10);
 }
@@ -103,7 +98,7 @@ fn scale_u_axis_last() {
     )
     .unwrap();
 
-    let us = diagonal_scale_block_sparse(&u, &sv, u.rank() - 1, order()).unwrap();
+    let us = diagonal_scale_block_sparse(&backend(), &u, &sv, u.rank() - 1).unwrap();
     let recon = contract_uv(&us, &vt);
     assert_bs_approx(&recon, &bs, 1e-10);
 }
@@ -124,8 +119,8 @@ fn scale_sqrt_via_map() {
     .unwrap();
 
     let sqrt_sv = sv.map(|v| v.sqrt());
-    let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_sv, u.rank() - 1, order()).unwrap();
-    let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_sv, 0, order()).unwrap();
+    let u_scaled = diagonal_scale_block_sparse(&backend(), &u, &sqrt_sv, u.rank() - 1).unwrap();
+    let vt_scaled = diagonal_scale_block_sparse(&backend(), &vt, &sqrt_sv, 0).unwrap();
     let recon = contract_uv(&u_scaled, &vt_scaled);
     assert_bs_approx(&recon, &bs, 1e-10);
 }
@@ -137,7 +132,7 @@ fn scale_identity_weights() {
     let (_, sv, vt) = svd_block_sparse(&backend(), &bs, 1).unwrap();
 
     let ones = sv.map(|_| 1.0_f64);
-    let vt_scaled = diagonal_scale_block_sparse(&vt, &ones, 0, order()).unwrap();
+    let vt_scaled = diagonal_scale_block_sparse(&backend(), &vt, &ones, 0).unwrap();
 
     for meta in vt.block_metas() {
         let orig = vt.block_data(&meta.coord).unwrap();
@@ -158,7 +153,7 @@ fn scale_axis_out_of_range() {
     let weights = BlockSingularValues {
         values: vec![(U1Sector(0), vec![1.0])],
     };
-    let result = diagonal_scale_block_sparse(&bs, &weights, 5, order());
+    let result = diagonal_scale_block_sparse(&backend(), &bs, &weights, 5);
     assert!(result.is_err());
     let err = result.err().unwrap();
     assert!(
@@ -182,7 +177,7 @@ fn scale_trunc_svd_reconstruction() {
     )
     .unwrap();
 
-    let svt = diagonal_scale_block_sparse(&vt, &sv, 0, order()).unwrap();
+    let svt = diagonal_scale_block_sparse(&backend(), &vt, &sv, 0).unwrap();
     assert_eq!(svt.rank(), vt.rank());
     assert_eq!(svt.shape(), vt.shape());
 
