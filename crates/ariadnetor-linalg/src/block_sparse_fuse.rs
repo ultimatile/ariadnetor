@@ -3,7 +3,7 @@
 //! Fuses consecutive legs of a [`BlockSparse<T, S>`] tensor into a single leg
 //! via Kronecker-product sector fusion.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
@@ -15,10 +15,9 @@ use crate::error::LinalgError;
 /// Fuse consecutive legs of a block-sparse tensor into a single leg.
 ///
 /// Legs `start`, `start+1`, ..., `start+count-1` are fused into a single leg
-/// at position `start`. The fused leg's [`QNIndex`] contains only sectors
-/// and block-index tuples that are actually populated in the tensor's stored
-/// blocks. Each sector's dimension equals the sum of tuple dimensions for the
-/// populated tuples that fuse to that sector (not the full Kronecker product).
+/// at position `start`. The fused leg's [`QNIndex`] is the full Kronecker
+/// product of the input legs' QNIndices — all sector combinations are
+/// included, even those with no stored blocks.
 ///
 /// The fused sector for each block-index tuple is computed by applying each
 /// input leg's direction to its sector, then fusing all directed sectors.
@@ -61,42 +60,12 @@ where
     let indices = tensor.indices();
     let order = backend.preferred_order();
 
-    // Enumerate ALL possible fused tuples for the fused legs.
-    // Build an O(1) lookup: tuple → (directed_fused_sector, dim).
+    // Enumerate ALL fused tuples from the Kronecker product of the fused legs.
     let all_fused_groups = enumerate_fused_tuples(&indices[start..start + count]);
-    let mut tuple_lookup: HashMap<Vec<usize>, (S, usize)> = HashMap::new();
+
+    // Build fused QNIndex from ALL sectors (full Kronecker product).
+    let mut fused_qn_blocks: Vec<(S, usize)> = Vec::with_capacity(all_fused_groups.len());
     for (directed_sector, tuples) in &all_fused_groups {
-        for (tuple, dim) in tuples {
-            tuple_lookup.insert(tuple.clone(), (directed_sector.clone(), *dim));
-        }
-    }
-
-    // Scan input blocks to collect populated (sector, tuple) pairs.
-    // Use HashSet for O(1) dedup, then convert to sorted Vec.
-    let mut seen_tuples: HashSet<Vec<usize>> = HashSet::new();
-    let mut populated_sectors: BTreeMap<S, Vec<(Vec<usize>, usize)>> = BTreeMap::new();
-    for meta in tensor.block_metas() {
-        let fuse_tuple: Vec<usize> = meta.coord.0[start..start + count].to_vec();
-        if !seen_tuples.insert(fuse_tuple.clone()) {
-            continue; // Already recorded this tuple
-        }
-        let (directed_sector, dim) = tuple_lookup
-            .get(&fuse_tuple)
-            .expect("input block tuple must map to a fused sector");
-        populated_sectors
-            .entry(directed_sector.clone())
-            .or_default()
-            .push((fuse_tuple, *dim));
-    }
-
-    // Sort tuples within each sector in lexicographic order (canonical ordering).
-    for tuples in populated_sectors.values_mut() {
-        tuples.sort_by(|(a, _), (b, _)| a.cmp(b));
-    }
-
-    // Build fused QNIndex from populated sectors only.
-    let mut fused_qn_blocks: Vec<(S, usize)> = Vec::with_capacity(populated_sectors.len());
-    for (directed_sector, tuples) in &populated_sectors {
         let total_dim: usize = tuples.iter().map(|(_, d)| d).sum();
         let stored_sector = match fused_direction {
             Direction::Out => directed_sector.clone(),
@@ -109,7 +78,7 @@ where
 
     // QNIndex::new sorts by stored sector. Build a reverse lookup from
     // directed fused sector → block index in the sorted QNIndex.
-    let sector_to_block_idx: HashMap<S, usize> = populated_sectors
+    let sector_to_block_idx: HashMap<S, usize> = all_fused_groups
         .keys()
         .map(|directed_sector| {
             let stored = match fused_direction {
@@ -126,9 +95,9 @@ where
         .collect();
 
     // Build per-tuple offset within the fused dimension.
-    // Tuples are in lexicographic order within each sector (sorted above).
+    // Tuples are in lexicographic order within each sector (from BTreeMap).
     let mut tuple_to_fused: HashMap<Vec<usize>, (usize, usize)> = HashMap::new();
-    for (directed_sector, tuples) in &populated_sectors {
+    for (directed_sector, tuples) in &all_fused_groups {
         let &block_idx = sector_to_block_idx.get(directed_sector).unwrap();
         let mut offset = 0;
         for (tuple, dim) in tuples {
@@ -222,9 +191,6 @@ fn copy_fused_block<T: Copy>(
 ) {
     match order {
         MemoryOrder::RowMajor => {
-            // RM layout: element (l, f, t) at l * fused * trailing + f * trailing + t
-            // Output:    element (l, f, t) at l * fused_total * trailing + (fused_offset + f) * trailing + t
-            // → for each l, copy contiguous slab of size fused * trailing
             let src_stride = fused * trailing;
             let dst_stride = fused_total * trailing;
             for l in 0..leading {
@@ -235,9 +201,6 @@ fn copy_fused_block<T: Copy>(
             }
         }
         MemoryOrder::ColumnMajor => {
-            // CM layout: element (l, f, t) at l + f * leading + t * leading * fused
-            // Output:    element (l, f, t) at l + (fused_offset + f) * leading + t * leading * fused_total
-            // → for each t, copy contiguous slab of size leading * fused
             let src_stride = leading * fused;
             let dst_stride = leading * fused_total;
             for t in 0..trailing {

@@ -8,7 +8,9 @@ use arnet::mps::{
 use arnet_tensor::U1Sector;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 
-use super::helpers::{bsp_mps_contract_full, make_2site_entangled_u1_mps, make_4site_u1_mps};
+use super::helpers::{
+    bsp_mps_contract_full, make_2site_entangled_u1_mps, make_4site_u1_mps, make_identity_u1_mpo,
+};
 
 // --------------------------------------------------------------------------
 // inner_block_sparse
@@ -120,30 +122,6 @@ fn norm_unknown_uses_full_contraction() {
 // --------------------------------------------------------------------------
 // braket_block_sparse
 // --------------------------------------------------------------------------
-
-/// Build a U(1) identity MPO for the given number of sites.
-///
-/// MPO convention: (Out, In, Out, In) = (χ_L, d_ket, d_bra, χ_R).
-/// Physical charges {0, 1}. Flux = 0 per site.
-/// Allowed blocks: (0,0,0,0) and (0,1,1,0), each with data [1.0].
-fn make_identity_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
-    let storages = (0..n)
-        .map(|_| {
-            let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-            let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-            let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-            let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-            let mut site =
-                BlockSparse::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
-            // Block (0,0,0,0): identity on charge-0 subspace
-            site.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).unwrap()[0] = 1.0;
-            // Block (0,1,1,0): identity on charge-1 subspace
-            site.block_data_mut(&BlockCoord(vec![0, 1, 1, 0])).unwrap()[0] = 1.0;
-            site
-        })
-        .collect();
-    Mpo::from_storages(storages)
-}
 
 #[test]
 fn braket_identity_equals_inner_4site() {

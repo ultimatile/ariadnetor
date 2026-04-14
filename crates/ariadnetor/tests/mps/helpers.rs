@@ -411,3 +411,24 @@ pub fn make_2site_entangled_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
 
     Mps::from_storages(vec![site0, site1])
 }
+
+/// Build a U(1) identity MPO for the given number of sites.
+///
+/// MPO convention: (Out, In, Out, In) = (w_L, d_ket, d_bra, w_R).
+/// Physical charges {0, 1}. Bond dim = 1. Flux = 0 per site.
+pub fn make_identity_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
+    let storages = (0..n)
+        .map(|_| {
+            let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
+            let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+            let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+            let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
+            let mut site =
+                BlockSparse::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+            site.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).unwrap()[0] = 1.0;
+            site.block_data_mut(&BlockCoord(vec![0, 1, 1, 0])).unwrap()[0] = 1.0;
+            site
+        })
+        .collect();
+    Mpo::from_storages(storages)
+}
