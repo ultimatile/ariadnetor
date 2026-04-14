@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use arnet_core::backend::MemoryOrder;
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::scalar::Scalar;
 use arnet_tensor::block_sparse::BlockSparse;
 use arnet_tensor::sector::Sector;
@@ -20,8 +20,7 @@ use crate::error::LinalgError;
 /// applies. Element `i` along the scaled axis is multiplied by `weights[i]`
 /// for that sector.
 ///
-/// `order` specifies the memory layout of the block data (typically
-/// `backend.preferred_order()`).
+/// Memory layout is determined by the backend's `preferred_order()`.
 ///
 /// # Errors
 ///
@@ -29,10 +28,10 @@ use crate::error::LinalgError;
 /// from `weights`, or the weight vector length doesn't match the block
 /// dimension at `axis`.
 pub fn diagonal_scale_block_sparse<T, S>(
+    backend: &impl ComputeBackend,
     tensor: &BlockSparse<T, S>,
     weights: &BlockSingularValues<T::Real, S>,
     axis: usize,
-    order: MemoryOrder,
 ) -> Result<BlockSparse<T, S>, LinalgError>
 where
     T: Scalar,
@@ -80,7 +79,7 @@ where
 
         // Stride for the scaled axis: product of trailing dims (RowMajor)
         // or product of preceding dims (ColumnMajor).
-        let inner_stride: usize = match order {
+        let inner_stride: usize = match backend.preferred_order() {
             MemoryOrder::RowMajor => block_shape[axis + 1..].iter().product(),
             MemoryOrder::ColumnMajor => block_shape[..axis].iter().product(),
         };

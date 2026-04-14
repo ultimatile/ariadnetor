@@ -14,9 +14,9 @@ use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::contract::contract;
 use crate::error::LinalgError;
-use crate::reorder::reorder;
 use crate::scalar_ops::trace;
 use crate::transpose::transpose;
+use arnet_tensor::reorder;
 
 /// Execute an Einstein summation over N tensors.
 ///

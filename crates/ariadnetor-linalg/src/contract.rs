@@ -4,8 +4,8 @@ use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
-use crate::reorder::reorder;
 use crate::transpose::transpose;
+use arnet_tensor::reorder;
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
 ///

@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
-use arnet_linalg::{contract, reorder};
-use arnet_tensor::Dense;
+use arnet_linalg::contract;
+use arnet_tensor::{Dense, reorder};
 
 use super::chain::TensorChain;
 use super::types::{Mpo, Mps, TruncateParams};

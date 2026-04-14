@@ -1,8 +1,9 @@
 //! Shared test helpers for MPS tests.
 
 use arnet::mps::{Mpo, Mps, TensorChain};
-use arnet_linalg::{BlockSparseContractResult, contract_block_sparse, reorder};
+use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::reorder;
 use arnet_tensor::sector::U1Sector;
 use arnet_tensor::{Dense, MemoryOrder};
 
@@ -42,7 +43,7 @@ pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet_linalg::flat_index(&[i, j], qtq.shape(), order);
+            let idx = arnet_tensor::flat_index(&[i, j], qtq.shape(), order);
             if (qtq.data()[idx] - expected).abs() > tol {
                 return false;
             }
@@ -69,7 +70,7 @@ pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet_linalg::flat_index(&[i, j], qqt.shape(), order);
+            let idx = arnet_tensor::flat_index(&[i, j], qqt.shape(), order);
             if (qqt.data()[idx] - expected).abs() > tol {
                 return false;
             }

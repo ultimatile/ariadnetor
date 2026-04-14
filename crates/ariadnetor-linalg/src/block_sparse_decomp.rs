@@ -21,7 +21,7 @@ use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
-use crate::reorder::reorder;
+use arnet_tensor::reorder;
 use fused_sector::*;
 
 // ---------------------------------------------------------------------------

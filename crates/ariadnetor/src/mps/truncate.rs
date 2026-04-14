@@ -4,11 +4,11 @@ use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
-    diagonal_scale_block_sparse, reorder, trunc_svd, trunc_svd_block_sparse,
+    diagonal_scale_block_sparse, trunc_svd, trunc_svd_block_sparse,
 };
-use arnet_tensor::Dense;
 use arnet_tensor::block_sparse::BlockSparse;
 use arnet_tensor::sector::Sector;
+use arnet_tensor::{Dense, reorder};
 use num_traits::{Float, Zero};
 
 use super::canonicalize::{canonicalize, canonicalize_block_sparse};
@@ -126,22 +126,22 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 // U stays at j (left-canonical), S·Vt absorbed into j+1
-                let svt = diagonal_scale(&vt, s.data(), 0, order)
+                let svt = diagonal_scale(chain.backend(), &vt, s.data(), 0)
                     .expect("S·Vt scaling failed during truncate");
                 (reshape_u(u), svt, err)
             }
             SvdAbsorb::Left => {
                 // U·S stays at j, Vt absorbed into j+1 (right-canonical Vt)
-                let us = diagonal_scale(&u, s.data(), 1, order)
+                let us = diagonal_scale(chain.backend(), &u, s.data(), 1)
                     .expect("U·S scaling failed during truncate");
                 (reshape_u(us), vt, err)
             }
             SvdAbsorb::Both => {
                 // sqrt(S) applied to both sides
                 let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
-                let u_scaled = diagonal_scale(&u, &sqrt_s, 1, order)
+                let u_scaled = diagonal_scale(chain.backend(), &u, &sqrt_s, 1)
                     .expect("sqrt(S)*U scaling failed during truncate");
-                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0, order)
+                let vt_scaled = diagonal_scale(chain.backend(), &vt, &sqrt_s, 0)
                     .expect("sqrt(S)*Vt scaling failed during truncate");
                 (reshape_u(u_scaled), vt_scaled, err)
             }
@@ -198,23 +198,23 @@ where
             SvdAbsorb::Right => {
                 // Vt stays at j (right-isometric), U·S absorbed into j-1
                 // S accompanies the sweep direction (leftward), producing mixed-canonical form.
-                let us = diagonal_scale(&u, s.data(), 1, order)
+                let us = diagonal_scale(chain.backend(), &u, s.data(), 1)
                     .expect("U·S scaling failed during truncate");
                 (reshape_vt(vt), us, err)
             }
             SvdAbsorb::Left => {
                 // S·Vt stays at j, bare U absorbed into j-1
                 // S stays against the sweep direction.
-                let svt = diagonal_scale(&vt, s.data(), 0, order)
+                let svt = diagonal_scale(chain.backend(), &vt, s.data(), 0)
                     .expect("S·Vt scaling failed during truncate");
                 (reshape_vt(svt), u, err)
             }
             SvdAbsorb::Both => {
                 // sqrt(S) applied to both sides
                 let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
-                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0, order)
+                let vt_scaled = diagonal_scale(chain.backend(), &vt, &sqrt_s, 0)
                     .expect("sqrt(S)*Vt scaling failed during truncate");
-                let u_scaled = diagonal_scale(&u, &sqrt_s, 1, order)
+                let u_scaled = diagonal_scale(chain.backend(), &u, &sqrt_s, 1)
                     .expect("sqrt(S)*U scaling failed during truncate");
                 (reshape_vt(vt_scaled), u_scaled, err)
             }
@@ -379,7 +379,6 @@ where
     B: ComputeBackend,
     C: TensorChain<BlockSparse<T, S>, B>,
 {
-    let order = chain.backend().preferred_order();
     let (left_storage, right_factor, err) = {
         let site = chain.storage(j);
         let rank = site.rank();
@@ -390,22 +389,23 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 // U stays at j (left-canonical), S·Vt absorbed into j+1
-                let svt = diagonal_scale_block_sparse(&vt, &s, 0, order)
+                let svt = diagonal_scale_block_sparse(chain.backend(), &vt, &s, 0)
                     .expect("S·Vt scaling failed during truncate");
                 (u, svt, err)
             }
             SvdAbsorb::Left => {
                 // U·S stays at j, Vt absorbed into j+1
-                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1, order)
+                let us = diagonal_scale_block_sparse(chain.backend(), &u, &s, u.rank() - 1)
                     .expect("U·S scaling failed during truncate");
                 (us, vt, err)
             }
             SvdAbsorb::Both => {
                 // √S applied to both sides
                 let sqrt_s = s.map(|v| (*v).sqrt());
-                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1, order)
-                    .expect("√S·U scaling failed during truncate");
-                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0, order)
+                let u_scaled =
+                    diagonal_scale_block_sparse(chain.backend(), &u, &sqrt_s, u.rank() - 1)
+                        .expect("√S·U scaling failed during truncate");
+                let vt_scaled = diagonal_scale_block_sparse(chain.backend(), &vt, &sqrt_s, 0)
                     .expect("√S·Vt scaling failed during truncate");
                 (u_scaled, vt_scaled, err)
             }
@@ -438,7 +438,6 @@ where
     B: ComputeBackend,
     C: TensorChain<BlockSparse<T, S>, B>,
 {
-    let order = chain.backend().preferred_order();
     let (right_storage, left_factor, err) = {
         let site = chain.storage(j);
 
@@ -448,23 +447,24 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 // Vt stays at j (right-isometric), U·S absorbed into j-1
-                let us = diagonal_scale_block_sparse(&u, &s, u.rank() - 1, order)
+                let us = diagonal_scale_block_sparse(chain.backend(), &u, &s, u.rank() - 1)
                     .expect("U·S scaling failed during truncate");
                 (vt, us, err)
             }
             SvdAbsorb::Left => {
                 // S·Vt stays at j, bare U absorbed into j-1
-                let svt = diagonal_scale_block_sparse(&vt, &s, 0, order)
+                let svt = diagonal_scale_block_sparse(chain.backend(), &vt, &s, 0)
                     .expect("S·Vt scaling failed during truncate");
                 (svt, u, err)
             }
             SvdAbsorb::Both => {
                 // √S applied to both sides
                 let sqrt_s = s.map(|v| (*v).sqrt());
-                let vt_scaled = diagonal_scale_block_sparse(&vt, &sqrt_s, 0, order)
+                let vt_scaled = diagonal_scale_block_sparse(chain.backend(), &vt, &sqrt_s, 0)
                     .expect("√S·Vt scaling failed during truncate");
-                let u_scaled = diagonal_scale_block_sparse(&u, &sqrt_s, u.rank() - 1, order)
-                    .expect("√S·U scaling failed during truncate");
+                let u_scaled =
+                    diagonal_scale_block_sparse(chain.backend(), &u, &sqrt_s, u.rank() - 1)
+                        .expect("√S·U scaling failed during truncate");
                 (vt_scaled, u_scaled, err)
             }
         }

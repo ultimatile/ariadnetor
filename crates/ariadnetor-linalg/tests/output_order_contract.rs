@@ -12,10 +12,9 @@
 //! produces preferred_order output. A violation is silent (no compile error,
 //! no panic) and only manifests as wrong numerical results.
 
-use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{contract, diagonal_scale, expm, inverse, reorder, solve, svd, transpose};
+use arnet_linalg::{contract, diagonal_scale, expm, inverse, solve, svd, transpose};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{Dense, MemoryOrder, reorder};
 
 /// Create Dense from conceptual row-major data, converted to CM for NativeBackend.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
@@ -97,13 +96,12 @@ fn svd_output_feeds_into_contract() {
     // SVD: A = U * diag(S) * Vt
     // Verify by feeding U, S, Vt directly into contract and diagonal_scale
     let backend = NativeBackend::new();
-    let order = backend.preferred_order();
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
     let (u, s, vt) = svd(&backend, &a, 1).unwrap();
 
     // U * diag(S) * Vt — feed SVD outputs directly, no manual reorder
-    let us = diagonal_scale(&u, s.data(), u.rank() - 1, order).unwrap();
+    let us = diagonal_scale(&backend, &u, s.data(), u.rank() - 1).unwrap();
     let reconstructed = contract(&backend, &us, &vt, "ij,jk->ik").unwrap();
 
     for (r, orig) in reconstructed.data().iter().zip(a.data()) {
@@ -155,77 +153,6 @@ fn expm_output_feeds_into_contract() {
         assert!(
             (p - e).abs() < 1e-10,
             "expm output fed to contract: exp(A)*exp(-A) != I"
-        );
-    }
-}
-
-// =========================================================================
-// Contract B: diagonal_scale layout invariance
-//
-// The same logical tensor, laid out in RM and CM, should produce
-// logically identical results when diagonal_scale is called with
-// the matching order parameter.
-// =========================================================================
-
-#[test]
-fn diagonal_scale_rm_cm_invariance_axis0() {
-    // Logical 2×3 matrix: [[1,2,3],[4,5,6]]
-    // Scale rows by [10, 20] → [[10,20,30],[80,100,120]]
-    let rm_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let cm_data = vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0];
-    let t_rm = Dense::new(rm_data, vec![2, 3]);
-    let t_cm = Dense::new(cm_data, vec![2, 3]);
-    let weights = [10.0, 20.0];
-
-    let r_rm = diagonal_scale(&t_rm, &weights, 0, MemoryOrder::RowMajor).unwrap();
-    let r_cm = diagonal_scale(&t_cm, &weights, 0, MemoryOrder::ColumnMajor).unwrap();
-
-    // Convert both to RM for logical comparison
-    let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
-
-    assert_eq!(r_rm.data(), r_cm_as_rm.data(), "axis0 RM/CM mismatch");
-}
-
-#[test]
-fn diagonal_scale_rm_cm_invariance_axis1() {
-    // Logical 2×3 matrix: [[1,2,3],[4,5,6]]
-    // Scale columns by [10, 20, 30] → [[10,40,90],[40,100,180]]
-    let rm_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let cm_data = vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0];
-    let t_rm = Dense::new(rm_data, vec![2, 3]);
-    let t_cm = Dense::new(cm_data, vec![2, 3]);
-    let weights = [10.0, 20.0, 30.0];
-
-    let r_rm = diagonal_scale(&t_rm, &weights, 1, MemoryOrder::RowMajor).unwrap();
-    let r_cm = diagonal_scale(&t_cm, &weights, 1, MemoryOrder::ColumnMajor).unwrap();
-
-    let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
-
-    assert_eq!(r_rm.data(), r_cm_as_rm.data(), "axis1 RM/CM mismatch");
-}
-
-#[test]
-fn diagonal_scale_rm_cm_invariance_rank3() {
-    // Logical 2×2×2 tensor, scale along axis 1 by [3, 7]
-    // RM: [[[a,b],[c,d]],[[e,f],[g,h]]] flattened as [a,b,c,d,e,f,g,h]
-    let rm_data: Vec<f64> = (1..=8).map(|x| x as f64).collect();
-    let t_rm = Dense::new(rm_data, vec![2, 2, 2]);
-
-    // CM layout of same logical tensor
-    let cm_data = vec![1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0];
-    let t_cm = Dense::new(cm_data, vec![2, 2, 2]);
-
-    let weights = [3.0, 7.0];
-
-    let r_rm = diagonal_scale(&t_rm, &weights, 1, MemoryOrder::RowMajor).unwrap();
-    let r_cm = diagonal_scale(&t_cm, &weights, 1, MemoryOrder::ColumnMajor).unwrap();
-
-    let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
-
-    for (a, b) in r_rm.data().iter().zip(r_cm_as_rm.data()) {
-        assert!(
-            (a - b).abs() < 1e-10,
-            "rank3 axis1 RM/CM mismatch: {a} vs {b}"
         );
     }
 }

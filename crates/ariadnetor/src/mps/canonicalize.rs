@@ -4,11 +4,11 @@ use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, contract, contract_block_sparse, lq, lq_block_sparse, qr,
-    qr_block_sparse, reorder,
+    qr_block_sparse,
 };
-use arnet_tensor::Dense;
 use arnet_tensor::block_sparse::BlockSparse;
 use arnet_tensor::sector::Sector;
+use arnet_tensor::{Dense, reorder};
 
 use super::chain::TensorChain;
 use super::types::CanonicalForm;

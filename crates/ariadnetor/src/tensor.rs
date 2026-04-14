@@ -150,7 +150,7 @@ where
                 "Tensor::get: index {idx} out of bounds for axis {i} with size {dim}"
             );
         }
-        let flat = arnet_linalg::flat_index(indices, shape, self.backend.preferred_order());
+        let flat = arnet_tensor::flat_index(indices, shape, self.backend.preferred_order());
         self.storage.data()[flat].clone()
     }
 
@@ -176,7 +176,7 @@ where
                 "Tensor::set: index {idx} out of bounds for axis {i} with size {dim}"
             );
         }
-        let flat = arnet_linalg::flat_index(
+        let flat = arnet_tensor::flat_index(
             indices,
             self.storage.shape(),
             self.backend.preferred_order(),

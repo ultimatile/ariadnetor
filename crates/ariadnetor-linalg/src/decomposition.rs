@@ -4,7 +4,7 @@ use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
-use crate::reorder::reorder;
+use arnet_tensor::reorder;
 
 /// Result of a thin SVD decomposition: `(U, S, Vt)`.
 ///

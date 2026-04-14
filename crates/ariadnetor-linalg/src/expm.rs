@@ -8,10 +8,10 @@ use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 use crate::contract::contract;
 use crate::eigen::eigh;
 use crate::error::LinalgError;
-use crate::reorder::reorder;
 use crate::scalar_ops::{diagonal_scale, linear_combine};
 use crate::solve::solve;
 use crate::transpose::conjugate_transpose;
+use arnet_tensor::reorder;
 
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
 ///
@@ -37,12 +37,11 @@ pub fn expm_hermitian<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<Dense<T>, LinalgError> {
-    let order = backend.preferred_order();
     let (w, v) = eigh(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(lambda_j)
     let exp_w: Vec<T::Real> = w.data().iter().map(|&lam| lam.exp()).collect();
-    let v_scaled = diagonal_scale(&v, &exp_w, 1, order).map_err(LinalgError::InvalidArgument)?;
+    let v_scaled = diagonal_scale(backend, &v, &exp_w, 1)?;
 
     // V dagger = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
@@ -112,8 +111,7 @@ pub fn expm_antihermitian<T: Scalar>(
         .map(|&lam| T::from_real_imag(lam.cos(), -lam.sin()))
         .collect();
 
-    let v_scaled =
-        diagonal_scale(&v_orig, &exp_neg_i_w, 1, order).map_err(LinalgError::InvalidArgument)?;
+    let v_scaled = diagonal_scale(backend, &v_orig, &exp_neg_i_w, 1)?;
 
     // V dagger = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v_orig, &[1, 0])?;
