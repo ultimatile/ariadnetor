@@ -18,7 +18,7 @@ use super::types::{CanonicalForm, Mpo, Mps};
 /// # Panics
 ///
 /// Panics if the MPS lengths differ or either is empty.
-pub fn inner<T, B>(psi: &Mps<Dense<T>, B>, phi: &Mps<Dense<T>, B>) -> T
+pub(super) fn inner_dense<T, B>(psi: &Mps<Dense<T>, B>, phi: &Mps<Dense<T>, B>) -> T
 where
     T: Scalar,
     B: ComputeBackend,
@@ -56,7 +56,7 @@ where
 /// - `Mixed`: returns Frobenius norm of the orthogonality center tensor.
 ///
 /// Otherwise computes the full inner product.
-pub fn norm<T, B>(psi: &Mps<Dense<T>, B>) -> T::Real
+pub(super) fn norm_dense<T, B>(psi: &Mps<Dense<T>, B>) -> T::Real
 where
     T: Scalar,
     B: ComputeBackend,
@@ -65,7 +65,7 @@ where
         CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
         CanonicalForm::Mixed { center } => psi.storage(*center).norm(),
         _ => {
-            let overlap = inner(psi, psi);
+            let overlap = inner_dense(psi, psi);
             overlap.re().sqrt()
         }
     }
@@ -79,7 +79,11 @@ where
 /// # Panics
 ///
 /// Panics if the MPS/MPO lengths differ or any is empty.
-pub fn braket<T, B>(psi: &Mps<Dense<T>, B>, op: &Mpo<Dense<T>, B>, phi: &Mps<Dense<T>, B>) -> T
+pub(super) fn braket_dense<T, B>(
+    psi: &Mps<Dense<T>, B>,
+    op: &Mpo<Dense<T>, B>,
+    phi: &Mps<Dense<T>, B>,
+) -> T
 where
     T: Scalar,
     B: ComputeBackend,
@@ -136,7 +140,7 @@ where
 /// # Panics
 ///
 /// Panics if the MPS lengths differ or either is empty.
-pub fn inner_block_sparse<T, S, B>(
+pub(super) fn inner_bsp<T, S, B>(
     psi: &Mps<BlockSparse<T, S>, B>,
     phi: &Mps<BlockSparse<T, S>, B>,
 ) -> T
@@ -229,7 +233,7 @@ where
 /// # Panics
 ///
 /// Panics if the MPS/MPO lengths differ or any is empty.
-pub fn braket_block_sparse<T, S, B>(
+pub(super) fn braket_bsp<T, S, B>(
     psi: &Mps<BlockSparse<T, S>, B>,
     op: &Mpo<BlockSparse<T, S>, B>,
     phi: &Mps<BlockSparse<T, S>, B>,
@@ -325,8 +329,8 @@ where
 /// Exploits canonical form when available:
 /// - `Left` / `Right`: normalized by construction → 1.0.
 /// - `Mixed { center }`: Frobenius norm of the center tensor.
-/// - Otherwise: full inner product via [`inner_block_sparse`].
-pub fn norm_block_sparse<T, S, B>(psi: &Mps<BlockSparse<T, S>, B>) -> T::Real
+/// - Otherwise: full inner product via [`inner`].
+pub(super) fn norm_bsp<T, S, B>(psi: &Mps<BlockSparse<T, S>, B>) -> T::Real
 where
     T: Scalar,
     S: Sector,
@@ -336,7 +340,7 @@ where
         CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
         CanonicalForm::Mixed { center } => psi.storage(*center).norm(),
         _ => {
-            let overlap = inner_block_sparse(psi, psi);
+            let overlap = inner_bsp(psi, psi);
             overlap.re().sqrt()
         }
     }

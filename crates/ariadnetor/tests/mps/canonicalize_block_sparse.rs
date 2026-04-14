@@ -1,12 +1,12 @@
 //! Canonicalize tests for block-sparse MPS.
 //!
-//! Covers `canonicalize_block_sparse` on a 4-site U(1)-symmetric chain with
+//! Covers `canonicalize` on a 4-site U(1)-symmetric chain with
 //! non-trivial per-sector bond structure. The fixture is designed so that at
 //! least one QR/LQ factorization on every site is genuinely non-trivial
 //! (multi-element sector blocks), which is essential for catching mutants in
 //! the per-sector sweep logic.
 
-use arnet::mps::{CanonicalForm, Mps, TensorChain, canonicalize_block_sparse};
+use arnet::mps::{CanonicalForm, Mps, TensorChain, canonicalize};
 use arnet_tensor::BlockSparse;
 use arnet_tensor::U1Sector;
 
@@ -26,7 +26,7 @@ fn canonicalize_bsp_sets_mixed_form_from_unknown() {
     let mut mps = make_4site_u1_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
-    canonicalize_block_sparse(&mut mps, 2);
+    canonicalize(&mut mps, 2);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 }
@@ -38,7 +38,7 @@ fn canonicalize_bsp_sets_mixed_form_from_unknown() {
 #[test]
 fn canonicalize_bsp_center_0_all_right_isometric() {
     let mut mps = make_4site_u1_mps();
-    canonicalize_block_sparse(&mut mps, 0);
+    canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
     // All sites past the center must be right-canonical.
@@ -54,7 +54,7 @@ fn canonicalize_bsp_center_0_all_right_isometric() {
 fn canonicalize_bsp_center_last_all_left_isometric() {
     let mut mps = make_4site_u1_mps();
     let last = mps.len() - 1;
-    canonicalize_block_sparse(&mut mps, last);
+    canonicalize(&mut mps, last);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: last });
     // Sites 0..last must be left-canonical.
@@ -69,7 +69,7 @@ fn canonicalize_bsp_center_last_all_left_isometric() {
 #[test]
 fn canonicalize_bsp_center_middle_has_mixed_isometry() {
     let mut mps = make_4site_u1_mps();
-    canonicalize_block_sparse(&mut mps, 2);
+    canonicalize(&mut mps, 2);
 
     // 0..2 left-canonical, 3..4 right-canonical; site 2 is the orthogonality center.
     for j in 0..2 {
@@ -96,7 +96,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_0() {
     let state_before = bsp_mps_contract_full(&mps);
 
     let mut mps_after = mps.clone();
-    canonicalize_block_sparse(&mut mps_after, 0);
+    canonicalize(&mut mps_after, 0);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -108,7 +108,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_middle() {
     let state_before = bsp_mps_contract_full(&mps);
 
     let mut mps_after = mps.clone();
-    canonicalize_block_sparse(&mut mps_after, 2);
+    canonicalize(&mut mps_after, 2);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -121,7 +121,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_last() {
 
     let mut mps_after = mps.clone();
     let last = mps_after.len() - 1;
-    canonicalize_block_sparse(&mut mps_after, last);
+    canonicalize(&mut mps_after, last);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -131,7 +131,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_last() {
 // Zero-flux fixture is preserved through canonicalize
 // --------------------------------------------------------------------------
 
-/// `canonicalize_block_sparse` accepts arbitrary per-site flux, but the
+/// `canonicalize` accepts arbitrary per-site flux, but the
 /// standard MPS convention — and the fixture used throughout this file — is
 /// that every site carries identity flux. This test pins that the fixture
 /// really starts at identity and that canonicalize leaves the labelling
@@ -151,7 +151,7 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     }
 
     let mut mps_after = mps;
-    canonicalize_block_sparse(&mut mps_after, 2);
+    canonicalize(&mut mps_after, 2);
 
     for j in 0..mps_after.len() {
         assert_eq!(
@@ -163,7 +163,7 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
 }
 
 /// A charged single-site "chain" is already a valid mixed-canonical form
-/// (there are no bonds to isometrize), so `canonicalize_block_sparse` must
+/// (there are no bonds to isometrize), so `canonicalize` must
 /// accept non-identity flux there and leave the site data untouched —
 /// only the canonical-form tag should flip. This regression test also pins
 /// the contract that charged input is not silently rejected.
@@ -186,7 +186,7 @@ fn canonicalize_bsp_accepts_charged_single_site() {
         .collect();
 
     let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
-    canonicalize_block_sparse(&mut mps, 0);
+    canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
     assert_eq!(*mps.storage(0).flux(), U1Sector(1));
@@ -216,7 +216,7 @@ fn canonicalize_bsp_single_site_only_updates_canonical_form() {
         .collect();
 
     let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
-    canonicalize_block_sparse(&mut mps, 0);
+    canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 

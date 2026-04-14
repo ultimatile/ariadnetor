@@ -11,17 +11,20 @@
 mod apply;
 mod canonicalize;
 mod chain;
+mod dispatch;
 mod inner;
 mod site_ops;
 mod truncate;
 mod types;
 
-pub use apply::{apply, apply_block_sparse};
-pub use canonicalize::{canonicalize, canonicalize_block_sparse};
+// Dispatch trait — enables generic algorithms over Dense / BlockSparse
+pub use dispatch::MpsOps;
+
+// Unified free functions (dispatch via MpsOps trait)
+pub use dispatch::{apply, braket, canonicalize, inner, norm, truncate};
+
 pub use chain::TensorChain;
-pub use inner::{braket, braket_block_sparse, inner, inner_block_sparse, norm, norm_block_sparse};
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
-pub use truncate::{truncate, truncate_block_sparse};
 pub use types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
 // Re-export TruncSvdParams for convenience
