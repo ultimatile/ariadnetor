@@ -3,6 +3,7 @@ use arnet_core::scalar::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
+use crate::reorder::reorder;
 
 /// Solve the linear system AX = B via LU decomposition.
 ///
@@ -13,13 +14,13 @@ use crate::error::LinalgError;
 /// # Arguments
 ///
 /// * `backend` - Compute backend
-/// * `a` - Coefficient tensor (must reshape to n×n square matrix)
+/// * `a` - Coefficient tensor (must reshape to n x n square matrix)
 /// * `b` - Right-hand side tensor (must have n rows when reshaped)
 /// * `nrow_a` - Number of leading axes to group as rows for A
 ///
 /// # Returns
 ///
-/// Solution tensor X with the same shape as B (reshaped as n×nrhs).
+/// Solution tensor X with the same shape as B (reshaped as n x nrhs).
 ///
 /// # Errors
 ///
@@ -45,18 +46,19 @@ pub fn solve<T: Scalar>(
 
     if m != n_a {
         return Err(LinalgError::InvalidArgument(format!(
-            "solve requires a square coefficient matrix, got {m}×{n_a}"
+            "solve requires a square coefficient matrix, got {m}x{n_a}"
         )));
     }
 
     let n = m;
     let order = backend.preferred_order();
-    // Ensure row-major reshape semantics, then convert to backend order
-    let a_rm = a.to_contiguous(MemoryOrder::RowMajor);
-    let a_2d = Dense::from_data_with_order(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let a_contiguous = a_2d.to_contiguous(order);
 
-    let b_rm = b.to_contiguous(MemoryOrder::RowMajor);
+    // Ensure row-major reshape semantics, then convert to backend order
+    let a_rm = reorder(a, order, MemoryOrder::RowMajor);
+    let a_2d = Dense::new(a_rm.data().to_vec(), vec![n, n]);
+    let a_contiguous = reorder(&a_2d, MemoryOrder::RowMajor, order);
+
+    let b_rm = reorder(b, order, MemoryOrder::RowMajor);
     let b_total = b_rm.len();
 
     if !b_total.is_multiple_of(n) {
@@ -67,9 +69,8 @@ pub fn solve<T: Scalar>(
 
     let nrhs = b_total / n;
 
-    let b_2d =
-        Dense::from_data_with_order(b_rm.data().to_vec(), vec![n, nrhs], MemoryOrder::RowMajor);
-    let b_contiguous = b_2d.to_contiguous(order);
+    let b_2d = Dense::new(b_rm.data().to_vec(), vec![n, nrhs]);
+    let b_contiguous = reorder(&b_2d, MemoryOrder::RowMajor, order);
 
     let mut x_data = vec![T::zero(); n * nrhs];
 
@@ -83,21 +84,18 @@ pub fn solve<T: Scalar>(
 
     backend.solve(desc)?;
 
-    // x_data is a column-major n×nrhs 2D buffer.
-    // Convert to row-major 2D first, then reshape to b's original shape
-    // to preserve standard unflatten semantics for higher-rank RHS.
+    // x_data is in the backend's preferred order for an n x nrhs 2D buffer.
+    // Convert to row-major for reshape (correct axis-merge semantics),
+    // then reshape to b's original shape, then back to preferred order.
     let x_2d = backend.make_tensor(x_data, vec![n, nrhs]);
-    let x_rm = x_2d.to_contiguous(MemoryOrder::RowMajor);
-    Ok(Dense::from_data_with_order(
-        x_rm.data().to_vec(),
-        b.shape().to_vec(),
-        MemoryOrder::RowMajor,
-    ))
+    let x_rm = reorder(&x_2d, order, MemoryOrder::RowMajor);
+    let x_reshaped = Dense::new(x_rm.data().to_vec(), b.shape().to_vec());
+    Ok(reorder(&x_reshaped, MemoryOrder::RowMajor, order))
 }
 
 /// Compute the inverse of a square matrix via LU decomposition.
 ///
-/// Solves `AX = I` using [`solve`] and returns `X = A⁻¹`.
+/// Solves `AX = I` using [`solve`] and returns `X = A^{-1}`.
 ///
 /// # Arguments
 ///
@@ -107,7 +105,7 @@ pub fn solve<T: Scalar>(
 ///
 /// # Returns
 ///
-/// Inverse matrix with the same shape as the input (n×n).
+/// Inverse matrix with the same shape as the input (n x n).
 ///
 /// # Errors
 ///
@@ -132,23 +130,27 @@ pub fn inverse<T: Scalar>(
 
     if m != n {
         return Err(LinalgError::InvalidArgument(format!(
-            "inverse requires a square matrix, got {m}×{n}"
+            "inverse requires a square matrix, got {m}x{n}"
         )));
     }
 
-    let identity = Dense::<T>::eye(n);
+    let order = backend.preferred_order();
 
-    // Flatten to n×n and solve AX = I → X = A⁻¹
-    let a_rm = tensor.to_contiguous(MemoryOrder::RowMajor);
-    let a_flat =
-        Dense::from_data_with_order(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    // Identity matrix in preferred_order for use as RHS
+    let identity_rm = Dense::<T>::eye(n);
+    let identity = reorder(&identity_rm, MemoryOrder::RowMajor, order);
+
+    // Flatten tensor to n x n using RM reshape semantics, then convert to preferred_order.
+    // solve() expects inputs in preferred_order.
+    let a_rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    let a_flat_rm = Dense::new(a_rm.data().to_vec(), vec![n, n]);
+    let a_flat = reorder(&a_flat_rm, MemoryOrder::RowMajor, order);
+
     let result = solve(backend, &a_flat, &identity, 1)?;
 
-    // Return in original shape, row-major (inverse output matches input convention)
-    let result_rm = result.to_contiguous(MemoryOrder::RowMajor);
-    Ok(Dense::from_data_with_order(
-        result_rm.data().to_vec(),
-        shape.to_vec(),
-        MemoryOrder::RowMajor,
-    ))
+    // solve() returns preferred_order data. RM intermediate for axis-split,
+    // then back to preferred_order.
+    let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
+    let reshaped = Dense::new(result_rm.data().to_vec(), shape.to_vec());
+    Ok(reorder(&reshaped, MemoryOrder::RowMajor, order))
 }

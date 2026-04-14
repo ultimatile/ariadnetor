@@ -41,6 +41,7 @@ mod eigen;
 mod einsum;
 mod error;
 mod expm;
+mod reorder;
 mod scalar_ops;
 mod solve;
 mod transpose;
@@ -61,6 +62,7 @@ pub use decomposition::{
 pub use eigen::{EigResult, EighResult, eig, eigh, eigvals, eigvalsh};
 pub use einsum::einsum;
 pub use expm::{expm, expm_antihermitian, expm_hermitian};
+pub use reorder::{flat_index, reorder};
 pub use scalar_ops::{diag, diagonal_scale, linear_combine, norm, normalize, scale, trace};
 pub use solve::{inverse, solve};
 pub use transpose::{conjugate_transpose, transpose};

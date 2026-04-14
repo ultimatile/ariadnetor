@@ -129,13 +129,59 @@ where
     }
 
     /// Get element at given indices.
+    ///
+    /// Computes the flat index using the backend's preferred memory order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if indices length doesn't match rank or any index is out of bounds.
     pub fn get(&self, indices: &[usize]) -> S {
-        self.storage.get(indices)
+        let shape = self.storage.shape();
+        assert_eq!(
+            indices.len(),
+            shape.len(),
+            "Tensor::get: indices length {} doesn't match rank {}",
+            indices.len(),
+            shape.len()
+        );
+        for (i, (&idx, &dim)) in indices.iter().zip(shape).enumerate() {
+            assert!(
+                idx < dim,
+                "Tensor::get: index {idx} out of bounds for axis {i} with size {dim}"
+            );
+        }
+        let flat = arnet_linalg::flat_index(indices, shape, self.backend.preferred_order());
+        self.storage.data()[flat].clone()
     }
 
     /// Set element at given indices.
+    ///
+    /// Computes the flat index using the backend's preferred memory order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if indices length doesn't match rank or any index is out of bounds.
     pub fn set(&mut self, indices: &[usize], value: S) {
-        self.storage.set(indices, value)
+        let shape = self.storage.shape();
+        assert_eq!(
+            indices.len(),
+            shape.len(),
+            "Tensor::set: indices length {} doesn't match rank {}",
+            indices.len(),
+            shape.len()
+        );
+        for (i, (&idx, &dim)) in indices.iter().zip(shape).enumerate() {
+            assert!(
+                idx < dim,
+                "Tensor::set: index {idx} out of bounds for axis {i} with size {dim}"
+            );
+        }
+        let flat = arnet_linalg::flat_index(
+            indices,
+            self.storage.shape(),
+            self.backend.preferred_order(),
+        );
+        self.storage.data_mut()[flat] = value;
     }
 
     /// Fill tensor with a constant value.

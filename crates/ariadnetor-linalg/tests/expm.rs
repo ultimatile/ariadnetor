@@ -2,16 +2,23 @@ use arnet_linalg::{EighResult, contract, eigh, expm, expm_antihermitian, expm_he
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 
+/// Create Dense from row-major data, converted to column-major for NativeBackend.
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
+    let rm = Dense::new(data, shape);
+    arnet_linalg::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
+}
+
+/// Convert column-major Dense back to row-major so `.get()` returns correct values.
+fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
+    arnet_linalg::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
+}
+
 #[test]
 fn test_expm_hermitian_diagonal_f64() {
     let backend = NativeBackend::new();
 
     // exp(diag(1, 2)) = diag(e, e²)
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 2.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0_f64, 0.0, 0.0, 2.0], vec![2, 2]);
     let result = expm_hermitian(&backend, &a, 1).unwrap();
 
     assert_eq!(result.shape(), &[2, 2]);
@@ -28,11 +35,7 @@ fn test_expm_hermitian_2x2_symmetric() {
 
     // A = [[0, 1], [1, 0]] (Pauli X), eigenvalues ±1
     // exp(A) = cosh(1)*I + sinh(1)*A
-    let a = Dense::<f64>::from_data_with_order(
-        vec![0.0, 1.0, 1.0, 0.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![0.0_f64, 1.0, 1.0, 0.0], vec![2, 2]);
     let result = expm_hermitian(&backend, &a, 1).unwrap();
 
     let c = 1.0f64.cosh();
@@ -52,7 +55,7 @@ fn test_expm_hermitian_c64() {
     // Hermitian: A = [[2, 1-i], [1+i, 3]]
     // eigenvalues from eigh: λ₁ ≈ 1.0, λ₂ ≈ 4.0
     // Verify exp(A) is Hermitian and exp(A) = V diag(exp(λ)) V†
-    let a = Dense::from_data_with_order(
+    let a = cm(
         vec![
             Complex::new(2.0, 0.0),
             Complex::new(1.0, -1.0),
@@ -60,7 +63,6 @@ fn test_expm_hermitian_c64() {
             Complex::new(3.0, 0.0),
         ],
         vec![2, 2],
-        MemoryOrder::RowMajor,
     );
     let result = expm_hermitian(&backend, &a, 1).unwrap();
 
@@ -95,11 +97,7 @@ fn test_expm_hermitian_f32() {
     let backend = NativeBackend::new();
 
     // exp(diag(1, 2)) = diag(e, e²)
-    let a = Dense::<f32>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 2.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0_f32, 0.0, 0.0, 2.0], vec![2, 2]);
     let result = expm_hermitian(&backend, &a, 1).unwrap();
 
     let e = std::f32::consts::E;
@@ -110,22 +108,14 @@ fn test_expm_hermitian_f32() {
 #[test]
 fn test_expm_hermitian_invalid_nonsquare() {
     let backend = NativeBackend::new();
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     assert!(expm_hermitian(&backend, &a, 1).is_err());
 }
 
 #[test]
 fn test_expm_hermitian_invalid_nrow() {
     let backend = NativeBackend::new();
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 1.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
     assert!(expm_hermitian(&backend, &a, 0).is_err());
     assert!(expm_hermitian(&backend, &a, 2).is_err());
 }
@@ -140,7 +130,7 @@ fn test_expm_antihermitian_unitarity_c64() {
     let backend = NativeBackend::new();
 
     // Anti-Hermitian: A = [[i, 1], [-1, -i]] → A† = [[-i, -1], [1, i]] = -A
-    let a = Dense::from_data_with_order(
+    let a = cm(
         vec![
             Complex::new(0.0, 1.0),
             Complex::new(1.0, 0.0),
@@ -148,19 +138,19 @@ fn test_expm_antihermitian_unitarity_c64() {
             Complex::new(0.0, -1.0),
         ],
         vec![2, 2],
-        MemoryOrder::RowMajor,
     );
     let u = expm_antihermitian(&backend, &a, 1).unwrap();
 
     // exp(A) should be unitary: U†U = I
+    let u_rm = to_rm(&u);
     let mut uh_data = vec![Complex::<f64>::zero(); 4];
     for i in 0..2 {
         for j in 0..2 {
-            uh_data[i * 2 + j] = u.get(&[j, i]).conj();
+            uh_data[i * 2 + j] = u_rm.get(&[j, i]).conj();
         }
     }
-    let u_dagger = Dense::from_data_with_order(uh_data, vec![2, 2], MemoryOrder::RowMajor);
-    let product = contract(&backend, &u_dagger, &u, "ij,jk->ik").unwrap();
+    let u_dagger = cm(uh_data, vec![2, 2]);
+    let product = to_rm(&contract(&backend, &u_dagger, &u, "ij,jk->ik").unwrap());
 
     // Should be identity
     for i in 0..2 {
@@ -184,7 +174,7 @@ fn test_expm_antihermitian_pauli_z() {
     // A = -iσ_z * t = [[-it, 0], [0, it]] which is anti-Hermitian
     // exp(A) = [[exp(-it), 0], [0, exp(it)]]
     let t: f64 = 0.5;
-    let a = Dense::from_data_with_order(
+    let a = cm(
         vec![
             Complex::new(0.0, -t),
             Complex::new(0.0, 0.0),
@@ -192,7 +182,6 @@ fn test_expm_antihermitian_pauli_z() {
             Complex::new(0.0, t),
         ],
         vec![2, 2],
-        MemoryOrder::RowMajor,
     );
     let result = expm_antihermitian(&backend, &a, 1).unwrap();
 
@@ -219,10 +208,10 @@ fn test_expm_antihermitian_real_type_error() {
     let backend = NativeBackend::new();
 
     // Real types should return error
-    let a_f64 = Dense::<f64>::from_data_with_order(vec![0.0; 4], vec![2, 2], MemoryOrder::RowMajor);
+    let a_f64 = cm(vec![0.0_f64; 4], vec![2, 2]);
     assert!(expm_antihermitian(&backend, &a_f64, 1).is_err());
 
-    let a_f32 = Dense::<f32>::from_data_with_order(vec![0.0; 4], vec![2, 2], MemoryOrder::RowMajor);
+    let a_f32 = cm(vec![0.0_f32; 4], vec![2, 2]);
     assert!(expm_antihermitian(&backend, &a_f32, 1).is_err());
 }
 
@@ -232,11 +221,7 @@ fn test_expm_antihermitian_invalid_nonsquare() {
     use num_traits::Zero;
 
     let backend = NativeBackend::new();
-    let a = Dense::from_data_with_order(
-        vec![Complex::<f64>::zero(); 6],
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-    );
+    let a = Dense::new(vec![Complex::<f64>::zero(); 6], vec![2, 3]);
     assert!(expm_antihermitian(&backend, &a, 1).is_err());
 }
 
@@ -247,11 +232,7 @@ fn test_expm_diagonal_f64() {
     let backend = NativeBackend::new();
 
     // exp(diag(1, 2)) = diag(e, e²)
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 2.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0_f64, 0.0, 0.0, 2.0], vec![2, 2]);
     let result = expm(&backend, &a, 1).unwrap();
 
     let e = std::f64::consts::E;
@@ -267,12 +248,8 @@ fn test_expm_nilpotent_f64() {
 
     // N = [[0, 1], [0, 0]] is nilpotent (N² = 0)
     // exp(N) = I + N = [[1, 1], [0, 1]]
-    let a = Dense::<f64>::from_data_with_order(
-        vec![0.0, 1.0, 0.0, 0.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
-    let result = expm(&backend, &a, 1).unwrap();
+    let a = cm(vec![0.0_f64, 1.0, 0.0, 0.0], vec![2, 2]);
+    let result = to_rm(&expm(&backend, &a, 1).unwrap());
 
     assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
     assert!((result.get(&[0, 1]) - 1.0).abs() < 1e-10);
@@ -287,11 +264,7 @@ fn test_expm_general_2x2_f64() {
     // A = [[1, 2], [3, 4]] — compare with eigendecomposition result
     // eigenvalues: λ = (5 ± √33) / 2
     // tr(exp(A)) = exp(λ₁) + exp(λ₂)
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let result = expm(&backend, &a, 1).unwrap();
 
     let sqrt33 = 33.0f64.sqrt();
@@ -320,12 +293,11 @@ fn test_expm_general_3x3_f64() {
 
     // A = [[0,1,0],[0,0,1],[0,0,0]] (upper triangular nilpotent, N³=0)
     // exp(A) = I + A + A²/2 = [[1,1,0.5],[0,1,1],[0,0,1]]
-    let a = Dense::<f64>::from_data_with_order(
-        vec![0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+    let a = cm(
+        vec![0.0_f64, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
         vec![3, 3],
-        MemoryOrder::RowMajor,
     );
-    let result = expm(&backend, &a, 1).unwrap();
+    let result = to_rm(&expm(&backend, &a, 1).unwrap());
 
     assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
     assert!((result.get(&[0, 1]) - 1.0).abs() < 1e-10);
@@ -342,7 +314,7 @@ fn test_expm_complex_f64() {
     let backend = NativeBackend::new();
 
     // Complex diagonal: exp(diag(i, -i)) = diag(exp(i), exp(-i))
-    let a = Dense::from_data_with_order(
+    let a = cm(
         vec![
             Complex::new(0.0, 1.0),
             Complex::new(0.0, 0.0),
@@ -350,7 +322,6 @@ fn test_expm_complex_f64() {
             Complex::new(0.0, -1.0),
         ],
         vec![2, 2],
-        MemoryOrder::RowMajor,
     );
     let result = expm(&backend, &a, 1).unwrap();
 
@@ -370,11 +341,7 @@ fn test_expm_large_norm_f64() {
 
     // A = 10*I — triggers scaling (||A||_1 = 10 > θ_13)
     // exp(10*I) = e^10 * I
-    let a = Dense::<f64>::from_data_with_order(
-        vec![10.0, 0.0, 0.0, 10.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![10.0_f64, 0.0, 0.0, 10.0], vec![2, 2]);
     let result = expm(&backend, &a, 1).unwrap();
 
     let e10 = 10.0f64.exp();
@@ -396,11 +363,7 @@ fn test_expm_large_norm_f64() {
 fn test_expm_f32() {
     let backend = NativeBackend::new();
 
-    let a = Dense::<f32>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 2.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0_f32, 0.0, 0.0, 2.0], vec![2, 2]);
     let result = expm(&backend, &a, 1).unwrap();
 
     let e = std::f32::consts::E;
@@ -411,22 +374,14 @@ fn test_expm_f32() {
 #[test]
 fn test_expm_invalid_nonsquare() {
     let backend = NativeBackend::new();
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     assert!(expm(&backend, &a, 1).is_err());
 }
 
 #[test]
 fn test_expm_invalid_nrow() {
     let backend = NativeBackend::new();
-    let a = Dense::<f64>::from_data_with_order(
-        vec![1.0, 0.0, 0.0, 1.0],
-        vec![2, 2],
-        MemoryOrder::RowMajor,
-    );
+    let a = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
     assert!(expm(&backend, &a, 0).is_err());
     assert!(expm(&backend, &a, 2).is_err());
 }
@@ -435,7 +390,7 @@ fn test_expm_invalid_nrow() {
 
 /// Helper to build a Dense matrix from a row-major flat vector.
 fn mat(data: Vec<f64>, n: usize) -> Dense<f64> {
-    Dense::<f64>::from_data_with_order(data, vec![n, n], MemoryOrder::RowMajor)
+    cm(data, vec![n, n])
 }
 
 #[test]
@@ -473,7 +428,7 @@ fn test_expm_norm_1_asymmetric_columns() {
     // This is nilpotent: N^2 = 0, so exp(A) = I + A = [[1, 10], [0, 1]]
     // The norm_1=10 forces scaling/squaring path.
     let a = mat(vec![0.0, 10.0, 0.0, 0.0], 2);
-    let result = expm(&backend, &a, 1).unwrap();
+    let result = to_rm(&expm(&backend, &a, 1).unwrap());
 
     assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
     assert!((result.get(&[0, 1]) - 10.0).abs() < 1e-9);
@@ -532,14 +487,13 @@ fn test_expm_3x3_rotation() {
     // exp(A) should be orthogonal: R^T R = I
     let backend = NativeBackend::new();
     #[rustfmt::skip]
-    let a = Dense::<f64>::from_data_with_order(
+    let a = cm(
         vec![
-            0.0, -0.3,  0.5,
-            0.3,  0.0, -0.7,
-           -0.5,  0.7,  0.0,
+            0.0_f64, -0.3,  0.5,
+            0.3,      0.0, -0.7,
+           -0.5,      0.7,  0.0,
         ],
-        vec![3, 3],
-        MemoryOrder::RowMajor,
+        vec![3, 3]
     );
     let r = expm(&backend, &a, 1).unwrap();
 
@@ -582,7 +536,7 @@ fn test_expm_different_pade_orders_agree() {
     let test_values = [0.01, 0.1, 0.5, 1.5, 3.0, 8.0];
     for &t in &test_values {
         let a = mat(vec![0.0, t, -t, 0.0], 2);
-        let result = expm(&backend, &a, 1).unwrap();
+        let result = to_rm(&expm(&backend, &a, 1).unwrap());
         let c = t.cos();
         let s = t.sin();
         let expected = [[c, s], [-s, c]];
@@ -604,7 +558,7 @@ fn test_expm_1x1_matrix() {
     // Edge case: 1x1 matrix, must be passed as [1,1] shape with nrow=1
     // Requires rank-2 tensor. exp([[x]]) = [[exp(x)]]
     let backend = NativeBackend::new();
-    let a = Dense::<f64>::from_data_with_order(vec![2.0], vec![1, 1], MemoryOrder::RowMajor);
+    let a = cm(vec![2.0_f64], vec![1, 1]);
     let result = expm(&backend, &a, 1).unwrap();
     assert!(
         (result.get(&[0, 0]) - 2.0f64.exp()).abs() < 1e-12,
@@ -621,14 +575,13 @@ fn test_expm_3x3_large_lower_rows() {
     // Correct norm_1 ≈ 20 (scaling needed), mutated ≈ 0.003 (Padé 3, wrong).
     let backend = NativeBackend::new();
     #[rustfmt::skip]
-    let a = Dense::<f64>::from_data_with_order(
+    let a = cm(
         vec![
-            0.001,  0.001,  0.001,
-            0.0,    0.0,    0.0,
-            10.0,   10.0,   10.0,
+            0.001_f64, 0.001,  0.001,
+            0.0,       0.0,    0.0,
+            10.0,      10.0,   10.0,
         ],
-        vec![3, 3],
-        MemoryOrder::RowMajor,
+        vec![3, 3]
     );
     let result = expm(&backend, &a, 1).unwrap();
 

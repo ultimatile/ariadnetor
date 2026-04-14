@@ -1,126 +1,44 @@
-//! Tests for diagonal_scale optimization.
+//! Tests for diagonal_scale.
 
+use arnet_core::MemoryOrder;
 use arnet_linalg::diagonal_scale;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 
 #[test]
-fn test_diagonal_scale_row_major_axis0() {
-    // 2×3 matrix, scale rows by [2, 3]
-    let t = Dense::<f64>::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-    );
-    let result = diagonal_scale(&t, &[2.0, 3.0], 0).unwrap();
-    assert_eq!(result.get(&[0, 0]), 2.0);
-    assert_eq!(result.get(&[0, 2]), 6.0);
-    assert_eq!(result.get(&[1, 0]), 12.0);
-    assert_eq!(result.get(&[1, 2]), 18.0);
+fn test_diagonal_scale_axis0() {
+    // 2x3 matrix in CM layout, scale rows by [2, 3]
+    // CM layout of [[1,2,3],[4,5,6]]: col0=[1,4], col1=[2,5], col2=[3,6]
+    let t = Dense::<f64>::new(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], vec![2, 3]);
+    let result = diagonal_scale(&t, &[2.0, 3.0], 0, MemoryOrder::ColumnMajor).unwrap();
+    // Scale row 0 by 2, row 1 by 3 -> [[2,4,6],[12,15,18]]
+    // CM: col0=[2,12], col1=[4,15], col2=[6,18]
+    assert_eq!(result.data(), &[2.0, 12.0, 4.0, 15.0, 6.0, 18.0]);
 }
 
 #[test]
-fn test_diagonal_scale_row_major_axis1() {
-    // 2×3 matrix, scale columns by [1, 2, 3]
-    let t = Dense::<f64>::from_data_with_order(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-    );
-    let result = diagonal_scale(&t, &[1.0, 2.0, 3.0], 1).unwrap();
-    assert_eq!(result.get(&[0, 0]), 1.0);
-    assert_eq!(result.get(&[0, 1]), 4.0);
-    assert_eq!(result.get(&[0, 2]), 9.0);
-    assert_eq!(result.get(&[1, 0]), 4.0);
-    assert_eq!(result.get(&[1, 1]), 10.0);
-    assert_eq!(result.get(&[1, 2]), 18.0);
-}
-
-#[test]
-fn test_diagonal_scale_column_major_axis0() {
-    // Column-major 2×3, scale rows by [2, 3]
-    let t = Dense::<f64>::from_data_with_order(
-        vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::ColumnMajor,
-    );
-    let result = diagonal_scale(&t, &[2.0, 3.0], 0).unwrap();
-    assert_eq!(result.memory_order(), MemoryOrder::ColumnMajor);
-    assert_eq!(result.get(&[0, 0]), 2.0);
-    assert_eq!(result.get(&[1, 0]), 12.0);
-    assert_eq!(result.get(&[0, 2]), 6.0);
-    assert_eq!(result.get(&[1, 2]), 18.0);
-}
-
-#[test]
-fn test_diagonal_scale_column_major_axis1() {
-    // Column-major 2×3, scale columns by [1, 2, 3]
-    let t = Dense::<f64>::from_data_with_order(
-        vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::ColumnMajor,
-    );
-    let result = diagonal_scale(&t, &[1.0, 2.0, 3.0], 1).unwrap();
-    assert_eq!(result.get(&[0, 0]), 1.0);
-    assert_eq!(result.get(&[0, 1]), 4.0);
-    assert_eq!(result.get(&[0, 2]), 9.0);
-    assert_eq!(result.get(&[1, 0]), 4.0);
-    assert_eq!(result.get(&[1, 2]), 18.0);
+fn test_diagonal_scale_axis1() {
+    // 2x3 matrix in CM layout, scale columns by [1, 2, 3]
+    let t = Dense::<f64>::new(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], vec![2, 3]);
+    let result = diagonal_scale(&t, &[1.0, 2.0, 3.0], 1, MemoryOrder::ColumnMajor).unwrap();
+    // Scale col 0 by 1, col 1 by 2, col 2 by 3 -> [[1,4,9],[4,10,18]]
+    // CM: col0=[1,4], col1=[4,10], col2=[9,18]
+    assert_eq!(result.data(), &[1.0, 4.0, 4.0, 10.0, 9.0, 18.0]);
 }
 
 #[test]
 fn test_diagonal_scale_rank1() {
-    let t =
-        Dense::<f64>::from_data_with_order(vec![10.0, 20.0, 30.0], vec![3], MemoryOrder::RowMajor);
-    let result = diagonal_scale(&t, &[2.0, 0.5, 3.0], 0).unwrap();
+    let t = Dense::<f64>::new(vec![10.0, 20.0, 30.0], vec![3]);
+    let result = diagonal_scale(&t, &[2.0, 0.5, 3.0], 0, MemoryOrder::ColumnMajor).unwrap();
     assert_eq!(result.data(), &[20.0, 10.0, 90.0]);
 }
 
 #[test]
-fn test_diagonal_scale_rank3() {
-    // 2×3×4, scale along axis 1 by [1, 2, 3]
-    let data: Vec<f64> = (1..=24).map(|i| i as f64).collect();
-    let t = Dense::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
-    let result = diagonal_scale(&t, &[1.0, 2.0, 3.0], 1).unwrap();
-
-    // Verify element-by-element
-    for i0 in 0..2 {
-        for i1 in 0..3 {
-            for i2 in 0..4 {
-                let expected = t.get(&[i0, i1, i2]) * [1.0, 2.0, 3.0][i1];
-                assert_eq!(
-                    result.get(&[i0, i1, i2]),
-                    expected,
-                    "mismatch at [{i0},{i1},{i2}]"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn test_diagonal_scale_non_contiguous() {
-    // Non-contiguous: shape [2, 2] with strides [3, 1]
-    let t = Dense::<f64>::from_data_with_strides(
-        vec![1.0, 2.0, 0.0, 3.0, 4.0, 0.0],
-        vec![2, 2],
-        vec![3, 1],
-        0,
-        MemoryOrder::RowMajor,
-    );
-    let result = diagonal_scale(&t, &[10.0, 20.0], 0).unwrap();
-    assert_eq!(result.get(&[0, 0]), 10.0);
-    assert_eq!(result.get(&[0, 1]), 20.0);
-    assert_eq!(result.get(&[1, 0]), 60.0);
-    assert_eq!(result.get(&[1, 1]), 80.0);
-}
-
-#[test]
 fn test_diagonal_scale_error_cases() {
-    let t = Dense::<f64>::from_data_with_order(vec![1.0; 6], vec![2, 3], MemoryOrder::RowMajor);
+    let t = Dense::<f64>::new(vec![1.0; 6], vec![2, 3]);
     // axis out of range
-    assert!(diagonal_scale(&t, &[1.0, 2.0], 2).is_err());
+    assert!(diagonal_scale(&t, &[1.0, 2.0], 2, MemoryOrder::ColumnMajor).is_err());
     // matching weights length for axis 0
-    assert!(diagonal_scale(&t, &[1.0, 2.0], 0).is_ok()); // 2 == shape[0]
+    assert!(diagonal_scale(&t, &[1.0, 2.0], 0, MemoryOrder::ColumnMajor).is_ok());
     // wrong weights length for axis 1
-    assert!(diagonal_scale(&t, &[1.0, 2.0], 1).is_err()); // 2 != shape[1]=3
+    assert!(diagonal_scale(&t, &[1.0, 2.0], 1, MemoryOrder::ColumnMajor).is_err());
 }

@@ -2,7 +2,7 @@
 //!
 //! Tests the public API usage patterns from design documentation.
 
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 
 #[test]
 fn test_tensor_storage_creation() {
@@ -19,11 +19,10 @@ fn test_tensor_storage_creation() {
         assert_eq!(data[24], 1.0);
     }
 
-    let from_data =
-        Dense::from_data_with_order(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let from_data = Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     assert_eq!(from_data.shape(), &[2, 2]);
-    assert_eq!(from_data.get(&[0, 0]), 1.0);
-    assert_eq!(from_data.get(&[1, 1]), 4.0);
+    assert_eq!(from_data.data()[0], 1.0);
+    assert_eq!(from_data.data()[3], 4.0);
 }
 
 #[test]
@@ -37,23 +36,25 @@ fn test_dense_tensor_creation() {
     assert_eq!(ones.data()[0], 1.0);
 
     let constant = Dense::constant(vec![2, 2], 3.14);
-    assert_eq!(constant.get(&[0, 0]), 3.14);
-    assert_eq!(constant.get(&[1, 1]), 3.14);
+    // All elements should be 3.14
+    for &v in constant.data() {
+        assert_eq!(v, 3.14);
+    }
 }
 
 #[test]
-fn test_tensor_indexing() {
+fn test_tensor_data_mut() {
     let mut tensor = Dense::<f64>::zeros(vec![3, 4]);
 
-    // Set values
-    tensor.set(&[0, 0], 1.0);
-    tensor.set(&[1, 2], 42.0);
-    tensor.set(&[2, 3], 99.0);
+    // Set values via data_mut
+    tensor.data_mut()[0] = 1.0;
+    tensor.data_mut()[6] = 42.0;
+    tensor.data_mut()[11] = 99.0;
 
-    // Get values
-    assert_eq!(tensor.get(&[0, 0]), 1.0);
-    assert_eq!(tensor.get(&[1, 2]), 42.0);
-    assert_eq!(tensor.get(&[2, 3]), 99.0);
+    // Verify via data
+    assert_eq!(tensor.data()[0], 1.0);
+    assert_eq!(tensor.data()[6], 42.0);
+    assert_eq!(tensor.data()[11], 99.0);
 }
 
 #[test]

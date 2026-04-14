@@ -4,11 +4,11 @@ use arnet_core::backend::ComputeBackend;
 use arnet_core::scalar::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, contract, contract_block_sparse, lq, lq_block_sparse, qr,
-    qr_block_sparse,
+    qr_block_sparse, reorder,
 };
+use arnet_tensor::Dense;
 use arnet_tensor::block_sparse::BlockSparse;
 use arnet_tensor::sector::Sector;
-use arnet_tensor::{Dense, MemoryOrder};
 
 use super::chain::TensorChain;
 use super::types::CanonicalForm;
@@ -61,18 +61,21 @@ where
         let dense = chain.storage(j);
         let rank = dense.rank();
         let orig_shape = dense.shape().to_vec();
+        let order = chain.backend().preferred_order();
 
         let (q, r) = qr(chain.backend(), dense, rank - 1)
             .expect("QR decomposition failed during canonicalize");
 
         // Reshape Q from (m, k) back to (*orig[..rank-1], k).
-        // Convert to row-major first so reshape uses standard axis merge order.
-        let q_rm = q.to_contiguous(MemoryOrder::RowMajor);
+        // Reorder to row-major for correct axis-split semantics, then back.
+        let q_rm = reorder(&q, order, arnet_core::MemoryOrder::RowMajor);
         let k = q_rm.shape()[1];
         let mut q_shape = orig_shape[..rank - 1].to_vec();
         q_shape.push(k);
+        let q_multi = q_rm.reshape(q_shape);
+        let q_back = reorder(&q_multi, arnet_core::MemoryOrder::RowMajor, order);
 
-        (q_rm.reshape(q_shape), r)
+        (q_back, r)
     };
 
     *chain.storage_mut(j) = q_storage;
@@ -97,18 +100,21 @@ where
     let (q_storage, l) = {
         let dense = chain.storage(j);
         let orig_shape = dense.shape().to_vec();
+        let order = chain.backend().preferred_order();
 
         let (l, q) =
             lq(chain.backend(), dense, 1).expect("LQ decomposition failed during canonicalize");
 
         // Reshape Q from (k, n) back to (k, *orig[1..]).
-        // Convert to row-major first so reshape uses standard axis merge order.
-        let q_rm = q.to_contiguous(MemoryOrder::RowMajor);
+        // Reorder to row-major for correct axis-split semantics, then back.
+        let q_rm = reorder(&q, order, arnet_core::MemoryOrder::RowMajor);
         let k = q_rm.shape()[0];
         let mut q_shape = vec![k];
         q_shape.extend_from_slice(&orig_shape[1..]);
+        let q_multi = q_rm.reshape(q_shape);
+        let q_back = reorder(&q_multi, arnet_core::MemoryOrder::RowMajor, order);
 
-        (q_rm.reshape(q_shape), l)
+        (q_back, l)
     };
 
     *chain.storage_mut(j) = q_storage;
@@ -129,22 +135,26 @@ fn absorb_from_left<T: Scalar>(
     next: &Dense<T>,
     backend: &impl ComputeBackend,
 ) -> Dense<T> {
-    // Ensure row-major so reshape uses standard axis merge order.
-    let next = next.to_contiguous(MemoryOrder::RowMajor);
-    let next_shape = next.shape().to_vec();
+    let order = backend.preferred_order();
+    // Reorder to RM for correct axis-merge semantics in reshape.
+    let next_rm = reorder(next, order, arnet_core::MemoryOrder::RowMajor);
+    let next_shape = next_rm.shape().to_vec();
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
 
-    let next_2d = next.reshape(vec![first, rest]);
+    // Reshape to 2D in RM, then convert to backend order for contract.
+    let next_2d_rm = next_rm.reshape(vec![first, rest]);
+    let next_2d = reorder(&next_2d_rm, arnet_core::MemoryOrder::RowMajor, order);
     let result_2d = contract(backend, r, &next_2d, "ab,bc->ac")
         .expect("R absorption into next site failed during canonicalize");
 
-    // Convert to row-major before rank-restoring reshape (axis split semantics).
-    let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);
+    // Reorder result to RM for axis-split reshape, then back to backend order.
+    let result_2d_rm = reorder(&result_2d, order, arnet_core::MemoryOrder::RowMajor);
     let k = r.shape()[0];
     let mut new_shape = next_shape;
     new_shape[0] = k;
-    result_2d.reshape(new_shape)
+    let result_multi = result_2d_rm.reshape(new_shape);
+    reorder(&result_multi, arnet_core::MemoryOrder::RowMajor, order)
 }
 
 /// Multiply L matrix into the previous site: prev(..., d) × L(d, k) → (..., k).
@@ -154,22 +164,26 @@ fn absorb_from_right<T: Scalar>(
     l: &Dense<T>,
     backend: &impl ComputeBackend,
 ) -> Dense<T> {
-    // Ensure row-major so reshape uses standard axis merge order.
-    let prev = prev.to_contiguous(MemoryOrder::RowMajor);
-    let prev_shape = prev.shape().to_vec();
+    let order = backend.preferred_order();
+    // Reorder to RM for correct axis-merge semantics in reshape.
+    let prev_rm = reorder(prev, order, arnet_core::MemoryOrder::RowMajor);
+    let prev_shape = prev_rm.shape().to_vec();
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
 
-    let prev_2d = prev.reshape(vec![rest, last]);
+    // Reshape to 2D in RM, then convert to backend order for contract.
+    let prev_2d_rm = prev_rm.reshape(vec![rest, last]);
+    let prev_2d = reorder(&prev_2d_rm, arnet_core::MemoryOrder::RowMajor, order);
     let result_2d = contract(backend, &prev_2d, l, "ab,bc->ac")
         .expect("L absorption into previous site failed during canonicalize");
 
-    // Convert to row-major before rank-restoring reshape (axis split semantics).
-    let result_2d = result_2d.to_contiguous(MemoryOrder::RowMajor);
+    // Reorder result to RM for axis-split reshape, then back to backend order.
+    let result_2d_rm = reorder(&result_2d, order, arnet_core::MemoryOrder::RowMajor);
     let k = l.shape()[1];
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
-    result_2d.reshape(new_shape)
+    let result_multi = result_2d_rm.reshape(new_shape);
+    reorder(&result_multi, arnet_core::MemoryOrder::RowMajor, order)
 }
 
 // ============================================================================

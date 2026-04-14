@@ -30,8 +30,7 @@ where
 
     /// Compute squared Frobenius norm: Σ |element|².
     fn norm_squared(&self) -> T::Real {
-        let c = self.to_contiguous(self.memory_order());
-        c.data()
+        self.data()
             .iter()
             .map(|&x| {
                 let a = x.abs();
@@ -68,7 +67,6 @@ where
         let norm = self.norm_frobenius();
         assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
         let inv_norm = T::Real::one() / norm;
-        *self = self.to_contiguous(self.memory_order());
         let data = self.data_mut();
         for elem in data.iter_mut() {
             *elem = elem.scale_real(inv_norm);

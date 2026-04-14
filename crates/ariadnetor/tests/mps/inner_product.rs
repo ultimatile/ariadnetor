@@ -20,8 +20,8 @@ fn test_inner_self_equals_norm_squared() {
 fn test_inner_product_state() {
     // |0000⟩: each site has tensor [1, 0] reshaped to (1, 2, 1)
     let storages_0 = vec![
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
     ];
     let psi = Mps::from_storages(storages_0);
 
@@ -31,8 +31,8 @@ fn test_inner_product_state() {
 
     // |11⟩
     let storages_1 = vec![
-        Dense::from_data_with_order(vec![0.0, 1.0], vec![1, 2, 1], MemoryOrder::RowMajor),
-        Dense::from_data_with_order(vec![0.0, 1.0], vec![1, 2, 1], MemoryOrder::RowMajor),
+        Dense::new(vec![0.0, 1.0], vec![1, 2, 1]),
+        Dense::new(vec![0.0, 1.0], vec![1, 2, 1]),
     ];
     let phi = Mps::from_storages(storages_1);
 
@@ -58,9 +58,9 @@ fn test_norm_canonicalized_is_fast() {
 #[test]
 fn test_norm_product_state() {
     let storages = vec![
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
     ];
     let psi = Mps::from_storages(storages);
 
@@ -131,28 +131,16 @@ fn test_inner_preserved_by_canonicalize() {
 fn test_expect_identity_mpo() {
     // Identity MPO: each site is a 1×2×2×1 tensor = identity matrix reshaped
     let id_storages = vec![
-        Dense::from_data_with_order(
-            vec![1.0, 0.0, 0.0, 1.0],
-            vec![1, 2, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            vec![1.0, 0.0, 0.0, 1.0],
-            vec![1, 2, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            vec![1.0, 0.0, 0.0, 1.0],
-            vec![1, 2, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
+        Dense::new(vec![1.0, 0.0, 0.0, 1.0], vec![1, 2, 2, 1]),
+        Dense::new(vec![1.0, 0.0, 0.0, 1.0], vec![1, 2, 2, 1]),
+        Dense::new(vec![1.0, 0.0, 0.0, 1.0], vec![1, 2, 2, 1]),
     ];
     let identity = Mpo::from_storages(id_storages);
 
     let storages = vec![
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
-        Dense::from_data_with_order(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::RowMajor),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
+        Dense::new(vec![1.0, 0.0], vec![1, 2, 1]),
     ];
     let psi = Mps::from_storages(storages);
 
@@ -167,26 +155,14 @@ fn test_expect_sz_product_state() {
     // MPO shape: (1, d_ket=2, d_bra=2, 1)
     // Sz[0,0,0,0]=0.5, Sz[0,1,1,0]=-0.5 (diagonal elements)
     let sz_data = vec![0.5, 0.0, 0.0, -0.5]; // row-major (1,2,2,1)
-    let sz_mpo = Mpo::from_storages(vec![Dense::from_data_with_order(
-        sz_data,
-        vec![1, 2, 2, 1],
-        MemoryOrder::RowMajor,
-    )]);
+    let sz_mpo = Mpo::from_storages(vec![Dense::new(sz_data, vec![1, 2, 2, 1])]);
 
     // |0⟩ (spin up): ⟨0|Sz|0⟩ = 0.5
-    let up = Mps::from_storages(vec![Dense::from_data_with_order(
-        vec![1.0, 0.0],
-        vec![1, 2, 1],
-        MemoryOrder::RowMajor,
-    )]);
+    let up = Mps::from_storages(vec![Dense::new(vec![1.0, 0.0], vec![1, 2, 1])]);
     assert_abs_diff_eq!(mps::braket(&up, &sz_mpo, &up), 0.5, epsilon = 1e-12);
 
     // |1⟩ (spin down): ⟨1|Sz|1⟩ = -0.5
-    let dn = Mps::from_storages(vec![Dense::from_data_with_order(
-        vec![0.0, 1.0],
-        vec![1, 2, 1],
-        MemoryOrder::RowMajor,
-    )]);
+    let dn = Mps::from_storages(vec![Dense::new(vec![0.0, 1.0], vec![1, 2, 1])]);
     assert_abs_diff_eq!(mps::braket(&dn, &sz_mpo, &dn), -0.5, epsilon = 1e-12);
 }
 
@@ -195,13 +171,7 @@ fn test_expect_identity_equals_inner() {
     let mps = make_4site_mps();
 
     let id_storages: Vec<_> = (0..4)
-        .map(|_| {
-            Dense::from_data_with_order(
-                vec![1.0, 0.0, 0.0, 1.0],
-                vec![1, 2, 2, 1],
-                MemoryOrder::RowMajor,
-            )
-        })
+        .map(|_| Dense::new(vec![1.0, 0.0, 0.0, 1.0], vec![1, 2, 2, 1]))
         .collect();
     let identity = Mpo::from_storages(id_storages);
 

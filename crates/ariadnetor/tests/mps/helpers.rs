@@ -1,34 +1,24 @@
 //! Shared test helpers for MPS tests.
 
 use arnet::mps::{Mpo, Mps, TensorChain};
-use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
+use arnet_linalg::{BlockSparseContractResult, contract_block_sparse, reorder};
 use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::sector::U1Sector;
 use arnet_tensor::{Dense, MemoryOrder};
 
+/// Build a Dense from row-major data and convert to column-major (NativeBackend order).
+fn rm_dense(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
+    let rm = Dense::new(data, shape);
+    reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
+}
+
 /// Build a random-ish 4-site MPS from deterministic data.
 pub fn make_4site_mps() -> Mps<Dense<f64>> {
     let storages = vec![
-        Dense::from_data_with_order(
-            vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
-            vec![1, 2, 4],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            (1..=32).map(|i| i as f64 * 0.1).collect(),
-            vec![4, 2, 4],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            (1..=24).map(|i| i as f64 * 0.1).collect(),
-            vec![4, 2, 3],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            (1..=6).map(|i| i as f64 * 0.1).collect(),
-            vec![3, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
+        rm_dense(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8], vec![1, 2, 4]),
+        rm_dense((1..=32).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 4]),
+        rm_dense((1..=24).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 3]),
+        rm_dense((1..=6).map(|i| i as f64 * 0.1).collect(), vec![3, 2, 1]),
     ];
     Mps::from_storages(storages)
 }
@@ -40,15 +30,20 @@ pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let rank = shape.len();
     let k = shape[rank - 1];
     let m: usize = shape[..rank - 1].iter().product();
-    let mat = dense.reshape(vec![m, k]);
+    // Reorder to RM for correct axis-merge reshape, then back to CM for contract.
+    let rm = reorder(dense, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+    let rm2d = rm.reshape(vec![m, k]);
+    let mat = reorder(&rm2d, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
 
     let backend = arnet_native::NativeBackend::new();
     let qtq = arnet_linalg::contract(&backend, &mat, &mat, "ab,ac->bc").unwrap();
 
+    let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            if (qtq.get(&[i, j]) - expected).abs() > tol {
+            let idx = arnet_linalg::flat_index(&[i, j], qtq.shape(), order);
+            if (qtq.data()[idx] - expected).abs() > tol {
                 return false;
             }
         }
@@ -62,15 +57,20 @@ pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let shape = dense.shape();
     let k = shape[0];
     let n: usize = shape[1..].iter().product();
-    let mat = dense.reshape(vec![k, n]);
+    // Reorder to RM for correct axis-merge reshape, then back to CM for contract.
+    let rm = reorder(dense, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+    let rm2d = rm.reshape(vec![k, n]);
+    let mat = reorder(&rm2d, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
 
     let backend = arnet_native::NativeBackend::new();
     let qqt = arnet_linalg::contract(&backend, &mat, &mat, "ab,cb->ac").unwrap();
 
+    let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            if (qqt.get(&[i, j]) - expected).abs() > tol {
+            let idx = arnet_linalg::flat_index(&[i, j], qqt.shape(), order);
+            if (qqt.data()[idx] - expected).abs() > tol {
                 return false;
             }
         }
@@ -79,8 +79,11 @@ pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
 }
 
 /// Compute the full state vector from an MPS by contracting all sites.
+/// Returns the result in the backend's preferred order (ColumnMajor).
 pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
     let backend = arnet_native::NativeBackend::new();
+    let order = MemoryOrder::ColumnMajor;
+    let rm = MemoryOrder::RowMajor;
     let n = mps.len();
 
     let mut result = mps.storage(0).clone();
@@ -90,19 +93,26 @@ pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
         let r_rank = result.rank();
         let r_last: usize = *result.shape().last().unwrap();
         let r_rest: usize = result.shape()[..r_rank - 1].iter().product();
-        let result_2d = result.reshape(vec![r_rest, r_last]);
+        // Reorder to RM for axis-merge reshape, then back to CM for contract.
+        let result_rm = reorder(&result, order, rm);
+        let result_2d_rm = result_rm.reshape(vec![r_rest, r_last]);
+        let result_2d = reorder(&result_2d_rm, rm, order);
 
         let s_first = site.shape()[0];
         let s_rest: usize = site.shape()[1..].iter().product();
-        let site_2d = site.reshape(vec![s_first, s_rest]);
+        let site_rm = reorder(site, order, rm);
+        let site_2d_rm = site_rm.reshape(vec![s_first, s_rest]);
+        let site_2d = reorder(&site_2d_rm, rm, order);
 
         let contracted =
             arnet_linalg::contract(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
 
-        let contracted = contracted.to_contiguous(MemoryOrder::RowMajor);
+        // Reorder to RM for axis-split reshape, then back to CM.
+        let contracted_rm = reorder(&contracted, order, rm);
         let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
         new_shape.extend_from_slice(&site.shape()[1..]);
-        result = contracted.reshape(new_shape);
+        let multi_rm = contracted_rm.reshape(new_shape);
+        result = reorder(&multi_rm, rm, order);
     }
 
     result
@@ -112,11 +122,12 @@ pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
 pub fn make_identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
     let storages = (0..n)
         .map(|_| {
+            // Identity operator in RM, then convert to CM
             let mut data = vec![0.0; d * d];
             for i in 0..d {
                 data[i * d + i] = 1.0;
             }
-            Dense::from_data_with_order(data, vec![1, d, d, 1], MemoryOrder::RowMajor)
+            rm_dense(data, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_storages(storages)

@@ -1,6 +1,7 @@
 //! Multi-tensor operations: concatenate and stack.
 
-use super::{Dense, MemoryOrder};
+use super::Dense;
+use arnet_core::MemoryOrder;
 
 impl<T> Dense<T>
 where
@@ -8,9 +9,10 @@ where
 {
     /// Concatenate tensors along an existing axis.
     ///
-    /// Output memory order matches the first tensor's order.
-    /// Inputs may be any layout.
-    pub fn concatenate(tensors: &[&Dense<T>], axis: usize) -> Self {
+    /// All tensors must have the same rank and matching sizes on all axes
+    /// except `axis`. The `order` parameter determines how flat data maps
+    /// to multi-dimensional indices (provided by the compute backend).
+    pub fn concatenate(tensors: &[&Dense<T>], axis: usize, order: MemoryOrder) -> Self {
         assert!(!tensors.is_empty(), "concatenate: empty tensor list");
         let rank = tensors[0].rank();
         assert!(
@@ -19,7 +21,6 @@ where
         );
 
         let base_shape = tensors[0].shape();
-        let order = tensors[0].memory_order();
         for (i, t) in tensors.iter().enumerate().skip(1) {
             assert_eq!(
                 t.rank(),
@@ -42,12 +43,8 @@ where
         let out_total: usize = out_shape.iter().product();
 
         if out_total == 0 {
-            return Self::from_data_with_order(Vec::new(), out_shape, order);
+            return Self::new(Vec::new(), out_shape);
         }
-
-        // Ensure all inputs are contiguous in the output order
-        let contigs: Vec<Dense<T>> = tensors.iter().map(|t| t.to_contiguous(order)).collect();
-        let contig_refs: Vec<&Dense<T>> = contigs.iter().collect();
 
         // Check if concatenation is along the outermost axis (block copy)
         let is_outermost = match order {
@@ -58,17 +55,11 @@ where
         let mut data = Vec::with_capacity(out_total);
 
         if is_outermost {
-            // Block copy: each input's entire data maps to a contiguous output block
-            for t in &contig_refs {
+            for t in tensors {
                 data.extend_from_slice(t.data());
             }
         } else {
             // Strip copy: iterate outer blocks, interleave strips from each input
-            //
-            // For RowMajor: strip_len = product of shape[axis+1..rank]
-            //               outer_count = product of shape[0..axis]
-            // For ColumnMajor: strip_len = product of shape[0..axis]
-            //                  outer_count = product of shape[axis+1..rank]
             let (strip_len, outer_count) = match order {
                 MemoryOrder::RowMajor => (
                     base_shape[axis + 1..].iter().product::<usize>(),
@@ -81,9 +72,8 @@ where
             };
 
             for outer in 0..outer_count {
-                for t in &contig_refs {
+                for t in tensors {
                     let t_axis_size = t.shape()[axis];
-                    // Number of contiguous elements per outer block in this tensor
                     let block_size = t_axis_size * strip_len;
                     let src_start = outer * block_size;
                     let src = &t.data()[src_start..src_start + block_size];
@@ -92,18 +82,16 @@ where
             }
         }
 
-        Self::from_data_with_order(data, out_shape, order)
+        Self::new(data, out_shape)
     }
 
     /// Stack tensors along a new axis.
     ///
-    /// Output memory order matches the first tensor's order.
-    /// Inputs may be any layout.
-    pub fn stack(tensors: &[&Dense<T>], axis: usize) -> Self {
+    /// The `order` parameter determines memory layout interpretation.
+    pub fn stack(tensors: &[&Dense<T>], axis: usize, order: MemoryOrder) -> Self {
         assert!(!tensors.is_empty(), "stack: empty tensor list");
         let base_shape = tensors[0].shape();
         let rank = tensors[0].rank();
-        let order = tensors[0].memory_order();
         assert!(
             axis <= rank,
             "stack: axis {axis} out of range for rank {rank} (max {rank})"
@@ -118,24 +106,18 @@ where
             );
         }
 
-        // Reshape each input to insert a size-1 axis, then delegate to concatenate.
-        // reshape_view is zero-copy for contiguous tensors.
-        let contigs: Vec<Dense<T>> = tensors.iter().map(|t| t.to_contiguous(order)).collect();
-
+        // Reshape each input to insert a size-1 axis, then concatenate.
         let mut new_shape = Vec::with_capacity(rank + 1);
         new_shape.extend_from_slice(&base_shape[..axis]);
         new_shape.push(1);
         new_shape.extend_from_slice(&base_shape[axis..]);
 
-        let reshaped: Vec<Dense<T>> = contigs
+        let reshaped: Vec<Dense<T>> = tensors
             .iter()
-            .map(|t| {
-                t.reshape_view(new_shape.clone())
-                    .expect("reshape_view failed on contiguous tensor")
-            })
+            .map(|t| t.reshape(new_shape.clone()))
             .collect();
         let reshaped_refs: Vec<&Dense<T>> = reshaped.iter().collect();
 
-        Self::concatenate(&reshaped_refs, axis)
+        Self::concatenate(&reshaped_refs, axis, order)
     }
 }

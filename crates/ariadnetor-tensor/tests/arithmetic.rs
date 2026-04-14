@@ -1,6 +1,11 @@
 use arnet_tensor::Dense;
 use num_complex::Complex;
 
+/// Compute row-major flat index for (i, j) in shape [rows, cols]
+fn rm(i: usize, j: usize, cols: usize) -> usize {
+    i * cols + j
+}
+
 #[test]
 fn test_scale_basic() {
     let mut tensor = Dense::<f64>::ones(vec![2, 2]);

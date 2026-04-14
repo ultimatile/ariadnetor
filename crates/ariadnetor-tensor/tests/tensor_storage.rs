@@ -1,5 +1,10 @@
 use arnet_tensor::{Dense, MemoryOrder};
 
+/// Compute row-major flat index for (i, j) in shape [rows, cols]
+fn rm(i: usize, j: usize, cols: usize) -> usize {
+    i * cols + j
+}
+
 #[test]
 fn test_tensor_storage_zeros() {
     let tensor = Dense::<f64>::zeros(vec![3, 4]);
@@ -21,7 +26,7 @@ fn test_tensor_storage_ones() {
 #[test]
 fn test_tensor_storage_from_dense() {
     let data = vec![1.0, 2.0, 3.0, 4.0];
-    let dense = Dense::from_data_with_order(data.clone(), vec![2, 2], MemoryOrder::RowMajor);
+    let dense = Dense::new(data.clone(), vec![2, 2]);
     let tensor = dense;
     assert_eq!(tensor.shape(), &[2, 2]);
     assert_eq!(tensor.data(), &data[..]);

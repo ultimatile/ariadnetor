@@ -1,3 +1,4 @@
+use arnet_core::MemoryOrder;
 use arnet_linalg::{diagonal_scale, linear_combine, norm, normalize, scale, trace};
 use arnet_tensor::Dense;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
@@ -212,7 +213,9 @@ fn bench_diagonal_scale(c: &mut Criterion) {
             BenchmarkId::new("axis0", s.label),
             &(&tensor, &weights),
             |b, (t, w)| {
-                b.iter_with_large_drop(|| diagonal_scale(t, w, 0).unwrap());
+                b.iter_with_large_drop(|| {
+                    diagonal_scale(t, w, 0, MemoryOrder::ColumnMajor).unwrap()
+                });
             },
         );
     }
@@ -225,7 +228,9 @@ fn bench_diagonal_scale(c: &mut Criterion) {
             BenchmarkId::new("axis1", s.label),
             &(&tensor, &weights),
             |b, (t, w)| {
-                b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
+                b.iter_with_large_drop(|| {
+                    diagonal_scale(t, w, 1, MemoryOrder::ColumnMajor).unwrap()
+                });
             },
         );
     }
@@ -237,7 +242,7 @@ fn bench_diagonal_scale(c: &mut Criterion) {
         BenchmarkId::new("axis1", "64x4x64"),
         &(&tensor, &weights),
         |b, (t, w)| {
-            b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
+            b.iter_with_large_drop(|| diagonal_scale(t, w, 1, MemoryOrder::ColumnMajor).unwrap());
         },
     );
 

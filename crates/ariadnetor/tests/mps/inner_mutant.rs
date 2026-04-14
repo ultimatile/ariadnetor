@@ -116,16 +116,8 @@ fn test_norm_plus_state_exact() {
     // for 2 sites: norm = sqrt(sum of all products) = 2.0
     let inv_sqrt2 = std::f64::consts::FRAC_1_SQRT_2;
     let storages = vec![
-        Dense::from_data_with_order(
-            vec![inv_sqrt2, inv_sqrt2],
-            vec![1, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
-        Dense::from_data_with_order(
-            vec![inv_sqrt2, inv_sqrt2],
-            vec![1, 2, 1],
-            MemoryOrder::RowMajor,
-        ),
+        Dense::new(vec![inv_sqrt2, inv_sqrt2], vec![1, 2, 1]),
+        Dense::new(vec![inv_sqrt2, inv_sqrt2], vec![1, 2, 1]),
     ];
     let psi = Mps::from_storages(storages);
     let n = mps::norm(&psi);

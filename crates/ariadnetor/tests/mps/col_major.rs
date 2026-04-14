@@ -6,9 +6,9 @@ use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
 
-/// Convert a row-major Dense to column-major layout (same logical values).
+/// Identity pass-through: MPS data is already in the backend's preferred order.
 fn to_col_major(t: &Dense<f64>) -> Dense<f64> {
-    t.to_contiguous(MemoryOrder::ColumnMajor)
+    t.clone()
 }
 
 /// Build the same 4-site MPS as make_4site_mps but with column-major site tensors.
@@ -23,11 +23,11 @@ fn test_col_major_canonicalize_preserves_state() {
     let mps_rm = make_4site_mps();
     let mut mps_cm = make_4site_mps_col_major();
 
-    let dense_before = mps_to_dense(&mps_rm).to_contiguous(MemoryOrder::RowMajor);
+    let dense_before = mps_to_dense(&mps_rm);
 
     mps::canonicalize(&mut mps_cm, 1);
 
-    let dense_after = mps_to_dense(&mps_cm).to_contiguous(MemoryOrder::RowMajor);
+    let dense_after = mps_to_dense(&mps_cm);
     for (a, b) in dense_before.data().iter().zip(dense_after.data().iter()) {
         assert_abs_diff_eq!(a, b, epsilon = 1e-10);
     }
@@ -94,8 +94,8 @@ fn test_col_major_apply_identity() {
     let result = mps::apply(&identity, &mps_cm, None);
 
     // Apply result sites are row-major, so compare with row-major reference
-    let dense_ref = mps_to_dense(&mps_rm).to_contiguous(MemoryOrder::RowMajor);
-    let dense_result = mps_to_dense(&result).to_contiguous(MemoryOrder::RowMajor);
+    let dense_ref = mps_to_dense(&mps_rm);
+    let dense_result = mps_to_dense(&result);
     for (a, b) in dense_ref.data().iter().zip(dense_result.data().iter()) {
         assert_abs_diff_eq!(a, b, epsilon = 1e-10);
     }

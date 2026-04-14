@@ -7,13 +7,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use arnet_core::backend::ComputeBackend;
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_core::scalar::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, Dense, MemoryOrder};
+use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::contract::contract;
 use crate::error::LinalgError;
+use crate::reorder::reorder;
 use crate::scalar_ops::trace;
 use crate::transpose::transpose;
 
@@ -71,9 +72,9 @@ pub fn einsum<T: Scalar>(
 
 /// Dispatch a 2-input einsum to the appropriate path.
 ///
-/// - Pure contraction (no batch indices) → [`contract`]
-/// - Hadamard product (all batch, no free/contracted) → element-wise multiply
-/// - Batched contraction → slice-and-loop over [`contract`]
+/// - Pure contraction (no batch indices) -> [`contract`]
+/// - Hadamard product (all batch, no free/contracted) -> element-wise multiply
+/// - Batched contraction -> slice-and-loop over [`contract`]
 fn einsum_pair<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &Dense<T>,
@@ -86,7 +87,7 @@ fn einsum_pair<T: Scalar>(
     let plan = ContractionPlan::from_expr(&expr);
 
     if plan.batch.is_empty() {
-        // Pure contraction — delegate to contract() (GEMM path)
+        // Pure contraction -- delegate to contract() (GEMM path)
         return contract(backend, lhs, rhs, notation);
     }
 
@@ -133,18 +134,16 @@ fn hadamard<T: Scalar>(
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
-    let order = backend.preferred_order();
-
     let lhs_ordered = if let Some(perm) = lhs_perm {
         transpose(backend, lhs, &perm)?
     } else {
-        lhs.to_contiguous(order)
+        lhs.clone()
     };
 
     let rhs_ordered = if let Some(perm) = rhs_perm {
         transpose(backend, rhs, &perm)?
     } else {
-        rhs.to_contiguous(order)
+        rhs.clone()
     };
 
     let lhs_data = lhs_ordered.data();
@@ -176,6 +175,8 @@ fn batched_contract<T: Scalar>(
     expr: &EinsumExpr,
     plan: &ContractionPlan,
 ) -> Result<Dense<T>, LinalgError> {
+    let order = backend.preferred_order();
+
     // Compute batch dimensions
     let batch_dims: Vec<usize> = plan
         .batch
@@ -200,9 +201,9 @@ fn batched_contract<T: Scalar>(
         rhs.clone()
     };
 
-    // to_contiguous(RowMajor) so batch slices are contiguous memory ranges
-    let lhs_rm = lhs_permuted.to_contiguous(MemoryOrder::RowMajor);
-    let rhs_rm = rhs_permuted.to_contiguous(MemoryOrder::RowMajor);
+    // Reorder to RowMajor so batch slices are contiguous memory ranges
+    let lhs_rm = reorder(&lhs_permuted, order, MemoryOrder::RowMajor);
+    let rhs_rm = reorder(&rhs_permuted, order, MemoryOrder::RowMajor);
 
     // Per-slice sizes (after removing batch dimensions)
     let lhs_slice_size = lhs_rm.len() / batch_size;
@@ -234,18 +235,25 @@ fn batched_contract<T: Scalar>(
         let lhs_slice_data = &lhs_data[b * lhs_slice_size..(b + 1) * lhs_slice_size];
         let rhs_slice_data = &rhs_data[b * rhs_slice_size..(b + 1) * rhs_slice_size];
 
-        let lhs_slice = Dense::from_data_with_order(
-            lhs_slice_data.to_vec(),
-            lhs_slice_shape.clone(),
+        // Slice data is in RowMajor layout; contract() expects data in
+        // preferred_order, so reorder each slice before contracting.
+        let lhs_slice_preferred = reorder(
+            &Dense::new(lhs_slice_data.to_vec(), lhs_slice_shape.clone()),
             MemoryOrder::RowMajor,
+            order,
         );
-        let rhs_slice = Dense::from_data_with_order(
-            rhs_slice_data.to_vec(),
-            rhs_slice_shape.clone(),
+        let rhs_slice_preferred = reorder(
+            &Dense::new(rhs_slice_data.to_vec(), rhs_slice_shape.clone()),
             MemoryOrder::RowMajor,
+            order,
         );
 
-        let slice_result = contract(backend, &lhs_slice, &rhs_slice, &batch_free_notation)?;
+        let slice_result = contract(
+            backend,
+            &lhs_slice_preferred,
+            &rhs_slice_preferred,
+            &batch_free_notation,
+        )?;
         result_slices.push(slice_result);
     }
 
@@ -263,11 +271,15 @@ fn batched_contract<T: Scalar>(
 
     let mut stacked_data: Vec<T> = Vec::with_capacity(total_size);
     for slice in &result_slices {
-        let rm = slice.to_contiguous(MemoryOrder::RowMajor);
+        // Reorder each slice result to RowMajor for consistent stacking
+        let rm = reorder(slice, order, MemoryOrder::RowMajor);
         stacked_data.extend_from_slice(rm.data());
     }
 
-    let stacked = Dense::from_data_with_order(stacked_data, output_shape, MemoryOrder::RowMajor);
+    // Stacked data is in RowMajor; construct Dense in RowMajor, then
+    // reorder to preferred_order for the final result.
+    let stacked_rm = Dense::new(stacked_data, output_shape);
+    let stacked = reorder(&stacked_rm, MemoryOrder::RowMajor, order);
 
     // Reorder to requested output index order
     reorder_batched_output(
@@ -346,7 +358,7 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
 /// Sequential left-to-right pairwise contraction for 3+ tensors.
 ///
 /// For each step, computes intermediate output indices as the intersection of
-/// (accumulated ∪ next tensor indices) with (final output ∪ all future input indices).
+/// (accumulated union next tensor indices) with (final output union all future input indices).
 fn einsum_multi<T: Scalar>(
     backend: &impl ComputeBackend,
     tensors: &[&Dense<T>],
@@ -378,7 +390,7 @@ fn einsum_multi<T: Scalar>(
 
 /// Compute intermediate output indices for a pairwise contraction step.
 ///
-/// Keeps indices from (lhs ∪ rhs) that appear in the final output or in any
+/// Keeps indices from (lhs union rhs) that appear in the final output or in any
 /// future input tensor, preserving the order of first appearance.
 fn compute_intermediate_output(
     lhs: &[u8],
@@ -392,7 +404,7 @@ fn compute_intermediate_output(
         needed.extend(future.iter().copied());
     }
 
-    // Keep indices from lhs ∪ rhs that are needed, in order of first appearance
+    // Keep indices from lhs union rhs that are needed, in order of first appearance
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for &idx in lhs.iter().chain(rhs.iter()) {
@@ -470,15 +482,20 @@ fn einsum_single<T: Scalar>(
         }
     }
 
-    // Step 1: trace if needed
+    // Step 1: trace if needed.
+    // trace() uses RowMajor indexing, so convert from preferred_order first,
+    // then convert the result back to preferred_order for downstream transpose.
+    let order = backend.preferred_order();
     let traced = if trace_pairs.is_empty() {
         tensor.clone()
     } else {
-        trace(tensor, &trace_pairs)
-            .map_err(|e| LinalgError::InvalidArgument(format!("Trace failed: {e}")))?
+        let tensor_rm = reorder(tensor, order, MemoryOrder::RowMajor);
+        let result_rm = trace(&tensor_rm, &trace_pairs)
+            .map_err(|e| LinalgError::InvalidArgument(format!("Trace failed: {e}")))?;
+        reorder(&result_rm, MemoryOrder::RowMajor, order)
     };
 
-    // Scalar result → done
+    // Scalar result -> done
     if free_positions.is_empty() {
         return Ok(traced);
     }

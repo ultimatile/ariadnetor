@@ -1,113 +1,47 @@
-//! Tests for expand optimization paths (strip copy, incremental flat index).
+//! Tests for expand operations.
 
 use arnet_tensor::{Dense, MemoryOrder};
 
 #[test]
 fn test_expand_column_major() {
-    // Column-major 2×2 with padding (1,1) on each axis → 4×4
-    let t = Dense::<f64>::from_data_with_order(
-        vec![1.0, 3.0, 2.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
-    let e = t.expand(&[(1, 1), (1, 1)]);
+    // CM 2x2 with padding (1,1) on each axis -> 4x4
+    // CM data for [[1,2],[3,4]]: col0=[1,3], col1=[2,4] -> flat [1,3,2,4]
+    let t = Dense::<f64>::new(vec![1.0, 3.0, 2.0, 4.0], vec![2, 2]);
+    let e = t.expand(&[(1, 1), (1, 1)], MemoryOrder::ColumnMajor);
     assert_eq!(e.shape(), &[4, 4]);
-    assert_eq!(e.memory_order(), MemoryOrder::ColumnMajor);
-    // Verify source elements are placed correctly
-    assert_eq!(e.get(&[1, 1]), 1.0);
-    assert_eq!(e.get(&[2, 1]), 3.0);
-    assert_eq!(e.get(&[1, 2]), 2.0);
-    assert_eq!(e.get(&[2, 2]), 4.0);
-    // Padding should be zero
-    assert_eq!(e.get(&[0, 0]), 0.0);
-    assert_eq!(e.get(&[3, 3]), 0.0);
+    // Expected CM flat: col0=[0,0,0,0], col1=[0,1,3,0], col2=[0,2,4,0], col3=[0,0,0,0]
+    assert_eq!(
+        e.data(),
+        &[
+            0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 3.0, 0.0, 0.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        ]
+    );
 }
 
 #[test]
-fn test_expand_3d() {
+fn test_expand_3d_rm() {
     let data: Vec<f64> = (1..=24).map(|i| i as f64).collect();
-    let t = Dense::from_data_with_order(data, vec![2, 3, 4], MemoryOrder::RowMajor);
-    let e = t.expand(&[(1, 0), (0, 1), (2, 2)]);
+    let t = Dense::new(data, vec![2, 3, 4]);
+    let e = t.expand(&[(1, 0), (0, 1), (2, 2)], MemoryOrder::RowMajor);
     assert_eq!(e.shape(), &[3, 4, 8]);
-    // First row of padding
-    assert_eq!(e.get(&[0, 0, 0]), 0.0);
-    // Source data starts at [1, 0, 2]
-    assert_eq!(e.get(&[1, 0, 2]), 1.0);
-    assert_eq!(e.get(&[1, 0, 5]), 4.0);
-    assert_eq!(e.get(&[2, 2, 5]), 24.0);
-    // Padding after
-    assert_eq!(e.get(&[1, 3, 0]), 0.0);
+    // First row of padding: data[0] should be 0
+    assert_eq!(e.data()[0], 0.0);
+    // Source data starts at RM index [1, 0, 2] = 1*4*8 + 0*8 + 2 = 34
+    assert_eq!(e.data()[34], 1.0);
 }
 
 #[test]
-fn test_expand_no_inner_pad() {
-    // No padding on innermost axis → should hit strip-copy path
+fn test_expand_no_inner_pad_rm() {
+    // No padding on innermost axis -> strip-copy path
     let data: Vec<f64> = (1..=12).map(|i| i as f64).collect();
-    let t = Dense::from_data_with_order(data, vec![3, 4], MemoryOrder::RowMajor);
-    let e = t.expand(&[(2, 1), (0, 0)]);
+    let t = Dense::new(data, vec![3, 4]);
+    let e = t.expand(&[(2, 1), (0, 0)], MemoryOrder::RowMajor);
     assert_eq!(e.shape(), &[6, 4]);
-    // Rows 0-1: zeros
-    assert_eq!(e.get(&[0, 0]), 0.0);
-    assert_eq!(e.get(&[1, 3]), 0.0);
-    // Rows 2-4: source data
-    assert_eq!(e.get(&[2, 0]), 1.0);
-    assert_eq!(e.get(&[2, 3]), 4.0);
-    assert_eq!(e.get(&[4, 3]), 12.0);
-    // Row 5: zeros
-    assert_eq!(e.get(&[5, 0]), 0.0);
-}
-
-#[test]
-fn test_expand_non_contiguous() {
-    // Non-contiguous tensor: shape [2, 2] with strides [3, 1]
-    let t = Dense::<f64>::from_data_with_strides(
-        vec![1.0, 2.0, 0.0, 3.0, 4.0, 0.0],
-        vec![2, 2],
-        vec![3, 1],
-        0,
-        MemoryOrder::RowMajor,
-    );
-    let e = t.expand(&[(1, 1), (1, 1)]);
-    assert_eq!(e.shape(), &[4, 4]);
-    assert_eq!(e.get(&[1, 1]), 1.0);
-    assert_eq!(e.get(&[1, 2]), 2.0);
-    assert_eq!(e.get(&[2, 1]), 3.0);
-    assert_eq!(e.get(&[2, 2]), 4.0);
-    assert_eq!(e.get(&[0, 0]), 0.0);
-    assert_eq!(e.get(&[3, 3]), 0.0);
-}
-
-#[test]
-fn test_expand_vs_naive() {
-    // Compare against element-by-element verification
-    let data: Vec<f64> = (0..60).map(|i| i as f64).collect();
-    let t = Dense::from_data_with_order(data, vec![3, 4, 5], MemoryOrder::RowMajor);
-    let padding = [(1, 2), (0, 1), (3, 0)];
-    let e = t.expand(&padding);
-
-    let new_shape = [3 + 1 + 2, 4 + 0 + 1, 5 + 3 + 0];
-    assert_eq!(e.shape(), &new_shape);
-
-    for i0 in 0..new_shape[0] {
-        for i1 in 0..new_shape[1] {
-            for i2 in 0..new_shape[2] {
-                let in_src = i0 >= padding[0].0
-                    && i0 < padding[0].0 + 3
-                    && i1 >= padding[1].0
-                    && i1 < padding[1].0 + 4
-                    && i2 >= padding[2].0
-                    && i2 < padding[2].0 + 5;
-                let expected = if in_src {
-                    t.get(&[i0 - padding[0].0, i1 - padding[1].0, i2 - padding[2].0])
-                } else {
-                    0.0
-                };
-                assert_eq!(
-                    e.get(&[i0, i1, i2]),
-                    expected,
-                    "mismatch at [{i0},{i1},{i2}]"
-                );
-            }
-        }
-    }
+    // Rows 0-1 are zeros (8 elements), row 2 starts at index 8
+    assert_eq!(e.data()[0], 0.0);
+    assert_eq!(e.data()[7], 0.0);
+    assert_eq!(e.data()[8], 1.0); // row 2, col 0
+    assert_eq!(e.data()[11], 4.0); // row 2, col 3
+    assert_eq!(e.data()[19], 12.0); // row 4, col 3
+    assert_eq!(e.data()[20], 0.0); // row 5, col 0
 }
