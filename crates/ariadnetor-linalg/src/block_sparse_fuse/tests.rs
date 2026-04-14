@@ -391,6 +391,51 @@ fn fuse_nonzero_flux() {
 }
 
 // ---------------------------------------------------------------------------
+// Contract: fused QNIndex depends only on input QNIndices, not stored blocks
+// ---------------------------------------------------------------------------
+
+/// Two tensors with identical QNIndices but different stored blocks must
+/// produce the same fused QNIndex. This guarantees that adjacent MPS sites
+/// fusing the same bond from opposite sides get compatible sector structures.
+#[test]
+fn fused_qnindex_independent_of_stored_blocks() {
+    // Use indices where flux 0 vs flux 2 gives different block counts.
+    // Out(0:1, 1:1), Out(0:1, 1:1), In(0:1, 1:1, 2:1)
+    // Flux conservation: s0 + s1 - s2 = flux
+    // flux=0: s2 = s0+s1, blocks: (0,0,0),(0,1,1),(1,0,1),(1,1,2) → 4 blocks
+    // flux=2: s2 = s0+s1-2, blocks: (1,1,0) only → 1 block
+    let i0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let i1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let i2 = QNIndex::new(
+        vec![(U1Sector(0), 1), (U1Sector(1), 1), (U1Sector(2), 1)],
+        Direction::In,
+    );
+
+    let bs_many =
+        BlockSparse::<f64, U1Sector>::zeros(vec![i0.clone(), i1.clone(), i2.clone()], U1Sector(0));
+    let bs_few = BlockSparse::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(2));
+
+    // Precondition: different number of stored blocks
+    assert!(
+        bs_many.num_blocks() > bs_few.num_blocks(),
+        "fixture should have different block counts: {} vs {}",
+        bs_many.num_blocks(),
+        bs_few.num_blocks()
+    );
+
+    // Fuse axes (0,1): both should produce the same fused QNIndex
+    let fused_many = fuse_legs_block_sparse(&backend(), &bs_many, 0, 2, Direction::Out).unwrap();
+    let fused_few = fuse_legs_block_sparse(&backend(), &bs_few, 0, 2, Direction::Out).unwrap();
+
+    let qi_many = fused_many.indices()[0].blocks();
+    let qi_few = fused_few.indices()[0].blocks();
+    assert_eq!(
+        qi_many, qi_few,
+        "fused QNIndex must be identical regardless of stored blocks"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Error cases
 // ---------------------------------------------------------------------------
 
