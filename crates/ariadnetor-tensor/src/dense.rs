@@ -89,11 +89,6 @@ impl<T> Dense<T> {
         self.shape.len()
     }
 
-    /// Get shape as i64 slice for MLIR compatibility
-    pub fn shape_i64(&self) -> Vec<i64> {
-        self.shape.iter().map(|&s| s as i64).collect()
-    }
-
     /// Get the total number of logical elements
     pub fn len(&self) -> usize {
         self.shape.iter().product::<usize>()
