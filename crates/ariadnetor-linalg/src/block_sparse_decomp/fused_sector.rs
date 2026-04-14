@@ -79,7 +79,10 @@ pub(super) fn compute_fused_sector_groups<T, S: Sector>(
 }
 
 /// Enumerate all block-index tuples for a set of legs and group by fused sector.
-fn enumerate_fused_tuples<S: Sector>(
+///
+/// Returns a map from directed fused sector to a list of (block-index tuple, block dimension)
+/// pairs. The tuples are sorted lexicographically within each sector group.
+pub(crate) fn enumerate_fused_tuples<S: Sector>(
     indices: &[QNIndex<S>],
 ) -> BTreeMap<S, Vec<(Vec<usize>, usize)>> {
     let mut groups: BTreeMap<S, Vec<(Vec<usize>, usize)>> = BTreeMap::new();

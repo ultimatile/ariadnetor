@@ -13,6 +13,8 @@
 //! - [`trunc_svd_block_sparse`]: Truncated block-sparse SVD with bond dimension control
 //! - [`qr_block_sparse`]: Block-sparse QR decomposition via fused sector method
 //! - [`lq_block_sparse`]: Block-sparse LQ decomposition via fused sector method
+//! - [`permute_block_sparse`]: Block-sparse tensor axis permutation
+//! - [`fuse_legs_block_sparse`]: Block-sparse consecutive leg fusion
 //! - [`scale`]: Scalar multiplication (out-of-place)
 //! - [`norm`]: Frobenius norm
 //! - [`normalize`]: Normalize to unit norm (out-of-place)
@@ -34,6 +36,8 @@
 
 mod block_sparse_contract;
 mod block_sparse_decomp;
+mod block_sparse_fuse;
+mod block_sparse_permute;
 mod block_sparse_scale;
 mod contract;
 mod decomposition;
@@ -53,6 +57,8 @@ pub use block_sparse_decomp::{
     BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
     lq_block_sparse, qr_block_sparse, svd_block_sparse, trunc_svd_block_sparse,
 };
+pub use block_sparse_fuse::fuse_legs_block_sparse;
+pub use block_sparse_permute::permute_block_sparse;
 pub use block_sparse_scale::diagonal_scale_block_sparse;
 pub use contract::contract;
 pub use decomposition::{
