@@ -3,7 +3,7 @@
 //! Fuses consecutive legs of a [`BlockSparse<T, S>`] tensor into a single leg
 //! via Kronecker-product sector fusion.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
@@ -72,18 +72,21 @@ where
     }
 
     // Scan input blocks to collect populated (sector, tuple) pairs.
+    // Use HashSet for O(1) dedup, then convert to sorted Vec.
+    let mut seen_tuples: HashSet<Vec<usize>> = HashSet::new();
     let mut populated_sectors: BTreeMap<S, Vec<(Vec<usize>, usize)>> = BTreeMap::new();
     for meta in tensor.block_metas() {
         let fuse_tuple: Vec<usize> = meta.coord.0[start..start + count].to_vec();
+        if !seen_tuples.insert(fuse_tuple.clone()) {
+            continue; // Already recorded this tuple
+        }
         let (directed_sector, dim) = tuple_lookup
             .get(&fuse_tuple)
             .expect("input block tuple must map to a fused sector");
-        let entry = populated_sectors
+        populated_sectors
             .entry(directed_sector.clone())
-            .or_default();
-        if !entry.iter().any(|(t, _)| *t == fuse_tuple) {
-            entry.push((fuse_tuple, *dim));
-        }
+            .or_default()
+            .push((fuse_tuple, *dim));
     }
 
     // Sort tuples within each sector in lexicographic order (canonical ordering).
