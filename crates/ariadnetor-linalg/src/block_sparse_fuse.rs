@@ -63,14 +63,6 @@ where
     // Enumerate ALL fused tuples from the Kronecker product of the fused legs.
     let all_fused_groups = enumerate_fused_tuples(&indices[start..start + count]);
 
-    // Build O(1) lookup: tuple → (directed_fused_sector, dim).
-    let mut tuple_lookup: HashMap<Vec<usize>, (S, usize)> = HashMap::new();
-    for (directed_sector, tuples) in &all_fused_groups {
-        for (tuple, dim) in tuples {
-            tuple_lookup.insert(tuple.clone(), (directed_sector.clone(), *dim));
-        }
-    }
-
     // Build fused QNIndex from ALL sectors (full Kronecker product).
     let mut fused_qn_blocks: Vec<(S, usize)> = Vec::with_capacity(all_fused_groups.len());
     for (directed_sector, tuples) in &all_fused_groups {
