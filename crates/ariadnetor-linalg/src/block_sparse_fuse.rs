@@ -15,14 +15,17 @@ use crate::error::LinalgError;
 /// Fuse consecutive legs of a block-sparse tensor into a single leg.
 ///
 /// Legs `start`, `start+1`, ..., `start+count-1` are fused into a single leg
-/// at position `start`. The fused leg's [`QNIndex`] is the Kronecker product
-/// of the input legs' QNIndices, restricted to sectors that appear in the
-/// tensor's stored blocks.
+/// at position `start`. The fused leg's [`QNIndex`] contains only sectors
+/// and block-index tuples that are actually populated in the tensor's stored
+/// blocks. Each sector's dimension equals the sum of tuple dimensions for the
+/// populated tuples that fuse to that sector (not the full Kronecker product).
 ///
 /// The fused sector for each block-index tuple is computed by applying each
 /// input leg's direction to its sector, then fusing all directed sectors.
 /// The stored sector in the output QNIndex accounts for `fused_direction`:
 /// `Out` stores the directed fusion as-is, `In` stores its dual.
+/// Within each sector, tuples are ordered lexicographically (matching the
+/// canonical order from [`enumerate_fused_tuples`]).
 ///
 /// # Errors
 ///
@@ -59,27 +62,33 @@ where
     let order = backend.preferred_order();
 
     // Enumerate ALL possible fused tuples for the fused legs.
-    // This gives us the tuple→(directed_sector, dim) mapping and tuple ordering.
+    // Build an O(1) lookup: tuple → (directed_fused_sector, dim).
     let all_fused_groups = enumerate_fused_tuples(&indices[start..start + count]);
+    let mut tuple_lookup: HashMap<Vec<usize>, (S, usize)> = HashMap::new();
+    for (directed_sector, tuples) in &all_fused_groups {
+        for (tuple, dim) in tuples {
+            tuple_lookup.insert(tuple.clone(), (directed_sector.clone(), *dim));
+        }
+    }
 
-    // Scan input blocks to determine which fused sectors are actually populated.
+    // Scan input blocks to collect populated (sector, tuple) pairs.
     let mut populated_sectors: BTreeMap<S, Vec<(Vec<usize>, usize)>> = BTreeMap::new();
     for meta in tensor.block_metas() {
         let fuse_tuple: Vec<usize> = meta.coord.0[start..start + count].to_vec();
-        // Look up directed fused sector and dim for this tuple
-        for (directed_sector, tuples) in &all_fused_groups {
-            if let Some((_, dim)) = tuples.iter().find(|(t, _)| *t == fuse_tuple) {
-                populated_sectors
-                    .entry(directed_sector.clone())
-                    .or_default();
-                // Ensure this tuple is in the populated set (dedup via collect later)
-                let entry = populated_sectors.get_mut(directed_sector).unwrap();
-                if !entry.iter().any(|(t, _)| *t == fuse_tuple) {
-                    entry.push((fuse_tuple.clone(), *dim));
-                }
-                break;
-            }
+        let (directed_sector, dim) = tuple_lookup
+            .get(&fuse_tuple)
+            .expect("input block tuple must map to a fused sector");
+        let entry = populated_sectors
+            .entry(directed_sector.clone())
+            .or_default();
+        if !entry.iter().any(|(t, _)| *t == fuse_tuple) {
+            entry.push((fuse_tuple, *dim));
         }
+    }
+
+    // Sort tuples within each sector in lexicographic order (canonical ordering).
+    for tuples in populated_sectors.values_mut() {
+        tuples.sort_by(|(a, _), (b, _)| a.cmp(b));
     }
 
     // Build fused QNIndex from populated sectors only.
@@ -114,8 +123,7 @@ where
         .collect();
 
     // Build per-tuple offset within the fused dimension.
-    // Tuples within each sector group follow enumerate_fused_tuples order
-    // (lexicographic), but only populated tuples are included.
+    // Tuples are in lexicographic order within each sector (sorted above).
     let mut tuple_to_fused: HashMap<Vec<usize>, (usize, usize)> = HashMap::new();
     for (directed_sector, tuples) in &populated_sectors {
         let &block_idx = sector_to_block_idx.get(directed_sector).unwrap();
