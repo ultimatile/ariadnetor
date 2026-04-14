@@ -56,58 +56,10 @@ fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
     Dense::random(shape, &mut rng())
 }
 
-fn random_tensor_with_order(shape: Vec<usize>, order: MemoryOrder) -> Dense<f64> {
-    Dense::new(
-        (0..shape.iter().product::<usize>())
-            .map(|_| rand::random::<f64>())
-            .collect(),
-        shape,
-        order,
-    )
-}
-
 /// Create a uniquely-owned copy (Arc refcount = 1) so mutating ops
 /// don't trigger copy-on-write during the timed section.
 fn unique_copy(t: &Dense<f64>) -> Dense<f64> {
-    Dense::new(t.data().to_vec(), t.shape().to_vec(), t.memory_order())
-}
-
-// ==========================================================================
-// to_contiguous
-// ==========================================================================
-
-fn bench_to_contiguous(c: &mut Criterion) {
-    let mut group = c.benchmark_group("to_contiguous");
-
-    let shapes: Vec<TensorShape> = shapes_square()
-        .into_iter()
-        .chain(shapes_rank3())
-        .chain(shapes_rank4())
-        .collect();
-
-    for s in &shapes {
-        // ColumnMajor tensor -> RowMajor conversion
-        let tensor = random_tensor_with_order(s.shape.clone(), MemoryOrder::ColumnMajor);
-        group.bench_with_input(
-            BenchmarkId::new("to_row_major", s.label),
-            &tensor,
-            |b, t| {
-                b.iter_with_large_drop(|| t);
-            },
-        );
-
-        // RowMajor tensor -> ColumnMajor conversion
-        let tensor = random_tensor_with_order(s.shape.clone(), MemoryOrder::RowMajor);
-        group.bench_with_input(
-            BenchmarkId::new("to_col_major", s.label),
-            &tensor,
-            |b, t| {
-                b.iter_with_large_drop(|| t);
-            },
-        );
-    }
-
-    group.finish();
+    Dense::new(t.data().to_vec(), t.shape().to_vec())
 }
 
 // ==========================================================================
@@ -252,7 +204,6 @@ fn bench_normalize(c: &mut Criterion) {
 fn bench_slice(c: &mut Criterion) {
     let mut group = c.benchmark_group("slice");
 
-    // Square: extract upper-left quadrant
     for s in &[
         TensorShape {
             label: "256x256",
@@ -269,15 +220,14 @@ fn bench_slice(c: &mut Criterion) {
             BenchmarkId::new("half", s.label),
             &(&tensor, half),
             |b, (t, ranges)| {
-                b.iter_with_large_drop(|| t.slice(ranges));
+                b.iter_with_large_drop(|| t.slice(ranges, MemoryOrder::RowMajor));
             },
         );
     }
 
-    // Rank-3: slice along first axis
     let tensor = random_tensor(vec![64, 4, 64]);
     group.bench_with_input(BenchmarkId::new("half", "64x4x64"), &tensor, |b, t| {
-        b.iter_with_large_drop(|| t.slice(&[(0, 32), (0, 4), (0, 64)]));
+        b.iter_with_large_drop(|| t.slice(&[(0, 32), (0, 4), (0, 64)], MemoryOrder::RowMajor));
     });
 
     group.finish();
@@ -304,11 +254,10 @@ fn bench_concatenate(c: &mut Criterion) {
         let b = random_tensor(s.shape.clone());
         let tensors = [&a, &b];
         group.bench_with_input(BenchmarkId::new("axis0", s.label), &s.label, |bench, _| {
-            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
+            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0, MemoryOrder::RowMajor));
         });
     }
 
-    // Rank-3 along axis 0
     let a = random_tensor(vec![64, 4, 64]);
     let b = random_tensor(vec![64, 4, 64]);
     let tensors = [&a, &b];
@@ -316,7 +265,7 @@ fn bench_concatenate(c: &mut Criterion) {
         BenchmarkId::new("axis0", "64x4x64"),
         &"64x4x64",
         |bench, _| {
-            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
+            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0, MemoryOrder::RowMajor));
         },
     );
 
@@ -330,7 +279,6 @@ fn bench_concatenate(c: &mut Criterion) {
 fn bench_expand(c: &mut Criterion) {
     let mut group = c.benchmark_group("expand");
 
-    // 2D symmetric padding
     for s in &[
         TensorShape {
             label: "256x256",
@@ -347,15 +295,14 @@ fn bench_expand(c: &mut Criterion) {
             BenchmarkId::new("pad16", s.label),
             &(&tensor, &padding),
             |b, (t, p)| {
-                b.iter_with_large_drop(|| t.expand(p));
+                b.iter_with_large_drop(|| t.expand(p, MemoryOrder::RowMajor));
             },
         );
     }
 
-    // Rank-3
     let tensor = random_tensor(vec![64, 4, 64]);
     group.bench_with_input(BenchmarkId::new("pad16", "64x4x64"), &tensor, |b, t| {
-        b.iter_with_large_drop(|| t.expand(&[(16, 16), (0, 0), (16, 16)]));
+        b.iter_with_large_drop(|| t.expand(&[(16, 16), (0, 0), (16, 16)], MemoryOrder::RowMajor));
     });
 
     group.finish();
@@ -368,35 +315,32 @@ fn bench_expand(c: &mut Criterion) {
 fn bench_replace_slice(c: &mut Criterion) {
     let mut group = c.benchmark_group("replace_slice");
 
-    // Write a 128×128 sub-tensor into a 256×256 tensor
     let dst = random_tensor(vec![256, 256]);
     let sub = random_tensor(vec![128, 128]);
     group.bench_function("128x128_into_256x256", |b| {
         b.iter_batched_ref(
             || unique_copy(&dst),
-            |d| d.replace_slice(&sub, &[64, 64]),
+            |d| d.replace_slice(&sub, &[64, 64], MemoryOrder::RowMajor),
             criterion::BatchSize::LargeInput,
         );
     });
 
-    // Write a 512×512 sub-tensor into a 1024×1024 tensor
     let dst = random_tensor(vec![1024, 1024]);
     let sub = random_tensor(vec![512, 512]);
     group.bench_function("512x512_into_1024x1024", |b| {
         b.iter_batched_ref(
             || unique_copy(&dst),
-            |d| d.replace_slice(&sub, &[256, 256]),
+            |d| d.replace_slice(&sub, &[256, 256], MemoryOrder::RowMajor),
             criterion::BatchSize::LargeInput,
         );
     });
 
-    // Rank-3: write 32×4×64 into 64×4×64
     let dst = random_tensor(vec![64, 4, 64]);
     let sub = random_tensor(vec![32, 4, 64]);
     group.bench_function("32x4x64_into_64x4x64", |b| {
         b.iter_batched_ref(
             || unique_copy(&dst),
-            |d| d.replace_slice(&sub, &[16, 0, 0]),
+            |d| d.replace_slice(&sub, &[16, 0, 0], MemoryOrder::RowMajor),
             criterion::BatchSize::LargeInput,
         );
     });
@@ -406,7 +350,6 @@ fn bench_replace_slice(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_to_contiguous,
     bench_map,
     bench_map_mut,
     bench_norm_frobenius,
