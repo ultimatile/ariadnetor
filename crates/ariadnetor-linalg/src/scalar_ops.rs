@@ -341,19 +341,20 @@ pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, String> {
 ///
 /// ```rust,ignore
 /// use arnet_linalg::diagonal_scale;
-/// use arnet_tensor::Dense;
+/// use arnet_tensor::{Dense, MemoryOrder};
 ///
-/// // 2x3 matrix in RowMajor, scale columns by [1, 2, 3]
+/// // 2x3 matrix, scale along axis 1 by [1, 2, 3]
 /// let m = Dense::new(
 ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
 ///     vec![2, 3],
 /// );
-/// let scaled = diagonal_scale(&m, &[1.0, 2.0, 3.0], 1).unwrap();
+/// let scaled = diagonal_scale(&m, &[1.0, 2.0, 3.0], 1, MemoryOrder::ColumnMajor).unwrap();
 /// ```
 pub fn diagonal_scale<T, S>(
     tensor: &Dense<T>,
     weights: &[S],
     axis: usize,
+    order: MemoryOrder,
 ) -> Result<Dense<T>, String>
 where
     T: Clone + Mul<S, Output = T> + 'static,
@@ -378,26 +379,13 @@ where
         return Ok(Dense::new(Vec::new(), tensor.shape().to_vec()));
     }
 
-    // Assume data is in the backend's preferred order. For diagonal_scale,
-    // we need to know the layout to compute the axis stride. Since all
-    // current callers use ColumnMajor backend, and the data layout matches
-    // preferred_order, we use ColumnMajor here by default. But since
-    // diagonal_scale is also called from expm.rs where tensors are produced
-    // by eigh() in preferred_order, this is consistent.
-    //
-    // For correctness across backends, the strip_len computation works for
-    // both orders as long as the data is contiguous in that order.
-    // Since we cannot query the tensor for its order, we default to
-    // ColumnMajor which matches the current (only) backend.
     let shape = tensor.shape();
     let data = tensor.data();
 
-    // For ColumnMajor: stride before axis = product of dims before axis
-    // For RowMajor: stride after axis = product of dims after axis
-    // Since this function is called on tensors whose layout we know
-    // implicitly (produced by make_tensor or preferred_order operations),
-    // we use ColumnMajor as the default assumption.
-    let strip_len: usize = shape[..axis].iter().product::<usize>().max(1);
+    let strip_len: usize = match order {
+        MemoryOrder::ColumnMajor => shape[..axis].iter().product::<usize>().max(1),
+        MemoryOrder::RowMajor => shape[axis + 1..].iter().product::<usize>().max(1),
+    };
     let axis_dim = shape[axis];
 
     let result: Vec<T> = data

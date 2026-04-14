@@ -22,7 +22,7 @@ fn test_solve_f64_2x2() {
     let a = cm(vec![2.0_f64, 1.0, 5.0, 3.0], vec![2, 2]);
     let b = cm(vec![4.0_f64, 7.0], vec![2, 1]);
 
-    let x = solve(&backend, &a, &b, 1).unwrap();
+    let x = to_rm(&solve(&backend, &a, &b, 1).unwrap());
     assert_eq!(x.shape(), &[2, 1]);
     assert!((x.get(&[0, 0]) - 5.0).abs() < 1e-10);
     assert!((x.get(&[1, 0]) - (-6.0)).abs() < 1e-10);
@@ -36,7 +36,7 @@ fn test_solve_f64_identity() {
     let a = cm(vec![1.0_f64, 0.0, 0.0, 1.0], vec![2, 2]);
     let b = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let x = solve(&backend, &a, &b, 1).unwrap();
+    let x = to_rm(&solve(&backend, &a, &b, 1).unwrap());
     let b_rm = to_rm(&b);
     assert_eq!(x.shape(), &[2, 2]);
     for i in 0..2 {
@@ -61,10 +61,8 @@ fn test_solve_f64_multiple_rhs() {
     let x = solve(&backend, &a, &b, 1).unwrap();
     assert_eq!(x.shape(), &[2, 2]);
 
-    // Verify by computing A * X and comparing with B.
-    // solve() returns RM; convert to CM for contract(), then back to RM for assertions.
-    let x_cm = arnet_linalg::reorder(&x, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    let ax = to_rm(&contract(&backend, &a, &x_cm, "ij,jk->ik").unwrap());
+    // x is in CM (preferred_order); contract expects CM inputs
+    let ax = to_rm(&contract(&backend, &a, &x, "ij,jk->ik").unwrap());
     let b_rm = to_rm(&b);
     for i in 0..2 {
         for j in 0..2 {
@@ -99,12 +97,11 @@ fn test_solve_c64() {
 
     let x = solve(&backend, &a, &b, 1).unwrap();
 
-    // Verify A * X = B
-    // solve() returns RM; convert to CM for contract(), then back to RM for assertions.
-    let x_cm = arnet_linalg::reorder(&x, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    let ax = to_rm(&contract(&backend, &a, &x_cm, "ij,jk->ik").unwrap());
+    // x is in CM; contract expects CM inputs
+    let ax = to_rm(&contract(&backend, &a, &x, "ij,jk->ik").unwrap());
+    let b_rm = to_rm(&b);
     for i in 0..2 {
-        let diff = (ax.get(&[i, 0]) - b.data()[i]).norm();
+        let diff = (ax.get(&[i, 0]) - b_rm.get(&[i, 0])).norm();
         assert!(diff < 1e-10, "A*X != B at [{i},0], diff={diff}");
     }
 }
@@ -116,7 +113,7 @@ fn test_solve_f32() {
     let a = cm(vec![2.0_f32, 1.0, 5.0, 3.0], vec![2, 2]);
     let b = cm(vec![4.0_f32, 7.0], vec![2, 1]);
 
-    let x = solve(&backend, &a, &b, 1).unwrap();
+    let x = to_rm(&solve(&backend, &a, &b, 1).unwrap());
     assert!((x.get(&[0, 0]) - 5.0).abs() < 1e-4);
     assert!((x.get(&[1, 0]) - (-6.0)).abs() < 1e-4);
 }
@@ -135,7 +132,7 @@ fn test_solve_invalid_nonsquare() {
 #[test]
 fn test_solve_invalid_nrow() {
     let backend = NativeBackend::new();
-    let a = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let a = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
     let b = cm(vec![1.0, 2.0], vec![2, 1]);
 
     assert!(solve(&backend, &a, &b, 0).is_err());
@@ -151,7 +148,7 @@ fn test_inverse_f64_2x2() {
     // A = [[2, 1], [5, 3]], det = 1
     // A⁻¹ = [[3, -1], [-5, 2]]
     let a = cm(vec![2.0_f64, 1.0, 5.0, 3.0], vec![2, 2]);
-    let a_inv = inverse(&backend, &a, 1).unwrap();
+    let a_inv = to_rm(&inverse(&backend, &a, 1).unwrap());
 
     assert_eq!(a_inv.shape(), &[2, 2]);
     assert!((a_inv.get(&[0, 0]) - 3.0).abs() < 1e-10);
@@ -159,9 +156,8 @@ fn test_inverse_f64_2x2() {
     assert!((a_inv.get(&[1, 0]) - (-5.0)).abs() < 1e-10);
     assert!((a_inv.get(&[1, 1]) - 2.0).abs() < 1e-10);
 
-    // Verify A * A⁻¹ = I.
-    // inverse() returns RM; convert to CM for contract(), then to RM for assertions.
-    let a_inv_cm = arnet_linalg::reorder(&a_inv, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
+    // Verify A * A⁻¹ = I. inverse() returns CM.
+    let a_inv_cm = inverse(&backend, &a, 1).unwrap();
     let product = to_rm(&contract(&backend, &a, &a_inv_cm, "ij,jk->ik").unwrap());
     for i in 0..2 {
         for j in 0..2 {
@@ -181,7 +177,7 @@ fn test_inverse_diagonal() {
 
     // inv(diag(2, 5)) = diag(0.5, 0.2)
     let a = cm(vec![2.0_f64, 0.0, 0.0, 5.0], vec![2, 2]);
-    let a_inv = inverse(&backend, &a, 1).unwrap();
+    let a_inv = to_rm(&inverse(&backend, &a, 1).unwrap());
 
     assert!((a_inv.get(&[0, 0]) - 0.5).abs() < 1e-10);
     assert!(a_inv.get(&[0, 1]).abs() < 1e-10);
@@ -195,7 +191,7 @@ fn test_inverse_identity() {
 
     // inv(I) = I
     let a = cm(vec![1.0_f64, 0.0, 0.0, 1.0], vec![2, 2]);
-    let a_inv = inverse(&backend, &a, 1).unwrap();
+    let a_inv = to_rm(&inverse(&backend, &a, 1).unwrap());
 
     for i in 0..2 {
         for j in 0..2 {
@@ -214,7 +210,7 @@ fn test_inverse_orthogonal() {
     let c = angle.cos();
     let s = angle.sin();
     let q = cm(vec![c, -s, s, c], vec![2, 2]);
-    let q_inv = inverse(&backend, &q, 1).unwrap();
+    let q_inv = to_rm(&inverse(&backend, &q, 1).unwrap());
 
     // Q^T = [[c, s], [-s, c]]
     assert!((q_inv.get(&[0, 0]) - c).abs() < 1e-10);
@@ -238,12 +234,10 @@ fn test_inverse_c64() {
         ],
         vec![2, 2],
     );
-    let a_inv = inverse(&backend, &a, 1).unwrap();
 
-    // Verify A * A⁻¹ = I.
-    // inverse() returns RM; convert to CM for contract(), then to RM for assertions.
-    let a_inv_cm = arnet_linalg::reorder(&a_inv, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    let product = to_rm(&contract(&backend, &a, &a_inv_cm, "ij,jk->ik").unwrap());
+    // inverse() returns CM; use directly in contract
+    let a_inv = inverse(&backend, &a, 1).unwrap();
+    let product = to_rm(&contract(&backend, &a, &a_inv, "ij,jk->ik").unwrap());
     for i in 0..2 {
         for j in 0..2 {
             let expected = if i == j {
@@ -262,7 +256,7 @@ fn test_inverse_f32() {
     let backend = NativeBackend::new();
 
     let a = cm(vec![2.0_f32, 1.0, 5.0, 3.0], vec![2, 2]);
-    let a_inv = inverse(&backend, &a, 1).unwrap();
+    let a_inv = to_rm(&inverse(&backend, &a, 1).unwrap());
 
     assert!((a_inv.get(&[0, 0]) - 3.0).abs() < 1e-4);
     assert!((a_inv.get(&[0, 1]) - (-1.0)).abs() < 1e-4);

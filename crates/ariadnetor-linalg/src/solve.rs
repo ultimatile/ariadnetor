@@ -85,11 +85,12 @@ pub fn solve<T: Scalar>(
     backend.solve(desc)?;
 
     // x_data is in the backend's preferred order for an n x nrhs 2D buffer.
-    // Convert to row-major 2D first, then reshape to b's original shape
-    // to preserve standard unflatten semantics for higher-rank RHS.
+    // Convert to row-major for reshape (correct axis-merge semantics),
+    // then reshape to b's original shape, then back to preferred order.
     let x_2d = backend.make_tensor(x_data, vec![n, nrhs]);
     let x_rm = reorder(&x_2d, order, MemoryOrder::RowMajor);
-    Ok(Dense::new(x_rm.data().to_vec(), b.shape().to_vec()))
+    let x_reshaped = Dense::new(x_rm.data().to_vec(), b.shape().to_vec());
+    Ok(reorder(&x_reshaped, MemoryOrder::RowMajor, order))
 }
 
 /// Compute the inverse of a square matrix via LU decomposition.
@@ -147,6 +148,9 @@ pub fn inverse<T: Scalar>(
 
     let result = solve(backend, &a_flat, &identity, 1)?;
 
-    // solve() returns RM data; reshape to original shape
-    Ok(Dense::new(result.data().to_vec(), shape.to_vec()))
+    // solve() returns preferred_order data. RM intermediate for axis-split,
+    // then back to preferred_order.
+    let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
+    let reshaped = Dense::new(result_rm.data().to_vec(), shape.to_vec());
+    Ok(reorder(&reshaped, MemoryOrder::RowMajor, order))
 }

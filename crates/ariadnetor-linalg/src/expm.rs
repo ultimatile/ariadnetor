@@ -37,11 +37,12 @@ pub fn expm_hermitian<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<Dense<T>, LinalgError> {
+    let order = backend.preferred_order();
     let (w, v) = eigh(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(lambda_j)
     let exp_w: Vec<T::Real> = w.data().iter().map(|&lam| lam.exp()).collect();
-    let v_scaled = diagonal_scale(&v, &exp_w, 1).map_err(LinalgError::InvalidArgument)?;
+    let v_scaled = diagonal_scale(&v, &exp_w, 1, order).map_err(LinalgError::InvalidArgument)?;
 
     // V dagger = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
@@ -112,7 +113,7 @@ pub fn expm_antihermitian<T: Scalar>(
         .collect();
 
     let v_scaled =
-        diagonal_scale(&v_orig, &exp_neg_i_w, 1).map_err(LinalgError::InvalidArgument)?;
+        diagonal_scale(&v_orig, &exp_neg_i_w, 1, order).map_err(LinalgError::InvalidArgument)?;
 
     // V dagger = conjugate transpose of V
     let v_dagger = conjugate_transpose(backend, &v_orig, &[1, 0])?;
@@ -420,9 +421,10 @@ pub fn expm<T: Scalar>(
         if norm <= thresh_real {
             let (u, v) = pade_uv_small(backend, &a, n, pade_order)?;
             let result = solve_pade(backend, &u, &v)?;
-            // Reorder result to RowMajor, then reshape to original shape
+            // RM intermediate for correct axis-split, then back to preferred order
             let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-            return Ok(Dense::new(result_rm.data().to_vec(), shape.to_vec()));
+            let reshaped = Dense::new(result_rm.data().to_vec(), shape.to_vec());
+            return Ok(reorder(&reshaped, MemoryOrder::RowMajor, order));
         }
     }
 
@@ -461,8 +463,10 @@ pub fn expm<T: Scalar>(
         result = matmul(backend, &result, &result)?;
     }
 
+    // RM intermediate for correct axis-split, then back to preferred order
     let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-    Ok(Dense::new(result_rm.data().to_vec(), shape.to_vec()))
+    let reshaped = Dense::new(result_rm.data().to_vec(), shape.to_vec());
+    Ok(reorder(&reshaped, MemoryOrder::RowMajor, order))
 }
 
 /// Solve (V - U) X = V + U for the Pade approximant.

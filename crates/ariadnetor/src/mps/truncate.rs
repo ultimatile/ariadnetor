@@ -126,22 +126,22 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 // U stays at j (left-canonical), S·Vt absorbed into j+1
-                let svt =
-                    diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
+                let svt = diagonal_scale(&vt, s.data(), 0, order)
+                    .expect("S·Vt scaling failed during truncate");
                 (reshape_u(u), svt, err)
             }
             SvdAbsorb::Left => {
                 // U·S stays at j, Vt absorbed into j+1 (right-canonical Vt)
-                let us =
-                    diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
+                let us = diagonal_scale(&u, s.data(), 1, order)
+                    .expect("U·S scaling failed during truncate");
                 (reshape_u(us), vt, err)
             }
             SvdAbsorb::Both => {
                 // sqrt(S) applied to both sides
                 let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
-                let u_scaled = diagonal_scale(&u, &sqrt_s, 1)
+                let u_scaled = diagonal_scale(&u, &sqrt_s, 1, order)
                     .expect("sqrt(S)*U scaling failed during truncate");
-                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0)
+                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0, order)
                     .expect("sqrt(S)*Vt scaling failed during truncate");
                 (reshape_u(u_scaled), vt_scaled, err)
             }
@@ -198,23 +198,23 @@ where
             SvdAbsorb::Right => {
                 // Vt stays at j (right-isometric), U·S absorbed into j-1
                 // S accompanies the sweep direction (leftward), producing mixed-canonical form.
-                let us =
-                    diagonal_scale(&u, s.data(), 1).expect("U·S scaling failed during truncate");
+                let us = diagonal_scale(&u, s.data(), 1, order)
+                    .expect("U·S scaling failed during truncate");
                 (reshape_vt(vt), us, err)
             }
             SvdAbsorb::Left => {
                 // S·Vt stays at j, bare U absorbed into j-1
                 // S stays against the sweep direction.
-                let svt =
-                    diagonal_scale(&vt, s.data(), 0).expect("S·Vt scaling failed during truncate");
+                let svt = diagonal_scale(&vt, s.data(), 0, order)
+                    .expect("S·Vt scaling failed during truncate");
                 (reshape_vt(svt), u, err)
             }
             SvdAbsorb::Both => {
                 // sqrt(S) applied to both sides
                 let sqrt_s: Vec<T::Real> = s.data().iter().map(|v| v.sqrt()).collect();
-                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0)
+                let vt_scaled = diagonal_scale(&vt, &sqrt_s, 0, order)
                     .expect("sqrt(S)*Vt scaling failed during truncate");
-                let u_scaled = diagonal_scale(&u, &sqrt_s, 1)
+                let u_scaled = diagonal_scale(&u, &sqrt_s, 1, order)
                     .expect("sqrt(S)*U scaling failed during truncate");
                 (reshape_vt(vt_scaled), u_scaled, err)
             }
