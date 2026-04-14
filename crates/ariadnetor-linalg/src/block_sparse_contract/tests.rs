@@ -1,8 +1,8 @@
 use super::*;
 use arnet_core::backend::ComputeBackend;
 use arnet_native::NativeBackend;
-use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
-use arnet_tensor::sector::{U1Sector, Z2Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::{U1Sector, Z2Sector};
 
 fn b() -> NativeBackend {
     NativeBackend

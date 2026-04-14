@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::block_sparse::BlockSparse;
-use arnet_tensor::sector::Sector;
+use arnet_tensor::BlockSparse;
+use arnet_tensor::Sector;
 
 use crate::block_sparse_decomp::BlockSingularValues;
 use crate::error::LinalgError;

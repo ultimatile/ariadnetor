@@ -1,5 +1,5 @@
-use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
-use arnet_tensor::sector::{U1Sector, Z2Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::{U1Sector, Z2Sector};
 use num_complex::Complex;
 
 /// Helper: rank-2 U1 tensor with flux=0, blocks (0,0):2×2 and (1,1):3×3.

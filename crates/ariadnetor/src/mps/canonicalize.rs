@@ -6,8 +6,8 @@ use arnet_linalg::{
     BlockSparseContractResult, contract, contract_block_sparse, lq, lq_block_sparse, qr,
     qr_block_sparse,
 };
-use arnet_tensor::block_sparse::BlockSparse;
-use arnet_tensor::sector::Sector;
+use arnet_tensor::BlockSparse;
+use arnet_tensor::Sector;
 use arnet_tensor::{Dense, reorder};
 
 use super::chain::TensorChain;

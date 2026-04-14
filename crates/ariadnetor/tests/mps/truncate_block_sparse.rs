@@ -9,8 +9,8 @@ use arnet::mps::{
     CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
     canonicalize_block_sparse, truncate_block_sparse,
 };
-use arnet_tensor::block_sparse::BlockSparse;
-use arnet_tensor::sector::U1Sector;
+use arnet_tensor::BlockSparse;
+use arnet_tensor::U1Sector;
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, is_left_canonical_bsp,
@@ -195,7 +195,7 @@ fn truncate_bsp_absorb_both_sets_unknown() {
 
 #[test]
 fn truncate_bsp_single_site() {
-    use arnet_tensor::block_sparse::{BlockCoord, Direction, QNIndex};
+    use arnet_tensor::{BlockCoord, Direction, QNIndex};
 
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);

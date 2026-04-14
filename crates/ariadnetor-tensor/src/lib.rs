@@ -7,11 +7,11 @@
 //!
 //! For the main `Tensor` type (storage + backend), see the `arnet` crate.
 
-pub mod block_sparse;
-pub mod dense;
-pub mod reorder;
-pub mod repr;
-pub mod sector;
+mod block_sparse;
+mod dense;
+mod reorder;
+mod repr;
+mod sector;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{
@@ -19,9 +19,11 @@ pub use arnet_core::{
     MemoryOrder, Scalar, compute_permutation,
 };
 
-pub use dense::{Dense, column_major_strides, row_major_strides};
+pub use block_sparse::{BlockCoord, BlockMeta, BlockSparse, Direction, QNIndex};
+pub use dense::Dense;
 pub use reorder::{flat_index, reorder};
 pub use repr::TensorRepr;
+pub use sector::{Sector, U1Sector, Z2Sector};
 
 /// Extension trait for backend-aware tensor construction.
 ///

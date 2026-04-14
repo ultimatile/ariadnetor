@@ -5,8 +5,8 @@ use arnet::mps::{
     CanonicalForm, Mpo, Mps, TensorChain, braket_block_sparse, canonicalize_block_sparse,
     inner_block_sparse, norm_block_sparse,
 };
-use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
-use arnet_tensor::sector::U1Sector;
+use arnet_tensor::U1Sector;
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 
 use super::helpers::{bsp_mps_contract_full, make_2site_entangled_u1_mps, make_4site_u1_mps};
 

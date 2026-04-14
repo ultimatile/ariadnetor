@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
-use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
-use arnet_tensor::sector::Sector;
+use arnet_tensor::Sector;
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 
 /// Per-sector grouping of block-index tuples for matrix assembly.
 pub(super) struct FusedSectorGroup<S: Sector> {

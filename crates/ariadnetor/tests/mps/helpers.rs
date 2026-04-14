@@ -2,9 +2,9 @@
 
 use arnet::mps::{Mpo, Mps, TensorChain};
 use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
-use arnet_tensor::block_sparse::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::U1Sector;
 use arnet_tensor::reorder;
-use arnet_tensor::sector::U1Sector;
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::{Dense, MemoryOrder};
 
 /// Build a Dense from row-major data and convert to column-major (NativeBackend order).
