@@ -11,7 +11,7 @@ use arnet_tensor::Sector;
 use arnet_tensor::{Dense, reorder};
 use num_traits::{Float, Zero};
 
-use super::canonicalize::{canonicalize, canonicalize_block_sparse};
+use super::canonicalize::{canonicalize_bsp, canonicalize_dense};
 use super::chain::TensorChain;
 use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
@@ -31,7 +31,7 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 ///
 /// Panics if the chain is empty, or if `params.center` is `Some(c)` with
 /// `c >= chain.len()`.
-pub fn truncate<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub(super) fn truncate_dense<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -46,7 +46,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize(chain, c);
+            canonicalize_dense(chain, c);
             c
         }
     };
@@ -308,7 +308,7 @@ fn absorb_from_right<T: Scalar>(
 /// `c >= chain.len()` and the chain is not already in `Mixed`, `Left`, or
 /// `Right` canonical form (since those forms determine the center
 /// internally and ignore `params.center`).
-pub fn truncate_block_sparse<T, S, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub(super) fn truncate_bsp<T, S, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     S: Sector,
@@ -324,7 +324,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize_block_sparse(chain, c);
+            canonicalize_bsp(chain, c);
             c
         }
     };

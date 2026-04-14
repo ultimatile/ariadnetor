@@ -1,13 +1,13 @@
 //! Truncate tests for block-sparse MPS.
 //!
-//! Covers `truncate_block_sparse` on a 4-site U(1)-symmetric chain.
+//! Covers `truncate` on a 4-site U(1)-symmetric chain.
 //! Mirrors the Dense truncate test structure, adapted for BlockSparse
 //! invariants (per-sector isometry, flux preservation, block-level
 //! state comparison).
 
 use arnet::mps::{
-    CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
-    canonicalize_block_sparse, truncate_block_sparse,
+    CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams, canonicalize,
+    truncate,
 };
 use arnet_tensor::BlockSparse;
 use arnet_tensor::U1Sector;
@@ -26,7 +26,7 @@ const TOL: f64 = 1e-10;
 #[test]
 fn truncate_bsp_no_change_within_tolerance() {
     let mut mps = make_4site_u1_mps();
-    canonicalize_block_sparse(&mut mps, 2);
+    canonicalize(&mut mps, 2);
 
     let state_before = bsp_mps_contract_full(&mps);
     let bond_dims_before = mps.bond_dims();
@@ -35,7 +35,7 @@ fn truncate_bsp_no_change_within_tolerance() {
         chi_max: Some(100),
         target_trunc_err: None,
     });
-    let result = truncate_block_sparse(&mut mps, &params);
+    let result = truncate(&mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
     assert!(
@@ -58,7 +58,7 @@ fn truncate_bsp_no_change_within_tolerance() {
 #[test]
 fn truncate_bsp_preserves_state_approximately() {
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize_block_sparse(&mut mps, 0);
+    canonicalize(&mut mps, 0);
     let state_before = bsp_mps_contract_full(&mps);
     let norm_before = state_before.norm();
 
@@ -66,7 +66,7 @@ fn truncate_bsp_preserves_state_approximately() {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    truncate_block_sparse(&mut mps, &params);
+    truncate(&mut mps, &params);
     let state_after = bsp_mps_contract_full(&mps);
     let norm_after = state_after.norm();
 
@@ -90,13 +90,13 @@ fn truncate_bsp_preserves_state_approximately() {
 #[test]
 fn truncate_bsp_reduces_bond_dim() {
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize_block_sparse(&mut mps, 0);
+    canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate_block_sparse(&mut mps, &params);
+    let result = truncate(&mut mps, &params);
 
     for d in mps.bond_dims() {
         assert!(d <= 1, "bond dim {d} exceeds chi_max=1");
@@ -112,13 +112,13 @@ fn truncate_bsp_reduces_bond_dim() {
 #[test]
 fn truncate_bsp_absorb_right_isometry() {
     let mut mps = make_4site_u1_mps();
-    canonicalize_block_sparse(&mut mps, 2);
+    canonicalize(&mut mps, 2);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    truncate_block_sparse(&mut mps, &params);
+    truncate(&mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
     // Sites 0 and 1 left-canonical, site 2 is center, site 3 right-canonical
@@ -139,7 +139,7 @@ fn truncate_bsp_absorb_right_isometry() {
 #[test]
 fn truncate_bsp_absorb_left_isometry() {
     let mut mps = make_4site_u1_mps();
-    canonicalize_block_sparse(&mut mps, 1);
+    canonicalize(&mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -149,7 +149,7 @@ fn truncate_bsp_absorb_left_isometry() {
         absorb: SvdAbsorb::Left,
         center: None,
     };
-    let result = truncate_block_sparse(&mut mps, &params);
+    let result = truncate(&mut mps, &params);
 
     assert!(result.error >= 0.0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
@@ -170,7 +170,7 @@ fn truncate_bsp_absorb_left_isometry() {
 #[test]
 fn truncate_bsp_absorb_both_sets_unknown() {
     let mut mps = make_4site_u1_mps();
-    canonicalize_block_sparse(&mut mps, 1);
+    canonicalize(&mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -180,7 +180,7 @@ fn truncate_bsp_absorb_both_sets_unknown() {
         absorb: SvdAbsorb::Both,
         center: None,
     };
-    let result = truncate_block_sparse(&mut mps, &params);
+    let result = truncate(&mut mps, &params);
 
     assert!(result.error >= 0.0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
@@ -205,13 +205,13 @@ fn truncate_bsp_single_site() {
         .expect("allowed block")[0] = 3.0;
 
     let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
-    canonicalize_block_sparse(&mut mps, 0);
+    canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate_block_sparse(&mut mps, &params);
+    let result = truncate(&mut mps, &params);
 
     assert!(result.error < TOL, "single-site should have zero error");
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
@@ -234,7 +234,7 @@ fn truncate_bsp_auto_canonicalizes_from_unknown() {
         absorb: SvdAbsorb::Right,
         center: Some(2),
     };
-    let result = truncate_block_sparse(&mut mps, &params);
+    let result = truncate(&mut mps, &params);
 
     assert!(result.error >= 0.0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
@@ -250,14 +250,14 @@ fn truncate_bsp_auto_canonicalizes_from_unknown() {
 #[test]
 fn truncate_bsp_error_is_positive_when_truncated() {
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize_block_sparse(&mut mps, 0);
+    canonicalize(&mut mps, 0);
     let norm_before = bsp_mps_contract_full(&mps).norm();
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate_block_sparse(&mut mps, &params);
+    let result = truncate(&mut mps, &params);
 
     assert!(
         result.error > 0.0,

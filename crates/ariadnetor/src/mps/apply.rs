@@ -31,7 +31,7 @@ use super::types::{Mpo, Mps, TruncateParams};
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub fn apply<T, B>(
+pub(super) fn apply_dense<T, B>(
     op: &Mpo<Dense<T>, B>,
     psi: &Mps<Dense<T>, B>,
     params: Option<&TruncateParams>,
@@ -79,8 +79,8 @@ where
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize(&mut result_mps, center);
-        super::truncate(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_dense(&mut result_mps, center);
+        super::truncate::truncate_dense(&mut result_mps, trunc_params);
     }
 
     result_mps
@@ -106,7 +106,7 @@ where
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub fn apply_block_sparse<T, S, B>(
+pub(super) fn apply_bsp<T, S, B>(
     op: &Mpo<BlockSparse<T, S>, B>,
     psi: &Mps<BlockSparse<T, S>, B>,
     params: Option<&TruncateParams>,
@@ -157,8 +157,8 @@ where
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize_block_sparse(&mut result_mps, center);
-        super::truncate_block_sparse(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_bsp(&mut result_mps, center);
+        super::truncate::truncate_bsp(&mut result_mps, trunc_params);
     }
 
     result_mps

@@ -24,7 +24,7 @@ use super::types::CanonicalForm;
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
-pub fn canonicalize<T, B, C>(chain: &mut C, center: usize)
+pub(super) fn canonicalize_dense<T, B, C>(chain: &mut C, center: usize)
 where
     T: Scalar,
     B: ComputeBackend,
@@ -232,7 +232,7 @@ fn absorb_from_right<T: Scalar>(
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
-pub fn canonicalize_block_sparse<T, S, B, C>(chain: &mut C, center: usize)
+pub(super) fn canonicalize_bsp<T, S, B, C>(chain: &mut C, center: usize)
 where
     T: Scalar,
     S: Sector,
