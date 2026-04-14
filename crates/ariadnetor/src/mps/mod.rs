@@ -16,7 +16,7 @@ mod site_ops;
 mod truncate;
 mod types;
 
-pub use apply::apply;
+pub use apply::{apply, apply_block_sparse};
 pub use canonicalize::{canonicalize, canonicalize_block_sparse};
 pub use chain::TensorChain;
 pub use inner::{braket, braket_block_sparse, inner, inner_block_sparse, norm, norm_block_sparse};

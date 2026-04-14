@@ -52,16 +52,14 @@ fn fuse_rank2_to_rank1() {
     let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
 
     assert_eq!(fused.rank(), 1);
-    // Fused dimension = sum of all block dims for flux-allowed (i,j) pairs
-    // Pairs: (0,0) → 2*2=4, (1,1) → 3*3=9
-    // Fused sectors: directed (Out(0), In(0)) → fuse(0, 0)=0; directed (Out(1), In(1)) → fuse(1, -1)=0
-    // Both map to sector 0 (Out), total dim = 4 + 9 = 13
-    assert_eq!(fused.shape(), &[13]);
+    // Full Kronecker product: (0,0)→sector 0 dim 4, (0,1)→sector -1 dim 6,
+    // (1,0)→sector 1 dim 6, (1,1)→sector 0 dim 9. Sectors: {-1:6, 0:13, 1:6}
+    assert_eq!(fused.shape(), &[25]);
 
-    // Total stored data should be preserved
+    // Only flux-conserving blocks are stored (sector 0, dim 13)
     let orig_elems: usize = bs.block_metas().iter().map(|m| m.size).sum();
-    let fused_elems: usize = fused.block_metas().iter().map(|m| m.size).sum();
-    assert_eq!(fused_elems, orig_elems);
+    let fused_stored: usize = fused.block_metas().iter().map(|m| m.size).sum();
+    assert_eq!(fused_stored, orig_elems);
 }
 
 // ---------------------------------------------------------------------------
@@ -214,9 +212,11 @@ fn fuse_with_in_direction_u1() {
     // Both should have the same shape (same total dims)
     assert_eq!(fused_out.shape(), fused_in.shape());
 
-    // Stored sectors differ but data should be the same
-    let out_data = fused_out.block_data(&BlockCoord(vec![0])).unwrap();
-    let in_data = fused_in.block_data(&BlockCoord(vec![0])).unwrap();
+    // Find the flux-conserving block (sector 0) in each.
+    // Out: stored sectors sorted = [-1, 0, 1], sector 0 is block index 1
+    // In: stored sectors = dual of directed = [1, 0, -1], sorted = [-1, 0, 1], sector 0 is block 1
+    let out_data = fused_out.block_data(&BlockCoord(vec![1])).unwrap();
+    let in_data = fused_in.block_data(&BlockCoord(vec![1])).unwrap();
     assert_eq!(out_data, in_data);
 
     // Direction differs
@@ -358,10 +358,10 @@ fn fuse_z2_rank2() {
 
     let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
 
-    // Z2: (0,0)→0, (1,1)→0 (both 0+0=0, 1+1=0 mod 2)
-    // Single fused sector 0 with dim 4+9=13
+    // Z2: (0,0)→0 dim 4, (0,1)→1 dim 6, (1,0)→1 dim 6, (1,1)→0 dim 9
+    // Sectors: {0: 13, 1: 12}. Total = 25.
     assert_eq!(fused.rank(), 1);
-    assert_eq!(fused.shape(), &[13]);
+    assert_eq!(fused.shape(), &[25]);
 }
 
 // ---------------------------------------------------------------------------
