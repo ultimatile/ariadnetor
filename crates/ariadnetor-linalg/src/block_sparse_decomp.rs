@@ -10,7 +10,7 @@
 //! right tensor with `flux = original_flux`. The new bond uses fused left
 //! sectors with direction `In` on the left side and `Out` on the right side.
 
-mod fused_sector;
+pub(crate) mod fused_sector;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};

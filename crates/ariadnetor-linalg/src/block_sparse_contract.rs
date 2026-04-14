@@ -362,7 +362,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 /// Transpose block data in the given memory order layout.
 ///
 /// Convention: `perm[new_axis] = old_axis`.
-fn transpose_block_data<T: Copy>(
+pub(crate) fn transpose_block_data<T: Copy>(
     data: &[T],
     shape: &[usize],
     perm: &[usize],
