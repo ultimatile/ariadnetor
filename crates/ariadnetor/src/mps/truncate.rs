@@ -316,7 +316,7 @@ where
     C: TensorChain<BlockSparse<T, S>, B>,
 {
     let n = chain.len();
-    assert!(n > 0, "truncate_block_sparse requires a non-empty chain");
+    assert!(n > 0, "truncate requires a non-empty chain");
 
     let center = match chain.canonical_form() {
         CanonicalForm::Mixed { center } => *center,

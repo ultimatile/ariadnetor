@@ -17,10 +17,7 @@ use super::types::{Mpo, Mps, TruncResult, TruncateParams};
 /// Implemented for [`Dense<T>`] and [`BlockSparse<T, S>`], routing each
 /// operation to its storage-specific implementation. Algorithms written
 /// against `R: MpsOps` work with both storage types without duplication.
-pub trait MpsOps: TensorRepr + Sized {
-    /// The scalar element type (e.g., `f64`, `Complex<f64>`).
-    type Scalar: Scalar;
-
+pub trait MpsOps: TensorRepr<Elem: Scalar> + Sized {
     /// Position the orthogonality center at `center`.
     fn canonicalize<B: ComputeBackend>(chain: &mut impl TensorChain<Self, B>, center: usize);
 
@@ -28,20 +25,20 @@ pub trait MpsOps: TensorRepr + Sized {
     fn truncate<B: ComputeBackend>(
         chain: &mut impl TensorChain<Self, B>,
         params: &TruncateParams,
-    ) -> TruncResult<Self::Scalar>;
+    ) -> TruncResult<Self::Elem>;
 
     /// Compute the inner product ⟨ψ|φ⟩.
-    fn inner<B: ComputeBackend>(psi: &Mps<Self, B>, phi: &Mps<Self, B>) -> Self::Scalar;
+    fn inner<B: ComputeBackend>(psi: &Mps<Self, B>, phi: &Mps<Self, B>) -> Self::Elem;
 
     /// Compute the norm ‖ψ‖.
-    fn norm<B: ComputeBackend>(psi: &Mps<Self, B>) -> <Self::Scalar as Scalar>::Real;
+    fn norm<B: ComputeBackend>(psi: &Mps<Self, B>) -> <Self::Elem as Scalar>::Real;
 
     /// Compute the expectation value ⟨ψ|O|φ⟩.
     fn braket<B: ComputeBackend>(
         psi: &Mps<Self, B>,
         op: &Mpo<Self, B>,
         phi: &Mps<Self, B>,
-    ) -> Self::Scalar;
+    ) -> Self::Elem;
 
     /// Apply an MPO to an MPS: O|ψ⟩.
     fn apply<B: ComputeBackend>(
@@ -56,8 +53,6 @@ pub trait MpsOps: TensorRepr + Sized {
 // ---------------------------------------------------------------------------
 
 impl<T: Scalar> MpsOps for Dense<T> {
-    type Scalar = T;
-
     fn canonicalize<B: ComputeBackend>(chain: &mut impl TensorChain<Self, B>, center: usize) {
         super::canonicalize::canonicalize_dense(chain, center);
     }
@@ -95,8 +90,6 @@ impl<T: Scalar> MpsOps for Dense<T> {
 // ---------------------------------------------------------------------------
 
 impl<T: Scalar, S: Sector> MpsOps for BlockSparse<T, S> {
-    type Scalar = T;
-
     fn canonicalize<B: ComputeBackend>(chain: &mut impl TensorChain<Self, B>, center: usize) {
         super::canonicalize::canonicalize_bsp(chain, center);
     }
@@ -145,17 +138,17 @@ pub fn canonicalize<R: MpsOps, B: ComputeBackend>(
 pub fn truncate<R: MpsOps, B: ComputeBackend>(
     chain: &mut impl TensorChain<R, B>,
     params: &TruncateParams,
-) -> TruncResult<R::Scalar> {
+) -> TruncResult<R::Elem> {
     R::truncate(chain, params)
 }
 
 /// Compute the inner product ⟨ψ|φ⟩.
-pub fn inner<R: MpsOps, B: ComputeBackend>(psi: &Mps<R, B>, phi: &Mps<R, B>) -> R::Scalar {
+pub fn inner<R: MpsOps, B: ComputeBackend>(psi: &Mps<R, B>, phi: &Mps<R, B>) -> R::Elem {
     R::inner(psi, phi)
 }
 
 /// Compute the norm ‖ψ‖.
-pub fn norm<R: MpsOps, B: ComputeBackend>(psi: &Mps<R, B>) -> <R::Scalar as Scalar>::Real {
+pub fn norm<R: MpsOps, B: ComputeBackend>(psi: &Mps<R, B>) -> <R::Elem as Scalar>::Real {
     R::norm(psi)
 }
 
@@ -164,7 +157,7 @@ pub fn braket<R: MpsOps, B: ComputeBackend>(
     psi: &Mps<R, B>,
     op: &Mpo<R, B>,
     phi: &Mps<R, B>,
-) -> R::Scalar {
+) -> R::Elem {
     R::braket(psi, op, phi)
 }
 

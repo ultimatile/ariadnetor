@@ -273,7 +273,7 @@ where
         let site = chain.storage(j);
         let rank = site.rank();
         qr_block_sparse(chain.backend(), site, rank - 1)
-            .expect("qr_block_sparse failed during canonicalize_block_sparse")
+            .expect("qr_block_sparse failed during canonicalize")
     };
 
     *chain.storage_mut(j) = q;
@@ -304,7 +304,7 @@ where
     let (l, q) = {
         let site = chain.storage(j);
         lq_block_sparse(chain.backend(), site, 1)
-            .expect("lq_block_sparse failed during canonicalize_block_sparse")
+            .expect("lq_block_sparse failed during canonicalize")
     };
 
     *chain.storage_mut(j) = q;
@@ -336,7 +336,7 @@ where
     B: ComputeBackend,
 {
     match contract_block_sparse(backend, r, next, &[1], &[0])
-        .expect("R absorption into next site failed during canonicalize_block_sparse")
+        .expect("R absorption into next site failed during canonicalize")
     {
         BlockSparseContractResult::Tensor(t) => t,
         BlockSparseContractResult::Scalar(_) => {
@@ -361,7 +361,7 @@ where
 {
     let last = prev.rank() - 1;
     match contract_block_sparse(backend, prev, l, &[last], &[0])
-        .expect("L absorption into previous site failed during canonicalize_block_sparse")
+        .expect("L absorption into previous site failed during canonicalize")
     {
         BlockSparseContractResult::Tensor(t) => t,
         BlockSparseContractResult::Scalar(_) => {

@@ -329,7 +329,7 @@ where
 /// Exploits canonical form when available:
 /// - `Left` / `Right`: normalized by construction → 1.0.
 /// - `Mixed { center }`: Frobenius norm of the center tensor.
-/// - Otherwise: full inner product via [`inner_block_sparse`].
+/// - Otherwise: full inner product via [`inner`].
 pub(super) fn norm_bsp<T, S, B>(psi: &Mps<BlockSparse<T, S>, B>) -> T::Real
 where
     T: Scalar,
