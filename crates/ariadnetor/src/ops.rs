@@ -274,7 +274,7 @@ pub fn normalize<S: Scalar, B: ComputeBackend>(
 pub fn trace<S: Scalar, B: ComputeBackend>(
     tensor: &Tensor<Dense<S>, B>,
     pairs: &[(usize, usize)],
-) -> Result<Tensor<Dense<S>, B>, String> {
+) -> Result<Tensor<Dense<S>, B>, LinalgError> {
     let result = arnet_linalg::trace(&tensor.storage, pairs)?;
     Ok(wrap(result, tensor.backend_arc()))
 }
@@ -282,7 +282,7 @@ pub fn trace<S: Scalar, B: ComputeBackend>(
 /// Diagonal extraction (2D → 1D) or construction (1D → 2D).
 pub fn diag<S: Scalar, B: ComputeBackend>(
     tensor: &Tensor<Dense<S>, B>,
-) -> Result<Tensor<Dense<S>, B>, String> {
+) -> Result<Tensor<Dense<S>, B>, LinalgError> {
     let result = arnet_linalg::diag(&tensor.storage)?;
     Ok(wrap(result, tensor.backend_arc()))
 }
@@ -293,7 +293,7 @@ pub fn diag<S: Scalar, B: ComputeBackend>(
 /// the diagonal semantics in the type system.
 pub fn diag_extract<S: Scalar, B: ComputeBackend>(
     tensor: &Tensor<Dense<S>, B>,
-) -> Result<crate::DiagTensor<S, B>, String> {
+) -> Result<crate::DiagTensor<S, B>, LinalgError> {
     crate::DiagTensor::from_matrix(tensor)
 }
 
@@ -301,8 +301,12 @@ pub fn diag_extract<S: Scalar, B: ComputeBackend>(
 pub fn linear_combine<S: Scalar, B: ComputeBackend>(
     tensors: &[&Tensor<Dense<S>, B>],
     coefs: &[S],
-) -> Result<Tensor<Dense<S>, B>, String> {
-    assert!(!tensors.is_empty(), "Cannot combine empty tensor list");
+) -> Result<Tensor<Dense<S>, B>, LinalgError> {
+    if tensors.is_empty() {
+        return Err(LinalgError::InvalidArgument(
+            "Cannot combine empty tensor list".to_string(),
+        ));
+    }
     let dense_refs: Vec<&Dense<S>> = tensors.iter().map(|t| &t.storage).collect();
     let result = arnet_linalg::linear_combine(&dense_refs, coefs)?;
     Ok(wrap(result, tensors[0].backend_arc()))

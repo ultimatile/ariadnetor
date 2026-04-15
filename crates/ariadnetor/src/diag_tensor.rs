@@ -12,6 +12,8 @@ use arnet_core::backend::ComputeBackend;
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
 
+use arnet_linalg::LinalgError;
+
 use crate::Tensor;
 
 /// Diagonal matrix represented as a rank-1 tensor of diagonal elements.
@@ -106,19 +108,19 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
     /// let d = DiagTensor::from_matrix(&t).unwrap();
     /// assert_eq!(d.data(), &[1.0, 2.0]);
     /// ```
-    pub fn from_matrix(tensor: &Tensor<Dense<S>, B>) -> Result<Self, String> {
+    pub fn from_matrix(tensor: &Tensor<Dense<S>, B>) -> Result<Self, LinalgError> {
         let shape = tensor.shape();
         if shape.len() != 2 {
-            return Err(format!(
+            return Err(LinalgError::InvalidArgument(format!(
                 "from_matrix requires a rank-2 tensor, got rank {}",
                 shape.len()
-            ));
+            )));
         }
         if shape[0] != shape[1] {
-            return Err(format!(
+            return Err(LinalgError::InvalidArgument(format!(
                 "from_matrix requires a square matrix, got {}×{}",
                 shape[0], shape[1]
-            ));
+            )));
         }
         let result = arnet_linalg::diag(&tensor.storage)?;
         Ok(Self(Tensor::with_backend(

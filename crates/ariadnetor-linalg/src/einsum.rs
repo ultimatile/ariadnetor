@@ -490,8 +490,7 @@ fn einsum_single<T: Scalar>(
         tensor.clone()
     } else {
         let tensor_rm = reorder(tensor, order, MemoryOrder::RowMajor);
-        let result_rm = trace(&tensor_rm, &trace_pairs)
-            .map_err(|e| LinalgError::InvalidArgument(format!("Trace failed: {e}")))?;
+        let result_rm = trace(&tensor_rm, &trace_pairs)?;
         reorder(&result_rm, MemoryOrder::RowMajor, order)
     };
 

@@ -105,24 +105,28 @@ pub fn normalize<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
 /// // 2*a + 3*b = 2*1 + 3*2 = 8
 /// let result = linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
 /// ```
-pub fn linear_combine<T>(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, String>
+pub fn linear_combine<T>(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, LinalgError>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
     if tensors.is_empty() {
-        return Err("Cannot combine empty tensor list".to_string());
+        return Err(LinalgError::InvalidArgument(
+            "Cannot combine empty tensor list".to_string(),
+        ));
     }
     if tensors.len() != coefs.len() {
-        return Err(format!(
+        return Err(LinalgError::InvalidArgument(format!(
             "Mismatched lengths: {} tensors vs {} coefficients",
             tensors.len(),
             coefs.len()
-        ));
+        )));
     }
     let shape = tensors[0].shape();
     for t in &tensors[1..] {
         if t.shape() != shape {
-            return Err("All tensors must have the same shape".to_string());
+            return Err(LinalgError::InvalidArgument(
+                "All tensors must have the same shape".to_string(),
+            ));
         }
     }
     let len = tensors[0].len();
@@ -173,7 +177,10 @@ where
 /// assert_eq!(result.shape(), &[1]);
 /// assert_eq!(result.data()[0], 5.0);
 /// ```
-pub fn trace<T: Scalar>(tensor: &Dense<T>, pairs: &[(usize, usize)]) -> Result<Dense<T>, String> {
+pub fn trace<T: Scalar>(
+    tensor: &Dense<T>,
+    pairs: &[(usize, usize)],
+) -> Result<Dense<T>, LinalgError> {
     let rank = tensor.rank();
     let shape = tensor.shape();
 
@@ -187,21 +194,25 @@ pub fn trace<T: Scalar>(tensor: &Dense<T>, pairs: &[(usize, usize)]) -> Result<D
     let mut trace_dims = Vec::with_capacity(pairs.len());
     for &(a, b) in pairs {
         if a >= rank || b >= rank {
-            return Err(format!(
+            return Err(LinalgError::InvalidArgument(format!(
                 "Bond index out of range: ({a}, {b}) for rank {rank}"
-            ));
+            )));
         }
         if a == b {
-            return Err(format!("Self-pair not allowed: ({a}, {b})"));
+            return Err(LinalgError::InvalidArgument(format!(
+                "Self-pair not allowed: ({a}, {b})"
+            )));
         }
         if used[a] || used[b] {
-            return Err(format!("Bond index used in multiple pairs: ({a}, {b})"));
+            return Err(LinalgError::InvalidArgument(format!(
+                "Bond index used in multiple pairs: ({a}, {b})"
+            )));
         }
         if shape[a] != shape[b] {
-            return Err(format!(
+            return Err(LinalgError::InvalidArgument(format!(
                 "Dimension mismatch for pair ({a}, {b}): {} vs {}",
                 shape[a], shape[b]
-            ));
+            )));
         }
         used[a] = true;
         used[b] = true;
@@ -294,7 +305,7 @@ pub(crate) fn decode_coords(mut flat: usize, shape: &[usize], coords: &mut [usiz
 ///
 /// Returns an error if the input is a non-square matrix (rank 2 with mismatched dimensions)
 /// or has rank > 2.
-pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, String> {
+pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
     let shape = tensor.shape();
     match shape.len() {
         1 => {
@@ -310,7 +321,9 @@ pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, String> {
             // Matrix -> diagonal vector: use RowMajor indexing
             let (m, n) = (shape[0], shape[1]);
             if m != n {
-                return Err(format!("diag requires a square matrix, got {m}x{n}"));
+                return Err(LinalgError::InvalidArgument(format!(
+                    "diag requires a square matrix, got {m}x{n}"
+                )));
             }
             let raw = tensor.data();
             let coords_rm = MemoryOrder::RowMajor;
@@ -319,7 +332,9 @@ pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, String> {
                 .collect();
             Ok(Dense::new(data, vec![n]))
         }
-        r => Err(format!("diag requires rank 1 or 2, got rank {r}")),
+        r => Err(LinalgError::InvalidArgument(format!(
+            "diag requires rank 1 or 2, got rank {r}"
+        ))),
     }
 }
 

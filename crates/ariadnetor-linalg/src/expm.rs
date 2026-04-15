@@ -195,10 +195,8 @@ fn pade_uv_small<T: Scalar>(
         3 => {
             // V = b_0 I + b_2 A^2
             // U = A(b_1 I + b_3 A^2)
-            let v = linear_combine(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])
-                .map_err(LinalgError::InvalidArgument)?;
-            let u_inner = linear_combine(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])
-                .map_err(LinalgError::InvalidArgument)?;
+            let v = linear_combine(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])?;
+            let u_inner = linear_combine(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -207,13 +205,11 @@ fn pade_uv_small<T: Scalar>(
             let v = linear_combine(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[0]), coeff::<T>(b[2]), coeff::<T>(b[4])],
-            )
-            .map_err(LinalgError::InvalidArgument)?;
+            )?;
             let u_inner = linear_combine(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[1]), coeff::<T>(b[3]), coeff::<T>(b[5])],
-            )
-            .map_err(LinalgError::InvalidArgument)?;
+            )?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -228,8 +224,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[4]),
                     coeff::<T>(b[6]),
                 ],
-            )
-            .map_err(LinalgError::InvalidArgument)?;
+            )?;
             let u_inner = linear_combine(
                 &[&id, &a2, &a4, &a6],
                 &[
@@ -238,8 +233,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[5]),
                     coeff::<T>(b[7]),
                 ],
-            )
-            .map_err(LinalgError::InvalidArgument)?;
+            )?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -256,8 +250,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[6]),
                     coeff::<T>(b[8]),
                 ],
-            )
-            .map_err(LinalgError::InvalidArgument)?;
+            )?;
             let u_inner = linear_combine(
                 &[&id, &a2, &a4, &a6, &a8],
                 &[
@@ -267,8 +260,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[7]),
                     coeff::<T>(b[9]),
                 ],
-            )
-            .map_err(LinalgError::InvalidArgument)?;
+            )?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
@@ -298,8 +290,7 @@ fn pade_uv_13<T: Scalar>(
     let w1 = linear_combine(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[13]), coeff::<T>(b[11]), coeff::<T>(b[9])],
-    )
-    .map_err(LinalgError::InvalidArgument)?;
+    )?;
 
     // W2 = b7 A^6 + b5 A^4 + b3 A^2 + b1 I
     let w2 = linear_combine(
@@ -310,21 +301,18 @@ fn pade_uv_13<T: Scalar>(
             coeff::<T>(b[3]),
             coeff::<T>(b[1]),
         ],
-    )
-    .map_err(LinalgError::InvalidArgument)?;
+    )?;
 
     // U = A (A^6 W1 + W2)
     let a6w1 = matmul(backend, &a6, &w1)?;
-    let u_inner = linear_combine(&[&a6w1, &w2], &[T::one(), T::one()])
-        .map_err(LinalgError::InvalidArgument)?;
+    let u_inner = linear_combine(&[&a6w1, &w2], &[T::one(), T::one()])?;
     let u = matmul(backend, a, &u_inner)?;
 
     // W3 = b12 A^6 + b10 A^4 + b8 A^2
     let w3 = linear_combine(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[12]), coeff::<T>(b[10]), coeff::<T>(b[8])],
-    )
-    .map_err(LinalgError::InvalidArgument)?;
+    )?;
 
     // W4 = b6 A^6 + b4 A^4 + b2 A^2 + b0 I
     let w4 = linear_combine(
@@ -335,13 +323,11 @@ fn pade_uv_13<T: Scalar>(
             coeff::<T>(b[2]),
             coeff::<T>(b[0]),
         ],
-    )
-    .map_err(LinalgError::InvalidArgument)?;
+    )?;
 
     // V = A^6 W3 + W4
     let a6w3 = matmul(backend, &a6, &w3)?;
-    let v = linear_combine(&[&a6w3, &w4], &[T::one(), T::one()])
-        .map_err(LinalgError::InvalidArgument)?;
+    let v = linear_combine(&[&a6w3, &w4], &[T::one(), T::one()])?;
 
     Ok((u, v))
 }
@@ -475,12 +461,10 @@ fn solve_pade<T: Scalar>(
 ) -> Result<Dense<T>, LinalgError> {
     // V - U
     let neg_one: T = coeff::<T>(-1.0);
-    let lhs =
-        linear_combine(&[v, u], &[T::one(), neg_one]).map_err(LinalgError::InvalidArgument)?;
+    let lhs = linear_combine(&[v, u], &[T::one(), neg_one])?;
 
     // V + U
-    let rhs =
-        linear_combine(&[v, u], &[T::one(), T::one()]).map_err(LinalgError::InvalidArgument)?;
+    let rhs = linear_combine(&[v, u], &[T::one(), T::one()])?;
 
     // Reshape rhs to n x n for solve (nrow_a=1 since shape is [n, n])
     solve(backend, &lhs, &rhs, 1)
