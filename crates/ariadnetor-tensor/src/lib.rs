@@ -15,8 +15,8 @@ mod sector;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{
-    Complex, ComputeBackend, ContractionError, ContractionPlan, EinsumExpr, FloatCompute,
-    MemoryOrder, Scalar, compute_permutation,
+    Complex, ComputeBackend, ContractionError, ContractionPlan, EinsumExpr, MemoryOrder, Scalar,
+    compute_permutation,
 };
 
 pub use block_sparse::{BlockCoord, BlockMeta, BlockSparse, Direction, QNIndex};

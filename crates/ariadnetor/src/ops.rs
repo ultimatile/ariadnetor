@@ -3,14 +3,12 @@
 //! These wrap `arnet_linalg::*` by pulling the backend from the tensor arguments,
 //! so users never need to pass `&backend` explicitly.
 
-use std::ops::Mul;
 use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::LinalgError;
 use arnet_tensor::Dense;
-use num_traits::Zero;
 
 use crate::{DiagTensor, Tensor};
 
@@ -53,12 +51,12 @@ pub type EigResult<S, B> = (
 // ============================================================================
 
 /// Wrap a Dense result back into a Tensor with the given backend.
-fn wrap<S: Clone, B: ComputeBackend>(dense: Dense<S>, backend: &Arc<B>) -> Tensor<Dense<S>, B> {
+fn wrap<S: Scalar, B: ComputeBackend>(dense: Dense<S>, backend: &Arc<B>) -> Tensor<Dense<S>, B> {
     Tensor::with_backend(dense, Arc::clone(backend))
 }
 
 /// Wrap a 1D Dense as a DiagTensor with the given backend.
-fn wrap_diag<S: Clone, B: ComputeBackend>(dense: Dense<S>, backend: &Arc<B>) -> DiagTensor<S, B> {
+fn wrap_diag<S: Scalar, B: ComputeBackend>(dense: Dense<S>, backend: &Arc<B>) -> DiagTensor<S, B> {
     DiagTensor::from_vec_with_backend(dense.data().to_vec(), Arc::clone(backend))
 }
 
@@ -251,10 +249,10 @@ pub fn inverse<S: Scalar, B: ComputeBackend>(
 // ============================================================================
 
 /// Scale tensor by a scalar factor (out-of-place).
-pub fn scale<S, B: ComputeBackend>(tensor: &Tensor<Dense<S>, B>, factor: S) -> Tensor<Dense<S>, B>
-where
-    S: Clone + Mul<Output = S>,
-{
+pub fn scale<S: Scalar, B: ComputeBackend>(
+    tensor: &Tensor<Dense<S>, B>,
+    factor: S,
+) -> Tensor<Dense<S>, B> {
     let result = arnet_linalg::scale(&tensor.storage, factor);
     wrap(result, tensor.backend_arc())
 }
@@ -300,13 +298,10 @@ pub fn diag_extract<S: Scalar, B: ComputeBackend>(
 }
 
 /// Linear combination of tensors.
-pub fn linear_combine<S, B: ComputeBackend>(
+pub fn linear_combine<S: Scalar, B: ComputeBackend>(
     tensors: &[&Tensor<Dense<S>, B>],
     coefs: &[S],
-) -> Result<Tensor<Dense<S>, B>, String>
-where
-    S: Clone + Zero + std::ops::Add<Output = S> + Mul<Output = S>,
-{
+) -> Result<Tensor<Dense<S>, B>, String> {
     assert!(!tensors.is_empty(), "Cannot combine empty tensor list");
     let dense_refs: Vec<&Dense<S>> = tensors.iter().map(|t| &t.storage).collect();
     let result = arnet_linalg::linear_combine(&dense_refs, coefs)?;

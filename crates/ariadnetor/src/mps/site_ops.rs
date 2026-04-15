@@ -175,7 +175,7 @@ fn real<T: Scalar>(val: f64) -> T {
     T::from_real_imag(r, T::Real::zero())
 }
 
-/// Convert an f64 value to a FloatCompute (Real) type.
+/// Convert an f64 value to any type that implements [`NumCast`].
 fn real_val<R: NumCast>(val: f64) -> R {
     NumCast::from(val).unwrap()
 }

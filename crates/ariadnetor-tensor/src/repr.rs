@@ -2,6 +2,8 @@
 //!
 //! Defines the common interface that all tensor storage types must implement.
 
+use arnet_core::Scalar;
+
 use crate::block_sparse::BlockSparse;
 use crate::dense::Dense;
 use crate::sector::Sector;
@@ -10,8 +12,8 @@ use crate::sector::Sector;
 ///
 /// Implemented by [`Dense<T>`] and [`BlockSparse<T, S>`].
 pub trait TensorRepr: Clone {
-    /// Element type stored in the tensor
-    type Elem;
+    /// Scalar element type stored in the tensor.
+    type Elem: Scalar;
 
     /// Get the shape of the tensor
     fn shape(&self) -> &[usize];
@@ -32,7 +34,7 @@ pub trait TensorRepr: Clone {
     }
 }
 
-impl<T> TensorRepr for Dense<T> {
+impl<T: Scalar> TensorRepr for Dense<T> {
     type Elem = T;
 
     fn shape(&self) -> &[usize] {
@@ -40,7 +42,7 @@ impl<T> TensorRepr for Dense<T> {
     }
 }
 
-impl<T, S: Sector> TensorRepr for BlockSparse<T, S> {
+impl<T: Scalar, S: Sector> TensorRepr for BlockSparse<T, S> {
     type Elem = T;
 
     fn shape(&self) -> &[usize] {
