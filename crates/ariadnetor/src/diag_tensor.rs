@@ -32,7 +32,7 @@ use crate::Tensor;
 #[derive(Debug, Clone)]
 pub struct DiagTensor<S = f64, B: ComputeBackend = NativeBackend>(Tensor<Dense<S>, B>);
 
-impl<S: Clone, B: ComputeBackend> DiagTensor<S, B> {
+impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
     /// Create a `DiagTensor` from a rank-1 tensor.
     ///
     /// # Errors
@@ -158,14 +158,14 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
     }
 }
 
-impl<S: Clone> DiagTensor<S, NativeBackend> {
+impl<S: Scalar> DiagTensor<S, NativeBackend> {
     /// Create a `DiagTensor` from a vector (default: NativeBackend).
     pub fn from_vec(diag: Vec<S>) -> Self {
         Self::from_vec_with_backend(diag, NativeBackend::shared())
     }
 }
 
-impl<S: Clone, B: ComputeBackend> Deref for DiagTensor<S, B> {
+impl<S: Scalar, B: ComputeBackend> Deref for DiagTensor<S, B> {
     type Target = Tensor<Dense<S>, B>;
 
     fn deref(&self) -> &Self::Target {
@@ -175,7 +175,7 @@ impl<S: Clone, B: ComputeBackend> Deref for DiagTensor<S, B> {
 
 impl<S, B: ComputeBackend> fmt::Display for DiagTensor<S, B>
 where
-    S: fmt::Display + Clone,
+    S: Scalar + fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "DiagTensor(")?;

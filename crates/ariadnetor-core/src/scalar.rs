@@ -16,16 +16,9 @@ mod sealed {
     impl Sealed for num_complex::Complex<f64> {}
 }
 
-/// Real-valued computation type for norm results and normalization factors.
-///
-/// Delegates to `num_traits::Float` for arithmetic operations.
-/// Currently implemented for f32 and f64.
-pub trait FloatCompute: num_traits::Float + 'static {}
-
-impl FloatCompute for f32 {}
-impl FloatCompute for f64 {}
-
 /// Scalar type for tensor elements (sealed trait).
+///
+/// See ADR-0003 for the design rationale (E0592 avoidance via sealed pattern).
 pub trait Scalar:
     sealed::Sealed
     + Clone
@@ -37,7 +30,9 @@ pub trait Scalar:
     + std::ops::Mul<Output = Self>
     + std::ops::Mul<Self::Real, Output = Self>
 {
-    type Real: FloatCompute;
+    /// The real part type. Always `Scalar + Float` — supports both tensor
+    /// operations (`TensorRepr`) and floating-point math (`sqrt`, `exp`, etc.).
+    type Real: Scalar + num_traits::Float;
     type Complex: Scalar;
     fn abs(self) -> Self::Real;
     fn re(self) -> Self::Real;

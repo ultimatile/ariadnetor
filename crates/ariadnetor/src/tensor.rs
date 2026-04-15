@@ -84,23 +84,14 @@ impl<T: TensorRepr, B: ComputeBackend> Tensor<T, B> {
 // Dense-specific constructors with default NativeBackend
 // ============================================================================
 
-impl<S> Tensor<Dense<S>, NativeBackend>
-where
-    S: Clone,
-{
+impl<S: Scalar> Tensor<Dense<S>, NativeBackend> {
     /// Create a tensor filled with zeros (default: NativeBackend).
-    pub fn zeros(shape: Vec<usize>) -> Self
-    where
-        S: Zero,
-    {
+    pub fn zeros(shape: Vec<usize>) -> Self {
         Self::with_backend(Dense::zeros(shape), NativeBackend::shared())
     }
 
     /// Create a tensor filled with ones (default: NativeBackend).
-    pub fn ones(shape: Vec<usize>) -> Self
-    where
-        S: One + Zero,
-    {
+    pub fn ones(shape: Vec<usize>) -> Self {
         Self::with_backend(Dense::ones(shape), NativeBackend::shared())
     }
 
@@ -114,10 +105,7 @@ where
 // Dense-specific data access (all backends)
 // ============================================================================
 
-impl<S, B: ComputeBackend> Tensor<Dense<S>, B>
-where
-    S: Clone,
-{
+impl<S: Scalar, B: ComputeBackend> Tensor<Dense<S>, B> {
     /// Get a reference to the underlying data.
     pub fn data(&self) -> &[S] {
         self.storage.data()

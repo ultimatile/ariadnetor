@@ -17,7 +17,7 @@ use super::types::{Mpo, Mps, TruncResult, TruncateParams};
 /// Implemented for [`Dense<T>`] and [`BlockSparse<T, S>`], routing each
 /// operation to its storage-specific implementation. Algorithms written
 /// against `R: MpsOps` work with both storage types without duplication.
-pub trait MpsOps: TensorRepr<Elem: Scalar> + Sized {
+pub trait MpsOps: TensorRepr + Sized {
     /// Position the orthogonality center at `center`.
     fn canonicalize<B: ComputeBackend>(chain: &mut impl TensorChain<Self, B>, center: usize);
 
