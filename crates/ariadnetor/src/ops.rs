@@ -302,7 +302,11 @@ pub fn linear_combine<S: Scalar, B: ComputeBackend>(
     tensors: &[&Tensor<Dense<S>, B>],
     coefs: &[S],
 ) -> Result<Tensor<Dense<S>, B>, LinalgError> {
-    assert!(!tensors.is_empty(), "Cannot combine empty tensor list");
+    if tensors.is_empty() {
+        return Err(LinalgError::InvalidArgument(
+            "Cannot combine empty tensor list".to_string(),
+        ));
+    }
     let dense_refs: Vec<&Dense<S>> = tensors.iter().map(|t| &t.storage).collect();
     let result = arnet_linalg::linear_combine(&dense_refs, coefs)?;
     Ok(wrap(result, tensors[0].backend_arc()))
