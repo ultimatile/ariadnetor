@@ -501,3 +501,70 @@ fn z2_rank2_matmul() {
         _ => panic!("expected tensor"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Permuted axis contraction (exercises trans_a/trans_b path)
+// ---------------------------------------------------------------------------
+
+/// Contract lhs axis 0 (Out) with rhs axis 1 (In): a_{ij} b_{ki} -> c_{jk}.
+/// This triggers the GEMM trans_a path for rank-2 tensors with ascending prefix.
+#[test]
+fn contract_permuted_axes_rank2() {
+    // A: 2×2 block (sector 0) + 1×1 block (sector 1), flux=0
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
+
+    // A block (0,0) = [[1,2],[3,4]], block (1,1) = [[5]]
+    let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![row.clone(), col.clone()], U1Sector(0));
+    let d = a.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
+    d.copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
+    let d = a.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
+    d[0] = 5.0;
+
+    // B = A (same tensor)
+    let a2 = a.clone();
+
+    // Standard: contract [1],[0] → A × A (matmul)
+    let standard = match contract_block_sparse(&b(), &a, &a2, &[1], &[0]).unwrap() {
+        BlockSparseContractResult::Tensor(t) => t,
+        _ => panic!("expected tensor"),
+    };
+
+    // Permuted: contract [0],[1] → A^T × A^T
+    // a_{ij} b_{ki} -> c_{jk}: sum over i.
+    // c_{jk} = sum_i a_{ij} b_{ki} = (A^T A^T)_{jk}
+    let permuted = match contract_block_sparse(&b(), &a, &a2, &[0], &[1]).unwrap() {
+        BlockSparseContractResult::Tensor(t) => t,
+        _ => panic!("expected tensor"),
+    };
+
+    // Verify: (A^T B^T)_{jk} = (B A)^T_{jk} = (A A)^T_{jk}
+    // Standard block (0,0) = A×A block (0,0) = [[1,2],[3,4]]×[[1,2],[3,4]] = [[7,10],[15,22]]
+    // Permuted block (0,0) = (A×A)^T block (0,0) = [[7,15],[10,22]]
+    let s00 = standard.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    let p00 = permuted.block_data(&BlockCoord(vec![0, 0])).unwrap();
+
+    // Standard in RM: [7, 10, 15, 22]. Permuted (transpose) in RM: [7, 15, 10, 22].
+    let s00_rm = to_order(&[7.0, 10.0, 15.0, 22.0], &[2, 2]);
+    let p00_rm = to_order(&[7.0, 15.0, 10.0, 22.0], &[2, 2]);
+    for i in 0..4 {
+        assert!(
+            (s00[i] - s00_rm[i]).abs() < 1e-10,
+            "standard[{i}]: {} vs {}",
+            s00[i],
+            s00_rm[i]
+        );
+        assert!(
+            (p00[i] - p00_rm[i]).abs() < 1e-10,
+            "permuted[{i}]: {} vs {}",
+            p00[i],
+            p00_rm[i]
+        );
+    }
+
+    // Block (1,1): scalar 5*5=25 for both
+    let s11 = standard.block_data(&BlockCoord(vec![1, 1])).unwrap();
+    let p11 = permuted.block_data(&BlockCoord(vec![1, 1])).unwrap();
+    assert!((s11[0] - 25.0).abs() < 1e-10);
+    assert!((p11[0] - 25.0).abs() < 1e-10);
+}
