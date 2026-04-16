@@ -99,7 +99,6 @@ where
     }
 
     /// Create a tensor filled with random values from the standard distribution.
-    #[cfg(feature = "random")]
     pub fn random<R: rand::Rng>(shape: Vec<usize>, rng: &mut R) -> Self
     where
         rand::distr::StandardUniform: rand::distr::Distribution<T>,
