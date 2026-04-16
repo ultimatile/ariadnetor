@@ -490,6 +490,26 @@ impl<T, S: Sector> BlockSparse<T, S> {
         }
     }
 
+    /// Construct a `BlockSparse` with all flux-allowed blocks filled with
+    /// random values from the standard distribution.
+    ///
+    /// The tensor structure (shape, blocks, flux) is identical to [`Self::zeros`];
+    /// only the data differs.
+    pub fn random<R: rand::Rng>(indices: Vec<QNIndex<S>>, flux: S, rng: &mut R) -> Self
+    where
+        T: Clone + num_traits::Zero,
+        rand::distr::StandardUniform: rand::distr::Distribution<T>,
+    {
+        let mut tensor = Self::zeros(indices, flux);
+        for meta in tensor.block_metas().to_vec() {
+            let block = tensor.block_data_mut(&meta.coord).unwrap();
+            for elem in block.iter_mut() {
+                *elem = rng.random();
+            }
+        }
+        tensor
+    }
+
     /// Mutable data slice for a block identified by coordinate (CoW).
     ///
     /// Triggers a copy of the entire data buffer if other clones exist.

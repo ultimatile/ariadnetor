@@ -484,9 +484,6 @@ fn test_iter_empty() {
     assert_eq!(t.iter().count(), 0);
 }
 
-// --- random tests (require "random" feature) ---
-
-#[cfg(feature = "random")]
 mod random_tests {
     use arnet_tensor::Dense;
     use rand::SeedableRng;

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use rand::SeedableRng;
+
 use crate::block_sparse::*;
 use crate::repr::TensorRepr;
 use crate::sector::{U1Sector, Z2Sector};
@@ -208,4 +210,67 @@ fn block_data_mut_cow_semantics() {
     assert!(!Arc::ptr_eq(&bs.data, &cloned.data));
     assert_eq!(bs.block_data(&BlockCoord(vec![0, 0])).unwrap()[0], 42.0);
     assert_eq!(cloned.block_data(&BlockCoord(vec![0, 0])).unwrap()[0], 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// random constructor
+// ---------------------------------------------------------------------------
+
+#[test]
+fn random_matches_zeros_structure() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let row = QNIndex::new(
+        vec![(U1Sector(0), 2), (U1Sector(1), 3), (U1Sector(2), 4)],
+        Direction::Out,
+    );
+    let col = QNIndex::new(vec![(U1Sector(0), 5), (U1Sector(1), 2)], Direction::In);
+
+    let zeros = BlockSparse::<f64, U1Sector>::zeros(vec![row.clone(), col.clone()], U1Sector(1));
+    let rand_bs = BlockSparse::<f64, U1Sector>::random(vec![row, col], U1Sector(1), &mut rng);
+
+    assert_eq!(rand_bs.shape(), zeros.shape());
+    assert_eq!(rand_bs.num_blocks(), zeros.num_blocks());
+    assert_eq!(rand_bs.stored_len(), zeros.stored_len());
+    assert_eq!(rand_bs.flux(), zeros.flux());
+    assert_eq!(rand_bs.indices().len(), zeros.indices().len());
+}
+
+#[test]
+fn random_reproducible() {
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
+
+    let mut rng1 = rand::rngs::StdRng::seed_from_u64(123);
+    let bs1 = BlockSparse::<f64, U1Sector>::random(
+        vec![row.clone(), col.clone()],
+        U1Sector(0),
+        &mut rng1,
+    );
+
+    let mut rng2 = rand::rngs::StdRng::seed_from_u64(123);
+    let bs2 = BlockSparse::<f64, U1Sector>::random(vec![row, col], U1Sector(0), &mut rng2);
+
+    for meta in bs1.block_metas() {
+        let d1 = bs1.block_data(&meta.coord).unwrap();
+        let d2 = bs2.block_data(&meta.coord).unwrap();
+        assert_eq!(d1, d2);
+    }
+}
+
+#[test]
+fn random_data_is_nonzero() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+    let row = QNIndex::new(vec![(U1Sector(0), 4), (U1Sector(1), 4)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 4), (U1Sector(1), 4)], Direction::In);
+
+    let bs = BlockSparse::<f64, U1Sector>::random(vec![row, col], U1Sector(0), &mut rng);
+
+    // With 32 random f64 values, probability of all zero is negligible
+    let has_nonzero = bs.block_metas().iter().any(|meta| {
+        bs.block_data(&meta.coord)
+            .unwrap()
+            .iter()
+            .any(|&v| v != 0.0)
+    });
+    assert!(has_nonzero);
 }
