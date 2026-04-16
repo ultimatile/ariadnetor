@@ -21,6 +21,10 @@ rand = { workspace = true }
 name = "scalar_ops"
 harness = false
 
+[[bench]]
+name = "block_sparse_ops"
+harness = false
+
 [lib]
 name = "arnet_linalg"
 path = "src/lib.rs"
