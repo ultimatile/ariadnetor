@@ -5,7 +5,8 @@
 //! - svd_block_sparse / trunc_svd_block_sparse
 //! - qr_block_sparse / lq_block_sparse
 //!
-//! Each group includes a Dense baseline of equivalent total dimension.
+//! Decomposition and rank-2 contract groups include a Dense baseline of
+//! equivalent total dimension. Rank-3 contraction is BlockSparse-only.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
@@ -114,6 +115,44 @@ fn bench_contract(c: &mut Criterion) {
             &(&a_dense, &b_dense),
             |bench, (a, b)| {
                 bench.iter_with_large_drop(|| contract(&backend, a, b, "ij,jk->ik").unwrap());
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Contraction with non-standard axis pairing that forces internal permutation.
+///
+/// Contracts axis 0 of both operands (instead of the aligned [1],[0] case),
+/// exercising the permutation/reordering path in contract_block_sparse.
+fn bench_contract_permuted(c: &mut Criterion) {
+    let backend = NativeBackend::new();
+    let mut group = c.benchmark_group("contract_bsp_permuted");
+
+    for p in &standard_sweep() {
+        let a = random_bsp_matrix(p.q, p.d);
+        let b = random_bsp_matrix(p.q, p.d);
+        // Contract axis 0 of lhs (Out) with axis 1 of rhs (In): a_{ij} b_{kj} -> c_{ik}
+        // The contracted axis is not at the natural GEMM position, forcing permutation.
+        group.bench_with_input(
+            BenchmarkId::new("bsp", &p.label),
+            &(&a, &b),
+            |bench, (a, b)| {
+                bench.iter_with_large_drop(|| {
+                    contract_block_sparse(&backend, a, b, &[0], &[1]).unwrap()
+                });
+            },
+        );
+
+        let total = p.q * p.d;
+        let a_dense = random_dense_matrix(total);
+        let b_dense = random_dense_matrix(total);
+        group.bench_with_input(
+            BenchmarkId::new("dense", &p.label),
+            &(&a_dense, &b_dense),
+            |bench, (a, b)| {
+                bench.iter_with_large_drop(|| contract(&backend, a, b, "ij,kj->ik").unwrap());
             },
         );
     }
@@ -293,6 +332,7 @@ fn bench_singh_reference(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_contract,
+    bench_contract_permuted,
     bench_contract_rank3,
     bench_svd,
     bench_trunc_svd,
