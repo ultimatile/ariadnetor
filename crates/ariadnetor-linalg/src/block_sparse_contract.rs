@@ -438,15 +438,15 @@ fn is_identity_perm(perm: &[usize]) -> bool {
     perm.iter().enumerate().all(|(i, &p)| p == i)
 }
 
-/// Check if a set of axes forms the ascending prefix `[0, 1, ..., n-1]`.
+/// Check if axes are exactly `[0, 1, ..., n-1]` in order.
 ///
-/// When contracted axes form a leading prefix, the block's column-major 2D view
-/// is naturally (k, m), so GEMM `trans_a=true` reads it as (m, k) without any
-/// data movement. Similarly for free axes on the RHS with `trans_b=true`.
+/// When contracted axes form an in-order leading prefix, the block's
+/// column-major 2D view is naturally (k, m), so GEMM `trans_a=true`
+/// reads it as (m, k) without data movement. The axes must be in
+/// ascending order (not just a prefix as a set) to ensure the k-dimension
+/// linearization matches between operands.
 fn is_ascending_prefix(axes: &[usize]) -> bool {
-    let mut sorted: Vec<usize> = axes.to_vec();
-    sorted.sort();
-    sorted.iter().enumerate().all(|(i, &a)| a == i)
+    axes.iter().enumerate().all(|(i, &a)| a == i)
 }
 
 #[cfg(test)]
