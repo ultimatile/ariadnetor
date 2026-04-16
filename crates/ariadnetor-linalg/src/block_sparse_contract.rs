@@ -264,21 +264,15 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let rhs_perm: Vec<usize> = axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
 
     // Determine transpose strategy per operand:
-    // - Cyclic prefix shift permutations are equivalent to 2D matrix transpose,
-    //   so GEMM's trans_a/trans_b flags can replace the physical rearrangement.
+    // - If contracted axes form an ascending prefix [0..c) for lhs, the block's
+    //   CM 2D view is (k, m) and GEMM trans_a=true reads it as (m, k).
+    // - If free axes form an ascending prefix [0..f) for rhs, the block's
+    //   CM 2D view is (n, k) and GEMM trans_b=true reads it as (k, n).
     // - Other non-identity permutations require explicit transpose_block_data.
-    let lhs_trans_flag = if is_identity_perm(&lhs_perm) {
-        false
-    } else {
-        is_cyclic_prefix_shift(&lhs_perm)
-    };
+    let lhs_trans_flag = !is_identity_perm(&lhs_perm) && is_ascending_prefix(axes_lhs);
     let lhs_needs_physical_t = !is_identity_perm(&lhs_perm) && !lhs_trans_flag;
 
-    let rhs_trans_flag = if is_identity_perm(&rhs_perm) {
-        false
-    } else {
-        is_cyclic_prefix_shift(&rhs_perm)
-    };
+    let rhs_trans_flag = !is_identity_perm(&rhs_perm) && is_ascending_prefix(free_rhs);
     let rhs_needs_physical_t = !is_identity_perm(&rhs_perm) && !rhs_trans_flag;
 
     let order = backend.preferred_order();
@@ -444,19 +438,15 @@ fn is_identity_perm(perm: &[usize]) -> bool {
     perm.iter().enumerate().all(|(i, &p)| p == i)
 }
 
-/// Check if a permutation is a cyclic prefix shift: `[s, s+1, ..., r-1, 0, ..., s-1]`.
+/// Check if a set of axes forms the ascending prefix `[0, 1, ..., n-1]`.
 ///
-/// Such permutations move a contiguous prefix of axes to the suffix, which is
-/// equivalent to a 2D matrix transpose when the block is interpreted as
-/// (prefix_product × suffix_product). This allows using GEMM `trans_a`/`trans_b`
-/// flags instead of a physical data rearrangement.
-fn is_cyclic_prefix_shift(perm: &[usize]) -> bool {
-    let r = perm.len();
-    if r <= 1 {
-        return true;
-    }
-    let s = perm[0];
-    (0..r).all(|i| perm[i] == (s + i) % r)
+/// When contracted axes form a leading prefix, the block's column-major 2D view
+/// is naturally (k, m), so GEMM `trans_a=true` reads it as (m, k) without any
+/// data movement. Similarly for free axes on the RHS with `trans_b=true`.
+fn is_ascending_prefix(axes: &[usize]) -> bool {
+    let mut sorted: Vec<usize> = axes.to_vec();
+    sorted.sort();
+    sorted.iter().enumerate().all(|(i, &a)| a == i)
 }
 
 #[cfg(test)]
