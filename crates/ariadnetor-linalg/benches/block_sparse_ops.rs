@@ -124,8 +124,9 @@ fn bench_contract(c: &mut Criterion) {
 
 /// Contraction with non-standard axis pairing that forces internal permutation.
 ///
-/// Contracts axis 0 of both operands (instead of the aligned [1],[0] case),
-/// exercising the permutation/reordering path in contract_block_sparse.
+/// Contracts lhs axis 0 (Out) with rhs axis 1 (In): a_{ij} b_{ki} -> c_{jk}.
+/// The contracted axis is the first of lhs instead of the last, so the
+/// block-sparse contraction path must permute before GEMM.
 fn bench_contract_permuted(c: &mut Criterion) {
     let backend = NativeBackend::new();
     let mut group = c.benchmark_group("contract_bsp_permuted");
@@ -133,8 +134,6 @@ fn bench_contract_permuted(c: &mut Criterion) {
     for p in &standard_sweep() {
         let a = random_bsp_matrix(p.q, p.d);
         let b = random_bsp_matrix(p.q, p.d);
-        // Contract axis 0 of lhs (Out) with axis 1 of rhs (In): a_{ij} b_{kj} -> c_{ik}
-        // The contracted axis is not at the natural GEMM position, forcing permutation.
         group.bench_with_input(
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
@@ -152,7 +151,7 @@ fn bench_contract_permuted(c: &mut Criterion) {
             BenchmarkId::new("dense", &p.label),
             &(&a_dense, &b_dense),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract(&backend, a, b, "ij,kj->ik").unwrap());
+                bench.iter_with_large_drop(|| contract(&backend, a, b, "ij,ki->jk").unwrap());
             },
         );
     }
