@@ -413,15 +413,20 @@ impl<T: Clone, S: Sector> BlockSparse<T, S> {
     }
 }
 
-impl<T, S: Sector> BlockSparse<T, S> {
-    /// Construct a zero-filled `BlockSparse` with all flux-allowed blocks.
+impl<S: Sector> BlockSparse<(), S> {
+    /// Enumerate flux-allowed blocks and build structural metadata.
     ///
-    /// Enumerates every block coordinate satisfying the flux conservation law
-    /// and allocates a contiguous zero-filled data buffer.
-    pub fn zeros(indices: Vec<QNIndex<S>>, flux: S) -> Self
-    where
-        T: Clone + num_traits::Zero,
-    {
+    /// Returns `(blocks, block_index, shape, total_size)` — everything needed
+    /// to construct a `BlockSparse` except the data buffer itself.
+    fn build_structure(
+        indices: &[QNIndex<S>],
+        flux: &S,
+    ) -> (
+        Vec<BlockMeta>,
+        HashMap<BlockCoord, usize>,
+        Vec<usize>,
+        usize,
+    ) {
         let shape: Vec<usize> = indices.iter().map(|idx| idx.total_dim()).collect();
         let rank = indices.len();
         let num_blocks_per_leg: Vec<usize> = indices.iter().map(|idx| idx.num_blocks()).collect();
@@ -442,7 +447,7 @@ impl<T, S: Sector> BlockSparse<T, S> {
                     fused = fused.fuse(&directed);
                 }
 
-                if fused == flux {
+                if fused == *flux {
                     let size: usize = current
                         .iter()
                         .enumerate()
@@ -477,8 +482,51 @@ impl<T, S: Sector> BlockSparse<T, S> {
             block_index.insert(meta.coord.clone(), i);
         }
 
+        (blocks, block_index, shape, total_size)
+    }
+}
+
+impl<T, S: Sector> BlockSparse<T, S> {
+    /// Construct a zero-filled `BlockSparse` with all flux-allowed blocks.
+    ///
+    /// Enumerates every block coordinate satisfying the flux conservation law
+    /// and allocates a contiguous zero-filled data buffer.
+    pub fn zeros(indices: Vec<QNIndex<S>>, flux: S) -> Self
+    where
+        T: Clone + num_traits::Zero,
+    {
+        let (blocks, block_index, shape, total_size) =
+            BlockSparse::<(), S>::build_structure(&indices, &flux);
+
         let mut data = AVec::<T, ConstAlign<64>>::with_capacity(64, total_size);
         data.resize(total_size, T::zero());
+
+        Self {
+            data: Arc::new(data),
+            blocks,
+            block_index,
+            indices,
+            flux,
+            shape,
+        }
+    }
+
+    /// Construct a `BlockSparse` with all flux-allowed blocks filled with
+    /// random values from the standard distribution.
+    ///
+    /// The tensor structure (shape, blocks, flux) is identical to [`Self::zeros`];
+    /// only the data differs.
+    pub fn random<R: rand::Rng>(indices: Vec<QNIndex<S>>, flux: S, rng: &mut R) -> Self
+    where
+        rand::distr::StandardUniform: rand::distr::Distribution<T>,
+    {
+        let (blocks, block_index, shape, total_size) =
+            BlockSparse::<(), S>::build_structure(&indices, &flux);
+
+        let mut data = AVec::<T, ConstAlign<64>>::with_capacity(64, total_size);
+        for _ in 0..total_size {
+            data.push(rng.random());
+        }
 
         Self {
             data: Arc::new(data),
