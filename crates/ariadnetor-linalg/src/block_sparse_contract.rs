@@ -263,21 +263,21 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let lhs_perm: Vec<usize> = free_lhs.iter().chain(axes_lhs.iter()).copied().collect();
     let rhs_perm: Vec<usize> = axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
 
-    // Determine transpose strategy per operand:
-    // - If contracted axes form an ascending prefix [0..c) for lhs, the block's
-    //   CM 2D view is (k, m) and GEMM trans_a=true reads it as (m, k).
-    // - If free axes form an ascending prefix [0..f) for rhs, the block's
-    //   CM 2D view is (n, k) and GEMM trans_b=true reads it as (k, n).
-    // - Other non-identity permutations require explicit transpose_block_data.
-    let lhs_trans_flag = !is_identity_perm(&lhs_perm)
-        && is_ascending_prefix(axes_lhs)
-        && is_ascending_suffix(free_lhs, lhs.rank());
-    let lhs_needs_physical_t = !is_identity_perm(&lhs_perm) && !lhs_trans_flag;
+    // Determine transpose strategy per operand.
+    // GEMM wants lhs as (m, k) and rhs as (k, n). When the permutation
+    // is a simple prefix/suffix swap, the reshaped block can be read in
+    // the backend's preferred order via trans_a/trans_b without physical
+    // data movement. Other non-identity permutations require explicit
+    // transpose_block_data.
+    let lhs_is_id = is_identity_perm(&lhs_perm);
+    let lhs_trans_flag =
+        !lhs_is_id && is_ascending_prefix(axes_lhs) && is_ascending_suffix(free_lhs, lhs.rank());
+    let lhs_needs_physical_t = !lhs_is_id && !lhs_trans_flag;
 
-    let rhs_trans_flag = !is_identity_perm(&rhs_perm)
-        && is_ascending_prefix(free_rhs)
-        && is_ascending_suffix(axes_rhs, rhs.rank());
-    let rhs_needs_physical_t = !is_identity_perm(&rhs_perm) && !rhs_trans_flag;
+    let rhs_is_id = is_identity_perm(&rhs_perm);
+    let rhs_trans_flag =
+        !rhs_is_id && is_ascending_prefix(free_rhs) && is_ascending_suffix(axes_rhs, rhs.rank());
+    let rhs_needs_physical_t = !rhs_is_id && !rhs_trans_flag;
 
     let order = backend.preferred_order();
     let rhs_metas = rhs.block_metas();
