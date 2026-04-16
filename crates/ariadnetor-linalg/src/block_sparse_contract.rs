@@ -259,11 +259,31 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let output_flux = lhs.flux().fuse(rhs.flux());
     let mut output = BlockSparse::zeros(output_indices, output_flux);
 
-    // lhs → [free..., contracted...], rhs → [contracted..., free...]
-    let lhs_perm: Vec<usize> = free_lhs.iter().chain(axes_lhs.iter()).copied().collect();
-    let rhs_perm: Vec<usize> = axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
-    let lhs_needs_t = !is_identity_perm(&lhs_perm);
-    let rhs_needs_t = !is_identity_perm(&rhs_perm);
+    // Determine transpose strategy per operand.
+    // GEMM wants lhs as (m, k) and rhs as (k, n). When the permutation
+    // is a simple prefix/suffix swap, the reshaped block can be read in
+    // the backend's preferred order via trans_a/trans_b without physical
+    // data movement. Other non-identity permutations require explicit
+    // transpose_block_data.
+    let lhs_is_id = free_lhs
+        .iter()
+        .chain(axes_lhs.iter())
+        .copied()
+        .enumerate()
+        .all(|(i, p)| p == i);
+    let lhs_trans_flag =
+        !lhs_is_id && is_ascending_prefix(axes_lhs) && is_ascending_suffix(free_lhs, lhs.rank());
+    let lhs_needs_physical_t = !lhs_is_id && !lhs_trans_flag;
+
+    let rhs_is_id = axes_rhs
+        .iter()
+        .chain(free_rhs.iter())
+        .copied()
+        .enumerate()
+        .all(|(i, p)| p == i);
+    let rhs_trans_flag =
+        !rhs_is_id && is_ascending_prefix(free_rhs) && is_ascending_suffix(axes_rhs, rhs.rank());
+    let rhs_needs_physical_t = !rhs_is_id && !rhs_trans_flag;
 
     let order = backend.preferred_order();
     let rhs_metas = rhs.block_metas();
@@ -292,7 +312,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 
         let lhs_data = lhs.block_data(&lhs_meta.coord).unwrap();
         let lhs_buf;
-        let lhs_slice: &[T] = if lhs_needs_t {
+        let lhs_slice: &[T] = if lhs_needs_physical_t {
+            let lhs_perm: Vec<usize> = free_lhs.iter().chain(axes_lhs.iter()).copied().collect();
             lhs_buf = transpose_block_data(lhs_data, &lhs_block_shape, &lhs_perm, order);
             &lhs_buf
         } else {
@@ -326,16 +347,15 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 
             let rhs_data = rhs.block_data(&rhs_meta.coord).unwrap();
             let rhs_buf;
-            let rhs_slice: &[T] = if rhs_needs_t {
+            let rhs_slice: &[T] = if rhs_needs_physical_t {
+                let rhs_perm: Vec<usize> =
+                    axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
                 rhs_buf = transpose_block_data(rhs_data, &rhs_block_shape, &rhs_perm, order);
                 &rhs_buf
             } else {
                 rhs_data
             };
 
-            // Block data layout follows the backend's preferred order.
-            // The descriptor's order field tells the backend the actual
-            // layout of the provided slices.
             backend.gemm(GemmDescriptor {
                 m,
                 n,
@@ -345,8 +365,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 b: rhs_slice,
                 beta: T::one(),
                 c: out_data,
-                trans_a: false,
-                trans_b: false,
+                trans_a: lhs_trans_flag,
+                trans_b: rhs_trans_flag,
                 order,
             })?;
         }
@@ -429,6 +449,23 @@ pub(crate) fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize>
 
 fn is_identity_perm(perm: &[usize]) -> bool {
     perm.iter().enumerate().all(|(i, &p)| p == i)
+}
+
+/// Check if axes are exactly `[0, 1, ..., n-1]` in order.
+///
+/// When contracted axes form an in-order leading prefix, the block's
+/// column-major 2D view is naturally (k, m), so GEMM `trans_a=true`
+/// reads it as (m, k) without data movement. The axes must be in
+/// ascending order (not just a prefix as a set) to ensure the k-dimension
+/// linearization matches between operands.
+fn is_ascending_prefix(axes: &[usize]) -> bool {
+    axes.iter().enumerate().all(|(i, &a)| a == i)
+}
+
+/// Check if axes are exactly `[rank-n, rank-n+1, ..., rank-1]` in order.
+fn is_ascending_suffix(axes: &[usize], rank: usize) -> bool {
+    let offset = rank - axes.len();
+    axes.iter().enumerate().all(|(i, &a)| a == offset + i)
 }
 
 #[cfg(test)]
