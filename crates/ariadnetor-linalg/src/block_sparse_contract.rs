@@ -262,8 +262,24 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     // lhs → [free..., contracted...], rhs → [contracted..., free...]
     let lhs_perm: Vec<usize> = free_lhs.iter().chain(axes_lhs.iter()).copied().collect();
     let rhs_perm: Vec<usize> = axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
-    let lhs_needs_t = !is_identity_perm(&lhs_perm);
-    let rhs_needs_t = !is_identity_perm(&rhs_perm);
+
+    // Determine transpose strategy per operand:
+    // - Cyclic prefix shift permutations are equivalent to 2D matrix transpose,
+    //   so GEMM's trans_a/trans_b flags can replace the physical rearrangement.
+    // - Other non-identity permutations require explicit transpose_block_data.
+    let lhs_trans_flag = if is_identity_perm(&lhs_perm) {
+        false
+    } else {
+        is_cyclic_prefix_shift(&lhs_perm)
+    };
+    let lhs_needs_physical_t = !is_identity_perm(&lhs_perm) && !lhs_trans_flag;
+
+    let rhs_trans_flag = if is_identity_perm(&rhs_perm) {
+        false
+    } else {
+        is_cyclic_prefix_shift(&rhs_perm)
+    };
+    let rhs_needs_physical_t = !is_identity_perm(&rhs_perm) && !rhs_trans_flag;
 
     let order = backend.preferred_order();
     let rhs_metas = rhs.block_metas();
@@ -292,7 +308,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 
         let lhs_data = lhs.block_data(&lhs_meta.coord).unwrap();
         let lhs_buf;
-        let lhs_slice: &[T] = if lhs_needs_t {
+        let lhs_slice: &[T] = if lhs_needs_physical_t {
             lhs_buf = transpose_block_data(lhs_data, &lhs_block_shape, &lhs_perm, order);
             &lhs_buf
         } else {
@@ -326,16 +342,13 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 
             let rhs_data = rhs.block_data(&rhs_meta.coord).unwrap();
             let rhs_buf;
-            let rhs_slice: &[T] = if rhs_needs_t {
+            let rhs_slice: &[T] = if rhs_needs_physical_t {
                 rhs_buf = transpose_block_data(rhs_data, &rhs_block_shape, &rhs_perm, order);
                 &rhs_buf
             } else {
                 rhs_data
             };
 
-            // Block data layout follows the backend's preferred order.
-            // The descriptor's order field tells the backend the actual
-            // layout of the provided slices.
             backend.gemm(GemmDescriptor {
                 m,
                 n,
@@ -345,8 +358,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 b: rhs_slice,
                 beta: T::one(),
                 c: out_data,
-                trans_a: false,
-                trans_b: false,
+                trans_a: lhs_trans_flag,
+                trans_b: rhs_trans_flag,
                 order,
             })?;
         }
@@ -429,6 +442,21 @@ pub(crate) fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize>
 
 fn is_identity_perm(perm: &[usize]) -> bool {
     perm.iter().enumerate().all(|(i, &p)| p == i)
+}
+
+/// Check if a permutation is a cyclic prefix shift: `[s, s+1, ..., r-1, 0, ..., s-1]`.
+///
+/// Such permutations move a contiguous prefix of axes to the suffix, which is
+/// equivalent to a 2D matrix transpose when the block is interpreted as
+/// (prefix_product × suffix_product). This allows using GEMM `trans_a`/`trans_b`
+/// flags instead of a physical data rearrangement.
+fn is_cyclic_prefix_shift(perm: &[usize]) -> bool {
+    let r = perm.len();
+    if r <= 1 {
+        return true;
+    }
+    let s = perm[0];
+    (0..r).all(|i| perm[i] == (s + i) % r)
 }
 
 #[cfg(test)]
