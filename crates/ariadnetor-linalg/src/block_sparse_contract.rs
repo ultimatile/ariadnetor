@@ -269,10 +269,14 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     // - If free axes form an ascending prefix [0..f) for rhs, the block's
     //   CM 2D view is (n, k) and GEMM trans_b=true reads it as (k, n).
     // - Other non-identity permutations require explicit transpose_block_data.
-    let lhs_trans_flag = !is_identity_perm(&lhs_perm) && is_ascending_prefix(axes_lhs);
+    let lhs_trans_flag = !is_identity_perm(&lhs_perm)
+        && is_ascending_prefix(axes_lhs)
+        && is_ascending_suffix(free_lhs, lhs.rank());
     let lhs_needs_physical_t = !is_identity_perm(&lhs_perm) && !lhs_trans_flag;
 
-    let rhs_trans_flag = !is_identity_perm(&rhs_perm) && is_ascending_prefix(free_rhs);
+    let rhs_trans_flag = !is_identity_perm(&rhs_perm)
+        && is_ascending_prefix(free_rhs)
+        && is_ascending_suffix(axes_rhs, rhs.rank());
     let rhs_needs_physical_t = !is_identity_perm(&rhs_perm) && !rhs_trans_flag;
 
     let order = backend.preferred_order();
@@ -447,6 +451,12 @@ fn is_identity_perm(perm: &[usize]) -> bool {
 /// linearization matches between operands.
 fn is_ascending_prefix(axes: &[usize]) -> bool {
     axes.iter().enumerate().all(|(i, &a)| a == i)
+}
+
+/// Check if axes are exactly `[rank-n, rank-n+1, ..., rank-1]` in order.
+fn is_ascending_suffix(axes: &[usize], rank: usize) -> bool {
+    let offset = rank - axes.len();
+    axes.iter().enumerate().all(|(i, &a)| a == offset + i)
 }
 
 #[cfg(test)]
