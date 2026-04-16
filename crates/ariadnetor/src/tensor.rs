@@ -139,7 +139,7 @@ impl<S: Scalar, B: ComputeBackend> Tensor<Dense<S>, B> {
             );
         }
         let flat = arnet_tensor::flat_index(indices, shape, self.backend.preferred_order());
-        self.storage.data()[flat].clone()
+        self.storage.data()[flat]
     }
 
     /// Set element at given indices.

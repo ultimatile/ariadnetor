@@ -19,8 +19,6 @@ use std::sync::Arc;
 /// 64-byte alignment for SIMD (AVX-512)
 type Align64 = ConstAlign<64>;
 
-pub use arnet_core::MemoryOrder;
-
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
 ///
 /// Dense is pure contiguous storage: a flat data buffer plus its shape.
@@ -48,30 +46,6 @@ impl<T> Clone for Dense<T> {
             shape: self.shape.clone(),
         }
     }
-}
-
-// ============================================================================
-// Strides computation helpers
-// ============================================================================
-
-/// Compute row-major (C-order) strides from shape.
-/// Last axis has stride 1, each preceding axis has stride = product of subsequent dims.
-pub fn row_major_strides(shape: &[usize]) -> Vec<isize> {
-    let mut strides = vec![1isize; shape.len()];
-    for i in (0..shape.len().saturating_sub(1)).rev() {
-        strides[i] = strides[i + 1] * shape[i + 1] as isize;
-    }
-    strides
-}
-
-/// Compute column-major (Fortran-order) strides from shape.
-/// First axis has stride 1, each subsequent axis has stride = product of preceding dims.
-pub fn column_major_strides(shape: &[usize]) -> Vec<isize> {
-    let mut strides = vec![1isize; shape.len()];
-    for i in 1..shape.len() {
-        strides[i] = strides[i - 1] * shape[i - 1] as isize;
-    }
-    strides
 }
 
 // ============================================================================

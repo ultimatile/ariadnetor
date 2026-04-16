@@ -87,8 +87,8 @@ where
             MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
         };
 
-        for i in 0..total {
-            result.push(f(&coords, &raw[i]));
+        for val in raw.iter().take(total) {
+            result.push(f(&coords, val));
 
             for &d in axis_order.iter().rev() {
                 coords[d] += 1;
