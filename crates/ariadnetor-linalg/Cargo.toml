@@ -13,7 +13,6 @@ num-traits = { workspace = true }
 
 [dev-dependencies]
 ariadnetor-native = { path = "../ariadnetor-native" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 approx = { workspace = true }
 criterion = { workspace = true }
 rand = { workspace = true }
