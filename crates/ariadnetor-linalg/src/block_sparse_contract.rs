@@ -259,22 +259,28 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let output_flux = lhs.flux().fuse(rhs.flux());
     let mut output = BlockSparse::zeros(output_indices, output_flux);
 
-    // lhs → [free..., contracted...], rhs → [contracted..., free...]
-    let lhs_perm: Vec<usize> = free_lhs.iter().chain(axes_lhs.iter()).copied().collect();
-    let rhs_perm: Vec<usize> = axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
-
     // Determine transpose strategy per operand.
     // GEMM wants lhs as (m, k) and rhs as (k, n). When the permutation
     // is a simple prefix/suffix swap, the reshaped block can be read in
     // the backend's preferred order via trans_a/trans_b without physical
     // data movement. Other non-identity permutations require explicit
     // transpose_block_data.
-    let lhs_is_id = is_identity_perm(&lhs_perm);
+    let lhs_is_id = free_lhs
+        .iter()
+        .chain(axes_lhs.iter())
+        .copied()
+        .enumerate()
+        .all(|(i, p)| p == i);
     let lhs_trans_flag =
         !lhs_is_id && is_ascending_prefix(axes_lhs) && is_ascending_suffix(free_lhs, lhs.rank());
     let lhs_needs_physical_t = !lhs_is_id && !lhs_trans_flag;
 
-    let rhs_is_id = is_identity_perm(&rhs_perm);
+    let rhs_is_id = axes_rhs
+        .iter()
+        .chain(free_rhs.iter())
+        .copied()
+        .enumerate()
+        .all(|(i, p)| p == i);
     let rhs_trans_flag =
         !rhs_is_id && is_ascending_prefix(free_rhs) && is_ascending_suffix(axes_rhs, rhs.rank());
     let rhs_needs_physical_t = !rhs_is_id && !rhs_trans_flag;
@@ -307,6 +313,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
         let lhs_data = lhs.block_data(&lhs_meta.coord).unwrap();
         let lhs_buf;
         let lhs_slice: &[T] = if lhs_needs_physical_t {
+            let lhs_perm: Vec<usize> = free_lhs.iter().chain(axes_lhs.iter()).copied().collect();
             lhs_buf = transpose_block_data(lhs_data, &lhs_block_shape, &lhs_perm, order);
             &lhs_buf
         } else {
@@ -341,6 +348,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
             let rhs_data = rhs.block_data(&rhs_meta.coord).unwrap();
             let rhs_buf;
             let rhs_slice: &[T] = if rhs_needs_physical_t {
+                let rhs_perm: Vec<usize> =
+                    axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
                 rhs_buf = transpose_block_data(rhs_data, &rhs_block_shape, &rhs_perm, order);
                 &rhs_buf
             } else {
