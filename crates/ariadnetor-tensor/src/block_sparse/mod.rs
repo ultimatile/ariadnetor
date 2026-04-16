@@ -501,11 +501,8 @@ impl<T, S: Sector> BlockSparse<T, S> {
         rand::distr::StandardUniform: rand::distr::Distribution<T>,
     {
         let mut tensor = Self::zeros(indices, flux);
-        for meta in tensor.block_metas().to_vec() {
-            let block = tensor.block_data_mut(&meta.coord).unwrap();
-            for elem in block.iter_mut() {
-                *elem = rng.random();
-            }
+        for elem in Arc::make_mut(&mut tensor.data).iter_mut() {
+            *elem = rng.random();
         }
         tensor
     }
