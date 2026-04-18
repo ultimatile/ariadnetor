@@ -1,39 +1,52 @@
-# Equivalent mutants: real types return 0.0 for im(), same as Default::default()
+# Reduce timeout from default 5x to 2x baseline.
+# Most timeouts are FFI glue mutations (gemm/qr/lq/svd/solve/transpose)
+# that cause LAPACK to hang on garbage input — 2x is enough to detect them.
+timeout_multiplier = 2.0
+
 exclude_re = [
+    # Equivalent mutants: real types return 0.0 for im(), same as Default::default()
     "Scalar for f(32|64)>::im .* Default::default",
-    # 3rd sweep restores center position; bonds already at chi_max so error is always 0
-    "truncate.rs:71.* replace \\+ with -",
     # NativeBackend has no state, so Arc::new(Default::default()) == shared()
     "NativeBackend::shared .* Arc::new",
-    # norm_1: tie-breaking order doesn't affect max value
-    "expm.rs:129.* replace > with >=",
-    # expm validation: nrow=0 caught by downstream non-square check
+
+    # --- Line-number-based patterns (fragile: update line numbers when source changes) ---
+    # truncate_dense: 3rd sweep restores center; bonds already at chi_max so error is always 0
+    # (can't use function-name pattern: other + in truncate_dense are NOT equivalent)
+    "truncate.rs:71.* replace \\+ with -",
+    # expm: nrow=0 validation caught by downstream non-square check
+    # (can't use function-name pattern: other || in expm are NOT equivalent)
     "expm.rs:369.* replace .* with &&",
     # expm scaling: boundary/branch equivalences (norm==theta gives s=0 either way,
     # larger s is self-correcting, s<=62 vs s>62 compute same 2^s, s=0 scaling is identity)
+    # (can't use function-name pattern: same operator types appear in non-equivalent positions)
     "expm.rs:419.* replace > with >=",
     "expm.rs:420.* replace / with",
     "expm.rs:427.* replace <= with",
     "expm.rs:432.* replace \\+",
     "expm.rs:438.* replace > with >=",
+    # cumulative_offsets: test gap — all test inputs have single-tuple fused sectors,
+    # so offsets=[0] regardless of += vs *=. Needs multi-tuple with block_dim > 1.
+    # (can't use function-name pattern: only one += exists, but fixing test coverage is preferred)
+    "fused_sector.rs:133.* replace \\+= with",
+
+    # --- Function-name-based patterns (stable across line changes) ---
+    # norm_1: tie-breaking order doesn't affect max value
+    "replace > with >= in norm_1",
+    # is_identity_perm→false: triggers redundant identity transpose (no-op)
+    "replace .* with false in is_identity_perm",
     # einsum: 0-input arm is unreachable (parse always produces >= 1 input)
-    "einsum.rs:63.* delete match arm 0",
+    "delete match arm 0 in einsum$",
     # einsum: Hadamard is an optimization of batched_contract; both produce same result
-    "einsum.rs:115.* replace == with !=",
-    # nrow=0 validation: downstream non-square check catches it (eigh, eig, solve, inverse)
-    "eigen.rs:43.* replace .* with &&",
-    "eigen.rs:144.* replace .* with &&",
-    "solve.rs:37.* replace .* with &&",
-    "solve.rs:124.* replace .* with &&",
+    "replace == with != in einsum_pair",
+    # nrow=0 validation: downstream non-square check catches it
+    "replace .* with && in eigh$",
+    "replace .* with && in eig$",
+    "replace .* with && in solve$",
+    "replace .* with && in inverse$",
+    # transpose_block_data: rank<=1 early return is optimization; transpose of rank-1 is identity
+    "replace .* with && in transpose_block_data",
     # Error::source: error chain metadata, no functional impact
     "LinalgError>::source",
-    # transpose_block_data: rank<=1 early return is optimization; transpose of rank-1 is identity
-    "block_sparse_contract.rs:364.* replace .* with &&",
-    # is_identity_perm→false: triggers redundant identity transpose (no-op)
-    "block_sparse_contract.rs:405.* replace .* with false",
-    # cumulative_offsets: all test inputs have single-tuple fused sectors (dims=[d]),
-    # so offsets=[0] regardless of += vs *=. Needs multi-tuple with block_dim > 1.
-    "fused_sector.rs:133.* replace \\+= with",
     # ComputeBackend default impls: NativeBackend overrides all; no other backend exists
     "ComputeBackend>::is_available",
     "ComputeBackend>::svd .* Ok",
