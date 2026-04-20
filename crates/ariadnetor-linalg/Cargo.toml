@@ -15,6 +15,7 @@ num-traits = { workspace = true }
 ariadnetor-native = { path = "../ariadnetor-native" }
 approx = { workspace = true }
 criterion = { workspace = true }
+faer = { workspace = true }
 rand = { workspace = true }
 
 [[bench]]
