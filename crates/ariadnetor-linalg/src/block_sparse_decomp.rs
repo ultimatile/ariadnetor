@@ -187,39 +187,9 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
         } else {
             let m = group.m;
             let n = group.n;
-            // Truncate U (m x k_f -> m x k_t): keep first k_t columns
-            let u_t = match order {
-                MemoryOrder::RowMajor => {
-                    let mut buf = vec![T::zero(); m * k_t];
-                    for r in 0..m {
-                        buf[r * k_t..(r + 1) * k_t]
-                            .copy_from_slice(&u_matrices[gi][r * k_f..r * k_f + k_t]);
-                    }
-                    buf
-                }
-                MemoryOrder::ColumnMajor => {
-                    // Columns are contiguous; take first k_t columns (k_t * m elements)
-                    u_matrices[gi][..k_t * m].to_vec()
-                }
-            };
-            u_trunc.push(u_t);
+            u_trunc.push(truncate_cols(&u_matrices[gi], m, k_f, k_t, order));
             s_trunc_values.push(all_s[gi][..k_t].to_vec());
-            // Truncate Vt (k_f x n -> k_t x n): keep first k_t rows
-            let vt_t = match order {
-                MemoryOrder::RowMajor => {
-                    // Rows are contiguous; take first k_t rows (k_t * n elements)
-                    vt_matrices[gi][..k_t * n].to_vec()
-                }
-                MemoryOrder::ColumnMajor => {
-                    let mut buf = vec![T::zero(); k_t * n];
-                    for c in 0..n {
-                        buf[c * k_t..(c + 1) * k_t]
-                            .copy_from_slice(&vt_matrices[gi][c * k_f..c * k_f + k_t]);
-                    }
-                    buf
-                }
-            };
-            vt_trunc.push(vt_t);
+            vt_trunc.push(truncate_rows(&vt_matrices[gi], k_f, n, k_t, order));
         }
     }
 
@@ -325,6 +295,46 @@ pub fn lq_block_sparse<T: Scalar, S: Sector>(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/// Keep the first `k_t` columns of an `m × k_f` matrix.
+fn truncate_cols<T: Scalar>(
+    data: &[T],
+    m: usize,
+    k_f: usize,
+    k_t: usize,
+    order: MemoryOrder,
+) -> Vec<T> {
+    match order {
+        MemoryOrder::RowMajor => {
+            let mut buf = vec![T::zero(); m * k_t];
+            for r in 0..m {
+                buf[r * k_t..(r + 1) * k_t].copy_from_slice(&data[r * k_f..r * k_f + k_t]);
+            }
+            buf
+        }
+        MemoryOrder::ColumnMajor => data[..k_t * m].to_vec(),
+    }
+}
+
+/// Keep the first `k_t` rows of a `k_f × n` matrix.
+fn truncate_rows<T: Scalar>(
+    data: &[T],
+    k_f: usize,
+    n: usize,
+    k_t: usize,
+    order: MemoryOrder,
+) -> Vec<T> {
+    match order {
+        MemoryOrder::RowMajor => data[..k_t * n].to_vec(),
+        MemoryOrder::ColumnMajor => {
+            let mut buf = vec![T::zero(); k_t * n];
+            for c in 0..n {
+                buf[c * k_t..(c + 1) * k_t].copy_from_slice(&data[c * k_f..c * k_f + k_t]);
+            }
+            buf
+        }
+    }
+}
 
 fn validate_nrow(rank: usize, nrow: usize) -> Result<(), LinalgError> {
     if nrow == 0 || nrow >= rank {

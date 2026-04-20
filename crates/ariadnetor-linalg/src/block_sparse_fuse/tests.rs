@@ -1,6 +1,8 @@
+use arnet_core::backend::MemoryOrder;
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector, Z2Sector};
 
+use super::copy_fused_block;
 use crate::contract_block_sparse;
 use crate::fuse_legs_block_sparse;
 use crate::permute_block_sparse;
@@ -481,6 +483,54 @@ fn fuse_trailing_axes_with_nontrivial_leading() {
         .expect("should have a 2×2 block");
     let data = fused.block_data(&fused_block.coord).unwrap();
     assert_eq!(data, &[10.0, 20.0, 30.0, 40.0]);
+}
+
+// ---------------------------------------------------------------------------
+// RowMajor: direct tests for copy_fused_block RM path
+// ---------------------------------------------------------------------------
+
+/// RM path: two blocks with fused=1 are merged into fused_total=2.
+/// Catches all arithmetic mutations on lines 194-200 (RM branch).
+#[test]
+fn copy_fused_block_row_major_basic() {
+    // leading=2, fused=1, trailing=3 for each source block.
+    // RM tensor [2, 1, 3]: flat index = l * (fused*trailing) + f * trailing + t
+    let src_a: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let src_b: Vec<f64> = vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+
+    let mut dst = vec![0.0f64; 12]; // [2, 2, 3] in RM
+
+    copy_fused_block(&src_a, &mut dst, 2, 1, 2, 3, 0, MemoryOrder::RowMajor);
+    copy_fused_block(&src_b, &mut dst, 2, 1, 2, 3, 1, MemoryOrder::RowMajor);
+
+    // RM [2, 2, 3]:
+    // l=0: [1,2,3, 7,8,9]  (fused_offset=0 then 1)
+    // l=1: [4,5,6, 10,11,12]
+    assert_eq!(
+        dst,
+        vec![
+            1.0, 2.0, 3.0, 7.0, 8.0, 9.0, 4.0, 5.0, 6.0, 10.0, 11.0, 12.0
+        ]
+    );
+}
+
+/// RM path with fused > 1: exercises src_stride = fused * trailing and
+/// dst_stride = fused_total * trailing with all factors > 1.
+#[test]
+fn copy_fused_block_row_major_fused_gt_1() {
+    // leading=2, fused=2, trailing=3, fused_total=3, fused_offset=1
+    let src: Vec<f64> = (1..=12).map(|x| x as f64).collect(); // 2*2*3=12
+    let mut dst = vec![0.0f64; 18]; // 2*3*3=18
+
+    copy_fused_block(&src, &mut dst, 2, 2, 3, 3, 1, MemoryOrder::RowMajor);
+
+    // RM: src_stride = 2*3 = 6, dst_stride = 3*3 = 9
+    // l=0: dst_start = 0*9 + 1*3 = 3, copy src[0..6] → dst[3..9]
+    // l=1: dst_start = 1*9 + 1*3 = 12, copy src[6..12] → dst[12..18]
+    let mut expected = vec![0.0; 18];
+    expected[3..9].copy_from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    expected[12..18].copy_from_slice(&[7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
+    assert_eq!(dst, expected);
 }
 
 // ---------------------------------------------------------------------------
