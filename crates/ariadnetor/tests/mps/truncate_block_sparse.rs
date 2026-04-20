@@ -270,3 +270,85 @@ fn truncate_bsp_error_is_positive_when_truncated() {
         norm_before
     );
 }
+
+/// Verify reported error² matches ||before||² - ||after||² (Pythagorean identity).
+///
+/// Catches: `total_err_sq + step` → `- step` or `* step`,
+///          `err * err` → `err + err` in right/left_trunc_step_block_sparse.
+#[test]
+fn truncate_bsp_error_matches_reconstruction_error() {
+    let mut mps = make_4site_u1_mps();
+    canonicalize(&mut mps, 2);
+    let state_before = bsp_mps_contract_full(&mps);
+    let norm_before = state_before.norm();
+    let norm_sq_before = norm_before * norm_before;
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+    let result = truncate(&mut mps, &params);
+    let state_after = bsp_mps_contract_full(&mps);
+    let norm_after = state_after.norm();
+    let norm_sq_after = norm_after * norm_after;
+
+    let expected_err_sq = norm_sq_before - norm_sq_after;
+    let reported_err_sq = result.error * result.error;
+    assert!(
+        (reported_err_sq - expected_err_sq).abs() < 1e-6 * norm_sq_before,
+        "reported²={reported_err_sq}, expected²={expected_err_sq}, \
+         diff={}",
+        (reported_err_sq - expected_err_sq).abs(),
+    );
+}
+
+// --------------------------------------------------------------------------
+// CanonicalForm::Left / Right match arms
+// --------------------------------------------------------------------------
+
+/// Catches: delete match arm CanonicalForm::Left, `n - 1` → `n + 1`/`n / 1`.
+#[test]
+fn truncate_bsp_left_form_center_is_last_site() {
+    let mut mps = make_4site_u1_mps();
+    let n = mps.len();
+    canonicalize(&mut mps, n - 1);
+    mps.set_canonical_form(CanonicalForm::Left);
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    truncate(&mut mps, &params);
+
+    assert_eq!(
+        *mps.canonical_form(),
+        CanonicalForm::Mixed { center: n - 1 }
+    );
+    for j in 0..n - 1 {
+        assert!(
+            is_left_canonical_bsp(mps.storage(j), TOL),
+            "site {j} not left-canonical after truncate from Left form"
+        );
+    }
+}
+
+/// Catches: delete match arm CanonicalForm::Right.
+/// Right form uses center=0 regardless of params.center.
+#[test]
+fn truncate_bsp_right_form_ignores_center_param() {
+    let mut mps = make_4site_u1_mps();
+    canonicalize(&mut mps, 0);
+    mps.set_canonical_form(CanonicalForm::Right);
+
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(2),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::Right,
+        center: Some(2),
+    };
+    truncate(&mut mps, &params);
+
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
+}

@@ -12,22 +12,41 @@ exclude_re = [
     # --- Line-number-based patterns (fragile: update line numbers when source changes) ---
     # truncate_dense: 3rd sweep restores center; bonds already at chi_max so error is always 0
     # (can't use function-name pattern: other + in truncate_dense are NOT equivalent)
-    "truncate.rs:71.* replace \\+ with -",
+    "truncate.rs:76.* replace \\+ with -",
     # expm: nrow=0 validation caught by downstream non-square check
     # (can't use function-name pattern: other || in expm are NOT equivalent)
-    "expm.rs:369.* replace .* with &&",
+    "expm.rs:363.* replace .* with &&",
     # expm scaling: boundary/branch equivalences (norm==theta gives s=0 either way,
     # larger s is self-correcting, s<=62 vs s>62 compute same 2^s, s=0 scaling is identity)
     # (can't use function-name pattern: same operator types appear in non-equivalent positions)
-    "expm.rs:419.* replace > with >=",
-    "expm.rs:420.* replace / with",
-    "expm.rs:427.* replace <= with",
-    "expm.rs:432.* replace \\+",
-    "expm.rs:438.* replace > with >=",
+    "expm.rs:417.* replace > with >=",
+    "expm.rs:419.* replace / with",
+    "expm.rs:425.* replace <= with",
+    "expm.rs:430.* replace \\+",
+    "expm.rs:436.* replace > with >=",
     # cumulative_offsets: test gap — all test inputs have single-tuple fused sectors,
     # so offsets=[0] regardless of += vs *=. Needs multi-tuple with block_dim > 1.
     # (can't use function-name pattern: only one += exists, but fixing test coverage is preferred)
     "fused_sector.rs:133.* replace \\+= with",
+
+    # RowMajor branches: untestable — NativeBackend SVD/QR/LQ hardcode CM layout.
+    # Testing requires adding `order` field to decomposition descriptors and
+    # implementing RM support in ariadnetor-native. See also decomposition.rs
+    # todo!("RowMajor truncation slicing").
+    # trunc_svd_block_sparse RM U path (lines 195-196) and RM Vt path (line 211)
+    "block_sparse_decomp.rs:195.* in trunc_svd_block_sparse",
+    "block_sparse_decomp.rs:196.* in trunc_svd_block_sparse",
+    "block_sparse_decomp.rs:211.* in trunc_svd_block_sparse",
+    # copy_fused_block RM path (lines 194-200)
+    "block_sparse_fuse.rs:19[4-9].* in copy_fused_block",
+    "block_sparse_fuse.rs:200.* in copy_fused_block",
+    # assemble_sector_matrix RM path (lines 171-173)
+    "fused_sector.rs:17[1-3].* in assemble_sector_matrix",
+    # build_left_tensor RM path (lines 234-236)
+    "fused_sector.rs:23[4-6].* in build_left_tensor",
+    # build_right_tensor RM path (lines 298-300)
+    "fused_sector.rs:29[8-9].* in build_right_tensor",
+    "fused_sector.rs:300.* in build_right_tensor",
 
     # --- Function-name-based patterns (stable across line changes) ---
     # norm_1: tie-breaking order doesn't affect max value

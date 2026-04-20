@@ -193,6 +193,49 @@ fn scale_trunc_svd_reconstruction() {
     }
 }
 
+/// Rank-3 element-level scaling test to catch inner_stride arithmetic mutations.
+///
+/// Uses a single-block (sector 0) rank-3 tensor with distinct dimensions
+/// (2×3×4) so that `block_shape[axis+1..]`, `block_shape[..axis]`, and
+/// `(idx / inner_stride) % d_axis` all yield observably different results
+/// under mutations like `axis + 1` → `axis - 1` or `axis * 1`.
+#[test]
+fn scale_rank3_middle_axis_element_values() {
+    // Single-sector rank-3 tensor: shape (2, 3, 4), 24 elements.
+    let idx0 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let idx1 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
+    let idx2 = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
+    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![idx0, idx1, idx2], U1Sector(0));
+    let data = bs.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap();
+    // Fill with 1..=24 so every element is distinct.
+    for (i, d) in data.iter_mut().enumerate() {
+        *d = (i + 1) as f64;
+    }
+
+    // Weights for sector 0 at axis=1: 3 elements → [2.0, 3.0, 5.0].
+    let weights = BlockSingularValues {
+        values: vec![(U1Sector(0), vec![2.0, 3.0, 5.0])],
+    };
+
+    let scaled = diagonal_scale_block_sparse(&backend(), &bs, &weights, 1).unwrap();
+    let out = scaled.block_data(&BlockCoord(vec![0, 0, 0])).unwrap();
+
+    // NativeBackend uses ColumnMajor: shape (2, 3, 4), axis=1.
+    // inner_stride = block_shape[..axis].product() = block_shape[..1].product() = 2.
+    // Element at flat index `idx` has axis-1 coordinate = (idx / 2) % 3.
+    // Weight applied = weights[(idx / 2) % 3].
+    let w = [2.0, 3.0, 5.0];
+    for (idx, &val) in out.iter().enumerate() {
+        let i_axis = (idx / 2) % 3;
+        let expected = ((idx + 1) as f64) * w[i_axis];
+        assert!(
+            (val - expected).abs() < 1e-12,
+            "idx={idx}: got {val}, expected {expected} (i_axis={i_axis}, w={})",
+            w[i_axis]
+        );
+    }
+}
+
 // =========================================================================
 // BlockSingularValues::map
 // =========================================================================

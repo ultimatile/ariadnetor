@@ -436,6 +436,54 @@ fn fused_qnindex_independent_of_stored_blocks() {
 }
 
 // ---------------------------------------------------------------------------
+// Non-trivial leading: fuse trailing axes with leading > 1 and fused_offset > 0
+// ---------------------------------------------------------------------------
+
+/// Catches CM mutation: `fused_offset * leading` → `fused_offset / leading`.
+/// Requires `leading > 1` and `fused_offset > 0` so that `fused_offset * leading`
+/// differs from `fused_offset / leading` (integer division).
+#[test]
+fn fuse_trailing_axes_with_nontrivial_leading() {
+    // Rank-3: Out(0:2), Out(0:1, 1:1), In(0:1, 1:1). Flux = 0.
+    // Fuse axes 1 and 2 → leading = dim(axis 0) = 2.
+    // Sector fusion for (Out s1, In s2) → s1 - s2:
+    //   (0,0)→0 dim=1, (1,1)→0 dim=1 → fused sector 0 has fused_dim=2
+    // The second tuple (1,1) has fused_offset=1. With leading=2, the CM
+    // dst_start = fused_offset * leading = 1 * 2 = 2. A mutation to / gives 0.
+    let i0 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let i1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let i2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(0));
+
+    // Block (0, 0, 0): shape [2, 1, 1] = 2 elements
+    bs.block_data_mut(&BlockCoord(vec![0, 0, 0]))
+        .unwrap()
+        .copy_from_slice(&[10.0, 20.0]);
+    // Block (0, 1, 1): shape [2, 1, 1] = 2 elements
+    bs.block_data_mut(&BlockCoord(vec![0, 1, 1]))
+        .unwrap()
+        .copy_from_slice(&[30.0, 40.0]);
+
+    // Fuse axes (1, 2) with Out direction
+    let fused = fuse_legs_block_sparse(&backend(), &bs, 1, 2, Direction::Out).unwrap();
+    assert_eq!(fused.rank(), 2);
+
+    // Output block for fused sector 0: shape [2 (leading), 2 (fused_dim)].
+    // CM layout [2, 2]: flat = leading_idx + leading * fused_idx
+    //   (0,0)=10, (1,0)=20, (0,1)=30, (1,1)=40
+    // So data should be [10, 20, 30, 40].
+    // With mutation (fused_offset*leading → fused_offset/leading):
+    // tuple (1,1) would overwrite offset 0 instead of 2, corrupting the data.
+    let fused_block = fused
+        .block_metas()
+        .iter()
+        .find(|m| m.size == 4)
+        .expect("should have a 2×2 block");
+    let data = fused.block_data(&fused_block.coord).unwrap();
+    assert_eq!(data, &[10.0, 20.0, 30.0, 40.0]);
+}
+
+// ---------------------------------------------------------------------------
 // Error cases
 // ---------------------------------------------------------------------------
 
