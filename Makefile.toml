@@ -2,23 +2,6 @@
 # Usage: cargo make <task>
 # Install: cargo install cargo-make
 
-[env]
-# Use existing MLIR_SYS_200_PREFIX if set, otherwise use default
-# Default is for Apple Silicon Mac. For Intel Mac, use /usr/local/opt/llvm@20
-# For Linux, set MLIR_SYS_200_PREFIX environment variable before running cargo make
-MLIR_SYS_200_PREFIX = { value = "/opt/homebrew/opt/llvm@20", condition = { env_not_set = ["MLIR_SYS_200_PREFIX"] } }
-
-# Prepend LLVM 20 bin directory to PATH
-PATH = "${MLIR_SYS_200_PREFIX}/bin:${PATH}"
-
-# C/C++ compiler flags (matches llvm20 module)
-CPPFLAGS = "-I${MLIR_SYS_200_PREFIX}/include"
-LDFLAGS = "-L${MLIR_SYS_200_PREFIX}/lib -L${MLIR_SYS_200_PREFIX}/lib/c++ -Wl,-rpath,${MLIR_SYS_200_PREFIX}/lib/c++"
-
-# Use LLVM's clang as C/C++ compiler
-CC = "${MLIR_SYS_200_PREFIX}/bin/clang"
-CXX = "${MLIR_SYS_200_PREFIX}/bin/clang++"
-
 [config]
 default_to_workspace = false
 
@@ -31,11 +14,6 @@ description = "Build entire workspace"
 command = "cargo"
 args = ["build", "--workspace"]
 
-[tasks.build-mlir]
-description = "Build with MLIR features enabled"
-command = "cargo"
-args = ["build", "--workspace", "--features", "mlir"]
-
 [tasks.build-release]
 description = "Build entire workspace in release mode"
 command = "cargo"
@@ -46,43 +24,19 @@ args = ["build", "--workspace", "--release"]
 # ============================================================================
 
 [tasks.test]
-description = "Run all unit tests (lib only, no integration tests)"
+description = "Run all tests (unit + integration)"
+command = "cargo"
+args = ["test", "--workspace"]
+
+[tasks.test-lib]
+description = "Run unit tests only (lib, no integration)"
 command = "cargo"
 args = ["test", "--workspace", "--lib"]
-
-[tasks.test-mlir]
-description = "Run tests with MLIR features enabled"
-command = "cargo"
-args = ["test", "--workspace", "--features", "mlir"]
-
-[tasks.test-integration]
-description = "Run integration tests (requires MLIR features)"
-command = "cargo"
-args = ["test", "--workspace", "--test", "*"]
-
-[tasks.test-all]
-description = "Run all tests including integration tests"
-dependencies = ["test", "test-mlir"]
 
 [tasks.test-einsum]
 description = "Run einsum-specific tests"
 command = "cargo"
 args = ["test", "--test", "einsum_tests"]
-
-[tasks.test-jit]
-description = "Run JIT compiler tests"
-command = "cargo"
-args = ["test", "--test", "jit_tests", "--features", "mlir"]
-
-[tasks.test-lowering]
-description = "Run lowering tests"
-command = "cargo"
-args = ["test", "--test", "lowering_tests", "--features", "mlir"]
-
-[tasks.test-memref]
-description = "Run MemRef execution tests"
-command = "cargo"
-args = ["test", "--test", "execution_engine_memref", "--features", "mlir"]
 
 # ============================================================================
 # Example tasks
@@ -92,11 +46,6 @@ args = ["test", "--test", "execution_engine_memref", "--features", "mlir"]
 description = "Run einsum parser demo"
 command = "cargo"
 args = ["run", "--example", "einsum_parser_demo"]
-
-[tasks.example-ir]
-description = "Run einsum IR builder demo"
-command = "cargo"
-args = ["run", "--features", "mlir", "--example", "einsum_ir_builder_demo"]
 
 # ============================================================================
 # Utility tasks
@@ -136,11 +85,6 @@ description = "Generate documentation"
 command = "cargo"
 args = ["doc", "--workspace", "--no-deps", "--open"]
 
-[tasks.doc-mlir]
-description = "Generate documentation with MLIR features"
-command = "cargo"
-args = ["doc", "--workspace", "--features", "mlir", "--no-deps", "--open"]
-
 # ============================================================================
 # Benchmark tasks
 # ============================================================================
@@ -165,8 +109,8 @@ args = ["bench", "-p", "ariadnetor-linalg"]
 
 [tasks.ci]
 description = "Run CI checks (fmt, clippy, test)"
-dependencies = ["fmt-check", "clippy", "test", "test-mlir"]
+dependencies = ["fmt-check", "clippy", "test"]
 
 [tasks.dev]
-description = "Quick development check (fmt, check, test-lib)"
+description = "Quick development check (fmt, check, test)"
 dependencies = ["fmt", "check", "test"]
