@@ -83,10 +83,10 @@ fn test_design_doc_constructors() {
         assert_eq!(val, 1.0);
     }
 
-    let constant = Dense::constant(vec![2, 2], 3.14);
+    let constant = Dense::constant(vec![2, 2], 3.15);
     assert_eq!(constant.len(), 4);
     for &val in constant.data() {
-        assert_eq!(val, 3.14);
+        assert_eq!(val, 3.15);
     }
 }
 

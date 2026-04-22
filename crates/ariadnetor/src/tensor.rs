@@ -304,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_tensor_mutation() {
-        assert_tensor_mutation(0.0f64, 42.0, 2.718, 3.0);
-        assert_tensor_mutation(0.0f32, 42.0, 2.718, 3.0);
+        assert_tensor_mutation(0.0f64, 42.0, 2.72, 3.0);
+        assert_tensor_mutation(0.0f32, 42.0, 2.72, 3.0);
     }
 }

@@ -27,9 +27,9 @@ fn test_data_mut() {
 #[test]
 fn test_tensor_fill() {
     let mut tensor = Dense::<f64>::zeros(vec![2, 3]);
-    tensor.fill(3.14);
+    tensor.fill(3.15);
     for &val in tensor.data() {
-        assert_eq!(val, 3.14);
+        assert_eq!(val, 3.15);
     }
 }
 

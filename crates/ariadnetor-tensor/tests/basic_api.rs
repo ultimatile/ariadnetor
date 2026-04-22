@@ -35,10 +35,10 @@ fn test_dense_tensor_creation() {
     let ones = Dense::<f64>::ones(vec![2, 3]);
     assert_eq!(ones.data()[0], 1.0);
 
-    let constant = Dense::constant(vec![2, 2], 3.14);
-    // All elements should be 3.14
+    let constant = Dense::constant(vec![2, 2], 3.15);
+    // All elements should be 3.15
     for &v in constant.data() {
-        assert_eq!(v, 3.14);
+        assert_eq!(v, 3.15);
     }
 }
 
@@ -60,12 +60,12 @@ fn test_tensor_data_mut() {
 #[test]
 fn test_tensor_fill() {
     let mut tensor = Dense::<f64>::zeros(vec![10, 10]);
-    tensor.fill(2.718);
+    tensor.fill(2.72);
 
     {
         let data = tensor.data();
         for &val in data {
-            assert_eq!(val, 2.718);
+            assert_eq!(val, 2.72);
         }
     }
 }
