@@ -6,7 +6,9 @@ use num_complex::Complex;
 
 /// Thin SVD for f64 via faer: A = U * diag(S) * Vt
 pub(crate) fn svd_f64(desc: SvdDescriptor<'_, f64>) -> Result<(), BackendError> {
-    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let SvdDescriptor {
+        m, n, a, u, s, vt, ..
+    } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
@@ -41,7 +43,9 @@ pub(crate) fn svd_f64(desc: SvdDescriptor<'_, f64>) -> Result<(), BackendError> 
 
 /// Thin SVD for f32 via faer: A = U * diag(S) * Vt
 pub(crate) fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> {
-    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let SvdDescriptor {
+        m, n, a, u, s, vt, ..
+    } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
@@ -73,7 +77,9 @@ pub(crate) fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> 
 
 /// Thin SVD for Complex<f64> via faer: A = U * diag(S) * V^H
 pub(crate) fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
-    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let SvdDescriptor {
+        m, n, a, u, s, vt, ..
+    } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
@@ -107,7 +113,9 @@ pub(crate) fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), Backe
 
 /// Thin SVD for Complex<f32> via faer: A = U * diag(S) * V^H
 pub(crate) fn svd_c32(desc: SvdDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
-    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let SvdDescriptor {
+        m, n, a, u, s, vt, ..
+    } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();

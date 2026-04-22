@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, QrDescriptor};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, QrDescriptor};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -31,6 +31,7 @@ fn test_qr_f64_square() {
         a: &a,
         q: &mut q,
         r: &mut r,
+        policy: ExecPolicy::Sequential,
     };
     backend.qr(desc).unwrap();
 
@@ -69,6 +70,7 @@ fn test_qr_f64_rectangular() {
         a: &a,
         q: &mut q,
         r: &mut r,
+        policy: ExecPolicy::Sequential,
     };
     backend.qr(desc).unwrap();
 
@@ -103,6 +105,7 @@ fn test_qr_f32_basic() {
         a: &a,
         q: &mut q,
         r: &mut r,
+        policy: ExecPolicy::Sequential,
     };
     backend.qr(desc).unwrap();
 
@@ -144,6 +147,7 @@ fn test_qr_c64_square() {
         a: &a,
         q: &mut q,
         r: &mut r,
+        policy: ExecPolicy::Sequential,
     };
     backend.qr(desc).unwrap();
 
@@ -204,6 +208,7 @@ fn test_qr_c64_rectangular() {
         a: &a,
         q: &mut q,
         r: &mut r,
+        policy: ExecPolicy::Sequential,
     };
     backend.qr(desc).unwrap();
 
@@ -241,6 +246,7 @@ fn test_qr_c32_basic() {
         a: &a,
         q: &mut q,
         r: &mut r,
+        policy: ExecPolicy::Sequential,
     };
     backend.qr(desc).unwrap();
 

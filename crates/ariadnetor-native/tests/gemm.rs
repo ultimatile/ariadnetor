@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -23,6 +23,7 @@ fn test_gemm_f64_identity() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     assert_eq!(c, [5.0, 6.0, 7.0, 8.0]);
@@ -50,6 +51,7 @@ fn test_gemm_f64_basic() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     assert_eq!(c, [19.0, 22.0, 43.0, 50.0]);
@@ -76,6 +78,7 @@ fn test_gemm_f64_alpha_beta() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     // C = 2 * [19, 22, 43, 50] + 3 * [1, 1, 1, 1] = [41, 47, 89, 103]
@@ -103,6 +106,7 @@ fn test_gemm_f64_rectangular() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     // [1*7+2*9+3*11, 1*8+2*10+3*12, 4*7+5*9+6*11, 4*8+5*10+6*12]
@@ -130,6 +134,7 @@ fn test_gemm_f32_basic() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     assert_eq!(c, [19.0, 22.0, 43.0, 50.0]);
@@ -154,6 +159,7 @@ fn test_gemm_f32_alpha_beta() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     // 2*[19,22,43,50] + 3*[2,2,2,2] = [44,50,92,106]
@@ -193,6 +199,7 @@ fn test_gemm_c64_basic() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
 
@@ -238,6 +245,7 @@ fn test_gemm_c64_alpha_beta() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
 
@@ -276,6 +284,7 @@ fn test_gemm_c32_basic() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
 
@@ -318,6 +327,7 @@ fn test_gemm_c32_alpha_beta() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
 
@@ -351,6 +361,7 @@ fn test_gemm_f64_colmajor() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::ColumnMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     // 2*[19,43,22,50] + 3*[2,2,2,2] = [44,92,50,106]
@@ -376,6 +387,7 @@ fn test_gemm_f32_colmajor() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::ColumnMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
     assert_eq!(c, [44.0, 92.0, 50.0, 106.0]);
@@ -411,6 +423,7 @@ fn test_gemm_c64_colmajor() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::ColumnMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
 
@@ -448,6 +461,7 @@ fn test_gemm_c32_colmajor() {
         trans_a: false,
         trans_b: false,
         order: MemoryOrder::ColumnMajor,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc).unwrap();
 

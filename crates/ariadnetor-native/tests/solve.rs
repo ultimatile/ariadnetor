@@ -1,7 +1,7 @@
 //! Linear solve tests for all scalar types
 
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, SolveDescriptor};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, SolveDescriptor};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -24,6 +24,7 @@ fn assert_solve_laws<T: Scalar>(
             a,
             b,
             x: &mut x,
+            policy: ExecPolicy::Sequential,
         })
         .unwrap();
 

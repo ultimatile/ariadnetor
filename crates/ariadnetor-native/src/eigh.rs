@@ -6,7 +6,7 @@ use num_complex::Complex;
 
 /// Self-adjoint eigenvalue decomposition for f64 via faer
 pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v } = desc;
+    let EighDescriptor { n, a, w, v, .. } = desc;
 
     let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
@@ -32,7 +32,7 @@ pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError
 
 /// Self-adjoint eigenvalue decomposition for f32 via faer
 pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v } = desc;
+    let EighDescriptor { n, a, w, v, .. } = desc;
 
     let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
@@ -56,7 +56,7 @@ pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError
 
 /// Self-adjoint eigenvalue decomposition for Complex<f64> via faer
 pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v } = desc;
+    let EighDescriptor { n, a, w, v, .. } = desc;
 
     let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
@@ -81,7 +81,7 @@ pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), Bac
 
 /// Self-adjoint eigenvalue decomposition for Complex<f32> via faer
 pub(crate) fn eigh_c32(desc: EighDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v } = desc;
+    let EighDescriptor { n, a, w, v, .. } = desc;
 
     let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
     let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {

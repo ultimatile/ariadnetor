@@ -1,5 +1,5 @@
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, TransposeDescriptor};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
 use arnet_tensor::Dense;
 
 use crate::error::LinalgError;
@@ -64,6 +64,7 @@ fn transpose_inner<T: Scalar>(
         perm,
         order,
         conj,
+        policy: ExecPolicy::Sequential,
     };
 
     backend.transpose(desc)?;

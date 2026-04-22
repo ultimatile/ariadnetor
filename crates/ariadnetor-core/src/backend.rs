@@ -21,6 +21,17 @@ pub enum MemoryOrder {
     ColumnMajor,
 }
 
+/// Per-call execution policy for a compute backend operation.
+///
+/// `Parallel(0)` means "backend auto" — faer uses rayon's `current_num_threads`,
+/// HPTT uses the OpenMP default. `Parallel(n)` with `n > 0` requests exactly
+/// `n` threads. `Sequential` forces single-threaded execution.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ExecPolicy {
+    Sequential,
+    Parallel(usize),
+}
+
 /// GEMM operation descriptor
 ///
 /// Data layout (A, B, C slices) is specified by the `order` field.
@@ -36,6 +47,7 @@ pub struct GemmDescriptor<'a, T> {
     pub trans_a: bool,
     pub trans_b: bool,
     pub order: MemoryOrder,
+    pub policy: ExecPolicy,
 }
 
 /// Transpose operation descriptor
@@ -48,6 +60,7 @@ pub struct TransposeDescriptor<'a, T> {
     /// Apply element-wise complex conjugation during transpose.
     /// No-op for real types.
     pub conj: bool,
+    pub policy: ExecPolicy,
 }
 
 /// Thin SVD operation descriptor: A = U * diag(S) * Vt
@@ -63,6 +76,7 @@ pub struct SvdDescriptor<'a, T: Scalar> {
     pub u: &'a mut [T],
     pub s: &'a mut [T::Real],
     pub vt: &'a mut [T],
+    pub policy: ExecPolicy,
 }
 
 /// Thin QR decomposition descriptor: A = Q * R
@@ -77,6 +91,7 @@ pub struct QrDescriptor<'a, T> {
     pub a: &'a [T],
     pub q: &'a mut [T],
     pub r: &'a mut [T],
+    pub policy: ExecPolicy,
 }
 
 /// Thin LQ decomposition descriptor: A = L * Q
@@ -91,6 +106,7 @@ pub struct LqDescriptor<'a, T> {
     pub a: &'a [T],
     pub l: &'a mut [T],
     pub q: &'a mut [T],
+    pub policy: ExecPolicy,
 }
 
 /// Self-adjoint eigenvalue decomposition descriptor: A = V * diag(W) * V^H
@@ -103,6 +119,7 @@ pub struct EighDescriptor<'a, T: Scalar> {
     pub a: &'a [T],
     pub w: &'a mut [T::Real],
     pub v: &'a mut [T],
+    pub policy: ExecPolicy,
 }
 
 /// General eigenvalue decomposition descriptor
@@ -115,6 +132,7 @@ pub struct EigDescriptor<'a, T: Scalar> {
     pub a: &'a [T],
     pub w: &'a mut [T::Complex],
     pub v: &'a mut [T::Complex],
+    pub policy: ExecPolicy,
 }
 
 /// Linear solve descriptor: AX = B via LU decomposition
@@ -128,6 +146,7 @@ pub struct SolveDescriptor<'a, T> {
     pub a: &'a [T],
     pub b: &'a [T],
     pub x: &'a mut [T],
+    pub policy: ExecPolicy,
 }
 
 /// Pluggable compute backend trait
@@ -183,6 +202,49 @@ pub trait ComputeBackend: Send + Sync {
     /// Linear solve: AX = B via LU decomposition
     fn solve<T: Scalar>(&self, _desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
         Err(BackendError::NotSupported("solve".into()))
+    }
+
+    /// Recommended execution policy for SVD at the given problem size.
+    ///
+    /// Default returns `Sequential`; performance-oriented backends (e.g. `NativeBackend`)
+    /// override this with a hardware-aware threshold table.
+    fn par_for_svd(&self, _m: usize, _n: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for QR at the given problem size.
+    fn par_for_qr(&self, _m: usize, _n: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for LQ at the given problem size.
+    fn par_for_lq(&self, _m: usize, _n: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for self-adjoint eigendecomposition.
+    fn par_for_eigh(&self, _n: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for general eigendecomposition.
+    fn par_for_eig(&self, _n: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for GEMM at the given problem size.
+    fn par_for_gemm(&self, _m: usize, _n: usize, _k: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for linear solve.
+    fn par_for_solve(&self, _n: usize, _nrhs: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for tensor transpose.
+    fn par_for_transpose(&self, _shape: &[usize]) -> ExecPolicy {
+        ExecPolicy::Sequential
     }
 }
 

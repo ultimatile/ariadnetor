@@ -1,5 +1,7 @@
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, LqDescriptor, MemoryOrder, QrDescriptor, SvdDescriptor};
+use arnet_core::backend::{
+    ComputeBackend, ExecPolicy, LqDescriptor, MemoryOrder, QrDescriptor, SvdDescriptor,
+};
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::{Float, ToPrimitive, Zero};
 
@@ -114,6 +116,7 @@ pub fn svd<T: Scalar>(
         u: &mut u_data,
         s: &mut s_data,
         vt: &mut vt_data,
+        policy: ExecPolicy::Sequential,
     };
 
     backend.svd(desc)?;
@@ -318,6 +321,7 @@ pub fn qr<T: Scalar>(
         a: mat_2d.data(),
         q: &mut q_data,
         r: &mut r_data,
+        policy: ExecPolicy::Sequential,
     };
 
     backend.qr(desc)?;
@@ -378,6 +382,7 @@ pub fn lq<T: Scalar>(
         a: mat_2d.data(),
         l: &mut l_data,
         q: &mut q_data,
+        policy: ExecPolicy::Sequential,
     };
 
     backend.lq(desc)?;

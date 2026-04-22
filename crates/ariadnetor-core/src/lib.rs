@@ -12,7 +12,7 @@ mod einsum;
 mod label;
 mod scalar;
 
-pub use backend::{ComputeBackend, MemoryOrder};
+pub use backend::{ComputeBackend, ExecPolicy, MemoryOrder};
 pub use contraction_error::ContractionError;
 pub use einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 pub use label::LabelId;

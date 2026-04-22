@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, LqDescriptor};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, LqDescriptor};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -31,6 +31,7 @@ fn test_lq_f64_square() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
 
@@ -69,6 +70,7 @@ fn test_lq_f64_rectangular() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
 
@@ -103,6 +105,7 @@ fn test_lq_f32_basic() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
 
@@ -144,6 +147,7 @@ fn test_lq_c64_square() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
 
@@ -204,6 +208,7 @@ fn test_lq_c64_rectangular() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
 
@@ -241,6 +246,7 @@ fn test_lq_c32_basic() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
 

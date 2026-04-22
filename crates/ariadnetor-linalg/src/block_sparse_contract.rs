@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_tensor::Sector;
 use arnet_tensor::{BlockCoord, BlockSparse, QNIndex};
 
@@ -368,6 +368,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 trans_a: lhs_trans_flag,
                 trans_b: rhs_trans_flag,
                 order,
+                policy: ExecPolicy::Sequential,
             })?;
         }
     }

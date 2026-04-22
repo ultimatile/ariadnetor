@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, SvdDescriptor};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, SvdDescriptor};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -34,6 +34,7 @@ fn test_svd_f64_square() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
 
@@ -79,6 +80,7 @@ fn test_svd_f64_rectangular() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
 
@@ -118,6 +120,7 @@ fn test_svd_f32_basic() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
 
@@ -164,6 +167,7 @@ fn test_svd_c64_hermitian() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
 
@@ -214,6 +218,7 @@ fn test_svd_c64_rectangular() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
 
@@ -256,6 +261,7 @@ fn test_svd_c64_unitary_check() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
 
@@ -300,6 +306,7 @@ fn test_svd_c32_basic() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
 

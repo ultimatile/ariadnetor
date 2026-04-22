@@ -1,5 +1,5 @@
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder, SolveDescriptor};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
@@ -80,6 +80,7 @@ pub fn solve<T: Scalar>(
         a: a_contiguous.data(),
         b: b_contiguous.data(),
         x: &mut x_data,
+        policy: ExecPolicy::Sequential,
     };
 
     backend.solve(desc)?;

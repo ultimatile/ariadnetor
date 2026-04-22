@@ -1,5 +1,5 @@
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
+use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
@@ -122,6 +122,7 @@ pub fn contract<T: Scalar>(
         trans_a: false,
         trans_b: false,
         order,
+        policy: ExecPolicy::Sequential,
     };
     backend.gemm(desc)?;
 

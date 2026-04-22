@@ -68,6 +68,7 @@ unsafe fn reinterpret_transpose_desc<'a, T, U>(
         perm,
         order,
         conj,
+        policy,
     } = desc;
     unsafe {
         TransposeDescriptor {
@@ -77,6 +78,7 @@ unsafe fn reinterpret_transpose_desc<'a, T, U>(
             perm,
             order,
             conj,
+            policy,
         }
     }
 }
@@ -171,6 +173,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
         perm,
         order,
         conj,
+        ..
     } = desc;
 
     let rank = shape.len();

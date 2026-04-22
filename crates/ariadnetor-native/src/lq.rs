@@ -6,7 +6,7 @@ use num_complex::Complex;
 
 /// Thin LQ for f64: A = L * Q, computed via QR of A^T
 pub(crate) fn lq_f64(desc: LqDescriptor<'_, f64>) -> Result<(), BackendError> {
-    let LqDescriptor { m, n, a, l, q } = desc;
+    let LqDescriptor { m, n, a, l, q, .. } = desc;
     let k = m.min(n);
 
     // Transpose A (m×n, column-major) -> A^T (n×m)
@@ -38,7 +38,7 @@ pub(crate) fn lq_f64(desc: LqDescriptor<'_, f64>) -> Result<(), BackendError> {
 
 /// Thin LQ for f32: A = L * Q, computed via QR of A^T
 pub(crate) fn lq_f32(desc: LqDescriptor<'_, f32>) -> Result<(), BackendError> {
-    let LqDescriptor { m, n, a, l, q } = desc;
+    let LqDescriptor { m, n, a, l, q, .. } = desc;
     let k = m.min(n);
 
     let a_mat = MatRef::from_column_major_slice(a, m, n);
@@ -65,7 +65,7 @@ pub(crate) fn lq_f32(desc: LqDescriptor<'_, f32>) -> Result<(), BackendError> {
 
 /// Thin LQ for Complex<f64>: A = L * Q, computed via QR of A^H
 pub(crate) fn lq_c64(desc: LqDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
-    let LqDescriptor { m, n, a, l, q } = desc;
+    let LqDescriptor { m, n, a, l, q, .. } = desc;
     let k = m.min(n);
 
     // A^H (n×m) via conjugate transpose
@@ -97,7 +97,7 @@ pub(crate) fn lq_c64(desc: LqDescriptor<'_, Complex<f64>>) -> Result<(), Backend
 
 /// Thin LQ for Complex<f32>: A = L * Q, computed via QR of A^H
 pub(crate) fn lq_c32(desc: LqDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
-    let LqDescriptor { m, n, a, l, q } = desc;
+    let LqDescriptor { m, n, a, l, q, .. } = desc;
     let k = m.min(n);
 
     let a_mat = MatRef::from_column_major_slice(a, m, n);

@@ -295,6 +295,7 @@ unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDe
         trans_a,
         trans_b,
         order,
+        policy,
     } = desc;
     unsafe {
         GemmDescriptor {
@@ -309,6 +310,7 @@ unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDe
             trans_a,
             trans_b,
             order,
+            policy,
         }
     }
 }
@@ -322,7 +324,15 @@ unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDe
 unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
     desc: SvdDescriptor<'a, T>,
 ) -> SvdDescriptor<'a, U> {
-    let SvdDescriptor { m, n, a, u, s, vt } = desc;
+    let SvdDescriptor {
+        m,
+        n,
+        a,
+        u,
+        s,
+        vt,
+        policy,
+    } = desc;
     unsafe {
         SvdDescriptor {
             m,
@@ -331,6 +341,7 @@ unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
             u: std::slice::from_raw_parts_mut(u.as_mut_ptr() as *mut U, u.len()),
             s: std::slice::from_raw_parts_mut(s.as_mut_ptr() as *mut U::Real, s.len()),
             vt: std::slice::from_raw_parts_mut(vt.as_mut_ptr() as *mut U, vt.len()),
+            policy,
         }
     }
 }
@@ -341,7 +352,14 @@ unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
 /// Caller must guarantee `T` and `U` have identical size and alignment
 /// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescriptor<'a, U> {
-    let QrDescriptor { m, n, a, q, r } = desc;
+    let QrDescriptor {
+        m,
+        n,
+        a,
+        q,
+        r,
+        policy,
+    } = desc;
     unsafe {
         QrDescriptor {
             m,
@@ -349,6 +367,7 @@ unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescript
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
             r: std::slice::from_raw_parts_mut(r.as_mut_ptr() as *mut U, r.len()),
+            policy,
         }
     }
 }
@@ -359,7 +378,14 @@ unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescript
 /// Caller must guarantee `T` and `U` have identical size and alignment
 /// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescriptor<'a, U> {
-    let LqDescriptor { m, n, a, l, q } = desc;
+    let LqDescriptor {
+        m,
+        n,
+        a,
+        l,
+        q,
+        policy,
+    } = desc;
     unsafe {
         LqDescriptor {
             m,
@@ -367,6 +393,7 @@ unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescript
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             l: std::slice::from_raw_parts_mut(l.as_mut_ptr() as *mut U, l.len()),
             q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
+            policy,
         }
     }
 }
@@ -380,13 +407,14 @@ unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescript
 unsafe fn reinterpret_eigh_desc<'a, T: Scalar, U: Scalar>(
     desc: EighDescriptor<'a, T>,
 ) -> EighDescriptor<'a, U> {
-    let EighDescriptor { n, a, w, v } = desc;
+    let EighDescriptor { n, a, w, v, policy } = desc;
     unsafe {
         EighDescriptor {
             n,
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Real, w.len()),
             v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U, v.len()),
+            policy,
         }
     }
 }
@@ -400,13 +428,14 @@ unsafe fn reinterpret_eigh_desc<'a, T: Scalar, U: Scalar>(
 unsafe fn reinterpret_eig_desc<'a, T: Scalar, U: Scalar>(
     desc: EigDescriptor<'a, T>,
 ) -> EigDescriptor<'a, U> {
-    let EigDescriptor { n, a, w, v } = desc;
+    let EigDescriptor { n, a, w, v, policy } = desc;
     unsafe {
         EigDescriptor {
             n,
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Complex, w.len()),
             v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U::Complex, v.len()),
+            policy,
         }
     }
 }
@@ -417,7 +446,14 @@ unsafe fn reinterpret_eig_desc<'a, T: Scalar, U: Scalar>(
 /// Caller must guarantee `T` and `U` have identical size and alignment
 /// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_solve_desc<'a, T, U>(desc: SolveDescriptor<'a, T>) -> SolveDescriptor<'a, U> {
-    let SolveDescriptor { n, nrhs, a, b, x } = desc;
+    let SolveDescriptor {
+        n,
+        nrhs,
+        a,
+        b,
+        x,
+        policy,
+    } = desc;
     unsafe {
         SolveDescriptor {
             n,
@@ -425,6 +461,7 @@ unsafe fn reinterpret_solve_desc<'a, T, U>(desc: SolveDescriptor<'a, T>) -> Solv
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             b: std::slice::from_raw_parts(b.as_ptr() as *const U, b.len()),
             x: std::slice::from_raw_parts_mut(x.as_mut_ptr() as *mut U, x.len()),
+            policy,
         }
     }
 }

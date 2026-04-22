@@ -1,5 +1,5 @@
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, MemoryOrder};
+use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder};
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::Zero;
 
@@ -70,6 +70,7 @@ pub fn eigh<T: Scalar>(
         a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
+        policy: ExecPolicy::Sequential,
     };
 
     backend.eigh(desc)?;
@@ -170,6 +171,7 @@ pub fn eig<T: Scalar>(
         a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
+        policy: ExecPolicy::Sequential,
     };
 
     backend.eig(desc)?;

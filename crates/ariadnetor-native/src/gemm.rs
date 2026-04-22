@@ -18,6 +18,7 @@ pub(crate) fn gemm_f64(desc: GemmDescriptor<'_, f64>) -> Result<(), BackendError
         trans_a,
         trans_b,
         order,
+        ..
     } = desc;
 
     match order {
@@ -89,6 +90,7 @@ pub(crate) fn gemm_f32(desc: GemmDescriptor<'_, f32>) -> Result<(), BackendError
         trans_a,
         trans_b,
         order,
+        ..
     } = desc;
 
     match order {
@@ -159,6 +161,7 @@ pub(crate) fn gemm_c64(desc: GemmDescriptor<'_, Complex<f64>>) -> Result<(), Bac
         trans_a,
         trans_b,
         order,
+        ..
     } = desc;
 
     match order {
@@ -229,6 +232,7 @@ pub(crate) fn gemm_c32(desc: GemmDescriptor<'_, Complex<f32>>) -> Result<(), Bac
         trans_a,
         trans_b,
         order,
+        ..
     } = desc;
 
     match order {

@@ -1,7 +1,7 @@
 //! Self-adjoint eigenvalue decomposition tests for all scalar types
 
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, EighDescriptor};
+use arnet_core::backend::{ComputeBackend, EighDescriptor, ExecPolicy};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 use num_traits::One;
@@ -26,6 +26,7 @@ fn assert_eigh_laws<T: Scalar>(
             a: a_colmaj,
             w: &mut w,
             v: &mut v,
+            policy: ExecPolicy::Sequential,
         })
         .unwrap();
 

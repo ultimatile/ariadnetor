@@ -6,7 +6,7 @@ use num_complex::Complex;
 
 /// Thin QR for f64 via faer: A = Q * R
 pub(crate) fn qr_f64(desc: QrDescriptor<'_, f64>) -> Result<(), BackendError> {
-    let QrDescriptor { m, n, a, q, r } = desc;
+    let QrDescriptor { m, n, a, q, r, .. } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
@@ -33,7 +33,7 @@ pub(crate) fn qr_f64(desc: QrDescriptor<'_, f64>) -> Result<(), BackendError> {
 
 /// Thin QR for f32 via faer: A = Q * R
 pub(crate) fn qr_f32(desc: QrDescriptor<'_, f32>) -> Result<(), BackendError> {
-    let QrDescriptor { m, n, a, q, r } = desc;
+    let QrDescriptor { m, n, a, q, r, .. } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
@@ -58,7 +58,7 @@ pub(crate) fn qr_f32(desc: QrDescriptor<'_, f32>) -> Result<(), BackendError> {
 
 /// Thin QR for Complex<f64> via faer: A = Q * R
 pub(crate) fn qr_c64(desc: QrDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
-    let QrDescriptor { m, n, a, q, r } = desc;
+    let QrDescriptor { m, n, a, q, r, .. } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
@@ -83,7 +83,7 @@ pub(crate) fn qr_c64(desc: QrDescriptor<'_, Complex<f64>>) -> Result<(), Backend
 
 /// Thin QR for Complex<f32> via faer: A = Q * R
 pub(crate) fn qr_c32(desc: QrDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
-    let QrDescriptor { m, n, a, q, r } = desc;
+    let QrDescriptor { m, n, a, q, r, .. } = desc;
     let k = m.min(n);
 
     let mat = MatRef::from_column_major_slice(a, m, n).to_owned();
