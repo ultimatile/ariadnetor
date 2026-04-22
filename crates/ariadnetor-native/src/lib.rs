@@ -27,6 +27,18 @@ use num_complex::Complex;
 
 pub use performance::{PerformanceManager, ThresholdTable};
 
+/// Map an [`ExecPolicy`] to faer's per-call parallelism selector.
+///
+/// `Parallel(0)` defers to faer's Rayon default (current thread pool size).
+/// `Parallel(n)` for `n > 0` requests exactly `n` threads.
+pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
+    match policy {
+        ExecPolicy::Sequential => faer::Par::Seq,
+        ExecPolicy::Parallel(0) => faer::Par::rayon(0),
+        ExecPolicy::Parallel(n) => faer::Par::rayon(n),
+    }
+}
+
 /// Native backend using faer for GEMM and HPTT for transpose.
 ///
 /// This is the sole owner of faer and hptt-rs dependencies in the workspace.

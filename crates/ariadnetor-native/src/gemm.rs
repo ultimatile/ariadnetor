@@ -1,8 +1,12 @@
 //! GEMM implementations via faer for all supported scalar types
 
 use arnet_core::backend::{BackendError, GemmDescriptor, MemoryOrder};
-use faer::MatRef;
+use faer::linalg::matmul::matmul;
+use faer::{Accum, MatMut, MatRef};
 use num_complex::Complex;
+use num_traits::{One, Zero};
+
+use crate::to_faer_par;
 
 /// GEMM for f64 via faer: C = alpha * op(A) * op(B) + beta * C
 pub(crate) fn gemm_f64(desc: GemmDescriptor<'_, f64>) -> Result<(), BackendError> {
@@ -18,58 +22,51 @@ pub(crate) fn gemm_f64(desc: GemmDescriptor<'_, f64>) -> Result<(), BackendError
         trans_a,
         trans_b,
         order,
-        ..
+        policy,
     } = desc;
+    let par = to_faer_par(policy);
+
+    // Pre-scale C if beta ∉ {0, 1}; Accum::Replace handles beta == 0 (no read of C),
+    // Accum::Add handles beta == 1 and the post-scaled case.
+    let accum = if beta.is_zero() {
+        Accum::Replace
+    } else {
+        if !beta.is_one() {
+            for elem in c.iter_mut() {
+                *elem *= beta;
+            }
+        }
+        Accum::Add
+    };
 
     match order {
         MemoryOrder::RowMajor => {
-            let lhs: faer::Mat<f64> = if trans_a {
-                let view = MatRef::from_row_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_row_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_row_major_slice(a, m, k).to_owned()
+                MatRef::from_row_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<f64> = if trans_b {
-                let view = MatRef::from_row_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_row_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_row_major_slice(b, k, n).to_owned()
+                MatRef::from_row_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = i * n + j;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_row_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
         MemoryOrder::ColumnMajor => {
-            // When transposed, a stores k×m and b stores n×k
-            let lhs: faer::Mat<f64> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_column_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_column_major_slice(a, m, k).to_owned()
+                MatRef::from_column_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<f64> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_column_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_column_major_slice(b, k, n).to_owned()
+                MatRef::from_column_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = j * m + i;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_column_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
     }
 
@@ -90,57 +87,49 @@ pub(crate) fn gemm_f32(desc: GemmDescriptor<'_, f32>) -> Result<(), BackendError
         trans_a,
         trans_b,
         order,
-        ..
+        policy,
     } = desc;
+    let par = to_faer_par(policy);
+
+    let accum = if beta.is_zero() {
+        Accum::Replace
+    } else {
+        if !beta.is_one() {
+            for elem in c.iter_mut() {
+                *elem *= beta;
+            }
+        }
+        Accum::Add
+    };
 
     match order {
         MemoryOrder::RowMajor => {
-            let lhs: faer::Mat<f32> = if trans_a {
-                let view = MatRef::from_row_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_row_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_row_major_slice(a, m, k).to_owned()
+                MatRef::from_row_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<f32> = if trans_b {
-                let view = MatRef::from_row_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_row_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_row_major_slice(b, k, n).to_owned()
+                MatRef::from_row_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = i * n + j;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_row_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
         MemoryOrder::ColumnMajor => {
-            let lhs: faer::Mat<f32> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_column_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_column_major_slice(a, m, k).to_owned()
+                MatRef::from_column_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<f32> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_column_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_column_major_slice(b, k, n).to_owned()
+                MatRef::from_column_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = j * m + i;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_column_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
     }
 
@@ -161,57 +150,49 @@ pub(crate) fn gemm_c64(desc: GemmDescriptor<'_, Complex<f64>>) -> Result<(), Bac
         trans_a,
         trans_b,
         order,
-        ..
+        policy,
     } = desc;
+    let par = to_faer_par(policy);
+
+    let accum = if beta.is_zero() {
+        Accum::Replace
+    } else {
+        if !beta.is_one() {
+            for elem in c.iter_mut() {
+                *elem *= beta;
+            }
+        }
+        Accum::Add
+    };
 
     match order {
         MemoryOrder::RowMajor => {
-            let lhs: faer::Mat<Complex<f64>> = if trans_a {
-                let view = MatRef::from_row_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_row_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_row_major_slice(a, m, k).to_owned()
+                MatRef::from_row_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<Complex<f64>> = if trans_b {
-                let view = MatRef::from_row_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_row_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_row_major_slice(b, k, n).to_owned()
+                MatRef::from_row_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = i * n + j;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_row_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
         MemoryOrder::ColumnMajor => {
-            let lhs: faer::Mat<Complex<f64>> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_column_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_column_major_slice(a, m, k).to_owned()
+                MatRef::from_column_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<Complex<f64>> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_column_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_column_major_slice(b, k, n).to_owned()
+                MatRef::from_column_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = j * m + i;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_column_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
     }
 
@@ -232,57 +213,49 @@ pub(crate) fn gemm_c32(desc: GemmDescriptor<'_, Complex<f32>>) -> Result<(), Bac
         trans_a,
         trans_b,
         order,
-        ..
+        policy,
     } = desc;
+    let par = to_faer_par(policy);
+
+    let accum = if beta.is_zero() {
+        Accum::Replace
+    } else {
+        if !beta.is_one() {
+            for elem in c.iter_mut() {
+                *elem *= beta;
+            }
+        }
+        Accum::Add
+    };
 
     match order {
         MemoryOrder::RowMajor => {
-            let lhs: faer::Mat<Complex<f32>> = if trans_a {
-                let view = MatRef::from_row_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_row_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_row_major_slice(a, m, k).to_owned()
+                MatRef::from_row_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<Complex<f32>> = if trans_b {
-                let view = MatRef::from_row_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_row_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_row_major_slice(b, k, n).to_owned()
+                MatRef::from_row_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = i * n + j;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_row_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
         MemoryOrder::ColumnMajor => {
-            let lhs: faer::Mat<Complex<f32>> = if trans_a {
-                let view = MatRef::from_column_major_slice(a, k, m);
-                view.transpose().to_owned()
+            let lhs = if trans_a {
+                MatRef::from_column_major_slice(a, k, m).transpose()
             } else {
-                MatRef::from_column_major_slice(a, m, k).to_owned()
+                MatRef::from_column_major_slice(a, m, k)
             };
-
-            let rhs: faer::Mat<Complex<f32>> = if trans_b {
-                let view = MatRef::from_column_major_slice(b, n, k);
-                view.transpose().to_owned()
+            let rhs = if trans_b {
+                MatRef::from_column_major_slice(b, n, k).transpose()
             } else {
-                MatRef::from_column_major_slice(b, k, n).to_owned()
+                MatRef::from_column_major_slice(b, k, n)
             };
-
-            let product = &lhs * &rhs;
-
-            for i in 0..m {
-                for j in 0..n {
-                    let idx = j * m + i;
-                    c[idx] = alpha * product[(i, j)] + beta * c[idx];
-                }
-            }
+            let c_mat = MatMut::from_column_major_slice_mut(c, m, n);
+            matmul(c_mat, accum, lhs, rhs, alpha, par);
         }
     }
 

@@ -1,26 +1,50 @@
 //! Self-adjoint eigenvalue decomposition implementations via faer for all supported scalar types
 
 use arnet_core::backend::{BackendError, EighDescriptor};
-use faer::{MatRef, Side};
+use faer::diag::Diag;
+use faer::dyn_stack::{MemBuffer, MemStack};
+use faer::linalg::evd::{
+    ComputeEigenvectors, SelfAdjointEvdParams, self_adjoint_evd, self_adjoint_evd_scratch,
+};
+use faer::{Mat, MatRef, Spec};
 use num_complex::Complex;
 
+use crate::to_faer_par;
+
 /// Self-adjoint eigenvalue decomposition for f64 via faer
+///
+/// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, .. } = desc;
+    let EighDescriptor { n, a, w, v, policy } = desc;
+    let par = to_faer_par(policy);
+    let params: Spec<SelfAdjointEvdParams, f64> = Default::default();
 
-    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
-    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
-    })?;
+    let a_mat = MatRef::from_column_major_slice(a, n, n);
+    let mut s_diag = Diag::<f64>::zeros(n);
+    let mut u_mat = Mat::<f64>::zeros(n, n);
 
-    // Eigenvalues (n, ascending)
-    let s_diag = eig.S();
+    let mut buf = MemBuffer::new(self_adjoint_evd_scratch::<f64>(
+        n,
+        ComputeEigenvectors::Yes,
+        par,
+        params,
+    ));
+    let stack = MemStack::new(&mut buf);
+
+    self_adjoint_evd(
+        a_mat,
+        s_diag.as_mut(),
+        Some(u_mat.as_mut()),
+        par,
+        stack,
+        params,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("faer self_adjoint_evd failed: {e:?}")))?;
+
     for i in 0..n {
         w[i] = s_diag[i];
     }
 
-    // Eigenvectors (n×n, column-major)
-    let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
             v[j * n + i] = u_mat[(i, j)];
@@ -31,20 +55,39 @@ pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError
 }
 
 /// Self-adjoint eigenvalue decomposition for f32 via faer
+///
+/// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, .. } = desc;
+    let EighDescriptor { n, a, w, v, policy } = desc;
+    let par = to_faer_par(policy);
+    let params: Spec<SelfAdjointEvdParams, f32> = Default::default();
 
-    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
-    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
-    })?;
+    let a_mat = MatRef::from_column_major_slice(a, n, n);
+    let mut s_diag = Diag::<f32>::zeros(n);
+    let mut u_mat = Mat::<f32>::zeros(n, n);
 
-    let s_diag = eig.S();
+    let mut buf = MemBuffer::new(self_adjoint_evd_scratch::<f32>(
+        n,
+        ComputeEigenvectors::Yes,
+        par,
+        params,
+    ));
+    let stack = MemStack::new(&mut buf);
+
+    self_adjoint_evd(
+        a_mat,
+        s_diag.as_mut(),
+        Some(u_mat.as_mut()),
+        par,
+        stack,
+        params,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("faer self_adjoint_evd failed: {e:?}")))?;
+
     for i in 0..n {
         w[i] = s_diag[i];
     }
 
-    let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
             v[j * n + i] = u_mat[(i, j)];
@@ -55,21 +98,40 @@ pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError
 }
 
 /// Self-adjoint eigenvalue decomposition for Complex<f64> via faer
+///
+/// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, .. } = desc;
+    let EighDescriptor { n, a, w, v, policy } = desc;
+    let par = to_faer_par(policy);
+    let params: Spec<SelfAdjointEvdParams, Complex<f64>> = Default::default();
 
-    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
-    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
-    })?;
+    let a_mat = MatRef::from_column_major_slice(a, n, n);
+    let mut s_diag = Diag::<Complex<f64>>::zeros(n);
+    let mut u_mat = Mat::<Complex<f64>>::zeros(n, n);
 
-    // Eigenvalues are real for self-adjoint matrices; faer stores as Complex
-    let s_diag = eig.S();
+    let mut buf = MemBuffer::new(self_adjoint_evd_scratch::<Complex<f64>>(
+        n,
+        ComputeEigenvectors::Yes,
+        par,
+        params,
+    ));
+    let stack = MemStack::new(&mut buf);
+
+    self_adjoint_evd(
+        a_mat,
+        s_diag.as_mut(),
+        Some(u_mat.as_mut()),
+        par,
+        stack,
+        params,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("faer self_adjoint_evd failed: {e:?}")))?;
+
+    // Eigenvalues are real for self-adjoint matrices; faer stores as Complex with im=0
     for i in 0..n {
         w[i] = s_diag[i].re;
     }
 
-    let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
             v[j * n + i] = u_mat[(i, j)];
@@ -80,20 +142,39 @@ pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), Bac
 }
 
 /// Self-adjoint eigenvalue decomposition for Complex<f32> via faer
+///
+/// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_c32(desc: EighDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, .. } = desc;
+    let EighDescriptor { n, a, w, v, policy } = desc;
+    let par = to_faer_par(policy);
+    let params: Spec<SelfAdjointEvdParams, Complex<f32>> = Default::default();
 
-    let mat = MatRef::from_column_major_slice(a, n, n).to_owned();
-    let eig = mat.self_adjoint_eigen(Side::Lower).map_err(|e| {
-        BackendError::ExecutionFailed(format!("faer self_adjoint_eigen failed: {e:?}"))
-    })?;
+    let a_mat = MatRef::from_column_major_slice(a, n, n);
+    let mut s_diag = Diag::<Complex<f32>>::zeros(n);
+    let mut u_mat = Mat::<Complex<f32>>::zeros(n, n);
 
-    let s_diag = eig.S();
+    let mut buf = MemBuffer::new(self_adjoint_evd_scratch::<Complex<f32>>(
+        n,
+        ComputeEigenvectors::Yes,
+        par,
+        params,
+    ));
+    let stack = MemStack::new(&mut buf);
+
+    self_adjoint_evd(
+        a_mat,
+        s_diag.as_mut(),
+        Some(u_mat.as_mut()),
+        par,
+        stack,
+        params,
+    )
+    .map_err(|e| BackendError::ExecutionFailed(format!("faer self_adjoint_evd failed: {e:?}")))?;
+
     for i in 0..n {
         w[i] = s_diag[i].re;
     }
 
-    let u_mat = eig.U();
     for i in 0..n {
         for j in 0..n {
             v[j * n + i] = u_mat[(i, j)];
