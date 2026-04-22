@@ -4,7 +4,7 @@ use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector, Z2Sect
 use super::permute_block_sparse;
 
 fn backend() -> NativeBackend {
-    NativeBackend
+    NativeBackend::new()
 }
 
 // ---------------------------------------------------------------------------

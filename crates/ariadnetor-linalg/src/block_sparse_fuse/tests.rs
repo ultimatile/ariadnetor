@@ -8,7 +8,7 @@ use crate::fuse_legs_block_sparse;
 use crate::permute_block_sparse;
 
 fn backend() -> NativeBackend {
-    NativeBackend
+    NativeBackend::new()
 }
 
 // ---------------------------------------------------------------------------

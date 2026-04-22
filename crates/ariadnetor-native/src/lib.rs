@@ -9,6 +9,7 @@ mod eig;
 mod eigh;
 mod gemm;
 mod lq;
+mod performance;
 mod qr;
 mod solve;
 mod svd;
@@ -18,21 +19,45 @@ use std::sync::{Arc, OnceLock};
 
 use arnet_core::Scalar;
 use arnet_core::backend::{
-    BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor,
-    LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor,
+    BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
+    GemmDescriptor, LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor,
+    TransposeDescriptor,
 };
 use num_complex::Complex;
+
+pub use performance::{PerformanceManager, ThresholdTable};
 
 /// Native backend using faer for GEMM and HPTT for transpose.
 ///
 /// This is the sole owner of faer and hptt-rs dependencies in the workspace.
 /// Other crates access these capabilities through the `ComputeBackend` trait.
+/// Holds a `PerformanceManager` that drives the `par_for_*` dispatch
+/// decisions for each op based on a hardware-aware threshold table.
 #[derive(Debug, Clone)]
-pub struct NativeBackend;
+pub struct NativeBackend {
+    perf: PerformanceManager,
+}
 
 impl NativeBackend {
+    /// Construct a `NativeBackend` with thresholds auto-detected from the
+    /// current machine via `ThresholdTable::detect()`.
     pub fn new() -> Self {
-        Self
+        Self {
+            perf: PerformanceManager::new(ThresholdTable::detect()),
+        }
+    }
+
+    /// Construct a `NativeBackend` with a user-supplied `PerformanceManager`.
+    ///
+    /// Use this to override the auto-detected threshold table, e.g. to pin
+    /// the laptop profile on a workstation for reproducible benchmarks.
+    pub fn with_perf(perf: PerformanceManager) -> Self {
+        Self { perf }
+    }
+
+    /// Borrow the `PerformanceManager` driving this backend's dispatch.
+    pub fn perf(&self) -> &PerformanceManager {
+        &self.perf
     }
 
     /// Get a shared singleton instance.
@@ -41,7 +66,9 @@ impl NativeBackend {
     /// avoiding per-tensor allocation.
     pub fn shared() -> Arc<NativeBackend> {
         static INSTANCE: OnceLock<Arc<NativeBackend>> = OnceLock::new();
-        INSTANCE.get_or_init(|| Arc::new(NativeBackend)).clone()
+        INSTANCE
+            .get_or_init(|| Arc::new(NativeBackend::new()))
+            .clone()
     }
 }
 
@@ -270,6 +297,40 @@ impl ComputeBackend for NativeBackend {
                 "solve is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
             ))
         }
+    }
+
+    fn par_for_svd(&self, m: usize, n: usize) -> ExecPolicy {
+        PerformanceManager::policy_by_n(self.perf.thresholds().svd, m.min(n))
+    }
+
+    fn par_for_qr(&self, m: usize, n: usize) -> ExecPolicy {
+        PerformanceManager::policy_by_n(self.perf.thresholds().qr, m.min(n))
+    }
+
+    fn par_for_lq(&self, m: usize, n: usize) -> ExecPolicy {
+        PerformanceManager::policy_by_n(self.perf.thresholds().lq, m.min(n))
+    }
+
+    fn par_for_eigh(&self, n: usize) -> ExecPolicy {
+        PerformanceManager::policy_by_n(self.perf.thresholds().eigh, n)
+    }
+
+    fn par_for_eig(&self, n: usize) -> ExecPolicy {
+        PerformanceManager::policy_by_n(self.perf.thresholds().eig, n)
+    }
+
+    fn par_for_gemm(&self, m: usize, n: usize, k: usize) -> ExecPolicy {
+        let work_proxy = ((m * n * k) as f64).cbrt() as usize;
+        PerformanceManager::policy_by_n(self.perf.thresholds().gemm, work_proxy)
+    }
+
+    fn par_for_solve(&self, n: usize, _nrhs: usize) -> ExecPolicy {
+        PerformanceManager::policy_by_n(self.perf.thresholds().solve, n)
+    }
+
+    fn par_for_transpose(&self, shape: &[usize]) -> ExecPolicy {
+        let total: usize = shape.iter().product();
+        PerformanceManager::policy_by_n(self.perf.thresholds().transpose, total)
     }
 }
 

@@ -9,7 +9,7 @@ use crate::{TruncSvdParams, svd_block_sparse, trunc_svd_block_sparse};
 use super::diagonal_scale_block_sparse;
 
 fn backend() -> NativeBackend {
-    NativeBackend
+    NativeBackend::new()
 }
 
 /// Rank-2 U1, flux=0, blocks (0,0):2×2 and (1,1):3×3.

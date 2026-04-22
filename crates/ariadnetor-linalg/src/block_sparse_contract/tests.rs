@@ -5,7 +5,7 @@ use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::{U1Sector, Z2Sector};
 
 fn b() -> NativeBackend {
-    NativeBackend
+    NativeBackend::new()
 }
 
 fn order() -> MemoryOrder {

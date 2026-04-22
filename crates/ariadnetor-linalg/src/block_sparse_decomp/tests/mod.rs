@@ -6,7 +6,7 @@ use arnet_tensor::{U1Sector, Z2Sector};
 use super::*;
 
 fn backend() -> NativeBackend {
-    NativeBackend
+    NativeBackend::new()
 }
 
 fn order() -> MemoryOrder {
