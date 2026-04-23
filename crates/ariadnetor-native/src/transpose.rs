@@ -1,7 +1,7 @@
 //! Transpose dispatch: HPTT for supported types, naive fallback otherwise
 
 use arnet_core::Scalar;
-use arnet_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
+use arnet_core::backend::{BackendError, ExecPolicy, MemoryOrder, TransposeDescriptor};
 
 /// Dispatch transpose to the best available implementation.
 ///
@@ -45,6 +45,24 @@ fn to_hptt_order(order: MemoryOrder) -> hptt::MemoryOrder {
     match order {
         MemoryOrder::RowMajor => hptt::MemoryOrder::RowMajor,
         MemoryOrder::ColumnMajor => hptt::MemoryOrder::ColumnMajor,
+    }
+}
+
+/// Map an [`ExecPolicy`] to HPTT's `num_threads` argument.
+///
+/// HPTT 0.4 rejects `num_threads == 0` with `Error::NumThreadsZero`, so
+/// `Parallel(0)` (the "backend auto" convention from `ExecPolicy`) is
+/// resolved here via `std::thread::available_parallelism()` to a positive
+/// integer before crossing the FFI boundary. The return value is always
+/// `>= 1`.
+#[cfg(feature = "hptt")]
+fn to_hptt_num_threads(policy: ExecPolicy) -> usize {
+    match policy {
+        ExecPolicy::Sequential => 1,
+        ExecPolicy::Parallel(0) => std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1),
+        ExecPolicy::Parallel(n) => n,
     }
 }
 
@@ -96,7 +114,7 @@ fn hptt_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
         desc.shape,
         0.0,
         desc.output,
-        1,
+        to_hptt_num_threads(desc.policy),
         to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f64: {e}")))?;
@@ -112,7 +130,7 @@ fn hptt_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
         desc.shape,
         0.0,
         desc.output,
-        1,
+        to_hptt_num_threads(desc.policy),
         to_hptt_order(desc.order),
     )
     .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f32: {e}")))?;
@@ -130,7 +148,7 @@ fn hptt_c64(desc: TransposeDescriptor<'_, num_complex::Complex<f64>>) -> Result<
         desc.shape,
         beta,
         desc.output,
-        1,
+        to_hptt_num_threads(desc.policy),
         desc.conj,
         to_hptt_order(desc.order),
     )
@@ -149,7 +167,7 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
         desc.shape,
         beta,
         desc.output,
-        1,
+        to_hptt_num_threads(desc.policy),
         desc.conj,
         to_hptt_order(desc.order),
     )

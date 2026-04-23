@@ -16,7 +16,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 # Linear algebra
 faer = "0.23"
-hptt = "0.3.0"
+hptt = "0.4.0"
 
 # Memory alignment
 aligned-vec = "0.6"
