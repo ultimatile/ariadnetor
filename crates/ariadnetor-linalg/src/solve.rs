@@ -32,6 +32,31 @@ pub fn solve<T: Scalar>(
     b: &Dense<T>,
     nrow_a: usize,
 ) -> Result<Dense<T>, LinalgError> {
+    // Extract key dims for par_for_solve; full validation occurs in solve_with_policy.
+    // If nrow_a is out of range, use a placeholder key — policy_by_n is defined for any
+    // input, and solve_with_policy will return the descriptive error.
+    let (m, nrhs) = if nrow_a == 0 || nrow_a >= a.rank() {
+        (0, 0)
+    } else {
+        let m: usize = a.shape()[..nrow_a].iter().product();
+        let nrhs = b.len().checked_div(m).unwrap_or(0);
+        (m, nrhs)
+    };
+    let policy = backend.par_for_solve(m, nrhs);
+    solve_with_policy(backend, a, b, nrow_a, policy)
+}
+
+/// Linear solve with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`solve`]; the default wrapper consults
+/// `backend.par_for_solve`, while this entry point takes `policy` directly.
+pub fn solve_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    a: &Dense<T>,
+    b: &Dense<T>,
+    nrow_a: usize,
+    policy: ExecPolicy,
+) -> Result<Dense<T>, LinalgError> {
     let a_shape = a.shape();
     let a_rank = a.rank();
 
@@ -80,7 +105,7 @@ pub fn solve<T: Scalar>(
         a: a_contiguous.data(),
         b: b_contiguous.data(),
         x: &mut x_data,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
 
     backend.solve(desc)?;

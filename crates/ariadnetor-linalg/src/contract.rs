@@ -34,6 +34,61 @@ pub fn contract<T: Scalar>(
     rhs: &Dense<T>,
     notation: &str,
 ) -> Result<Dense<T>, LinalgError> {
+    // Parse once up-front so we can compute the GEMM key (m, n, k) for
+    // par_for_gemm. Parsing is not free, but the result is reused inside
+    // contract_with_policy via a re-parse; keeping the two paths independent
+    // avoids plumbing parsed state through the expert signature.
+    let expr = EinsumExpr::parse(notation)
+        .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
+    let plan = ContractionPlan::from_expr(&expr);
+
+    let (m, n, k) = if plan.batch.is_empty()
+        && lhs.rank() == expr.lhs_indices().len()
+        && rhs.rank() == expr.rhs_indices().len()
+    {
+        let m: usize = plan
+            .free_lhs
+            .iter()
+            .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+            .product::<usize>()
+            .max(1);
+        let n: usize = plan
+            .free_rhs
+            .iter()
+            .map(|&idx| dim_of(idx, expr.rhs_indices(), rhs.shape()))
+            .product::<usize>()
+            .max(1);
+        let k: usize = plan
+            .contracted
+            .iter()
+            .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+            .product::<usize>()
+            .max(1);
+        (m, n, k)
+    } else {
+        (0, 0, 0)
+    };
+
+    let policy = backend.par_for_gemm(m, n, k);
+    contract_with_policy(backend, lhs, rhs, notation, policy)
+}
+
+/// Pure tensor contraction with caller-specified execution policy for the
+/// main GEMM.
+///
+/// `policy` overrides the main GEMM's `ExecPolicy` only; internal transposes
+/// self-tune via `backend.par_for_transpose`. This is a per-kernel override,
+/// not a scope-wide thread budget — `Sequential` does not force the whole
+/// contraction sequential.
+///
+/// Expert-layer counterpart of [`contract`].
+pub fn contract_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &Dense<T>,
+    rhs: &Dense<T>,
+    notation: &str,
+    policy: ExecPolicy,
+) -> Result<Dense<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
@@ -63,7 +118,9 @@ pub fn contract<T: Scalar>(
         )));
     }
 
-    // Permute operands so indices are in [free, contracted] order
+    // Permute operands so indices are in [free, contracted] order.
+    // These internal transposes self-tune via par_for_transpose (they are
+    // preprocessing, not the main kernel).
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
@@ -122,7 +179,7 @@ pub fn contract<T: Scalar>(
         trans_a: false,
         trans_b: false,
         order,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
     backend.gemm(desc)?;
 

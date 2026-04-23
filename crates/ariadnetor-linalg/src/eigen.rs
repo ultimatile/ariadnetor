@@ -38,6 +38,25 @@ pub fn eigh<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<EighResult<T>, LinalgError> {
+    let n = if nrow == 0 || nrow >= tensor.rank() {
+        0
+    } else {
+        tensor.shape()[..nrow].iter().product()
+    };
+    let policy = backend.par_for_eigh(n);
+    eigh_with_policy(backend, tensor, nrow, policy)
+}
+
+/// Self-adjoint eigenvalue decomposition with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`eigh`]; the default wrapper consults
+/// `backend.par_for_eigh`, while this entry point takes `policy` directly.
+pub fn eigh_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<EighResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -70,7 +89,7 @@ pub fn eigh<T: Scalar>(
         a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
 
     backend.eigh(desc)?;
@@ -140,6 +159,25 @@ pub fn eig<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<EigResult<T>, LinalgError> {
+    let n = if nrow == 0 || nrow >= tensor.rank() {
+        0
+    } else {
+        tensor.shape()[..nrow].iter().product()
+    };
+    let policy = backend.par_for_eig(n);
+    eig_with_policy(backend, tensor, nrow, policy)
+}
+
+/// General eigenvalue decomposition with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`eig`]; the default wrapper consults
+/// `backend.par_for_eig`, while this entry point takes `policy` directly.
+pub fn eig_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<EigResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -171,7 +209,7 @@ pub fn eig<T: Scalar>(
         a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
 
     backend.eig(desc)?;

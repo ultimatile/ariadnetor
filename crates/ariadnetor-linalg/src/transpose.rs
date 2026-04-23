@@ -20,7 +20,8 @@ pub fn transpose<T: Scalar>(
     tensor: &Dense<T>,
     perm: &[usize],
 ) -> Result<Dense<T>, LinalgError> {
-    transpose_inner(backend, tensor, perm, false)
+    let policy = backend.par_for_transpose(tensor.shape());
+    transpose_with_policy(backend, tensor, perm, policy)
 }
 
 /// Conjugate transpose (permute axes + element-wise conjugation).
@@ -37,7 +38,34 @@ pub fn conjugate_transpose<T: Scalar>(
     tensor: &Dense<T>,
     perm: &[usize],
 ) -> Result<Dense<T>, LinalgError> {
-    transpose_inner(backend, tensor, perm, true)
+    let policy = backend.par_for_transpose(tensor.shape());
+    conjugate_transpose_with_policy(backend, tensor, perm, policy)
+}
+
+/// Transpose with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`transpose`]; the default wrapper consults
+/// `backend.par_for_transpose`, while this entry point takes `policy`
+/// directly.
+pub fn transpose_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    perm: &[usize],
+    policy: ExecPolicy,
+) -> Result<Dense<T>, LinalgError> {
+    transpose_inner(backend, tensor, perm, false, policy)
+}
+
+/// Conjugate transpose with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`conjugate_transpose`].
+pub fn conjugate_transpose_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    perm: &[usize],
+    policy: ExecPolicy,
+) -> Result<Dense<T>, LinalgError> {
+    transpose_inner(backend, tensor, perm, true, policy)
 }
 
 /// Shared implementation for transpose and conjugate transpose.
@@ -46,6 +74,7 @@ fn transpose_inner<T: Scalar>(
     tensor: &Dense<T>,
     perm: &[usize],
     conj: bool,
+    policy: ExecPolicy,
 ) -> Result<Dense<T>, LinalgError> {
     let order = backend.preferred_order();
     let new_shape: Vec<usize> = perm.iter().map(|&i| tensor.shape()[i]).collect();
@@ -64,7 +93,7 @@ fn transpose_inner<T: Scalar>(
         perm,
         order,
         conj,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
 
     backend.transpose(desc)?;

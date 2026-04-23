@@ -87,6 +87,27 @@ pub fn svd<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<SvdResult<T>, LinalgError> {
+    let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
+        (0, 0)
+    } else {
+        let m: usize = tensor.shape()[..nrow].iter().product();
+        let n: usize = tensor.shape()[nrow..].iter().product();
+        (m, n)
+    };
+    let policy = backend.par_for_svd(m, n);
+    svd_with_policy(backend, tensor, nrow, policy)
+}
+
+/// Thin SVD with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`svd`]; the default wrapper consults
+/// `backend.par_for_svd`, while this entry point takes `policy` directly.
+pub fn svd_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<SvdResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -116,7 +137,7 @@ pub fn svd<T: Scalar>(
         u: &mut u_data,
         s: &mut s_data,
         vt: &mut vt_data,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
 
     backend.svd(desc)?;
@@ -158,7 +179,29 @@ pub fn trunc_svd<T: Scalar>(
     nrow: usize,
     params: &TruncSvdParams,
 ) -> Result<TruncSvdResult<T>, LinalgError> {
-    let (u_full, s_full, vt_full) = svd(backend, tensor, nrow)?;
+    let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
+        (0, 0)
+    } else {
+        let m: usize = tensor.shape()[..nrow].iter().product();
+        let n: usize = tensor.shape()[nrow..].iter().product();
+        (m, n)
+    };
+    let policy = backend.par_for_svd(m, n);
+    trunc_svd_with_policy(backend, tensor, nrow, params, policy)
+}
+
+/// Truncated SVD with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`trunc_svd`]; the default wrapper consults
+/// `backend.par_for_svd`, while this entry point takes `policy` directly.
+pub fn trunc_svd_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    params: &TruncSvdParams,
+    policy: ExecPolicy,
+) -> Result<TruncSvdResult<T>, LinalgError> {
+    let (u_full, s_full, vt_full) = svd_with_policy(backend, tensor, nrow, policy)?;
 
     let shape = tensor.shape();
     let m: usize = shape[..nrow].iter().product();
@@ -296,6 +339,27 @@ pub fn qr<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<QrResult<T>, LinalgError> {
+    let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
+        (0, 0)
+    } else {
+        let m: usize = tensor.shape()[..nrow].iter().product();
+        let n: usize = tensor.shape()[nrow..].iter().product();
+        (m, n)
+    };
+    let policy = backend.par_for_qr(m, n);
+    qr_with_policy(backend, tensor, nrow, policy)
+}
+
+/// Thin QR with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`qr`]; the default wrapper consults
+/// `backend.par_for_qr`, while this entry point takes `policy` directly.
+pub fn qr_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<QrResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -321,7 +385,7 @@ pub fn qr<T: Scalar>(
         a: mat_2d.data(),
         q: &mut q_data,
         r: &mut r_data,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
 
     backend.qr(desc)?;
@@ -357,6 +421,27 @@ pub fn lq<T: Scalar>(
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<LqResult<T>, LinalgError> {
+    let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
+        (0, 0)
+    } else {
+        let m: usize = tensor.shape()[..nrow].iter().product();
+        let n: usize = tensor.shape()[nrow..].iter().product();
+        (m, n)
+    };
+    let policy = backend.par_for_lq(m, n);
+    lq_with_policy(backend, tensor, nrow, policy)
+}
+
+/// Thin LQ with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`lq`]; the default wrapper consults
+/// `backend.par_for_lq`, while this entry point takes `policy` directly.
+pub fn lq_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<LqResult<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -382,7 +467,7 @@ pub fn lq<T: Scalar>(
         a: mat_2d.data(),
         l: &mut l_data,
         q: &mut q_data,
-        policy: ExecPolicy::Sequential,
+        policy,
     };
 
     backend.lq(desc)?;

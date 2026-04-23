@@ -45,6 +45,32 @@ pub fn contract_block_sparse<T: Scalar, S: Sector>(
     axes_lhs: &[usize],
     axes_rhs: &[usize],
 ) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+    contract_block_sparse_with_policy(
+        backend,
+        lhs,
+        rhs,
+        axes_lhs,
+        axes_rhs,
+        ExecPolicy::Sequential,
+    )
+}
+
+/// Block-sparse tensor contraction with caller-specified execution policy
+/// for per-sector GEMM.
+///
+/// Expert-layer counterpart of [`contract_block_sparse`]. The default wrapper
+/// hardcodes `ExecPolicy::Sequential` (conservative for typical small-sector
+/// cases and compatible with future outer parallelism); this entry point lets
+/// a caller opt a large-sector case into `Parallel`. The policy is forwarded
+/// to every per-sector GEMM descriptor.
+pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector>(
+    backend: &impl ComputeBackend,
+    lhs: &BlockSparse<T, S>,
+    rhs: &BlockSparse<T, S>,
+    axes_lhs: &[usize],
+    axes_rhs: &[usize],
+    policy: ExecPolicy,
+) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
     validate_contraction_axes(lhs, rhs, axes_lhs, axes_rhs)?;
 
     let num_contracted = axes_lhs.len();
@@ -69,6 +95,7 @@ pub fn contract_block_sparse<T: Scalar, S: Sector>(
         &free_lhs,
         &free_rhs,
         &rhs_groups,
+        policy,
     )
 }
 
@@ -248,6 +275,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     free_lhs: &[usize],
     free_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
+    policy: ExecPolicy,
 ) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
     let mut output_indices: Vec<QNIndex<S>> = Vec::with_capacity(free_lhs.len() + free_rhs.len());
     for &a in free_lhs {
@@ -368,7 +396,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 trans_a: lhs_trans_flag,
                 trans_b: rhs_trans_flag,
                 order,
-                policy: ExecPolicy::Sequential,
+                policy,
             })?;
         }
     }
