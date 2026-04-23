@@ -1,0 +1,125 @@
+//! Test-only compute backend that records descriptor `ExecPolicy` values
+//! while delegating the actual work to a `NativeBackend`.
+//!
+//! Used to verify policy forwarding: BSp default wrappers hardcode
+//! `Sequential` and BSp `_with_policy` wrappers forward the caller's policy
+//! into every per-sector dense or gemm call.
+
+use std::sync::Mutex;
+
+use arnet_core::Scalar;
+use arnet_core::backend::{
+    BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
+    GemmDescriptor, LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor,
+    TransposeDescriptor,
+};
+use arnet_native::NativeBackend;
+
+/// Compute backend that records the `policy` field of every descriptor it
+/// receives, then delegates to an inner `NativeBackend`.
+///
+/// One `Mutex<Vec<ExecPolicy>>` per op — tests poll whichever list matches
+/// the op under inspection. Other ops' lists stay empty.
+pub(crate) struct RecordingBackend {
+    inner: NativeBackend,
+    pub gemm_policies: Mutex<Vec<ExecPolicy>>,
+    pub svd_policies: Mutex<Vec<ExecPolicy>>,
+    pub qr_policies: Mutex<Vec<ExecPolicy>>,
+    pub lq_policies: Mutex<Vec<ExecPolicy>>,
+    pub eigh_policies: Mutex<Vec<ExecPolicy>>,
+    pub eig_policies: Mutex<Vec<ExecPolicy>>,
+    pub solve_policies: Mutex<Vec<ExecPolicy>>,
+    pub transpose_policies: Mutex<Vec<ExecPolicy>>,
+}
+
+impl RecordingBackend {
+    pub(crate) fn new() -> Self {
+        Self {
+            inner: NativeBackend::new(),
+            gemm_policies: Mutex::new(Vec::new()),
+            svd_policies: Mutex::new(Vec::new()),
+            qr_policies: Mutex::new(Vec::new()),
+            lq_policies: Mutex::new(Vec::new()),
+            eigh_policies: Mutex::new(Vec::new()),
+            eig_policies: Mutex::new(Vec::new()),
+            solve_policies: Mutex::new(Vec::new()),
+            transpose_policies: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub(crate) fn svd_recorded(&self) -> Vec<ExecPolicy> {
+        self.svd_policies.lock().unwrap().clone()
+    }
+
+    pub(crate) fn qr_recorded(&self) -> Vec<ExecPolicy> {
+        self.qr_policies.lock().unwrap().clone()
+    }
+
+    pub(crate) fn lq_recorded(&self) -> Vec<ExecPolicy> {
+        self.lq_policies.lock().unwrap().clone()
+    }
+
+    pub(crate) fn gemm_recorded(&self) -> Vec<ExecPolicy> {
+        self.gemm_policies.lock().unwrap().clone()
+    }
+}
+
+impl ComputeBackend for RecordingBackend {
+    fn name(&self) -> &'static str {
+        "recording"
+    }
+
+    fn device_type(&self) -> DeviceType {
+        self.inner.device_type()
+    }
+
+    fn preferred_order(&self) -> MemoryOrder {
+        self.inner.preferred_order()
+    }
+
+    fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.gemm_policies.lock().unwrap().push(desc.policy);
+        self.inner.gemm(desc)
+    }
+
+    fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.transpose_policies.lock().unwrap().push(desc.policy);
+        self.inner.transpose(desc)
+    }
+
+    fn svd<T: Scalar>(&self, desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.svd_policies.lock().unwrap().push(desc.policy);
+        self.inner.svd(desc)
+    }
+
+    fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.qr_policies.lock().unwrap().push(desc.policy);
+        self.inner.qr(desc)
+    }
+
+    fn lq<T: Scalar>(&self, desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.lq_policies.lock().unwrap().push(desc.policy);
+        self.inner.lq(desc)
+    }
+
+    fn eigh<T: Scalar>(&self, desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.eigh_policies.lock().unwrap().push(desc.policy);
+        self.inner.eigh(desc)
+    }
+
+    fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.eig_policies.lock().unwrap().push(desc.policy);
+        self.inner.eig(desc)
+    }
+
+    fn solve<T: Scalar>(&self, desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.solve_policies.lock().unwrap().push(desc.policy);
+        self.inner.solve(desc)
+    }
+
+    // par_for_* methods intentionally left at the trait defaults (all
+    // Sequential). The tests that exercise `svd_block_sparse(..)` etc. call
+    // the BSp default wrapper, which hardcodes Sequential without consulting
+    // par_for_*, so the trait default matches the BSp wrapper's intent. Tests
+    // for the expert wrapper pass policy explicitly.
+}

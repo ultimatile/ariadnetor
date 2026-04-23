@@ -49,6 +49,9 @@ mod scalar_ops;
 mod solve;
 mod transpose;
 
+#[cfg(test)]
+pub(crate) mod test_util;
+
 pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 

@@ -568,3 +568,5 @@ fn contract_permuted_axes_rank2() {
     assert!((s11[0] - 25.0).abs() < 1e-10);
     assert!((p11[0] - 25.0).abs() < 1e-10);
 }
+
+mod policy_forwarding;
