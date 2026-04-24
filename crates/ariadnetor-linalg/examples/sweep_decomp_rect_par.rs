@@ -58,10 +58,18 @@ where
 {
     eprintln!("\n=== {label} ===");
     eprintln!(
-        "{:>5} {:>5} {:>10} {:>10} {:>10} {:>14} {:>14} {:>10}",
-        "m", "n", "min(m,n)", "cbrt_work", "iters", "Sequential", "Parallel(0)", "ratio(P/S)"
+        "{:>5} {:>5} {:>10} {:>10} {:>8} {:>8} {:>14} {:>14} {:>10}",
+        "m",
+        "n",
+        "min(m,n)",
+        "cbrt_work",
+        "iters_s",
+        "iters_p",
+        "Sequential",
+        "Parallel(0)",
+        "ratio(P/S)"
     );
-    eprintln!("{}", "-".repeat(92));
+    eprintln!("{}", "-".repeat(99));
 
     for &(m, n) in grid {
         let mat = random_rect(m, n, 42);
@@ -77,13 +85,13 @@ where
             Duration::from_millis(150)
         };
 
-        let (t_seq, iters) = measure(target, || op(&mat, ExecPolicy::Sequential));
-        let (t_par, _) = measure(target, || op(&mat, ExecPolicy::Parallel(0)));
+        let (t_seq, iters_seq) = measure(target, || op(&mat, ExecPolicy::Sequential));
+        let (t_par, iters_par) = measure(target, || op(&mat, ExecPolicy::Parallel(0)));
 
         let ratio = t_par.as_secs_f64() / t_seq.as_secs_f64();
         eprintln!(
-            "{:>5} {:>5} {:>10} {:>10} {:>10} {:>14.3?} {:>14.3?} {:>10.3}x",
-            m, n, k, work, iters, t_seq, t_par, ratio
+            "{:>5} {:>5} {:>10} {:>10} {:>8} {:>8} {:>14.3?} {:>14.3?} {:>10.3}x",
+            m, n, k, work, iters_seq, iters_par, t_seq, t_par, ratio
         );
     }
 }

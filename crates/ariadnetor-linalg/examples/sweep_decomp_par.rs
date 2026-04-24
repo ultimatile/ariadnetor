@@ -62,10 +62,10 @@ where
 {
     eprintln!("\n=== {label} ===");
     eprintln!(
-        "{:>6} {:>10} {:>14} {:>14} {:>10}",
-        "n", "iters", "Sequential", "Parallel(0)", "ratio(P/S)"
+        "{:>6} {:>8} {:>8} {:>14} {:>14} {:>10}",
+        "n", "iters_s", "iters_p", "Sequential", "Parallel(0)", "ratio(P/S)"
     );
-    eprintln!("{}", "-".repeat(60));
+    eprintln!("{}", "-".repeat(67));
 
     for &n in sizes {
         let mat = make(n);
@@ -75,13 +75,13 @@ where
             Duration::from_millis(150)
         };
 
-        let (t_seq, iters) = measure(target, || op(&mat, ExecPolicy::Sequential));
-        let (t_par, _) = measure(target, || op(&mat, ExecPolicy::Parallel(0)));
+        let (t_seq, iters_seq) = measure(target, || op(&mat, ExecPolicy::Sequential));
+        let (t_par, iters_par) = measure(target, || op(&mat, ExecPolicy::Parallel(0)));
 
         let ratio = t_par.as_secs_f64() / t_seq.as_secs_f64();
         eprintln!(
-            "{:>6} {:>10} {:>14.3?} {:>14.3?} {:>10.3}x",
-            n, iters, t_seq, t_par, ratio
+            "{:>6} {:>8} {:>8} {:>14.3?} {:>14.3?} {:>10.3}x",
+            n, iters_seq, iters_par, t_seq, t_par, ratio
         );
     }
 }
