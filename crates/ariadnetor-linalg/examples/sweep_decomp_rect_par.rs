@@ -117,14 +117,14 @@ fn main() {
         (2048, 256),
     ];
 
-    run_sweep_rect("SVD (thin)", grid, |m, policy| {
-        let _ = svd_with_policy(&backend, m, 1, policy).unwrap();
+    run_sweep_rect("SVD (thin)", grid, |mat, policy| {
+        let _ = svd_with_policy(&backend, mat, 1, policy).unwrap();
     });
-    run_sweep_rect("QR", grid, |m, policy| {
-        let _ = qr_with_policy(&backend, m, 1, policy).unwrap();
+    run_sweep_rect("QR", grid, |mat, policy| {
+        let _ = qr_with_policy(&backend, mat, 1, policy).unwrap();
     });
-    run_sweep_rect("LQ", grid, |m, policy| {
-        let _ = lq_with_policy(&backend, m, 1, policy).unwrap();
+    run_sweep_rect("LQ", grid, |mat, policy| {
+        let _ = lq_with_policy(&backend, mat, 1, policy).unwrap();
     });
 
     eprintln!(
