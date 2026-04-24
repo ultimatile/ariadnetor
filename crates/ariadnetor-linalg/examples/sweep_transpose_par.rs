@@ -12,6 +12,12 @@
 //!
 //! Each size `n` measures permuting an `n × n` tensor with `perm = [1, 0]`.
 //! The upper size extends to 2048 to reach the parallel-dominant regime.
+//!
+//! `ThresholdTable::transpose` keys on total element count (not side
+//! length) — see `NativeBackend::par_for_transpose`, which feeds
+//! `shape.iter().product()` into `policy_by_n`. The output includes a
+//! `key(elems)` column giving this total so that calibration sets the
+//! threshold in the correct unit.
 
 use std::time::{Duration, Instant};
 
@@ -42,20 +48,22 @@ fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
     (start.elapsed() / iters, iters)
 }
 
-fn run_sweep<State, MF, OF>(label: &str, sizes: &[usize], make: MF, op: OF)
+fn run_sweep<State, MF, KF, OF>(label: &str, sizes: &[usize], make: MF, key_of: KF, op: OF)
 where
     MF: Fn(usize) -> State,
+    KF: Fn(&State) -> usize,
     OF: Fn(&State, ExecPolicy),
 {
     eprintln!("\n=== {label} ===");
     eprintln!(
-        "{:>6} {:>10} {:>14} {:>14} {:>10}",
-        "n", "iters", "Sequential", "Parallel(0)", "ratio(P/S)"
+        "{:>6} {:>12} {:>10} {:>14} {:>14} {:>10}",
+        "n", "key(elems)", "iters", "Sequential", "Parallel(0)", "ratio(P/S)"
     );
-    eprintln!("{}", "-".repeat(60));
+    eprintln!("{}", "-".repeat(72));
 
     for &n in sizes {
         let state = make(n);
+        let key = key_of(&state);
         let target = if n >= 512 {
             Duration::from_millis(500)
         } else {
@@ -67,8 +75,8 @@ where
 
         let ratio = t_par.as_secs_f64() / t_seq.as_secs_f64();
         eprintln!(
-            "{:>6} {:>10} {:>14.3?} {:>14.3?} {:>10.3}x",
-            n, iters, t_seq, t_par, ratio
+            "{:>6} {:>12} {:>10} {:>14.3?} {:>14.3?} {:>10.3}x",
+            n, key, iters, t_seq, t_par, ratio
         );
     }
 }
@@ -81,12 +89,15 @@ fn main() {
         "Transpose (2D n×n, perm=[1,0])",
         &sizes,
         |n| random_square(n, 42),
+        |t| t.len(),
         |t, policy| {
             let _ = transpose_with_policy(&backend, t, &[1, 0], policy).unwrap();
         },
     );
 
     eprintln!(
-        "\nratio < 1: parallel wins (threshold → Parallel)\nratio > 1: sequential wins (threshold above n)"
+        "\n`key(elems)` is the value ThresholdTable::transpose compares against.\n\
+         ratio < 1: parallel wins (set threshold ≤ key(elems))\n\
+         ratio > 1: sequential wins (threshold above key(elems))"
     );
 }
