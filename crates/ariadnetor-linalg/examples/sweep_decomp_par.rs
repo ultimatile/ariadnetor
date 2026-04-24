@@ -1,15 +1,24 @@
 //! Threshold sweep: dense SVD/QR/LQ/eigh/eig time vs matrix size,
-//! comparing `faer::Par::Seq` and `faer::Par::Rayon(NCPU)`.
+//! comparing `ExecPolicy::Sequential` and `ExecPolicy::Parallel(0)`.
 //!
 //! Goal: find the matrix size at which parallel decomposition starts
 //! to beat sequential. The crossover is the threshold to use for
-//! per-call `Par` dispatch in `arnet-native`.
+//! per-call `ExecPolicy` dispatch in `arnet-native`.
+//!
+//! Each op is measured through the `*_with_policy` expert-layer entry
+//! point with an explicit `ExecPolicy`, so the sweep exercises the
+//! two branches of the dispatch decision directly. Global parallelism
+//! state (`faer::set_global_parallelism`) is not consulted by the
+//! per-call path and is intentionally not touched here.
 
 use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 
-use arnet_linalg::{eig, eigh, lq, qr, svd};
+use arnet_core::backend::ExecPolicy;
+use arnet_linalg::{
+    eig_with_policy, eigh_with_policy, lq_with_policy, qr_with_policy, svd_with_policy,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
 
@@ -49,14 +58,14 @@ fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
 fn run_sweep<MF, OF>(label: &str, sizes: &[usize], make: MF, op: OF)
 where
     MF: Fn(usize) -> Dense<f64>,
-    OF: Fn(&Dense<f64>),
+    OF: Fn(&Dense<f64>, ExecPolicy),
 {
     eprintln!("\n=== {label} ===");
     eprintln!(
-        "{:>6} {:>10} {:>12} {:>12} {:>10}",
-        "n", "iters", "Seq", "Rayon", "ratio(P/S)"
+        "{:>6} {:>8} {:>8} {:>14} {:>14} {:>10}",
+        "n", "iters_s", "iters_p", "Sequential", "Parallel(0)", "ratio(P/S)"
     );
-    eprintln!("{}", "-".repeat(56));
+    eprintln!("{}", "-".repeat(67));
 
     for &n in sizes {
         let mat = make(n);
@@ -66,16 +75,13 @@ where
             Duration::from_millis(150)
         };
 
-        faer::set_global_parallelism(faer::Par::Seq);
-        let (t_seq, iters) = measure(target, || op(&mat));
-
-        faer::set_global_parallelism(faer::Par::rayon(0));
-        let (t_par, _) = measure(target, || op(&mat));
+        let (t_seq, iters_seq) = measure(target, || op(&mat, ExecPolicy::Sequential));
+        let (t_par, iters_par) = measure(target, || op(&mat, ExecPolicy::Parallel(0)));
 
         let ratio = t_par.as_secs_f64() / t_seq.as_secs_f64();
         eprintln!(
-            "{:>6} {:>10} {:>12.3?} {:>12.3?} {:>10.3}x",
-            n, iters, t_seq, t_par, ratio
+            "{:>6} {:>8} {:>8} {:>14.3?} {:>14.3?} {:>10.3}x",
+            n, iters_seq, iters_par, t_seq, t_par, ratio
         );
     }
 }
@@ -84,23 +90,23 @@ fn main() {
     let backend = NativeBackend::new();
     let sizes = [16usize, 32, 64, 128, 256, 512, 1024];
 
-    run_sweep("SVD (thin)", &sizes, random_dense, |m| {
-        let _ = svd(&backend, m, 1).unwrap();
+    run_sweep("SVD (thin)", &sizes, random_dense, |m, policy| {
+        let _ = svd_with_policy(&backend, m, 1, policy).unwrap();
     });
-    run_sweep("QR", &sizes, random_dense, |m| {
-        let _ = qr(&backend, m, 1).unwrap();
+    run_sweep("QR", &sizes, random_dense, |m, policy| {
+        let _ = qr_with_policy(&backend, m, 1, policy).unwrap();
     });
-    run_sweep("LQ", &sizes, random_dense, |m| {
-        let _ = lq(&backend, m, 1).unwrap();
+    run_sweep("LQ", &sizes, random_dense, |m, policy| {
+        let _ = lq_with_policy(&backend, m, 1, policy).unwrap();
     });
-    run_sweep("eigh (symmetric)", &sizes, random_symmetric, |m| {
-        let _ = eigh(&backend, m, 1).unwrap();
+    run_sweep("eigh (symmetric)", &sizes, random_symmetric, |m, policy| {
+        let _ = eigh_with_policy(&backend, m, 1, policy).unwrap();
     });
-    run_sweep("eig (general)", &sizes, random_dense, |m| {
-        let _ = eig(&backend, m, 1).unwrap();
+    run_sweep("eig (general)", &sizes, random_dense, |m, policy| {
+        let _ = eig_with_policy(&backend, m, 1, policy).unwrap();
     });
 
     eprintln!(
-        "\nratio < 1: parallel wins (use Par::Rayon)\nratio > 1: sequential wins (use Par::Seq)"
+        "\nratio < 1: parallel wins (threshold → Parallel)\nratio > 1: sequential wins (threshold above n)"
     );
 }
