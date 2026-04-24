@@ -312,15 +312,18 @@ impl ComputeBackend for NativeBackend {
     }
 
     fn par_for_svd(&self, m: usize, n: usize) -> ExecPolicy {
-        PerformanceManager::policy_by_n(self.perf.thresholds().svd, m.min(n))
+        let work_proxy = ((m * n * m.min(n)) as f64).cbrt() as usize;
+        PerformanceManager::policy_by_n(self.perf.thresholds().svd, work_proxy)
     }
 
     fn par_for_qr(&self, m: usize, n: usize) -> ExecPolicy {
-        PerformanceManager::policy_by_n(self.perf.thresholds().qr, m.min(n))
+        let work_proxy = ((m * n * m.min(n)) as f64).cbrt() as usize;
+        PerformanceManager::policy_by_n(self.perf.thresholds().qr, work_proxy)
     }
 
     fn par_for_lq(&self, m: usize, n: usize) -> ExecPolicy {
-        PerformanceManager::policy_by_n(self.perf.thresholds().lq, m.min(n))
+        let work_proxy = ((m * n * m.min(n)) as f64).cbrt() as usize;
+        PerformanceManager::policy_by_n(self.perf.thresholds().lq, work_proxy)
     }
 
     fn par_for_eigh(&self, n: usize) -> ExecPolicy {

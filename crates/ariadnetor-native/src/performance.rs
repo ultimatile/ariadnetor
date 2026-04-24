@@ -13,8 +13,9 @@ use arnet_core::backend::ExecPolicy;
 /// Each field is the smallest problem-size key at which the op should
 /// dispatch as `ExecPolicy::Parallel(0)`. Keys are op-specific and
 /// produced by the corresponding `NativeBackend::par_for_*` method:
-/// decompositions use `min(m, n)`, `gemm` uses `cbrt(m*n*k)`, `solve`
-/// uses `n`, `transpose` uses total element count.
+/// `svd`/`qr`/`lq` and `gemm` use `cbrt(m*n*min(m,n))` and `cbrt(m*n*k)`
+/// respectively, `eigh`/`eig`/`solve` use `n`, `transpose` uses total
+/// element count.
 ///
 /// `usize::MAX` marks an unmeasured threshold; `policy_by_n` treats it
 /// as "always Sequential" until calibration fills it in (tracked in the
@@ -34,17 +35,20 @@ pub struct ThresholdTable {
 impl ThresholdTable {
     /// Thresholds calibrated for laptop-class CPUs (Apple M2 8-core).
     ///
-    /// Decomposition thresholds come from `examples/sweep_decomp_par.rs`
-    /// on square matrices. GEMM, solve, and transpose remain unmeasured.
+    /// Values come from `examples/sweep_{decomp,decomp_rect,gemm,solve,
+    /// transpose}_par.rs` run in a single session. `transpose` retains
+    /// the `usize::MAX` sentinel — the sweep showed no regime where
+    /// parallel wins on laptop at practical sizes; Rayon dispatch
+    /// overhead dominates gains on this memory-bound op.
     pub fn laptop() -> Self {
         Self {
-            svd: 256,
-            qr: 512,
+            svd: 384,
+            qr: 384,
             lq: 512,
             eigh: 256,
-            eig: 1024,
-            gemm: usize::MAX,
-            solve: usize::MAX,
+            eig: 256,
+            gemm: 192,
+            solve: 768,
             transpose: usize::MAX,
         }
     }
@@ -123,13 +127,13 @@ mod tests {
     #[test]
     fn laptop_constants_pinned() {
         let t = ThresholdTable::laptop();
-        assert_eq!(t.svd, 256);
-        assert_eq!(t.qr, 512);
+        assert_eq!(t.svd, 384);
+        assert_eq!(t.qr, 384);
         assert_eq!(t.lq, 512);
         assert_eq!(t.eigh, 256);
-        assert_eq!(t.eig, 1024);
-        assert_eq!(t.gemm, usize::MAX);
-        assert_eq!(t.solve, usize::MAX);
+        assert_eq!(t.eig, 256);
+        assert_eq!(t.gemm, 192);
+        assert_eq!(t.solve, 768);
         assert_eq!(t.transpose, usize::MAX);
     }
 

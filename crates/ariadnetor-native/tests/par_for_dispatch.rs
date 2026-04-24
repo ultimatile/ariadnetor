@@ -41,36 +41,48 @@ fn all_sentinel() -> ThresholdTable {
     }
 }
 
-// ---- SVD / QR / LQ: key is min(m, n) ---------------------------------------
+// ---- SVD / QR / LQ: key is cbrt(m*n*min(m,n)) ------------------------------
 
 #[test]
 fn par_for_svd_below_threshold_is_sequential() {
     let b = pinned_backend(all_pinned());
-    // min(9, 20) = 9 < 10
-    assert_eq!(b.par_for_svd(9, 20), ExecPolicy::Sequential);
-    // Non-square with limiting dim below threshold
-    assert_eq!(b.par_for_svd(20, 9), ExecPolicy::Sequential);
+    // cbrt(8*8*8) = 8 < 10 → Sequential
+    assert_eq!(b.par_for_svd(8, 8), ExecPolicy::Sequential);
+    // Rectangular with small total work: cbrt(20*4*4) = cbrt(320) ≈ 6.84 → 6
+    assert_eq!(b.par_for_svd(20, 4), ExecPolicy::Sequential);
+    assert_eq!(b.par_for_svd(4, 20), ExecPolicy::Sequential);
 }
 
 #[test]
 fn par_for_svd_at_threshold_is_parallel() {
     let b = pinned_backend(all_pinned());
+    // cbrt(10*10*10) = 10 ≥ 10 → Parallel
+    assert_eq!(b.par_for_svd(10, 10), ExecPolicy::Parallel(0));
+    // Rectangular at threshold: cbrt(20*10*10) = cbrt(2000) ≈ 12.6 → 12
     assert_eq!(b.par_for_svd(10, 20), ExecPolicy::Parallel(0));
     assert_eq!(b.par_for_svd(20, 10), ExecPolicy::Parallel(0));
 }
 
 #[test]
-fn par_for_qr_uses_min_dim() {
+fn par_for_qr_uses_cbrt_proxy() {
     let b = pinned_backend(all_pinned());
-    assert_eq!(b.par_for_qr(9, 999), ExecPolicy::Sequential);
+    // Tall-and-thin with small min but cbrt also small: below threshold.
+    assert_eq!(b.par_for_qr(20, 4), ExecPolicy::Sequential);
+    // Square at threshold.
     assert_eq!(b.par_for_qr(10, 10), ExecPolicy::Parallel(0));
+    // Tall matrix with large total work flips Parallel even though min < 10:
+    // cbrt(1000 * 9 * 9) = cbrt(81000) ≈ 43.2 → 43 ≥ 10 → Parallel.
+    // Contrasts with the old min(m,n) proxy, which would stay Sequential here.
+    assert_eq!(b.par_for_qr(1000, 9), ExecPolicy::Parallel(0));
 }
 
 #[test]
-fn par_for_lq_uses_min_dim() {
+fn par_for_lq_uses_cbrt_proxy() {
     let b = pinned_backend(all_pinned());
-    assert_eq!(b.par_for_lq(9, 999), ExecPolicy::Sequential);
+    assert_eq!(b.par_for_lq(20, 4), ExecPolicy::Sequential);
     assert_eq!(b.par_for_lq(10, 10), ExecPolicy::Parallel(0));
+    // Wide matrix analogue (min < 10 but cbrt ≥ 10).
+    assert_eq!(b.par_for_lq(9, 1000), ExecPolicy::Parallel(0));
 }
 
 // ---- Eigh / Eig: key is n --------------------------------------------------
@@ -163,22 +175,36 @@ fn sentinel_thresholds_never_dispatch_parallel() {
 
 // ---- Profile-level sentinel propagation ------------------------------------
 //
-// gemm/solve/transpose are `usize::MAX` in both the laptop and workstation
-// profiles; these tests lock in that default-profile behavior so accidental
-// population of a sentinel (without a sweep measurement) fails loudly.
+// On the laptop profile, `transpose` retains the `usize::MAX` sentinel
+// because sweep_transpose_par showed no regime where parallel wins at
+// practical sizes. Other ops are calibrated and dispatch Parallel above
+// their thresholds; the workstation profile still has several sentinels.
 
 #[test]
-fn laptop_profile_gemm_solve_transpose_stay_sequential() {
+fn laptop_profile_transpose_stays_sequential() {
     let b = NativeBackend::with_perf(PerformanceManager::new(ThresholdTable::laptop()));
-    assert_eq!(
-        b.par_for_gemm(10_000, 10_000, 10_000),
-        ExecPolicy::Sequential
-    );
-    assert_eq!(b.par_for_solve(10_000, 10_000), ExecPolicy::Sequential);
+    // transpose sentinel must never flip Parallel even at huge element counts.
     assert_eq!(
         b.par_for_transpose(&[10_000, 10_000]),
         ExecPolicy::Sequential
     );
+}
+
+#[test]
+fn laptop_profile_calibrated_ops_dispatch_parallel_above_threshold() {
+    let b = NativeBackend::with_perf(PerformanceManager::new(ThresholdTable::laptop()));
+    // laptop thresholds: svd/qr=384, lq=512, eigh/eig=256, gemm=192, solve=768.
+    // All keyed appropriately; large inputs should flip Parallel.
+    assert_eq!(
+        b.par_for_gemm(10_000, 10_000, 10_000),
+        ExecPolicy::Parallel(0)
+    );
+    assert_eq!(b.par_for_solve(10_000, 10_000), ExecPolicy::Parallel(0));
+    assert_eq!(b.par_for_svd(10_000, 10_000), ExecPolicy::Parallel(0));
+    assert_eq!(b.par_for_qr(10_000, 10_000), ExecPolicy::Parallel(0));
+    assert_eq!(b.par_for_lq(10_000, 10_000), ExecPolicy::Parallel(0));
+    assert_eq!(b.par_for_eigh(10_000), ExecPolicy::Parallel(0));
+    assert_eq!(b.par_for_eig(10_000), ExecPolicy::Parallel(0));
 }
 
 #[test]
