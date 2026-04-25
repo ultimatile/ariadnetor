@@ -127,10 +127,17 @@ where
 /// callers do not silently get a different gauge than the naive path
 /// produces; lifting this restriction is tracked as a follow-up.
 ///
+/// Likewise `params.center` is honored only when it is `None` or
+/// `Some(0)`; the naive path canonicalizes the result to an arbitrary
+/// center, but zip-up always finishes with the orthogonality center at
+/// site `0`. Other values are rejected up front; callers can shift the
+/// center afterwards via [`canonicalize`](super::canonicalize).
+///
 /// # Panics
 ///
-/// Panics if the MPO and MPS have different lengths, either is empty, or
-/// `params.absorb` is not [`SvdAbsorb::Right`].
+/// Panics if the MPO and MPS have different lengths, either is empty,
+/// `params.absorb` is not [`SvdAbsorb::Right`], or `params.center` is
+/// `Some(c)` with `c != 0`.
 pub(super) fn apply_zipup_dense<T, B>(
     op: &Mpo<Dense<T>, B>,
     psi: &Mps<Dense<T>, B>,
@@ -226,6 +233,13 @@ where
          Use the naive apply path for Left/Both, or canonicalize the result \
          after the fact.",
         trunc_params.absorb
+    );
+    assert!(
+        matches!(trunc_params.center, None | Some(0)),
+        "apply_zipup currently parks the orthogonality center at site 0; \
+         requested center = {:?}. Call canonicalize on the result to shift \
+         the center, or use the naive apply path.",
+        trunc_params.center
     );
 
     // Backward pass: right-to-left truncated SVD sweep, parking S leftward.

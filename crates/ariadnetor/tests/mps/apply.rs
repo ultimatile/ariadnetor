@@ -5,7 +5,7 @@ use arnet::mps::{
     self, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
     TruncateParams,
 };
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
 
@@ -229,6 +229,24 @@ fn test_apply_zipup_truncates_bond_dim() {
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
     }
+}
+
+#[test]
+#[should_panic(expected = "apply_zipup currently parks the orthogonality center at site 0")]
+fn test_apply_zipup_rejects_nonzero_center() {
+    // Silent center divergence from naive must be prevented.
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(2),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::Right,
+        center: Some(1),
+    };
+    let _ = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
 }
 
 #[test]
