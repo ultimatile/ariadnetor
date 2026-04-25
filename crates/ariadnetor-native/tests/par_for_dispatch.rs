@@ -58,7 +58,7 @@ fn par_for_svd_at_threshold_is_parallel() {
     let b = pinned_backend(all_pinned());
     // cbrt(10*10*10) = 10 ≥ 10 → Parallel
     assert_eq!(b.par_for_svd(10, 10), ExecPolicy::Parallel(0));
-    // Rectangular at threshold: cbrt(20*10*10) = cbrt(2000) ≈ 12.6 → 12
+    // Rectangular above threshold: cbrt(20*10*10) = cbrt(2000) ≈ 12.6 → 12
     assert_eq!(b.par_for_svd(10, 20), ExecPolicy::Parallel(0));
     assert_eq!(b.par_for_svd(20, 10), ExecPolicy::Parallel(0));
 }

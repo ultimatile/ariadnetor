@@ -21,8 +21,8 @@ use arnet_core::backend::ExecPolicy;
 ///
 /// `usize::MAX` marks "no finite parallel threshold": either unmeasured
 /// on this profile, or a calibrated decision that parallel never wins
-/// (e.g. `ThresholdTable::laptop().transpose`). `policy_by_n` treats it as "always
-/// Sequential" in both cases.
+/// (e.g. `ThresholdTable::laptop().transpose`). `policy_by_n` treats it
+/// as `ExecPolicy::Sequential` in both cases.
 #[derive(Clone, Debug)]
 pub struct ThresholdTable {
     pub svd: usize,
@@ -38,11 +38,11 @@ pub struct ThresholdTable {
 impl ThresholdTable {
     /// Thresholds calibrated for laptop-class CPUs (Apple M2 8-core).
     ///
-    /// Values come from `examples/sweep_{decomp,decomp_rect,gemm,solve,
-    /// transpose}_par.rs` run in a single session. `transpose` retains
-    /// the `usize::MAX` sentinel — the sweep showed no regime where
-    /// parallel wins on laptop at practical sizes; Rayon dispatch
-    /// overhead dominates gains on this memory-bound op.
+    /// Values come from `crates/ariadnetor-linalg/examples/sweep_{decomp,
+    /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
+    /// `transpose` retains the `usize::MAX` sentinel — the sweep showed
+    /// no regime where parallel wins on laptop at practical sizes; Rayon
+    /// dispatch overhead dominates gains on this memory-bound op.
     pub fn laptop() -> Self {
         Self {
             svd: 384,
