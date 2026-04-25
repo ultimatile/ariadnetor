@@ -2,7 +2,9 @@
 //!
 //! A `ThresholdTable` stores the minimum problem-size key at which each
 //! linear-algebra op is worth running in parallel on this machine. The
-//! sentinel `usize::MAX` means "no measurement yet — stay sequential".
+//! sentinel `usize::MAX` means "no finite parallel threshold" — either
+//! the op is unmeasured on this profile, or calibration showed no
+//! regime where parallel beats sequential (e.g. `laptop().transpose`).
 //! `PerformanceManager` pairs a table with the comparison logic that
 //! `NativeBackend::par_for_*` methods call.
 
@@ -17,9 +19,10 @@ use arnet_core::backend::ExecPolicy;
 /// respectively, `eigh`/`eig`/`solve` use `n`, `transpose` uses total
 /// element count.
 ///
-/// `usize::MAX` marks an unmeasured threshold; `policy_by_n` treats it
-/// as "always Sequential" until calibration fills it in (tracked in the
-/// threshold-benchmark follow-up).
+/// `usize::MAX` marks "no finite parallel threshold": either unmeasured
+/// on this profile, or a calibrated decision that parallel never wins
+/// (e.g. `laptop().transpose`). `policy_by_n` treats it as "always
+/// Sequential" in both cases.
 #[derive(Clone, Debug)]
 pub struct ThresholdTable {
     pub svd: usize,
