@@ -254,6 +254,65 @@ fn bsp_basis_site(left_c: i32, phys_c: usize, right_c: i32) -> BlockSparse<f64, 
 }
 
 #[test]
+fn apply_bsp_n_on_zero_state() {
+    // |0000⟩ has total N = 0. The right-edge charge-0 block (bL=I → apply
+    // n_phys = 0) is the only one that fires here, so this anchors the
+    // boundary case.
+    let psi = Mps::from_storages(vec![
+        bsp_basis_site(0, 0, 0),
+        bsp_basis_site(0, 0, 0),
+        bsp_basis_site(0, 0, 0),
+        bsp_basis_site(0, 0, 0),
+    ]);
+    let n_op = make_total_n_u1_mpo(4);
+
+    let psi_norm_sq = inner(&psi, &psi);
+    let n_psi = apply(&n_op, &psi, None);
+    let exp_n = inner(&psi, &n_psi);
+
+    assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(exp_n, 0.0, epsilon = 1e-10);
+}
+
+#[test]
+fn apply_bsp_n_eigenvalue_on_multi_particle_basis_state() {
+    // |1010⟩ on 4 sites: total N = 2, two interior MPO sites exercised
+    // simultaneously. With 2 particles distributed across 4 sites, the FSM
+    // bond traverses I → n → n → n on sites 0, 1, 2, 3 (the I → n transition
+    // fires at site 0, then stays at n until the right boundary).
+    let psi = Mps::from_storages(vec![
+        bsp_basis_site(0, 1, 1),
+        bsp_basis_site(1, 0, 1),
+        bsp_basis_site(1, 1, 2),
+        bsp_basis_site(2, 0, 2),
+    ]);
+    let n_op = make_total_n_u1_mpo(4);
+
+    let psi_norm_sq = inner(&psi, &psi);
+    let n_psi = apply(&n_op, &psi, None);
+    let exp_n = inner(&psi, &n_psi);
+
+    assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(exp_n, 2.0, epsilon = 1e-10);
+}
+
+#[test]
+fn apply_bsp_n_squared_via_composition() {
+    // |11⟩ on 2 sites has N|11⟩ = 2|11⟩, so ⟨ψ|N²|ψ⟩ = 4. Re-feeding the
+    // apply output back into apply tests that the result is a well-formed
+    // MPS the operator can act on again — the algebraic eigenvalue
+    // identity acts as the analytical anchor across the composition.
+    let psi = Mps::from_storages(vec![bsp_basis_site(0, 1, 1), bsp_basis_site(1, 1, 2)]);
+    let n_op = make_total_n_u1_mpo(2);
+
+    let n_psi = apply(&n_op, &psi, None);
+    let nn_psi = apply(&n_op, &n_psi, None);
+    let exp_n_sq = inner(&psi, &nn_psi);
+
+    assert_abs_diff_eq!(exp_n_sq, 4.0, epsilon = 1e-10);
+}
+
+#[test]
 fn total_n_mpo_acts_as_total_particle_number_3site_interior() {
     // Correctness anchor that exercises an *interior* MPO site (n >= 3).
     // The 2-site case is purely boundary and would not catch a wrong bond
