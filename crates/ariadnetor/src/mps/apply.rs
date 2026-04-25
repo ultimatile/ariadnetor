@@ -6,7 +6,8 @@ use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
-    fuse_legs_block_sparse, permute_block_sparse, qr, trunc_svd,
+    diagonal_scale_block_sparse, fuse_legs_block_sparse, permute_block_sparse, qr, qr_block_sparse,
+    trunc_svd, trunc_svd_block_sparse,
 };
 use arnet_tensor::{BlockSparse, Dense, Direction, Sector, reorder};
 
@@ -151,6 +152,25 @@ where
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
+    // Validate unsupported TruncateParams up front so we never spend the
+    // forward pass on a request we cannot fulfill.
+    if let Some(p) = params {
+        assert!(
+            matches!(p.absorb, SvdAbsorb::Right),
+            "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
+             Use the naive apply path for Left/Both, or canonicalize the result \
+             after the fact.",
+            p.absorb
+        );
+        assert!(
+            matches!(p.center, None | Some(0)),
+            "apply_zipup currently parks the orthogonality center at site 0; \
+             requested center = {:?}. Call canonicalize on the result to shift \
+             the center, or use the naive apply path.",
+            p.center
+        );
+    }
+
     let backend = psi.backend();
     let order = backend.preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
@@ -227,21 +247,6 @@ where
         return result_mps;
     };
 
-    assert!(
-        matches!(trunc_params.absorb, SvdAbsorb::Right),
-        "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
-         Use the naive apply path for Left/Both, or canonicalize the result \
-         after the fact.",
-        trunc_params.absorb
-    );
-    assert!(
-        matches!(trunc_params.center, None | Some(0)),
-        "apply_zipup currently parks the orthogonality center at site 0; \
-         requested center = {:?}. Call canonicalize on the result to shift \
-         the center, or use the naive apply path.",
-        trunc_params.center
-    );
-
     // Backward pass: right-to-left truncated SVD sweep, parking S leftward.
     let svd_params = trunc_params.svd.clone();
     for j in (1..n).rev() {
@@ -306,33 +311,7 @@ where
     let mut storages = Vec::with_capacity(n);
 
     for j in 0..n {
-        let w = op.storage(j); // (w_L, d_ket, d_bra, w_R)
-        let a = psi.storage(j); // (χ_L, d, χ_R)
-
-        // Contract over physical index (d_ket = W axis 1, d = A axis 1):
-        // Output: [w_L, d_bra, w_R, χ_L, χ_R] (lhs_free then rhs_free)
-        let contracted = match contract_block_sparse(backend, w, a, &[1], &[1])
-            .expect("MPO-MPS contraction failed")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("MPO-MPS contraction always produces a tensor")
-            }
-        };
-
-        // Permute to [w_L, χ_L, d_bra, w_R, χ_R]
-        let permuted =
-            permute_block_sparse(backend, &contracted, &[0, 3, 1, 2, 4]).expect("permute failed");
-
-        // Fuse left bond: (w_L, χ_L) → single Out leg
-        let fused_left = fuse_legs_block_sparse(backend, &permuted, 0, 2, Direction::Out)
-            .expect("left bond fusion failed");
-
-        // Fuse right bond: (w_R, χ_R) → single In leg
-        let fused = fuse_legs_block_sparse(backend, &fused_left, 2, 2, Direction::In)
-            .expect("right bond fusion failed");
-
-        storages.push(fused);
+        storages.push(local_product_bsp(backend, op.storage(j), psi.storage(j)));
     }
 
     let mut result_mps = Mps::with_backend(storages, Arc::clone(psi.backend_arc()));
@@ -344,4 +323,203 @@ where
     }
 
     result_mps
+}
+
+/// Local single-site MPO·MPS product for the BlockSparse path: contract over
+/// the physical index, then fuse the resulting MPO and MPS bond pairs into a
+/// single rank-3 site tensor with directions `[Out, Out, In]`.
+fn local_product_bsp<T, S>(
+    backend: &impl ComputeBackend,
+    w: &BlockSparse<T, S>,
+    a: &BlockSparse<T, S>,
+) -> BlockSparse<T, S>
+where
+    T: Scalar,
+    S: Sector,
+{
+    // Contract over physical index (d_ket = W axis 1, d = A axis 1):
+    // Output: [w_L, d_bra, w_R, χ_L, χ_R] (lhs_free then rhs_free)
+    let contracted = match contract_block_sparse(backend, w, a, &[1], &[1])
+        .expect("MPO-MPS contraction failed")
+    {
+        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResult::Scalar(_) => {
+            unreachable!("MPO-MPS contraction always produces a tensor")
+        }
+    };
+
+    // Permute to [w_L, χ_L, d_bra, w_R, χ_R].
+    let permuted =
+        permute_block_sparse(backend, &contracted, &[0, 3, 1, 2, 4]).expect("permute failed");
+
+    // Fuse left bond: (w_L, χ_L) → single Out leg.
+    let fused_left = fuse_legs_block_sparse(backend, &permuted, 0, 2, Direction::Out)
+        .expect("left bond fusion failed");
+
+    // Fuse right bond: (w_R, χ_R) → single In leg.
+    fuse_legs_block_sparse(backend, &fused_left, 2, 2, Direction::In)
+        .expect("right bond fusion failed")
+}
+
+/// Apply a BlockSparse MPO to a BlockSparse MPS via the zip-up algorithm.
+///
+/// Block-sparse mirror of [`apply_zipup_dense`]. The forward QR / truncated-
+/// SVD pass and the backward truncated-SVD sweep both operate on rank-3 site
+/// tensors with directions `[left(Out), d_bra(Out), right(In)]`, matching the
+/// MPS site convention. The bond directions produced by
+/// [`qr_block_sparse`] / [`trunc_svd_block_sparse`] (`Q`/`U`: bond `In`,
+/// `R`/`Vt`: bond `Out`) line up automatically with the next site's
+/// `left(Out)` for in/out contraction and reproduce the standard site
+/// directions on the new tensors, so no extra `permute` / `fuse` calls are
+/// needed beyond what `local_product_bsp` already does.
+///
+/// # Limitations
+///
+/// Same as [`apply_zipup_dense`]: only [`SvdAbsorb::Right`] is honored, and
+/// `params.center` must be `None` or `Some(0)`. Other values panic up front.
+///
+/// # Panics
+///
+/// Panics if the MPO and MPS have different lengths, either is empty,
+/// `params.absorb` is not [`SvdAbsorb::Right`], or `params.center` is
+/// `Some(c)` with `c != 0`.
+pub(super) fn apply_zipup_bsp<T, S, B>(
+    op: &Mpo<BlockSparse<T, S>, B>,
+    psi: &Mps<BlockSparse<T, S>, B>,
+    params: Option<&TruncateParams>,
+) -> Mps<BlockSparse<T, S>, B>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let n = psi.len();
+    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
+    assert!(n > 0, "must have at least one site");
+
+    // Validate unsupported TruncateParams up front so we never spend the
+    // forward pass on a request we cannot fulfill.
+    if let Some(p) = params {
+        assert!(
+            matches!(p.absorb, SvdAbsorb::Right),
+            "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
+             Use the naive apply path for Left/Both, or canonicalize the result \
+             after the fact.",
+            p.absorb
+        );
+        assert!(
+            matches!(p.center, None | Some(0)),
+            "apply_zipup currently parks the orthogonality center at site 0; \
+             requested center = {:?}. Call canonicalize on the result to shift \
+             the center, or use the naive apply path.",
+            p.center
+        );
+    }
+
+    let backend = psi.backend();
+
+    let chi_max_forward = params
+        .and_then(|p| p.svd.chi_max)
+        .map(|c| c.saturating_mul(ZIPUP_SVD_RATIO));
+    let cutoff = params.and_then(|p| p.svd.target_trunc_err);
+
+    let mut tensors: Vec<BlockSparse<T, S>> = Vec::with_capacity(n);
+    let mut carry: Option<BlockSparse<T, S>> = None;
+
+    for j in 0..n {
+        let mut p = local_product_bsp(backend, op.storage(j), psi.storage(j));
+
+        if let Some(c) = carry.as_ref() {
+            // carry: [bond(Out), fused_right(In)]; p: [fused_left(Out), d, fused_right(In)].
+            // Contract carry axis 1 with p axis 0 (In ↔ Out) → [bond(Out), d, fused_right(In)].
+            p = match contract_block_sparse(backend, c, &p, &[1], &[0])
+                .expect("carry absorption failed in apply_zipup_bsp forward")
+            {
+                BlockSparseContractResult::Tensor(t) => t,
+                BlockSparseContractResult::Scalar(_) => {
+                    unreachable!("carry absorption is a rank-3 result")
+                }
+            };
+        }
+
+        if j < n - 1 {
+            // Forward step: QR if natural rank fits, otherwise truncated SVD
+            // capped at ZIPUP_SVD_RATIO * chi_max to bound the intermediate.
+            let rank = forward_rank_estimate_bsp(&p);
+            let use_svd = match chi_max_forward {
+                Some(cap) => rank > cap,
+                None => false,
+            };
+
+            if !use_svd {
+                let (q, r) =
+                    qr_block_sparse(backend, &p, 2).expect("QR failed in apply_zipup_bsp forward");
+                tensors.push(q);
+                carry = Some(r);
+            } else {
+                let svd_params = TruncSvdParams {
+                    chi_max: chi_max_forward,
+                    target_trunc_err: cutoff,
+                };
+                let (u, s_vec, vt, _err) = trunc_svd_block_sparse(backend, &p, 2, &svd_params)
+                    .expect("trunc_svd failed in apply_zipup_bsp forward");
+                tensors.push(u);
+
+                let svt = diagonal_scale_block_sparse(backend, &vt, &s_vec, 0)
+                    .expect("S·Vt scaling failed in apply_zipup_bsp forward");
+                carry = Some(svt);
+            }
+        } else {
+            tensors.push(p);
+        }
+    }
+
+    let Some(trunc_params) = params else {
+        let mut result_mps = Mps::with_backend(tensors, Arc::clone(psi.backend_arc()));
+        result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
+        return result_mps;
+    };
+
+    let svd_params = trunc_params.svd.clone();
+    for j in (1..n).rev() {
+        let (u, s_vec, vt, _err) = trunc_svd_block_sparse(backend, &tensors[j], 1, &svd_params)
+            .expect("trunc_svd failed in apply_zipup_bsp backward");
+        tensors[j] = vt;
+
+        let us = diagonal_scale_block_sparse(backend, &u, &s_vec, 1)
+            .expect("U·S scaling failed in apply_zipup_bsp backward");
+
+        // tensors[j-1]: [..., right(In)]; us: [left(Out), bond(In)].
+        // Contract last axis of tensors[j-1] (In) with us axis 0 (Out).
+        let prev_last_axis = tensors[j - 1].rank() - 1;
+        let new_prev =
+            match contract_block_sparse(backend, &tensors[j - 1], &us, &[prev_last_axis], &[0])
+                .expect("US absorption failed in apply_zipup_bsp backward")
+            {
+                BlockSparseContractResult::Tensor(t) => t,
+                BlockSparseContractResult::Scalar(_) => {
+                    unreachable!("US absorption keeps at least the physical legs free")
+                }
+            };
+        tensors[j - 1] = new_prev;
+    }
+
+    let mut result_mps = Mps::with_backend(tensors, Arc::clone(psi.backend_arc()));
+    result_mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
+    result_mps
+}
+
+/// Conservative natural-rank estimate for the QR / SVD switch. Uses the
+/// dense product `min(left*d, right)` of the logical shape — same heuristic
+/// as the dense path. A tighter, sector-aware estimate is possible but the
+/// extra accuracy does not change the QR-vs-SVD decision in practice.
+fn forward_rank_estimate_bsp<T, S>(p: &BlockSparse<T, S>) -> usize
+where
+    T: Scalar,
+    S: Sector,
+{
+    let shape = p.shape();
+    let left_d = shape[0].saturating_mul(shape[1]);
+    let right = shape[2];
+    left_d.min(right)
 }

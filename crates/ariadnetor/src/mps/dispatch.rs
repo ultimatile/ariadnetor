@@ -142,11 +142,11 @@ impl<T: Scalar, S: Sector> MpsOps for BlockSparse<T, S> {
     }
 
     fn apply_zipup<B: ComputeBackend>(
-        _op: &Mpo<Self, B>,
-        _psi: &Mps<Self, B>,
-        _params: Option<&TruncateParams>,
+        op: &Mpo<Self, B>,
+        psi: &Mps<Self, B>,
+        params: Option<&TruncateParams>,
     ) -> Mps<Self, B> {
-        panic!("ApplyMethod::ZipUp is not yet implemented for BlockSparse storage")
+        super::apply::apply_zipup_bsp(op, psi, params)
     }
 }
 

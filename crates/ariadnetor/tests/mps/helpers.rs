@@ -412,6 +412,115 @@ pub fn make_2site_entangled_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
     Mps::from_storages(vec![site0, site1])
 }
 
+/// Build a U(1) total-particle-number MPO `N = Σ_j n_j` over `n` sites.
+///
+/// Standard rank-2 finite-state-machine MPO: bond basis `{I, n}` with
+/// transitions `I → I = 1`, `I → n = n_j`, `n → n = 1`. All bond charges are
+/// `0`, giving MPO bond dim 2 (single charge-0 sector of dim 2 on interior
+/// bonds). Boundary bonds have dim 1, projecting onto `I` on the left and
+/// `n` on the right.
+///
+/// Compared to [`make_identity_u1_mpo`] (bond dim 1), this fixture exercises
+/// the non-trivial `w_L⊗χ_L` and `w_R⊗χ_R` bond fusions that any apply
+/// implementation has to perform, so bugs that survive the identity-only
+/// path can still be caught here.
+pub fn make_total_n_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
+    assert!(n >= 1, "need at least one site");
+    let mut storages = Vec::with_capacity(n);
+    for j in 0..n {
+        let left_dim = if j == 0 { 1 } else { 2 };
+        let right_dim = if j == n - 1 { 1 } else { 2 };
+        let left = QNIndex::new(vec![(U1Sector(0), left_dim)], Direction::Out);
+        let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+        let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+        let right = QNIndex::new(vec![(U1Sector(0), right_dim)], Direction::In);
+        let mut site =
+            BlockSparse::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+
+        // Block-data layout follows the backend's preferred order. NativeBackend
+        // is ColumnMajor, so for an interior block of shape (a, b, c, d) the
+        // flat index is `bL + dk*a + db*a*b + bR*a*b*c`. With dk=db=0 (or 1)
+        // pinned, the (bL, bR) pair flattens as `bL + bR*a` — i.e. the (bR, bL)
+        // pair iterates fastest on bL.
+        //
+        // Boundary cases (j == 0, j == n - 1) shrink the corresponding bond to
+        // dim 1 and may overlap (when n == 1 the site is both ends at once),
+        // so the four (left-edge, right-edge) combinations are split
+        // explicitly.
+
+        // Charge-0 physical block: action on |0⟩⟨0|. n_phys at (0,0) = 0,
+        // so all "I → n" transitions vanish here and only the FSM-stay
+        // transitions (I→I, n→n) and the right-boundary projection survive.
+        let block_phys0 = site
+            .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
+            .expect("charge-0 phys block");
+        match (j == 0, j == n - 1) {
+            (true, true) => {
+                // n == 1: shape (1, 1, 1, 1) — total N reduces to n_phys at (0, 0) = 0.
+                block_phys0[0] = 0.0;
+            }
+            (true, false) => {
+                // Left edge, shape (1, 1, 1, 2). Single non-trivial axis is bR,
+                // so RowMajor and ColumnMajor agree. Row [I→I, I→n] = [1, 0].
+                block_phys0[0] = 1.0;
+                block_phys0[1] = 0.0;
+            }
+            (false, true) => {
+                // Right edge, shape (2, 1, 1, 1). Single non-trivial axis is bL.
+                // Column [bL=I: apply n_phys, bL=n: apply I_phys]^T = [0, 1]^T.
+                block_phys0[0] = 0.0;
+                block_phys0[1] = 1.0;
+            }
+            (false, false) => {
+                // Interior, shape (2, 1, 1, 2). Logical matrix in (bL, bR):
+                // [[I→I, I→n], [n→I, n→n]] = [[1, 0], [0, 1]] (charge 0).
+                // ColumnMajor flat index `bL + bR*2`:
+                block_phys0[0] = 1.0; // (bL=I, bR=I) → 1
+                block_phys0[1] = 0.0; // (bL=n, bR=I) → 0
+                block_phys0[2] = 0.0; // (bL=I, bR=n) → 0 (n_phys at charge 0)
+                block_phys0[3] = 1.0; // (bL=n, bR=n) → 1
+            }
+        }
+
+        // Charge-1 physical block: action on |1⟩⟨1|. n_phys at (1,1) = 1, so
+        // both the I→n FSM transition and the right-boundary projection take
+        // value 1 here.
+        let block_phys1 = site
+            .block_data_mut(&BlockCoord(vec![0, 1, 1, 0]))
+            .expect("charge-1 phys block");
+        match (j == 0, j == n - 1) {
+            (true, true) => {
+                // n == 1: shape (1, 1, 1, 1) — total N reduces to n_phys at (1, 1) = 1.
+                block_phys1[0] = 1.0;
+            }
+            (true, false) => {
+                // Left edge, shape (1, 1, 1, 2). Row [I→I=1, I→n=1].
+                block_phys1[0] = 1.0;
+                block_phys1[1] = 1.0;
+            }
+            (false, true) => {
+                // Right edge, shape (2, 1, 1, 1). Column [bL=I: n_phys=1,
+                // bL=n: I_phys=1]^T (the right boundary projects bR onto n,
+                // so the bL=n branch contributes the FSM-stay n→n with value 1).
+                block_phys1[0] = 1.0;
+                block_phys1[1] = 1.0;
+            }
+            (false, false) => {
+                // Interior, shape (2, 1, 1, 2). Logical matrix in (bL, bR):
+                // [[I→I=1, I→n=1], [n→I=0, n→n=1]] (upper triangular at charge 1).
+                // ColumnMajor flat index `bL + bR*2`:
+                block_phys1[0] = 1.0; // (bL=I, bR=I) → 1
+                block_phys1[1] = 0.0; // (bL=n, bR=I) → 0
+                block_phys1[2] = 1.0; // (bL=I, bR=n) → 1 (the I → n transition)
+                block_phys1[3] = 1.0; // (bL=n, bR=n) → 1
+            }
+        }
+
+        storages.push(site);
+    }
+    Mpo::from_storages(storages)
+}
+
 /// Build a U(1) identity MPO for the given number of sites.
 ///
 /// MPO convention: (Out, In, Out, In) = (w_L, d_ket, d_bra, w_R).
