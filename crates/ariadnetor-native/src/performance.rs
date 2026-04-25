@@ -56,22 +56,26 @@ impl ThresholdTable {
         }
     }
 
-    /// Thresholds calibrated for workstation-class CPUs (Xeon NUMA 112-core).
+    /// Thresholds calibrated for workstation-class CPUs (Xeon NUMA, 112 cores).
     ///
-    /// On large-core NUMA machines parallel sync cost stays high even at
-    /// moderate problem sizes, so the crossover shifts upward. Ops still
-    /// marked `usize::MAX` never beat sequential at any measured size and
-    /// await further calibration.
+    /// Calibrated with the same five sweeps listed for `laptop()`. Most
+    /// ops carry the `usize::MAX` sentinel: at workstation scale parallel
+    /// sync cost is high enough that `svd`/`qr`/`lq`/`eigh`/`eig`/`solve`
+    /// never beat sequential at any `n ≤ 1024` tested. Only large GEMMs
+    /// (`cbrt(m*n*k) ≥ 768`) and transposes with total element count
+    /// ≥ 4_194_304 benefit from parallel dispatch (calibration was
+    /// performed on 2D `[n, n]` inputs; the dispatch key is total
+    /// elements for any rank).
     pub fn workstation() -> Self {
         Self {
-            svd: 1024,
+            svd: usize::MAX,
             qr: usize::MAX,
             lq: usize::MAX,
-            eigh: 1024,
+            eigh: usize::MAX,
             eig: usize::MAX,
-            gemm: usize::MAX,
+            gemm: 768,
             solve: usize::MAX,
-            transpose: usize::MAX,
+            transpose: 4_194_304,
         }
     }
 
@@ -146,14 +150,14 @@ mod tests {
     #[test]
     fn workstation_constants_pinned() {
         let t = ThresholdTable::workstation();
-        assert_eq!(t.svd, 1024);
-        assert_eq!(t.eigh, 1024);
+        assert_eq!(t.svd, usize::MAX);
         assert_eq!(t.qr, usize::MAX);
         assert_eq!(t.lq, usize::MAX);
+        assert_eq!(t.eigh, usize::MAX);
         assert_eq!(t.eig, usize::MAX);
-        assert_eq!(t.gemm, usize::MAX);
+        assert_eq!(t.gemm, 768);
         assert_eq!(t.solve, usize::MAX);
-        assert_eq!(t.transpose, usize::MAX);
+        assert_eq!(t.transpose, 4_194_304);
     }
 
     #[test]

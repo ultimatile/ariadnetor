@@ -344,7 +344,9 @@ impl ComputeBackend for NativeBackend {
     }
 
     fn par_for_transpose(&self, shape: &[usize]) -> ExecPolicy {
-        let total: usize = shape.iter().product();
+        // Saturate on overflow so very large shapes don't wrap below the
+        // threshold and silently dispatch Sequential.
+        let total: usize = shape.iter().copied().fold(1usize, usize::saturating_mul);
         PerformanceManager::policy_by_n(self.perf.thresholds().transpose, total)
     }
 }
