@@ -66,8 +66,8 @@ impl From<TruncSvdParams> for TruncateParams {
     }
 }
 
-/// Algorithm used by [`apply`](super::dispatch::apply_with_method) to multiply
-/// an MPO into an MPS.
+/// Algorithm used by [`apply_with_method`](super::dispatch::apply_with_method)
+/// to multiply an MPO into an MPS.
 ///
 /// Both methods produce the same exact state in the no-truncation limit and
 /// agree element-wise when `chi_max` is at least the bond dimension of the

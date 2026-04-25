@@ -2,7 +2,8 @@
 
 use approx::assert_abs_diff_eq;
 use arnet::mps::{
-    self, ApplyMethod, CanonicalForm, Mpo, Mps, TensorChain, TruncSvdParams, TruncateParams,
+    self, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
+    TruncateParams,
 };
 use arnet_tensor::{Dense, MemoryOrder};
 
@@ -228,6 +229,26 @@ fn test_apply_zipup_truncates_bond_dim() {
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
     }
+}
+
+#[test]
+#[should_panic(expected = "apply_zipup currently supports only SvdAbsorb::Right")]
+fn test_apply_zipup_rejects_non_right_absorb() {
+    // Silent gauge divergence from naive must be prevented: zip-up only
+    // implements SvdAbsorb::Right today, and any other variant must fail
+    // loudly rather than silently produce a different canonical form.
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(2),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::Left,
+        center: None,
+    };
+    let _ = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
 }
 
 #[test]

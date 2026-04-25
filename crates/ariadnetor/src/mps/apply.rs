@@ -11,7 +11,7 @@ use arnet_linalg::{
 use arnet_tensor::{BlockSparse, Dense, Direction, Sector, reorder};
 
 use super::chain::TensorChain;
-use super::types::{CanonicalForm, Mpo, Mps, TruncateParams};
+use super::types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncateParams};
 
 // Forward pass switches from QR (lossless, fast) to truncated SVD when the
 // natural rank exceeds this multiple of the user-supplied chi_max. The
@@ -118,9 +118,19 @@ where
 /// truncation error is generally larger than the naive
 /// "exact-product-then-truncate" path.
 ///
+/// # Limitations
+///
+/// The backward sweep currently honors only [`SvdAbsorb::Right`] — i.e.
+/// `Vt` stays at the current site and `U·S` is absorbed into the previous
+/// site, parking the orthogonality center at site `0`. Passing
+/// [`SvdAbsorb::Left`] or [`SvdAbsorb::Both`] is rejected up front so
+/// callers do not silently get a different gauge than the naive path
+/// produces; lifting this restriction is tracked as a follow-up.
+///
 /// # Panics
 ///
-/// Panics if the MPO and MPS have different lengths or either is empty.
+/// Panics if the MPO and MPS have different lengths, either is empty, or
+/// `params.absorb` is not [`SvdAbsorb::Right`].
 pub(super) fn apply_zipup_dense<T, B>(
     op: &Mpo<Dense<T>, B>,
     psi: &Mps<Dense<T>, B>,
@@ -209,6 +219,14 @@ where
         result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
         return result_mps;
     };
+
+    assert!(
+        matches!(trunc_params.absorb, SvdAbsorb::Right),
+        "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
+         Use the naive apply path for Left/Both, or canonicalize the result \
+         after the fact.",
+        trunc_params.absorb
+    );
 
     // Backward pass: right-to-left truncated SVD sweep, parking S leftward.
     let svd_params = trunc_params.svd.clone();
