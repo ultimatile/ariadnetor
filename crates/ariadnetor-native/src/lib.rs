@@ -30,7 +30,11 @@ pub use performance::{PerformanceManager, ThresholdTable};
 /// Map an [`ExecPolicy`] to faer's per-call parallelism selector.
 ///
 /// `Parallel(0)` defers to faer's Rayon default (current thread pool size).
-/// `Parallel(n)` for `n > 0` requests exactly `n` threads.
+/// `Parallel(n)` for `n > 0` is an advisory thread-count hint passed to
+/// `faer::Par::rayon(n)`; faer dispatches on the global Rayon pool, so
+/// `n` influences work partitioning rather than guaranteeing exactly
+/// `n` OS threads. The naive transpose kernel honors `n` with the same
+/// semantics.
 pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
     match policy {
         ExecPolicy::Sequential => faer::Par::Seq,
