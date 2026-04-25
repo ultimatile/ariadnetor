@@ -231,42 +231,68 @@ fn test_apply_zipup_truncates_bond_dim() {
     }
 }
 
+/// Dispatch parity contract: every `TruncateParams` field that zip-up does
+/// not yet honor must trigger an up-front panic. Silent divergence from the
+/// naive path is forbidden.
+///
+/// When a new field is added to `TruncateParams` — or when zip-up gains
+/// support for an existing one — extend the `unsupported` table below
+/// accordingly. The point is to make the decision explicit at the test
+/// boundary rather than discover the divergence in a downstream caller.
 #[test]
-#[should_panic(expected = "apply_zipup currently parks the orthogonality center at site 0")]
-fn test_apply_zipup_rejects_nonzero_center() {
-    // Silent center divergence from naive must be prevented.
+fn test_apply_zipup_rejects_all_unsupported_truncate_params() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
-
-    let params = TruncateParams {
-        svd: TruncSvdParams {
-            chi_max: Some(2),
-            target_trunc_err: None,
-        },
-        absorb: SvdAbsorb::Right,
-        center: Some(1),
+    let base = TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
     };
-    let _ = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
-}
 
-#[test]
-#[should_panic(expected = "apply_zipup currently supports only SvdAbsorb::Right")]
-fn test_apply_zipup_rejects_non_right_absorb() {
-    // Silent gauge divergence from naive must be prevented: zip-up only
-    // implements SvdAbsorb::Right today, and any other variant must fail
-    // loudly rather than silently produce a different canonical form.
-    let psi = make_3site_test_mps();
-    let op = make_3site_test_mpo();
+    let n_minus_1 = psi.len() - 1;
+    let unsupported: Vec<(&str, TruncateParams)> = vec![
+        (
+            "absorb=Left",
+            TruncateParams {
+                svd: base.clone(),
+                absorb: SvdAbsorb::Left,
+                center: None,
+            },
+        ),
+        (
+            "absorb=Both",
+            TruncateParams {
+                svd: base.clone(),
+                absorb: SvdAbsorb::Both,
+                center: None,
+            },
+        ),
+        (
+            "center=Some(1)",
+            TruncateParams {
+                svd: base.clone(),
+                absorb: SvdAbsorb::Right,
+                center: Some(1),
+            },
+        ),
+        (
+            "center=Some(N-1)",
+            TruncateParams {
+                svd: base.clone(),
+                absorb: SvdAbsorb::Right,
+                center: Some(n_minus_1),
+            },
+        ),
+    ];
 
-    let params = TruncateParams {
-        svd: TruncSvdParams {
-            chi_max: Some(2),
-            target_trunc_err: None,
-        },
-        absorb: SvdAbsorb::Left,
-        center: None,
-    };
-    let _ = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    for (name, params) in unsupported {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp)
+        }));
+        assert!(
+            result.is_err(),
+            "expected apply_zipup to panic for unsupported params: {name}"
+        );
+    }
 }
 
 #[test]
