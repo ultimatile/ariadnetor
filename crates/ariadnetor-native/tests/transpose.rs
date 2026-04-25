@@ -264,6 +264,43 @@ fn parallel_policy_matches_sequential_column_major() {
     assert_eq!(seq, par);
 }
 
+// Output of `naive_parallel` is invariant under the choice of `n` in
+// `Parallel(n)`: `n` only influences chunk sizing on the global Rayon
+// pool and must not perturb the produced result. The test sweeps `n`
+// across values that yield different chunk layouts on a multi-chunk
+// input (128*128 = 16_384 > MIN_CHUNK = 4096), making this a
+// representation-invariance contract test rather than a fixed-case
+// regression test.
+#[test]
+fn parallel_kernel_output_invariant_under_n() {
+    let backend = NativeBackend::new();
+    let n = 128usize;
+    let input: Vec<f64> = (0..n * n).map(|i| i as f64).collect();
+    let shape = [n, n];
+    let perm = [1usize, 0];
+
+    let seq = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Sequential,
+    );
+
+    for &nt in &[0usize, 1, 2, 4, 8, 16] {
+        let par = run_transpose_f64(
+            &backend,
+            &input,
+            &shape,
+            &perm,
+            MemoryOrder::RowMajor,
+            ExecPolicy::Parallel(nt),
+        );
+        assert_eq!(seq, par, "Parallel({nt}) deviated from Sequential");
+    }
+}
+
 // Conjugation under parallel policy: complex elements must each be
 // conjugated exactly once, regardless of which chunk owns them.
 // Uses 128*128 = 16_384 elements so the input always exceeds
