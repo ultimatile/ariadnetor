@@ -40,9 +40,13 @@ impl ThresholdTable {
     ///
     /// Values come from `crates/ariadnetor-linalg/examples/sweep_{decomp,
     /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
-    /// `transpose` retains the `usize::MAX` sentinel — the sweep showed
-    /// no regime where parallel wins on laptop at practical sizes; Rayon
-    /// dispatch overhead dominates gains on this memory-bound op.
+    ///
+    /// `transpose` is calibrated per backend at compile time: under the
+    /// `hptt` feature the sweep showed no regime where Rayon-style
+    /// parallel can beat HPTT's tiled sequential on laptop, so the
+    /// sentinel `usize::MAX` is retained; under `--no-default-features`
+    /// the naive fallback's simpler sequential loses to the parallel
+    /// kernel above ~65k elements (post-#176 calibration).
     pub fn laptop() -> Self {
         Self {
             svd: 384,
@@ -52,7 +56,7 @@ impl ThresholdTable {
             eig: 256,
             gemm: 192,
             solve: 768,
-            transpose: usize::MAX,
+            transpose: laptop_transpose_threshold(),
         }
     }
 
@@ -62,10 +66,16 @@ impl ThresholdTable {
     /// ops carry the `usize::MAX` sentinel: at workstation scale parallel
     /// sync cost is high enough that `svd`/`qr`/`lq`/`eigh`/`eig`/`solve`
     /// never beat sequential at any `n ≤ 1024` tested. Only large GEMMs
-    /// (`cbrt(m*n*k) ≥ 768`) and transposes with total element count
-    /// ≥ 4_194_304 benefit from parallel dispatch (calibration was
-    /// performed on 2D `[n, n]` inputs; the dispatch key is total
-    /// elements for any rank).
+    /// (`cbrt(m*n*k) ≥ 768`) and transposes benefit from parallel
+    /// dispatch.
+    ///
+    /// `transpose` is calibrated per backend at compile time: HPTT's
+    /// tiled kernel only crosses over at total element count
+    /// ≥ 4_194_304 (PR #170); under `--no-default-features` the naive
+    /// fallback crosses over much earlier — its parallel kernel beats
+    /// its own sequential above ~262_144 elements (post-#176
+    /// calibration). Calibration was performed on 2D `[n, n]` inputs;
+    /// the dispatch key is total elements for any rank.
     pub fn workstation() -> Self {
         Self {
             svd: usize::MAX,
@@ -75,7 +85,7 @@ impl ThresholdTable {
             eig: usize::MAX,
             gemm: 768,
             solve: usize::MAX,
-            transpose: 4_194_304,
+            transpose: workstation_transpose_threshold(),
         }
     }
 
@@ -92,6 +102,36 @@ impl ThresholdTable {
         } else {
             Self::laptop()
         }
+    }
+}
+
+/// Compile-time `transpose` threshold for the laptop profile.
+///
+/// `hptt` build: tiled sequential beats Rayon parallel at every laptop
+/// size sweep, so dispatch never flips parallel.
+/// `--no-default-features`: naive parallel beats naive sequential above
+/// ~65k total elements (n=128² loses by 36 %, n=256² wins by 50 %).
+const fn laptop_transpose_threshold() -> usize {
+    if cfg!(feature = "hptt") {
+        usize::MAX
+    } else {
+        65_536
+    }
+}
+
+/// Compile-time `transpose` threshold for the workstation profile.
+///
+/// `hptt` build: 4_194_304 (calibrated by PR #170; HPTT's tiled
+/// sequential is fast enough that crossover only appears at 2048²).
+/// `--no-default-features`: naive parallel beats naive sequential
+/// above ~262k total elements (n=256² loses by 17 %, n=512² wins by
+/// 26 %; the 112-core workstation has higher Rayon dispatch overhead
+/// at small sizes than the laptop, raising the crossover by 4×).
+const fn workstation_transpose_threshold() -> usize {
+    if cfg!(feature = "hptt") {
+        4_194_304
+    } else {
+        262_144
     }
 }
 
@@ -144,7 +184,10 @@ mod tests {
         assert_eq!(t.eig, 256);
         assert_eq!(t.gemm, 192);
         assert_eq!(t.solve, 768);
+        #[cfg(feature = "hptt")]
         assert_eq!(t.transpose, usize::MAX);
+        #[cfg(not(feature = "hptt"))]
+        assert_eq!(t.transpose, 65_536);
     }
 
     #[test]
@@ -157,7 +200,10 @@ mod tests {
         assert_eq!(t.eig, usize::MAX);
         assert_eq!(t.gemm, 768);
         assert_eq!(t.solve, usize::MAX);
+        #[cfg(feature = "hptt")]
         assert_eq!(t.transpose, 4_194_304);
+        #[cfg(not(feature = "hptt"))]
+        assert_eq!(t.transpose, 262_144);
     }
 
     #[test]

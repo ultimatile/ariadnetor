@@ -184,12 +184,15 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 /// Naive transpose for any Scalar type.
 ///
 /// Honors `desc.policy`:
-/// * `Sequential` runs the input-driven single-threaded loop, the
-///   historical baseline preserved to avoid Rayon overhead at small
-///   sizes and for callers that explicitly opt out of parallelism.
-/// * `Parallel(_)` dispatches the output-driven kernel across the
-///   global Rayon pool, where each chunk owns a disjoint contiguous
-///   slice of `output` (race-free by construction).
+/// * `Sequential` runs the output-driven kernel single-threaded on
+///   the calling thread, paying no Rayon overhead.
+/// * `Parallel(_)` dispatches the same output-driven kernel across
+///   the global Rayon pool, where each chunk owns a disjoint
+///   contiguous slice of `output` (race-free by construction).
+///
+/// Both paths share `new_to_old_idx` for the per-element index
+/// mapping so `Sequential` and `Parallel(_)` measurements are
+/// comparable when calibrating `ThresholdTable::*.transpose`.
 fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
         input,
@@ -244,9 +247,11 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
     Ok(())
 }
 
-/// Single-threaded transpose iterating in input order (sequential reads,
-/// scattered writes). Kept distinct from the parallel kernel so callers
-/// that pass `ExecPolicy::Sequential` pay no Rayon overhead.
+/// Single-threaded transpose using the same output-driven, no-alloc
+/// kernel as the parallel path; differs only in that work runs on the
+/// caller's thread without Rayon split. Sharing the inner kernel keeps
+/// the Sequential / Parallel comparison fair when calibrating
+/// `ThresholdTable::*.transpose` against the naive baseline.
 #[allow(clippy::too_many_arguments)]
 fn naive_sequential<T: Scalar>(
     input: &[T],
@@ -258,13 +263,10 @@ fn naive_sequential<T: Scalar>(
     order: MemoryOrder,
     conj: bool,
 ) {
-    for (old_idx, &val) in input.iter().enumerate() {
-        let old_coords = linear_to_coords(old_idx, old_strides, rank, order);
-        let mut new_idx = 0;
-        for (axis, &p) in perm.iter().enumerate() {
-            new_idx += old_coords[p] * new_strides[axis];
-        }
-        output[new_idx] = if conj { val.conj() } else { val };
+    for (new_idx, slot) in output.iter_mut().enumerate() {
+        let old_idx = new_to_old_idx(new_idx, new_strides, old_strides, perm, rank, order);
+        let val = input[old_idx];
+        *slot = if conj { val.conj() } else { val };
     }
 }
 
@@ -319,12 +321,14 @@ fn naive_parallel<T: Scalar>(
 /// Map an output linear index to the corresponding input linear index
 /// without materializing the new-coordinate tuple.
 ///
-/// Walks `new_strides` in the same order `linear_to_coords` would
-/// (descending stride: forward for RowMajor, reverse for ColumnMajor),
-/// extracting one coordinate at a time and accumulating
-/// `old_idx += coord * old_strides[perm[new_axis]]`. Avoids the
-/// `Vec<usize>` allocation per output element that would otherwise
-/// dominate the parallel kernel's runtime and starve scaling.
+/// Walks `new_strides` in descending-stride order (forward for
+/// RowMajor, reverse for ColumnMajor), extracting one coordinate at a
+/// time and accumulating
+/// `old_idx += coord * old_strides[perm[new_axis]]`. Used by both the
+/// sequential and parallel kernels — the sequential path runs it on
+/// every output index inline, the parallel path runs it inside
+/// disjoint Rayon chunks. Avoids the per-element `Vec<usize>` that
+/// the previous coordinate helper allocated.
 fn new_to_old_idx(
     mut new_idx: usize,
     new_strides: &[usize],
@@ -371,32 +375,4 @@ fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
         }
     }
     strides
-}
-
-/// Convert a flat index to multi-dimensional coordinates.
-///
-/// Processes dimensions from largest stride to smallest:
-/// row-major iterates forward, column-major iterates backward.
-fn linear_to_coords(
-    mut idx: usize,
-    strides: &[usize],
-    rank: usize,
-    order: MemoryOrder,
-) -> Vec<usize> {
-    let mut coords = vec![0; rank];
-    match order {
-        MemoryOrder::RowMajor => {
-            for i in 0..rank {
-                coords[i] = idx / strides[i];
-                idx %= strides[i];
-            }
-        }
-        MemoryOrder::ColumnMajor => {
-            for i in (0..rank).rev() {
-                coords[i] = idx / strides[i];
-                idx %= strides[i];
-            }
-        }
-    }
-    coords
 }
