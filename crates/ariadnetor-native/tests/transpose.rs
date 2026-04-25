@@ -111,3 +111,234 @@ fn test_transpose_complex_f64_2d() {
     assert_eq!(output[2], Complex::new(3.0, 4.0));
     assert_eq!(output[3], Complex::new(9.0, 10.0));
 }
+
+// --- Parallel-policy correctness ---
+//
+// These tests verify that the parallel branch of the naive fallback
+// (and, with the `hptt` feature on, the HPTT path for f64) produces the
+// same output as the sequential reference for every input. They are
+// intentionally written feature-flag-agnostic: under `--features hptt`
+// f64 routes through HPTT and these tests cover the HPTT parallel path;
+// under `--no-default-features` f64 routes through `naive_parallel` and
+// the same assertions cover the new Rayon kernel.
+
+fn run_transpose_f64(
+    backend: &NativeBackend,
+    input: &[f64],
+    shape: &[usize],
+    perm: &[usize],
+    order: MemoryOrder,
+    policy: ExecPolicy,
+) -> Vec<f64> {
+    let total = shape.iter().product();
+    let mut output = vec![0.0f64; total];
+    let desc = TransposeDescriptor {
+        input,
+        output: &mut output,
+        shape,
+        perm,
+        order,
+        conj: false,
+        policy,
+    };
+    backend.transpose(desc).unwrap();
+    output
+}
+
+#[test]
+fn parallel_policy_matches_sequential_2d() {
+    let backend = NativeBackend::new();
+    let input: Vec<f64> = (0..6).map(|i| i as f64).collect();
+    let shape = [2usize, 3];
+    let perm = [1usize, 0];
+
+    let seq = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Sequential,
+    );
+    let par0 = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Parallel(0),
+    );
+    let par2 = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Parallel(2),
+    );
+    assert_eq!(seq, par0);
+    assert_eq!(seq, par2);
+}
+
+#[test]
+fn parallel_policy_matches_sequential_3d() {
+    let backend = NativeBackend::new();
+    let input: Vec<f64> = (0..24).map(|i| i as f64).collect();
+    let shape = [2usize, 3, 4];
+    let perm = [1usize, 0, 2];
+
+    let seq = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Sequential,
+    );
+    let par = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Parallel(0),
+    );
+    assert_eq!(seq, par);
+}
+
+// Large input forces multiple Rayon chunks under naive_parallel
+// (chunk size has a 4096 floor, so 128*128 = 16384 elements always
+// produces ≥4 chunks regardless of `current_num_threads()`).
+#[test]
+fn parallel_policy_handles_chunk_boundaries() {
+    let backend = NativeBackend::new();
+    let n = 128usize;
+    let input: Vec<f64> = (0..n * n).map(|i| i as f64).collect();
+    let shape = [n, n];
+    let perm = [1usize, 0];
+
+    let seq = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Sequential,
+    );
+    let par = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Parallel(0),
+    );
+    assert_eq!(seq, par);
+}
+
+// Column-major exercises the other stride-computation branch in
+// naive_parallel; tests RowMajor+ColumnMajor parity end-to-end.
+#[test]
+fn parallel_policy_matches_sequential_column_major() {
+    let backend = NativeBackend::new();
+    let input: Vec<f64> = (0..24).map(|i| i as f64).collect();
+    let shape = [2usize, 3, 4];
+    let perm = [2usize, 0, 1];
+
+    let seq = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::ColumnMajor,
+        ExecPolicy::Sequential,
+    );
+    let par = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::ColumnMajor,
+        ExecPolicy::Parallel(0),
+    );
+    assert_eq!(seq, par);
+}
+
+// Output of `naive_parallel` is invariant under the choice of `n` in
+// `Parallel(n)`: `n` only influences chunk sizing on the global Rayon
+// pool and must not perturb the produced result. The test sweeps `n`
+// across values that yield different chunk layouts on a multi-chunk
+// input (128*128 = 16_384 > MIN_CHUNK = 4096), making this a
+// representation-invariance contract test rather than a fixed-case
+// regression test.
+#[test]
+fn parallel_kernel_output_invariant_under_n() {
+    let backend = NativeBackend::new();
+    let n = 128usize;
+    let input: Vec<f64> = (0..n * n).map(|i| i as f64).collect();
+    let shape = [n, n];
+    let perm = [1usize, 0];
+
+    let seq = run_transpose_f64(
+        &backend,
+        &input,
+        &shape,
+        &perm,
+        MemoryOrder::RowMajor,
+        ExecPolicy::Sequential,
+    );
+
+    for &nt in &[0usize, 1, 2, 4, 8, 16] {
+        let par = run_transpose_f64(
+            &backend,
+            &input,
+            &shape,
+            &perm,
+            MemoryOrder::RowMajor,
+            ExecPolicy::Parallel(nt),
+        );
+        assert_eq!(seq, par, "Parallel({nt}) deviated from Sequential");
+    }
+}
+
+// Conjugation under parallel policy: complex elements must each be
+// conjugated exactly once, regardless of which chunk owns them.
+// Uses 128*128 = 16_384 elements so the input always exceeds
+// `MIN_CHUNK = 4096` and the kernel produces multiple Rayon chunks,
+// exercising the "conjugation across chunk boundaries" path.
+#[test]
+fn parallel_policy_conjugates_each_element_once() {
+    let backend = NativeBackend::new();
+    let n = 128usize;
+    let input: Vec<Complex<f64>> = (0..n * n)
+        .map(|i| Complex::new(i as f64, (2 * i + 1) as f64))
+        .collect();
+    let shape = [n, n];
+    let perm = [1usize, 0];
+
+    let mut out_seq = vec![Complex::new(0.0, 0.0); n * n];
+    let desc_seq = TransposeDescriptor {
+        input: &input,
+        output: &mut out_seq,
+        shape: &shape,
+        perm: &perm,
+        order: MemoryOrder::RowMajor,
+        conj: true,
+        policy: ExecPolicy::Sequential,
+    };
+    backend.transpose(desc_seq).unwrap();
+
+    let mut out_par = vec![Complex::new(0.0, 0.0); n * n];
+    let desc_par = TransposeDescriptor {
+        input: &input,
+        output: &mut out_par,
+        shape: &shape,
+        perm: &perm,
+        order: MemoryOrder::RowMajor,
+        conj: true,
+        policy: ExecPolicy::Parallel(0),
+    };
+    backend.transpose(desc_par).unwrap();
+
+    assert_eq!(out_seq, out_par);
+}

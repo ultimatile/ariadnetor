@@ -24,6 +24,8 @@ pub trait Scalar:
     + Clone
     + Copy
     + 'static
+    + Send
+    + Sync
     + Zero
     + One
     + std::ops::Add<Output = Self>

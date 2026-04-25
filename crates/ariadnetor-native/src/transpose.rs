@@ -1,9 +1,9 @@
 //! Transpose dispatch: HPTT for supported types, naive fallback otherwise
 
 use arnet_core::Scalar;
-#[cfg(feature = "hptt")]
 use arnet_core::backend::ExecPolicy;
 use arnet_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
+use rayon::prelude::*;
 
 /// Dispatch transpose to the best available implementation.
 ///
@@ -183,8 +183,13 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 
 /// Naive transpose for any Scalar type.
 ///
-/// Iterates all elements, maps source coordinates through the permutation,
-/// and writes to the destination buffer.
+/// Honors `desc.policy`:
+/// * `Sequential` runs the input-driven single-threaded loop, the
+///   historical baseline preserved to avoid Rayon overhead at small
+///   sizes and for callers that explicitly opt out of parallelism.
+/// * `Parallel(_)` dispatches the output-driven kernel across the
+///   global Rayon pool, where each chunk owns a disjoint contiguous
+///   slice of `output` (race-free by construction).
 fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
         input,
@@ -193,7 +198,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
         perm,
         order,
         conj,
-        ..
+        policy,
     } = desc;
 
     let rank = shape.len();
@@ -207,16 +212,147 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
     let new_shape: Vec<usize> = perm.iter().map(|&i| shape[i]).collect();
     let new_strides = compute_strides(&new_shape, order);
 
+    match policy {
+        ExecPolicy::Sequential => {
+            naive_sequential(
+                input,
+                output,
+                &old_strides,
+                &new_strides,
+                perm,
+                rank,
+                order,
+                conj,
+            );
+        }
+        ExecPolicy::Parallel(n) => {
+            naive_parallel(
+                input,
+                output,
+                &old_strides,
+                &new_strides,
+                perm,
+                rank,
+                order,
+                conj,
+                n,
+                total,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Single-threaded transpose iterating in input order (sequential reads,
+/// scattered writes). Kept distinct from the parallel kernel so callers
+/// that pass `ExecPolicy::Sequential` pay no Rayon overhead.
+#[allow(clippy::too_many_arguments)]
+fn naive_sequential<T: Scalar>(
+    input: &[T],
+    output: &mut [T],
+    old_strides: &[usize],
+    new_strides: &[usize],
+    perm: &[usize],
+    rank: usize,
+    order: MemoryOrder,
+    conj: bool,
+) {
     for (old_idx, &val) in input.iter().enumerate() {
-        let old_coords = linear_to_coords(old_idx, &old_strides, rank, order);
+        let old_coords = linear_to_coords(old_idx, old_strides, rank, order);
         let mut new_idx = 0;
         for (axis, &p) in perm.iter().enumerate() {
             new_idx += old_coords[p] * new_strides[axis];
         }
         output[new_idx] = if conj { val.conj() } else { val };
     }
+}
 
-    Ok(())
+/// Output-driven Rayon kernel: each chunk owns a disjoint slice of
+/// `output` so writes never race. Reads scatter across `input` via the
+/// inverse mapping `old_idx = Σ new_coords[a] * old_strides[perm[a]]`.
+///
+/// Runs on the global Rayon pool. `n` is interpreted as an advisory
+/// target that influences chunk sizing, not a strict worker count:
+/// `Parallel(0)` adopts `rayon::current_num_threads()`, `Parallel(n>0)`
+/// splits work as if `n` workers were available. This mirrors faer's
+/// `Par::rayon(n)` semantics; the global pool's actual width is
+/// unchanged.
+#[allow(clippy::too_many_arguments)]
+fn naive_parallel<T: Scalar>(
+    input: &[T],
+    output: &mut [T],
+    old_strides: &[usize],
+    new_strides: &[usize],
+    perm: &[usize],
+    rank: usize,
+    order: MemoryOrder,
+    conj: bool,
+    n: usize,
+    total: usize,
+) {
+    const MIN_CHUNK: usize = 4096;
+    const TASKS_PER_THREAD: usize = 4;
+
+    let target_threads = if n == 0 {
+        rayon::current_num_threads().max(1)
+    } else {
+        n
+    };
+    let denom = target_threads.saturating_mul(TASKS_PER_THREAD).max(1);
+    let chunk = total.div_ceil(denom).max(MIN_CHUNK).min(total);
+
+    output
+        .par_chunks_mut(chunk)
+        .enumerate()
+        .for_each(|(chunk_idx, slot_chunk)| {
+            let start = chunk_idx * chunk;
+            for (i, slot) in slot_chunk.iter_mut().enumerate() {
+                let new_idx = start + i;
+                let old_idx = new_to_old_idx(new_idx, new_strides, old_strides, perm, rank, order);
+                let val = input[old_idx];
+                *slot = if conj { val.conj() } else { val };
+            }
+        });
+}
+
+/// Map an output linear index to the corresponding input linear index
+/// without materializing the new-coordinate tuple.
+///
+/// Walks `new_strides` in the same order `linear_to_coords` would
+/// (descending stride: forward for RowMajor, reverse for ColumnMajor),
+/// extracting one coordinate at a time and accumulating
+/// `old_idx += coord * old_strides[perm[new_axis]]`. Avoids the
+/// `Vec<usize>` allocation per output element that would otherwise
+/// dominate the parallel kernel's runtime and starve scaling.
+fn new_to_old_idx(
+    mut new_idx: usize,
+    new_strides: &[usize],
+    old_strides: &[usize],
+    perm: &[usize],
+    rank: usize,
+    order: MemoryOrder,
+) -> usize {
+    let mut old_idx = 0;
+    match order {
+        MemoryOrder::RowMajor => {
+            for new_axis in 0..rank {
+                let s = new_strides[new_axis];
+                let c = new_idx / s;
+                new_idx -= c * s;
+                old_idx += c * old_strides[perm[new_axis]];
+            }
+        }
+        MemoryOrder::ColumnMajor => {
+            for new_axis in (0..rank).rev() {
+                let s = new_strides[new_axis];
+                let c = new_idx / s;
+                new_idx -= c * s;
+                old_idx += c * old_strides[perm[new_axis]];
+            }
+        }
+    }
+    old_idx
 }
 
 /// Compute strides for a given shape and memory order.
