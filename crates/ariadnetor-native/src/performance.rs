@@ -110,10 +110,13 @@ impl PerformanceManager {
 
     /// Map a problem-size key to an `ExecPolicy`.
     ///
-    /// Returns `Parallel(0)` iff the threshold is measured (`!= usize::MAX`)
-    /// and the key meets or exceeds it; otherwise `Sequential`. The explicit
-    /// `usize::MAX` check prevents the sentinel from ever tripping Parallel,
-    /// even if `n` were also `usize::MAX`.
+    /// Returns `Parallel(0)` iff the threshold is non-sentinel
+    /// (`!= usize::MAX`) and the key meets or exceeds it; otherwise
+    /// `Sequential`. The explicit `usize::MAX` check covers both
+    /// "unmeasured" thresholds and calibrated-no-win sentinels (see
+    /// the crate-level note on `usize::MAX` semantics) and prevents
+    /// either from ever tripping Parallel, even if `n` were also
+    /// `usize::MAX`.
     pub(crate) fn policy_by_n(threshold: usize, n: usize) -> ExecPolicy {
         if threshold != usize::MAX && n >= threshold {
             ExecPolicy::Parallel(0)
