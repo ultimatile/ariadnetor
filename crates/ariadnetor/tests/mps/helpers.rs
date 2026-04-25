@@ -13,6 +13,82 @@ fn rm_dense(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
+/// Single-basis-state dense MPS site for `|phys_c⟩` with bond dim 1.
+///
+/// Used to build product states with a known total particle number for the
+/// dense-side analytical anchors that mirror the BlockSparse `bsp_basis_site`
+/// helper. Physical dim is fixed at 2 (charges 0 and 1).
+pub fn dense_basis_site(phys_c: usize) -> Dense<f64> {
+    assert!(phys_c <= 1, "physical dim is 2 (charges 0, 1)");
+    let mut data = vec![0.0; 2];
+    data[phys_c] = 1.0;
+    // Shape (1, 2, 1) has only one non-trivial axis, so RowMajor and
+    // ColumnMajor flatten to the same byte order — no rm_dense needed.
+    Dense::new(data, vec![1, 2, 1])
+}
+
+/// Dense total-particle-number MPO `N = Σ_j n_j` over `n` sites.
+///
+/// Mirror of `make_total_n_u1_mpo` for the dense path. Standard rank-2
+/// finite-state-machine MPO: bond basis `{I, n}` with transitions
+/// `I → I = 1`, `I → n = n_j`, `n → n = 1`. Boundary bonds collapse to
+/// dim 1 (`I` on the left, `n` on the right).
+///
+/// Compared to the bond-dim-1 fixtures used by the existing dense apply
+/// tests, this exercises the non-trivial `w_L⊗χ_L` and `w_R⊗χ_R` bond
+/// fusion; pairing it with [`dense_basis_site`] gives an analytical
+/// expectation value (`⟨c1…cn|N|c1…cn⟩ = Σ c_i`) that pins `apply_dense`
+/// against algebra rather than against another implementation.
+pub fn make_total_n_dense_mpo(n: usize) -> Mpo<Dense<f64>> {
+    assert!(n >= 1, "need at least one site");
+    let mut storages = Vec::with_capacity(n);
+    for j in 0..n {
+        // Site data is written in conceptual RowMajor (index
+        // `wL*Bdk*Cdb*DwR + dk*Cdb*DwR + db*DwR + wR`) for readability and
+        // converted to the backend's preferred order via rm_dense.
+        let storage = match (j == 0, j == n - 1) {
+            (true, true) => {
+                // n == 1: the single site reduces to n_phys = diag(0, 1).
+                rm_dense(vec![0.0, 0.0, 0.0, 1.0], vec![1, 2, 2, 1])
+            }
+            (true, false) => {
+                // Left boundary, shape (1, 2, 2, 2). Non-zero entries:
+                //   (0, 0, 0, 0) = I_phys at (0,0) = 1
+                //   (0, 1, 1, 0) = I_phys at (1,1) = 1
+                //   (0, 1, 1, 1) = n_phys at (1,1) = 1
+                rm_dense(
+                    vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0],
+                    vec![1, 2, 2, 2],
+                )
+            }
+            (false, true) => {
+                // Right boundary, shape (2, 2, 2, 1). Non-zero entries:
+                //   (0, 1, 1, 0) = n_phys at (1,1) = 1   (bL=I → apply n)
+                //   (1, 0, 0, 0) = I_phys at (0,0) = 1   (bL=n → apply I)
+                //   (1, 1, 1, 0) = I_phys at (1,1) = 1
+                rm_dense(
+                    vec![0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![2, 2, 2, 1],
+                )
+            }
+            (false, false) => {
+                // Interior, shape (2, 2, 2, 2). Non-zero entries:
+                //   (0, 0, 0, 0), (0, 1, 1, 0)        — I→I block (I_phys)
+                //   (0, 1, 1, 1)                      — I→n block (n_phys)
+                //   (1, 0, 0, 1), (1, 1, 1, 1)        — n→n block (I_phys)
+                #[rustfmt::skip]
+                let data = vec![
+                    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+                    0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ];
+                rm_dense(data, vec![2, 2, 2, 2])
+            }
+        };
+        storages.push(storage);
+    }
+    Mpo::from_storages(storages)
+}
+
 /// Build a random-ish 4-site MPS from deterministic data.
 pub fn make_4site_mps() -> Mps<Dense<f64>> {
     let storages = vec![
