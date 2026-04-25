@@ -438,44 +438,64 @@ pub fn make_total_n_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
             BlockSparse::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
 
         // Charge-0 physical block: action of {I, n} on |0⟩ ⟨0|.
-        // Encoding indices: bL/bR = 0 → I, 1 → n.
+        // Encoding indices: bL/bR = 0 → I, 1 → n. Boundary cases
+        // (j == 0, j == n - 1) shrink the corresponding bond to dim 1
+        // and may overlap (when n == 1 the site is both ends at once),
+        // so the four (left-edge, right-edge) combinations are split
+        // explicitly.
         let block_phys0 = site
             .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
             .expect("charge-0 phys block");
-        if j == 0 {
-            // shape (1, 1, 1, 2): row [I→I_phys, I→n_phys] = [1, 0]
-            block_phys0[0] = 1.0;
-            block_phys0[1] = 0.0;
-        } else if j == n - 1 {
-            // shape (2, 1, 1, 1): col [I→n_phys, n→I_phys]^T = [0, 1]^T
-            block_phys0[0] = 0.0;
-            block_phys0[1] = 1.0;
-        } else {
-            // shape (2, 1, 1, 2): [[I→I, I→n], [n→I, n→n]] = [[1,0],[0,1]]
-            block_phys0[0] = 1.0; // (bL=I, bR=I) → I_phys at (0,0)
-            block_phys0[1] = 0.0; // (bL=I, bR=n) → n_phys at (0,0) = 0
-            block_phys0[2] = 0.0; // (bL=n, bR=I) → 0
-            block_phys0[3] = 1.0; // (bL=n, bR=n) → I_phys at (0,0)
+        match (j == 0, j == n - 1) {
+            (true, true) => {
+                // n == 1: shape (1, 1, 1, 1) — total N reduces to n_phys at (0, 0) = 0.
+                block_phys0[0] = 0.0;
+            }
+            (true, false) => {
+                // shape (1, 1, 1, 2): row [I→I_phys, I→n_phys] = [1, 0]
+                block_phys0[0] = 1.0;
+                block_phys0[1] = 0.0;
+            }
+            (false, true) => {
+                // shape (2, 1, 1, 1): col [I→n_phys, n→I_phys]^T = [0, 1]^T
+                block_phys0[0] = 0.0;
+                block_phys0[1] = 1.0;
+            }
+            (false, false) => {
+                // shape (2, 1, 1, 2): [[I→I, I→n], [n→I, n→n]] = [[1,0],[0,1]]
+                block_phys0[0] = 1.0; // (bL=I, bR=I) → I_phys at (0,0)
+                block_phys0[1] = 0.0; // (bL=I, bR=n) → n_phys at (0,0) = 0
+                block_phys0[2] = 0.0; // (bL=n, bR=I) → 0
+                block_phys0[3] = 1.0; // (bL=n, bR=n) → I_phys at (0,0)
+            }
         }
 
         // Charge-1 physical block.
         let block_phys1 = site
             .block_data_mut(&BlockCoord(vec![0, 1, 1, 0]))
             .expect("charge-1 phys block");
-        if j == 0 {
-            // shape (1, 1, 1, 2): [I→I_phys=1, I→n_phys=1]
-            block_phys1[0] = 1.0;
-            block_phys1[1] = 1.0;
-        } else if j == n - 1 {
-            // shape (2, 1, 1, 1): [I→n_phys=1, n→I_phys=1]^T
-            block_phys1[0] = 1.0;
-            block_phys1[1] = 1.0;
-        } else {
-            // shape (2, 1, 1, 2): [[1,1],[0,1]]
-            block_phys1[0] = 1.0; // (I, I) → I at (1,1) = 1
-            block_phys1[1] = 1.0; // (I, n) → n at (1,1) = 1
-            block_phys1[2] = 0.0; // (n, I) → 0
-            block_phys1[3] = 1.0; // (n, n) → I at (1,1) = 1
+        match (j == 0, j == n - 1) {
+            (true, true) => {
+                // n == 1: shape (1, 1, 1, 1) — total N reduces to n_phys at (1, 1) = 1.
+                block_phys1[0] = 1.0;
+            }
+            (true, false) => {
+                // shape (1, 1, 1, 2): [I→I_phys=1, I→n_phys=1]
+                block_phys1[0] = 1.0;
+                block_phys1[1] = 1.0;
+            }
+            (false, true) => {
+                // shape (2, 1, 1, 1): [I→n_phys=1, n→I_phys=1]^T
+                block_phys1[0] = 1.0;
+                block_phys1[1] = 1.0;
+            }
+            (false, false) => {
+                // shape (2, 1, 1, 2): [[1,1],[0,1]]
+                block_phys1[0] = 1.0; // (I, I) → I at (1,1) = 1
+                block_phys1[1] = 1.0; // (I, n) → n at (1,1) = 1
+                block_phys1[2] = 0.0; // (n, I) → 0
+                block_phys1[3] = 1.0; // (n, n) → I at (1,1) = 1
+            }
         }
 
         storages.push(site);
