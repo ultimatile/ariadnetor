@@ -5,7 +5,7 @@ use arnet::mps::{
     self, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
     TruncateParams, apply, inner, norm,
 };
-use arnet_tensor::{BlockSparse, Direction, U1Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, make_2site_entangled_u1_mps,
@@ -237,6 +237,62 @@ fn zipup_output_structure_and_flux() {
         assert_eq!(indices[2].direction(), Direction::In, "site {j} right bond");
         assert_eq!(site.flux(), &U1Sector(0), "site {j} flux");
     }
+}
+
+/// Single-basis-state U(1) MPS site with bond dim 1 and the requested
+/// integer charges on each leg. Used to construct definite-particle-number
+/// product states for MPO correctness anchors.
+fn bsp_basis_site(left_c: i32, phys_c: usize, right_c: i32) -> BlockSparse<f64, U1Sector> {
+    assert!(phys_c <= 1, "physical dim assumed to be 2 (charges 0, 1)");
+    let left = QNIndex::new(vec![(U1Sector(left_c), 1)], Direction::Out);
+    let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let right = QNIndex::new(vec![(U1Sector(right_c), 1)], Direction::In);
+    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    site.block_data_mut(&BlockCoord(vec![0, phys_c, 0]))
+        .unwrap()[0] = 1.0;
+    site
+}
+
+#[test]
+fn total_n_mpo_acts_as_total_particle_number_3site_interior() {
+    // Correctness anchor that exercises an *interior* MPO site (n >= 3).
+    // The 2-site case is purely boundary and would not catch a wrong bond
+    // layout in the interior block, where the (2, 1, 1, 2) shape's two
+    // non-trivial axes interact non-trivially under RowMajor vs ColumnMajor.
+    //
+    // |010⟩: single particle at site 1, total N = 1, norm² = 1.
+    let psi = Mps::from_storages(vec![
+        bsp_basis_site(0, 0, 0),
+        bsp_basis_site(0, 1, 1),
+        bsp_basis_site(1, 0, 1),
+    ]);
+    let n_op = make_total_n_u1_mpo(3);
+
+    let psi_norm_sq = inner(&psi, &psi);
+    let n_psi = apply(&n_op, &psi, None);
+    let exp_n = inner(&psi, &n_psi);
+
+    assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(exp_n, 1.0, epsilon = 1e-10);
+}
+
+#[test]
+fn total_n_mpo_acts_as_total_particle_number() {
+    // Correctness check on the make_total_n_u1_mpo fixture itself: apply it
+    // to a state lying entirely in the total-N=1 subspace and verify that
+    // ⟨ψ|N|ψ⟩ = 1 · ⟨ψ|ψ⟩. If the MPO data layout were wrong, lossless
+    // naive-vs-zipup equivalence tests would still pass (both implementations
+    // would compute the same wrong operator), so we need an independent
+    // analytical anchor.
+    let psi = make_2site_entangled_u1_mps(); // 3|01⟩ + 8|10⟩, both N=1
+    let n_op = make_total_n_u1_mpo(2);
+
+    let psi_norm_sq = inner(&psi, &psi);
+    let n_psi = apply(&n_op, &psi, None);
+    let exp_n = inner(&psi, &n_psi);
+
+    // Total particle number on this state is 1 → ⟨ψ|N|ψ⟩ = ⟨ψ|ψ⟩.
+    assert_abs_diff_eq!(exp_n, psi_norm_sq, epsilon = 1e-10);
 }
 
 #[test]
