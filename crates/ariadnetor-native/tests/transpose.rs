@@ -266,10 +266,13 @@ fn parallel_policy_matches_sequential_column_major() {
 
 // Conjugation under parallel policy: complex elements must each be
 // conjugated exactly once, regardless of which chunk owns them.
+// Uses 128*128 = 16_384 elements so the input always exceeds
+// `MIN_CHUNK = 4096` and the kernel produces multiple Rayon chunks,
+// exercising the "conjugation across chunk boundaries" path.
 #[test]
 fn parallel_policy_conjugates_each_element_once() {
     let backend = NativeBackend::new();
-    let n = 64usize;
+    let n = 128usize;
     let input: Vec<Complex<f64>> = (0..n * n)
         .map(|i| Complex::new(i as f64, (2 * i + 1) as f64))
         .collect();
