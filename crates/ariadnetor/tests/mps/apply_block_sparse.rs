@@ -9,7 +9,7 @@ use arnet_tensor::{BlockSparse, Direction, U1Sector};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, make_2site_entangled_u1_mps,
-    make_4site_u1_mps, make_identity_u1_mpo,
+    make_4site_u1_mps, make_identity_u1_mpo, make_total_n_u1_mpo,
 };
 
 // ---------------------------------------------------------------------------
@@ -237,6 +237,40 @@ fn zipup_output_structure_and_flux() {
         assert_eq!(indices[2].direction(), Direction::In, "site {j} right bond");
         assert_eq!(site.flux(), &U1Sector(0), "site {j} flux");
     }
+}
+
+#[test]
+fn zipup_lossless_matches_naive_nontrivial_mpo_no_params() {
+    // Total-N MPO has bond dim 2 and exercises the full w_L⊗χ_L / w_R⊗χ_R
+    // bond fusion that an identity MPO (bond dim 1) degenerates. Without
+    // this fixture the zip-up path on BlockSparse is effectively only
+    // tested for w_L = w_R = 1.
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+
+    let phi_naive = apply(&op, &psi, None);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
+
+    let v_naive = bsp_mps_contract_full(&phi_naive);
+    let v_zipup = bsp_mps_contract_full(&phi_zipup);
+    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
+}
+
+#[test]
+fn zipup_lossless_matches_naive_nontrivial_mpo_large_chi() {
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+    let lossless = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(64),
+        target_trunc_err: None,
+    });
+
+    let phi_naive = apply(&op, &psi, Some(&lossless));
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
+
+    let v_naive = bsp_mps_contract_full(&phi_naive);
+    let v_zipup = bsp_mps_contract_full(&phi_zipup);
+    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
 }
 
 #[test]

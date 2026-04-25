@@ -152,6 +152,25 @@ where
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
+    // Validate unsupported TruncateParams up front so we never spend the
+    // forward pass on a request we cannot fulfill.
+    if let Some(p) = params {
+        assert!(
+            matches!(p.absorb, SvdAbsorb::Right),
+            "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
+             Use the naive apply path for Left/Both, or canonicalize the result \
+             after the fact.",
+            p.absorb
+        );
+        assert!(
+            matches!(p.center, None | Some(0)),
+            "apply_zipup currently parks the orthogonality center at site 0; \
+             requested center = {:?}. Call canonicalize on the result to shift \
+             the center, or use the naive apply path.",
+            p.center
+        );
+    }
+
     let backend = psi.backend();
     let order = backend.preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
@@ -227,21 +246,6 @@ where
         result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
         return result_mps;
     };
-
-    assert!(
-        matches!(trunc_params.absorb, SvdAbsorb::Right),
-        "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
-         Use the naive apply path for Left/Both, or canonicalize the result \
-         after the fact.",
-        trunc_params.absorb
-    );
-    assert!(
-        matches!(trunc_params.center, None | Some(0)),
-        "apply_zipup currently parks the orthogonality center at site 0; \
-         requested center = {:?}. Call canonicalize on the result to shift \
-         the center, or use the naive apply path.",
-        trunc_params.center
-    );
 
     // Backward pass: right-to-left truncated SVD sweep, parking S leftward.
     let svd_params = trunc_params.svd.clone();
@@ -393,6 +397,25 @@ where
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
+    // Validate unsupported TruncateParams up front so we never spend the
+    // forward pass on a request we cannot fulfill.
+    if let Some(p) = params {
+        assert!(
+            matches!(p.absorb, SvdAbsorb::Right),
+            "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
+             Use the naive apply path for Left/Both, or canonicalize the result \
+             after the fact.",
+            p.absorb
+        );
+        assert!(
+            matches!(p.center, None | Some(0)),
+            "apply_zipup currently parks the orthogonality center at site 0; \
+             requested center = {:?}. Call canonicalize on the result to shift \
+             the center, or use the naive apply path.",
+            p.center
+        );
+    }
+
     let backend = psi.backend();
 
     let chi_max_forward = params
@@ -456,21 +479,6 @@ where
         result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
         return result_mps;
     };
-
-    assert!(
-        matches!(trunc_params.absorb, SvdAbsorb::Right),
-        "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
-         Use the naive apply path for Left/Both, or canonicalize the result \
-         after the fact.",
-        trunc_params.absorb
-    );
-    assert!(
-        matches!(trunc_params.center, None | Some(0)),
-        "apply_zipup currently parks the orthogonality center at site 0; \
-         requested center = {:?}. Call canonicalize on the result to shift \
-         the center, or use the naive apply path.",
-        trunc_params.center
-    );
 
     let svd_params = trunc_params.svd.clone();
     for j in (1..n).rev() {
