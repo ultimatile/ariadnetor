@@ -4,7 +4,7 @@
 //! linear-algebra op is worth running in parallel on this machine. The
 //! sentinel `usize::MAX` means "no finite parallel threshold" — either
 //! the op is unmeasured on this profile, or calibration showed no
-//! regime where parallel beats sequential (e.g. `laptop().transpose`).
+//! regime where parallel beats sequential (e.g. `ThresholdTable::laptop().transpose`).
 //! `PerformanceManager` pairs a table with the comparison logic that
 //! `NativeBackend::par_for_*` methods call.
 
@@ -21,7 +21,7 @@ use arnet_core::backend::ExecPolicy;
 ///
 /// `usize::MAX` marks "no finite parallel threshold": either unmeasured
 /// on this profile, or a calibrated decision that parallel never wins
-/// (e.g. `laptop().transpose`). `policy_by_n` treats it as "always
+/// (e.g. `ThresholdTable::laptop().transpose`). `policy_by_n` treats it as "always
 /// Sequential" in both cases.
 #[derive(Clone, Debug)]
 pub struct ThresholdTable {
