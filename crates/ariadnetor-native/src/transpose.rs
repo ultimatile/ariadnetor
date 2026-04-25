@@ -309,15 +309,50 @@ fn naive_parallel<T: Scalar>(
             let start = chunk_idx * chunk;
             for (i, slot) in slot_chunk.iter_mut().enumerate() {
                 let new_idx = start + i;
-                let new_coords = linear_to_coords(new_idx, new_strides, rank, order);
-                let mut old_idx = 0;
-                for (new_axis, &old_axis) in perm.iter().enumerate() {
-                    old_idx += new_coords[new_axis] * old_strides[old_axis];
-                }
+                let old_idx = new_to_old_idx(new_idx, new_strides, old_strides, perm, rank, order);
                 let val = input[old_idx];
                 *slot = if conj { val.conj() } else { val };
             }
         });
+}
+
+/// Map an output linear index to the corresponding input linear index
+/// without materializing the new-coordinate tuple.
+///
+/// Walks `new_strides` in the same order `linear_to_coords` would
+/// (descending stride: forward for RowMajor, reverse for ColumnMajor),
+/// extracting one coordinate at a time and accumulating
+/// `old_idx += coord * old_strides[perm[new_axis]]`. Avoids the
+/// `Vec<usize>` allocation per output element that would otherwise
+/// dominate the parallel kernel's runtime and starve scaling.
+fn new_to_old_idx(
+    mut new_idx: usize,
+    new_strides: &[usize],
+    old_strides: &[usize],
+    perm: &[usize],
+    rank: usize,
+    order: MemoryOrder,
+) -> usize {
+    let mut old_idx = 0;
+    match order {
+        MemoryOrder::RowMajor => {
+            for new_axis in 0..rank {
+                let s = new_strides[new_axis];
+                let c = new_idx / s;
+                new_idx -= c * s;
+                old_idx += c * old_strides[perm[new_axis]];
+            }
+        }
+        MemoryOrder::ColumnMajor => {
+            for new_axis in (0..rank).rev() {
+                let s = new_strides[new_axis];
+                let c = new_idx / s;
+                new_idx -= c * s;
+                old_idx += c * old_strides[perm[new_axis]];
+            }
+        }
+    }
+    old_idx
 }
 
 /// Compute strides for a given shape and memory order.
