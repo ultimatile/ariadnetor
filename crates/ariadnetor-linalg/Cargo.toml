@@ -5,6 +5,15 @@ edition.workspace = true
 license.workspace = true
 description = "Backend-agnostic linear algebra API for Ariadnetor"
 
+[features]
+# `native-hptt` is a passthrough that keeps the dev-dep `ariadnetor-native`
+# building with its `hptt` feature on. Default-on preserves existing
+# `cargo test` / `cargo run --example` behavior; pass `--no-default-features`
+# to build dev-dep code (tests, examples, benches) without HPTT — required
+# for calibration sweeps that must exercise the naive transpose fallback.
+default = ["native-hptt"]
+native-hptt = ["ariadnetor-native/hptt"]
+
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
@@ -12,7 +21,7 @@ num-complex = { workspace = true }
 num-traits = { workspace = true }
 
 [dev-dependencies]
-ariadnetor-native = { path = "../ariadnetor-native" }
+ariadnetor-native = { path = "../ariadnetor-native", default-features = false }
 approx = { workspace = true }
 criterion = { workspace = true }
 faer = { workspace = true }

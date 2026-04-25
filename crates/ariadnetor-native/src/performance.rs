@@ -40,9 +40,13 @@ impl ThresholdTable {
     ///
     /// Values come from `crates/ariadnetor-linalg/examples/sweep_{decomp,
     /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
-    /// `transpose` retains the `usize::MAX` sentinel — the sweep showed
-    /// no regime where parallel wins on laptop at practical sizes; Rayon
-    /// dispatch overhead dominates gains on this memory-bound op.
+    ///
+    /// `transpose` is calibrated per backend at compile time. Under the
+    /// `hptt` feature the sweep showed no regime where Rayon-style
+    /// parallel can beat HPTT's tiled sequential on laptop, so the
+    /// sentinel `usize::MAX` is retained. Under `--no-default-features`
+    /// the naive fallback's simpler sequential loses to the parallel
+    /// kernel above ~65k total elements.
     pub fn laptop() -> Self {
         Self {
             svd: 384,
@@ -52,7 +56,11 @@ impl ThresholdTable {
             eig: 256,
             gemm: 192,
             solve: 768,
-            transpose: usize::MAX,
+            transpose: if cfg!(feature = "hptt") {
+                usize::MAX
+            } else {
+                65_536
+            },
         }
     }
 
@@ -62,10 +70,16 @@ impl ThresholdTable {
     /// ops carry the `usize::MAX` sentinel: at workstation scale parallel
     /// sync cost is high enough that `svd`/`qr`/`lq`/`eigh`/`eig`/`solve`
     /// never beat sequential at any `n ≤ 1024` tested. Only large GEMMs
-    /// (`cbrt(m*n*k) ≥ 768`) and transposes with total element count
-    /// ≥ 4_194_304 benefit from parallel dispatch (calibration was
+    /// (`cbrt(m*n*k) ≥ 768`) and transposes benefit from parallel
+    /// dispatch.
+    ///
+    /// `transpose` is calibrated per backend at compile time. Under
+    /// `hptt` the tiled kernel only crosses over at total element count
+    /// ≥ 4_194_304. Under `--no-default-features` the naive fallback
+    /// crosses over much earlier — its parallel kernel beats its own
+    /// sequential above ~262_144 total elements. Calibration was
     /// performed on 2D `[n, n]` inputs; the dispatch key is total
-    /// elements for any rank).
+    /// elements for any rank.
     pub fn workstation() -> Self {
         Self {
             svd: usize::MAX,
@@ -75,7 +89,11 @@ impl ThresholdTable {
             eig: usize::MAX,
             gemm: 768,
             solve: usize::MAX,
-            transpose: 4_194_304,
+            transpose: if cfg!(feature = "hptt") {
+                4_194_304
+            } else {
+                262_144
+            },
         }
     }
 
@@ -144,7 +162,10 @@ mod tests {
         assert_eq!(t.eig, 256);
         assert_eq!(t.gemm, 192);
         assert_eq!(t.solve, 768);
+        #[cfg(feature = "hptt")]
         assert_eq!(t.transpose, usize::MAX);
+        #[cfg(not(feature = "hptt"))]
+        assert_eq!(t.transpose, 65_536);
     }
 
     #[test]
@@ -157,7 +178,10 @@ mod tests {
         assert_eq!(t.eig, usize::MAX);
         assert_eq!(t.gemm, 768);
         assert_eq!(t.solve, usize::MAX);
+        #[cfg(feature = "hptt")]
         assert_eq!(t.transpose, 4_194_304);
+        #[cfg(not(feature = "hptt"))]
+        assert_eq!(t.transpose, 262_144);
     }
 
     #[test]
