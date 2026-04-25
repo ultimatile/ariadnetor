@@ -10,7 +10,7 @@ use arnet_tensor::{BlockSparse, Dense, Sector};
 use arnet_tensor::TensorRepr;
 
 use super::chain::TensorChain;
-use super::types::{Mpo, Mps, TruncResult, TruncateParams};
+use super::types::{ApplyMethod, Mpo, Mps, TruncResult, TruncateParams};
 
 /// Dispatch trait for MPS/MPO operations.
 ///
@@ -42,6 +42,18 @@ pub trait MpsOps: TensorRepr + Sized {
 
     /// Apply an MPO to an MPS: O|ψ⟩.
     fn apply<B: ComputeBackend>(
+        op: &Mpo<Self, B>,
+        psi: &Mps<Self, B>,
+        params: Option<&TruncateParams>,
+    ) -> Mps<Self, B>;
+
+    /// Apply an MPO to an MPS via the zip-up algorithm.
+    ///
+    /// Implementations may panic when zip-up is not yet supported for the
+    /// underlying storage type — callers that need a portable fallback
+    /// should route through [`apply_with_method`] with
+    /// [`ApplyMethod::Naive`].
+    fn apply_zipup<B: ComputeBackend>(
         op: &Mpo<Self, B>,
         psi: &Mps<Self, B>,
         params: Option<&TruncateParams>,
@@ -83,6 +95,14 @@ impl<T: Scalar> MpsOps for Dense<T> {
     ) -> Mps<Self, B> {
         super::apply::apply_dense(op, psi, params)
     }
+
+    fn apply_zipup<B: ComputeBackend>(
+        op: &Mpo<Self, B>,
+        psi: &Mps<Self, B>,
+        params: Option<&TruncateParams>,
+    ) -> Mps<Self, B> {
+        super::apply::apply_zipup_dense(op, psi, params)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +139,14 @@ impl<T: Scalar, S: Sector> MpsOps for BlockSparse<T, S> {
         params: Option<&TruncateParams>,
     ) -> Mps<Self, B> {
         super::apply::apply_bsp(op, psi, params)
+    }
+
+    fn apply_zipup<B: ComputeBackend>(
+        _op: &Mpo<Self, B>,
+        _psi: &Mps<Self, B>,
+        _params: Option<&TruncateParams>,
+    ) -> Mps<Self, B> {
+        panic!("ApplyMethod::ZipUp is not yet implemented for BlockSparse storage")
     }
 }
 
@@ -162,10 +190,32 @@ pub fn braket<R: MpsOps, B: ComputeBackend>(
 }
 
 /// Apply an MPO to an MPS: O|ψ⟩.
+///
+/// Equivalent to [`apply_with_method`] with [`ApplyMethod::Naive`].
 pub fn apply<R: MpsOps, B: ComputeBackend>(
     op: &Mpo<R, B>,
     psi: &Mps<R, B>,
     params: Option<&TruncateParams>,
 ) -> Mps<R, B> {
     R::apply(op, psi, params)
+}
+
+/// Apply an MPO to an MPS using the requested algorithm.
+///
+/// See [`ApplyMethod`] for the trade-offs between variants.
+///
+/// # Panics
+///
+/// Panics if the chosen `method` is not supported for the storage type
+/// (e.g. [`ApplyMethod::ZipUp`] on [`BlockSparse`]).
+pub fn apply_with_method<R: MpsOps, B: ComputeBackend>(
+    op: &Mpo<R, B>,
+    psi: &Mps<R, B>,
+    params: Option<&TruncateParams>,
+    method: ApplyMethod,
+) -> Mps<R, B> {
+    match method {
+        ApplyMethod::Naive => R::apply(op, psi, params),
+        ApplyMethod::ZipUp => R::apply_zipup(op, psi, params),
+    }
 }

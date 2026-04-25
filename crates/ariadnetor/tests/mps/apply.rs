@@ -1,7 +1,9 @@
 //! MPO-MPS apply operation tests.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{self, CanonicalForm, Mpo, Mps, TensorChain, TruncSvdParams, TruncateParams};
+use arnet::mps::{
+    self, ApplyMethod, CanonicalForm, Mpo, Mps, TensorChain, TruncSvdParams, TruncateParams,
+};
 use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
@@ -108,4 +110,140 @@ fn test_apply_matches_expect() {
     let apply_val = mps::inner(&psi, &i_psi);
 
     assert_abs_diff_eq!(expect_val, apply_val, epsilon = 1e-10);
+}
+
+// ===========================================================================
+// Zip-up algorithm tests
+// ===========================================================================
+
+/// 3-site MPS with bond dim 2 and physical dim 2. Deterministic content.
+fn make_3site_test_mps() -> Mps<Dense<f64>> {
+    Mps::from_storages(vec![
+        Dense::new(vec![1.0, 0.0, 0.5, 0.5], vec![1, 2, 2]),
+        Dense::new((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2]),
+        Dense::new(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2, 1]),
+    ])
+}
+
+/// 3-site MPO with bond dim 2 and physical dim 2.
+fn make_3site_test_mpo() -> Mpo<Dense<f64>> {
+    Mpo::from_storages(vec![
+        Dense::new((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 2, 2]),
+        Dense::new(
+            (1..=16).map(|i| i as f64 * 0.05).collect(),
+            vec![2, 2, 2, 2],
+        ),
+        Dense::new((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2, 1]),
+    ])
+}
+
+fn assert_dense_close(a: &Dense<f64>, b: &Dense<f64>, tol: f64) {
+    assert_eq!(a.shape(), b.shape(), "shape mismatch");
+    for (i, (x, y)) in a.data().iter().zip(b.data().iter()).enumerate() {
+        let diff = (x - y).abs();
+        assert!(diff < tol, "elem {i} mismatch: {x} vs {y} (diff {diff})");
+    }
+}
+
+#[test]
+fn test_apply_zipup_lossless_matches_naive_no_params() {
+    // Forward QR pass alone is a gauge transformation: full state vector
+    // must agree with the naive product elementwise.
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let phi_naive = mps::apply(&op, &psi, None);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
+
+    let v_naive = mps_to_dense(&phi_naive);
+    let v_zipup = mps_to_dense(&phi_zipup);
+    assert_dense_close(&v_naive, &v_zipup, 1e-10);
+}
+
+#[test]
+fn test_apply_zipup_lossless_matches_naive_large_chi() {
+    // chi_max well above the inflated bond → no truncation in either path.
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+    let lossless = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(64),
+        target_trunc_err: None,
+    });
+
+    let phi_naive = mps::apply(&op, &psi, Some(&lossless));
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
+
+    let v_naive = mps_to_dense(&phi_naive);
+    let v_zipup = mps_to_dense(&phi_zipup);
+    assert_dense_close(&v_naive, &v_zipup, 1e-10);
+}
+
+#[test]
+fn test_apply_zipup_identity_preserves_state() {
+    let psi = make_3site_test_mps();
+    let identity = make_identity_mpo(3, 2);
+
+    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+
+    let v_orig = mps_to_dense(&psi);
+    let v_after = mps_to_dense(&phi);
+    assert_dense_close(&v_orig, &v_after, 1e-10);
+}
+
+#[test]
+fn test_apply_zipup_canonical_form() {
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    // No params → forward QR only, center at last site.
+    let phi_none = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
+    assert_eq!(
+        *phi_none.canonical_form(),
+        CanonicalForm::Mixed { center: 2 }
+    );
+
+    // With params → backward sweep moves the center to site 0.
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(8),
+        target_trunc_err: None,
+    });
+    let phi_some = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    assert_eq!(
+        *phi_some.canonical_form(),
+        CanonicalForm::Mixed { center: 0 }
+    );
+}
+
+#[test]
+fn test_apply_zipup_truncates_bond_dim() {
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let phi = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+
+    for d in phi.bond_dims() {
+        assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
+    }
+}
+
+#[test]
+fn test_apply_with_method_naive_dispatch_matches_apply() {
+    // ApplyMethod::Naive must route through the existing apply path.
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+
+    let phi_a = mps::apply(&op, &psi, Some(&params));
+    let phi_b = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::Naive);
+
+    let v_a = mps_to_dense(&phi_a);
+    let v_b = mps_to_dense(&phi_b);
+    assert_dense_close(&v_a, &v_b, 1e-12);
 }
