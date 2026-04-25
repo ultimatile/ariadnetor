@@ -208,18 +208,29 @@ fn laptop_profile_calibrated_ops_dispatch_parallel_above_threshold() {
 }
 
 #[test]
-fn workstation_profile_unmeasured_ops_stay_sequential() {
+fn workstation_profile_decomp_and_solve_stay_sequential() {
     let b = NativeBackend::with_perf(PerformanceManager::new(ThresholdTable::workstation()));
+    // svd/qr/lq/eigh/eig/solve all retain usize::MAX on workstation:
+    // sweep showed no crossover below n=1024 — parallel sync cost on
+    // high-core NUMA dominates gains on these ops at practical sizes.
+    assert_eq!(b.par_for_svd(10_000, 10_000), ExecPolicy::Sequential);
     assert_eq!(b.par_for_qr(10_000, 10_000), ExecPolicy::Sequential);
     assert_eq!(b.par_for_lq(10_000, 10_000), ExecPolicy::Sequential);
+    assert_eq!(b.par_for_eigh(10_000), ExecPolicy::Sequential);
     assert_eq!(b.par_for_eig(10_000), ExecPolicy::Sequential);
+    assert_eq!(b.par_for_solve(10_000, 10_000), ExecPolicy::Sequential);
+}
+
+#[test]
+fn workstation_profile_gemm_and_transpose_dispatch_parallel_above_threshold() {
+    let b = NativeBackend::with_perf(PerformanceManager::new(ThresholdTable::workstation()));
+    // workstation thresholds: gemm=768, transpose=4_194_304 (=2048*2048).
+    // Below threshold both stay Sequential; at/above they flip Parallel.
+    assert_eq!(b.par_for_gemm(64, 64, 64), ExecPolicy::Sequential);
     assert_eq!(
         b.par_for_gemm(10_000, 10_000, 10_000),
-        ExecPolicy::Sequential
+        ExecPolicy::Parallel(0)
     );
-    assert_eq!(b.par_for_solve(10_000, 10_000), ExecPolicy::Sequential);
-    assert_eq!(
-        b.par_for_transpose(&[10_000, 10_000]),
-        ExecPolicy::Sequential
-    );
+    assert_eq!(b.par_for_transpose(&[1024, 1024]), ExecPolicy::Sequential);
+    assert_eq!(b.par_for_transpose(&[2048, 2048]), ExecPolicy::Parallel(0));
 }
