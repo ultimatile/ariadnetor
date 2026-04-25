@@ -21,11 +21,11 @@ mod types;
 pub use dispatch::MpsOps;
 
 // Unified free functions (dispatch via MpsOps trait)
-pub use dispatch::{apply, braket, canonicalize, inner, norm, truncate};
+pub use dispatch::{apply, apply_with_method, braket, canonicalize, inner, norm, truncate};
 
 pub use chain::TensorChain;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
-pub use types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
+pub use types::{ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
 // Re-export TruncSvdParams for convenience
 pub use arnet_linalg::TruncSvdParams;

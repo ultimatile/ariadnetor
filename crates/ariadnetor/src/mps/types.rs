@@ -66,6 +66,35 @@ impl From<TruncSvdParams> for TruncateParams {
     }
 }
 
+/// Algorithm used by [`apply_with_method`](super::dispatch::apply_with_method)
+/// to multiply an MPO into an MPS.
+///
+/// Both methods produce the same exact state in the no-truncation limit and
+/// agree element-wise when `chi_max` is at least the bond dimension of the
+/// untruncated product. They differ in cost and in the truncation behavior
+/// when `chi_max` is binding:
+///
+/// - [`Naive`](Self::Naive) (default) materializes the inflated bond
+///   dimension `w * χ` across all sites, then runs a global canonicalize +
+///   truncate sweep. The per-cut SVD sees the full environment, so for a
+///   given `chi_max` the truncation is Eckart-Young optimal but the peak
+///   memory and contraction cost scale with the inflated bonds.
+/// - [`ZipUp`](Self::ZipUp) interleaves contraction and compression so the
+///   inflated bonds never appear simultaneously. Each per-site SVD is taken
+///   before the right environment is fully resolved, so the truncation is
+///   greedy rather than globally optimal — accuracy at fixed `chi_max` is
+///   typically a bit lower than naive, but cost is much lower for large
+///   MPO/MPS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ApplyMethod {
+    /// Materialize the exact MPO·MPS product, then canonicalize and truncate.
+    #[default]
+    Naive,
+    /// Interleave contraction with QR / truncated SVD so the inflated bond
+    /// dimension never appears simultaneously across all sites.
+    ZipUp,
+}
+
 /// Result of a truncation operation.
 #[derive(Debug, Clone)]
 pub struct TruncResult<T: Scalar> {
