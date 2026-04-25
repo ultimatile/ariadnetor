@@ -169,9 +169,9 @@ fn test_apply_dense_n_on_zero_state() {
 #[test]
 fn test_apply_dense_n_eigenvalue_on_multi_particle_basis_state() {
     // |1010⟩ on 4 sites: total N = 2. Two interior MPO sites are exercised
-    // simultaneously (sites 1 and 2), and the FSM bond traverses
-    // I → n → n → n (the I→n transition fires at site 0 and the bond
-    // stays at n until the right boundary).
+    // simultaneously (sites 1 and 2). The total-N contraction sums over
+    // FSM paths where the single I → n transition can fire at any site,
+    // so the eigenvalue is collected from the occupied sites 0 and 2.
     let psi = Mps::from_storages(vec![
         dense_basis_site(1),
         dense_basis_site(0),
