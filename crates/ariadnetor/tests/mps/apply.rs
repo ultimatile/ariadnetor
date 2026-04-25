@@ -7,7 +7,9 @@ use arnet::mps::{
 };
 use arnet_tensor::Dense;
 
-use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
+use super::helpers::{
+    dense_basis_site, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+};
 
 #[test]
 fn test_apply_identity_preserves_state() {
@@ -96,6 +98,111 @@ fn test_apply_sz_expectation() {
     // ⟨0|Sz|0⟩ = inner(|0⟩, Sz|0⟩)
     let expect_val = mps::inner(&up, &sz_psi);
     assert_abs_diff_eq!(expect_val, 0.5, epsilon = 1e-12);
+}
+
+// ===========================================================================
+// Analytical correctness anchors (mirror of apply_block_sparse.rs anchors)
+// ===========================================================================
+
+#[test]
+fn test_apply_dense_total_n_mpo_acts_as_total_particle_number_2site_eigenstate() {
+    // 2-site MPS in the total-N=1 subspace: ψ = 3|01⟩ + 8|10⟩.
+    // Both basis vectors are N-eigenstates with eigenvalue 1, so
+    // ⟨ψ|N|ψ⟩ = ⟨ψ|ψ⟩ = 9 + 64 = 73.
+    let psi = Mps::from_storages(vec![
+        // Site 0 shape (1, 2, 2): bond carries the basis label.
+        Dense::new(vec![3.0, 0.0, 0.0, 8.0], vec![1, 2, 2]),
+        // Site 1 shape (2, 2, 1): bond=0 → phys=1 (|01⟩ branch),
+        // bond=1 → phys=0 (|10⟩ branch).
+        Dense::new(vec![0.0, 1.0, 1.0, 0.0], vec![2, 2, 1]),
+    ]);
+    let n_op = make_total_n_dense_mpo(2);
+
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
+
+    assert_abs_diff_eq!(psi_norm_sq, 73.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(exp_n, 73.0, epsilon = 1e-10);
+}
+
+#[test]
+fn test_apply_dense_total_n_mpo_3site_interior() {
+    // 3-site basis state |010⟩: single particle at site 1, total N = 1.
+    // Exercises one interior MPO site, where RowMajor and ColumnMajor
+    // bond-fusion layouts disagree on the off-diagonal "I → n" entry.
+    let psi = Mps::from_storages(vec![
+        dense_basis_site(0),
+        dense_basis_site(1),
+        dense_basis_site(0),
+    ]);
+    let n_op = make_total_n_dense_mpo(3);
+
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
+
+    assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(exp_n, 1.0, epsilon = 1e-10);
+}
+
+#[test]
+fn test_apply_dense_n_on_zero_state() {
+    // |0000⟩ has total N = 0. Anchors the right-edge boundary
+    // (bL=I → apply n_phys = 0 at charge 0) along the all-zero path.
+    let psi = Mps::from_storages(vec![
+        dense_basis_site(0),
+        dense_basis_site(0),
+        dense_basis_site(0),
+        dense_basis_site(0),
+    ]);
+    let n_op = make_total_n_dense_mpo(4);
+
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
+
+    assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(exp_n, 0.0, epsilon = 1e-10);
+}
+
+#[test]
+fn test_apply_dense_n_eigenvalue_on_multi_particle_basis_state() {
+    // |1010⟩ on 4 sites: total N = 2. Two interior MPO sites are exercised
+    // simultaneously (sites 1 and 2), and the FSM bond traverses
+    // I → n → n → n (the I→n transition fires at site 0 and the bond
+    // stays at n until the right boundary).
+    let psi = Mps::from_storages(vec![
+        dense_basis_site(1),
+        dense_basis_site(0),
+        dense_basis_site(1),
+        dense_basis_site(0),
+    ]);
+    let n_op = make_total_n_dense_mpo(4);
+
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
+
+    assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(exp_n, 2.0, epsilon = 1e-10);
+}
+
+#[test]
+fn test_apply_dense_n_squared_via_composition() {
+    // |11⟩ on 2 sites is an N-eigenstate with eigenvalue 2, so
+    // ⟨ψ|N²|ψ⟩ = 4. Re-feeding the apply output back into apply
+    // verifies that the result is a well-formed MPS the operator can
+    // act on again — the algebraic eigenvalue identity acts as the
+    // analytical anchor across the composition.
+    let psi = Mps::from_storages(vec![dense_basis_site(1), dense_basis_site(1)]);
+    let n_op = make_total_n_dense_mpo(2);
+
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let nn_psi = mps::apply(&n_op, &n_psi, None);
+    let exp_n_sq = mps::inner(&psi, &nn_psi);
+
+    assert_abs_diff_eq!(exp_n_sq, 4.0, epsilon = 1e-10);
 }
 
 #[test]
