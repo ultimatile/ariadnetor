@@ -1,0 +1,315 @@
+//! Lanczos iteration for the smallest eigenvalue / eigenvector
+//! of a Hermitian linear operator, with full reorthogonalization.
+
+use arnet_core::Scalar;
+use arnet_linalg::{eigh, linear_combine, norm, normalize};
+use arnet_native::NativeBackend;
+use arnet_tensor::Dense;
+use num_traits::{Float, NumCast, One, Zero};
+use rand::Rng;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+
+/// A Hermitian linear operator on a flat vector of length `dim`.
+///
+/// The Lanczos solver only ever needs to apply the operator to a
+/// vector — it never inspects matrix elements directly. Closures of
+/// type `Fn(&Dense<T>) -> Dense<T>` automatically implement this
+/// trait via the blanket impl.
+pub trait LinearOp<T: Scalar> {
+    fn apply(&self, v: &Dense<T>) -> Dense<T>;
+}
+
+impl<T, F> LinearOp<T> for F
+where
+    T: Scalar,
+    F: Fn(&Dense<T>) -> Dense<T>,
+{
+    fn apply(&self, v: &Dense<T>) -> Dense<T> {
+        self(v)
+    }
+}
+
+/// Parameters controlling the Lanczos iteration.
+#[derive(Debug, Clone)]
+pub struct LanczosParams {
+    /// Maximum number of Lanczos iterations. Capped internally at `dim`.
+    pub max_iter: usize,
+    /// Convergence tolerance on the Lanczos residual estimate
+    /// `beta_j * |z[j]|`. Interpreted as the corresponding `T::Real`.
+    pub tol: f64,
+    /// Optional seed for the initial vector. `None` draws from the OS RNG.
+    pub seed: Option<u64>,
+}
+
+impl Default for LanczosParams {
+    fn default() -> Self {
+        Self {
+            max_iter: 200,
+            tol: 1e-10,
+            seed: None,
+        }
+    }
+}
+
+/// Output of [`lanczos_smallest`].
+#[derive(Debug, Clone)]
+pub struct LanczosResult<T: Scalar> {
+    /// Smallest eigenvalue.
+    pub eigenvalue: T::Real,
+    /// Corresponding (unit-norm) eigenvector of length `dim`.
+    pub eigenvector: Dense<T>,
+    /// Number of Lanczos iterations actually run.
+    pub iters: usize,
+    /// True residual `|| H v - lambda v ||_2` of the returned pair.
+    pub residual: T::Real,
+}
+
+/// Compute the smallest eigenvalue and corresponding eigenvector of a
+/// Hermitian operator using Lanczos with full reorthogonalization.
+///
+/// `dim` is the length of the flat vector the operator acts on. The
+/// initial Lanczos vector is drawn at random and normalized; pass
+/// [`LanczosParams::seed`] for reproducibility.
+pub fn lanczos_smallest<T, Op>(op: &Op, dim: usize, params: &LanczosParams) -> LanczosResult<T>
+where
+    T: Scalar,
+    // The tridiagonal eigenproblem is real symmetric, so we run `eigh::<T::Real>`
+    // and need the inner real type to coincide with T::Real itself. This holds
+    // for all valid `Scalar` impls (f32, f64, Complex<f32>, Complex<f64>).
+    T::Real: Scalar<Real = T::Real>,
+    Op: LinearOp<T>,
+{
+    assert!(dim >= 1, "lanczos: dim must be >= 1");
+    let max_iter = params.max_iter.min(dim).max(1);
+    let backend = NativeBackend::shared();
+
+    let tol_real: T::Real = real_from_f64::<T>(params.tol);
+    let beta_floor: T::Real = real_from_f64::<T>(1e-14);
+
+    let mut rng = match params.seed {
+        Some(s) => StdRng::seed_from_u64(s),
+        None => StdRng::from_os_rng(),
+    };
+    let v0 = random_unit_vector::<T>(dim, &mut rng);
+
+    let mut basis: Vec<Dense<T>> = vec![v0];
+    let mut alphas: Vec<T::Real> = Vec::new();
+    let mut betas: Vec<T::Real> = Vec::new();
+
+    let mut iters = 0usize;
+    let mut converged_lambda: T::Real = T::Real::zero();
+    let mut converged_z: Dense<T::Real> = Dense::new(vec![T::Real::one()], vec![1]);
+
+    for j in 0..max_iter {
+        iters = j + 1;
+        let v_j = basis[j].clone();
+        let mut w = op.apply(&v_j);
+        debug_assert_eq!(
+            w.len(),
+            dim,
+            "LinearOp::apply must return a vector of length dim",
+        );
+
+        // alpha_j = Re<v_j, H v_j>; the imaginary part is zero up to
+        // numerical noise for a Hermitian operator.
+        let alpha = inner(&v_j, &w).re();
+        alphas.push(alpha);
+
+        // Three-term recurrence: w <- w - alpha v_j - beta_{j-1} v_{j-1}.
+        if j == 0 {
+            w = sub_real_axpy(&w, alpha, &v_j);
+        } else {
+            let beta_prev = betas[j - 1];
+            let v_prev = &basis[j - 1];
+            w = sub_two_real_axpy(&w, alpha, &v_j, beta_prev, v_prev);
+        }
+
+        // Full reorthogonalization. Two passes of classical Gram-Schmidt
+        // ("twice is enough" — Kahan / Parlett) restores orthogonality
+        // to working precision even after substantial cancellation.
+        for _ in 0..2 {
+            for v_k in basis.iter().take(j + 1) {
+                let gamma = inner(v_k, &w);
+                w = sub_complex_axpy(&w, gamma, v_k);
+            }
+        }
+
+        let beta = norm(&w);
+
+        // Solve current tridiagonal eigenproblem of size m = j + 1.
+        let m = j + 1;
+        let (lambda, z) = solve_tridiagonal_smallest::<T>(&backend, &alphas, &betas, m);
+        converged_lambda = lambda;
+        converged_z = z;
+
+        // Convergence: residual estimate = beta_j * |z[m-1]|.
+        let z_last = Float::abs(converged_z.data()[m - 1]);
+        let residual_estimate = beta * z_last;
+
+        if beta < beta_floor {
+            // Invariant subspace exhausted; further iterations cannot improve.
+            break;
+        }
+        if residual_estimate < tol_real {
+            // The Ritz residual ||(H - λ I) ψ|| in the Lanczos basis is at most
+            // beta * |z[m-1]|; with full reorthogonalization this also bounds
+            // the true residual to working precision. Eigenvalue convergence
+            // is quadratic in the residual, so an "eigenvalue stagnation"
+            // criterion (prev λ ≈ λ) would exit ~half the precision early —
+            // we deliberately do not use it.
+            break;
+        }
+
+        if j + 1 == max_iter {
+            break;
+        }
+
+        let inv = T::Real::one() / beta;
+        let v_next_data: Vec<T> = w.data().iter().map(|&x| x.scale_real(inv)).collect();
+        basis.push(Dense::new(v_next_data, vec![dim]));
+        betas.push(beta);
+    }
+
+    // Reconstruct the Ritz vector psi = sum_k z[k] v_k.
+    let m = converged_z.len();
+    let basis_refs: Vec<&Dense<T>> = basis.iter().take(m).collect();
+    let coefs: Vec<T> = converged_z
+        .data()
+        .iter()
+        .map(|&zk| T::from_real_imag(zk, T::Real::zero()))
+        .collect();
+    let psi = linear_combine(&basis_refs, &coefs).expect("linear_combine on Lanczos basis");
+    let (psi, _) = normalize(&psi);
+
+    // True residual: ||H psi - lambda psi||.
+    let h_psi = op.apply(&psi);
+    let lambda_t = T::from_real_imag(converged_lambda, T::Real::zero());
+    let neg_lambda = lambda_t.scale_real(-T::Real::one());
+    let residual_vec =
+        linear_combine(&[&h_psi, &psi], &[T::one(), neg_lambda]).expect("residual lc");
+    let residual = norm(&residual_vec);
+
+    LanczosResult {
+        eigenvalue: converged_lambda,
+        eigenvector: psi,
+        iters,
+        residual,
+    }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Hermitian inner product `<a, b> = sum_i conj(a_i) * b_i`.
+fn inner<T: Scalar>(a: &Dense<T>, b: &Dense<T>) -> T {
+    a.data()
+        .iter()
+        .zip(b.data().iter())
+        .fold(T::zero(), |acc, (&x, &y)| acc + x.conj() * y)
+}
+
+/// Compute `w - alpha * v` where alpha is real.
+fn sub_real_axpy<T: Scalar>(w: &Dense<T>, alpha: T::Real, v: &Dense<T>) -> Dense<T> {
+    let neg_alpha = -alpha;
+    let data: Vec<T> = w
+        .data()
+        .iter()
+        .zip(v.data().iter())
+        .map(|(&wi, &vi)| wi + vi.scale_real(neg_alpha))
+        .collect();
+    Dense::new(data, w.shape().to_vec())
+}
+
+/// Compute `w - alpha * v - beta * u` where alpha, beta are real.
+fn sub_two_real_axpy<T: Scalar>(
+    w: &Dense<T>,
+    alpha: T::Real,
+    v: &Dense<T>,
+    beta: T::Real,
+    u: &Dense<T>,
+) -> Dense<T> {
+    let neg_alpha = -alpha;
+    let neg_beta = -beta;
+    let data: Vec<T> = w
+        .data()
+        .iter()
+        .zip(v.data().iter())
+        .zip(u.data().iter())
+        .map(|((&wi, &vi), &ui)| wi + vi.scale_real(neg_alpha) + ui.scale_real(neg_beta))
+        .collect();
+    Dense::new(data, w.shape().to_vec())
+}
+
+/// Compute `w - gamma * v` where gamma is the (possibly complex) scalar T.
+fn sub_complex_axpy<T: Scalar>(w: &Dense<T>, gamma: T, v: &Dense<T>) -> Dense<T> {
+    let neg_gamma = gamma.scale_real(-T::Real::one());
+    let data: Vec<T> = w
+        .data()
+        .iter()
+        .zip(v.data().iter())
+        .map(|(&wi, &vi)| wi + neg_gamma * vi)
+        .collect();
+    Dense::new(data, w.shape().to_vec())
+}
+
+/// Draw a unit-norm random vector by sampling each component independently
+/// from the uniform distribution on (−0.5, 0.5) and normalizing. The same
+/// helper covers real and complex `T`: the imaginary part is dropped for
+/// real scalars (see [`Scalar::from_real_imag`]).
+fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
+    let data: Vec<T> = (0..dim)
+        .map(|_| {
+            let re_f64: f64 = rng.random_range(-0.5..0.5);
+            let im_f64: f64 = rng.random_range(-0.5..0.5);
+            let re = real_from_f64::<T>(re_f64);
+            let im = real_from_f64::<T>(im_f64);
+            T::from_real_imag(re, im)
+        })
+        .collect();
+    let v = Dense::new(data, vec![dim]);
+    let (normalized, _) = normalize(&v);
+    normalized
+}
+
+/// Smallest eigenpair of the symmetric tridiagonal matrix of dimension `m`
+/// formed from `alphas[0..m]` (diagonal) and `betas[0..m-1]` (off-diagonal).
+///
+/// The eigenvector is returned as a length-`m` vector in the Lanczos basis.
+fn solve_tridiagonal_smallest<T>(
+    backend: &NativeBackend,
+    alphas: &[T::Real],
+    betas: &[T::Real],
+    m: usize,
+) -> (T::Real, Dense<T::Real>)
+where
+    T: Scalar,
+    T::Real: Scalar<Real = T::Real>,
+{
+    if m == 1 {
+        return (alphas[0], Dense::new(vec![T::Real::one()], vec![1]));
+    }
+    // Build the m×m matrix in column-major order to match
+    // `NativeBackend::preferred_order()`. For column-major, the (i, j) entry
+    // lives at index `i + m * j`.
+    let mut data = vec![T::Real::zero(); m * m];
+    for i in 0..m {
+        data[i + m * i] = alphas[i];
+        if i + 1 < m {
+            data[(i + 1) + m * i] = betas[i];
+            data[i + m * (i + 1)] = betas[i];
+        }
+    }
+    let matrix = Dense::new(data, vec![m, m]);
+    let (eigvals, eigvecs) = eigh(backend, &matrix, 1).expect("tridiagonal eigh");
+    let lambda = eigvals.data()[0];
+    // First column of eigvecs (column-major) holds the eigenvector for the
+    // smallest eigenvalue: indices 0..m.
+    let z_data = eigvecs.data()[0..m].to_vec();
+    (lambda, Dense::new(z_data, vec![m]))
+}
+
+fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
+    <T::Real as NumCast>::from(x).unwrap_or_else(T::Real::zero)
+}
