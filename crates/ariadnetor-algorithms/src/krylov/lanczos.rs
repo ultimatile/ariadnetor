@@ -69,11 +69,13 @@ pub struct LanczosResult<T: Scalar> {
     pub iters: usize,
     /// True residual `|| H v - lambda v ||_2` of the returned pair.
     pub residual: T::Real,
-    /// `true` if the iteration met the convergence criterion (Lanczos
-    /// residual estimate ≤ `tol`, or an exact invariant subspace was
-    /// detected via `beta == 0`). `false` if the loop hit `max_iter`
-    /// without converging — the eigenpair is still the best Ritz pair
-    /// found, but callers should check `residual` before trusting it.
+    /// `true` if the returned pair satisfies the true-residual test
+    /// `|| H v - lambda v ||_2 ≤ tol`, `false` otherwise. The cheap
+    /// Lanczos residual estimate `beta * |z[m-1]|` and the `beta == 0`
+    /// invariant-subspace check are used as early-exit heuristics
+    /// inside the iteration loop, but neither sets this flag on its
+    /// own — the flag comes from comparing the residual the caller
+    /// sees against `tol`.
     pub converged: bool,
 }
 
