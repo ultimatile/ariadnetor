@@ -63,6 +63,12 @@ pub struct LanczosResult<T: Scalar> {
     pub iters: usize,
     /// True residual `|| H v - lambda v ||_2` of the returned pair.
     pub residual: T::Real,
+    /// `true` if the iteration met the convergence criterion (Lanczos
+    /// residual estimate ≤ `tol`, or an exact invariant subspace was
+    /// detected via `beta == 0`). `false` if the loop hit `max_iter`
+    /// without converging — the eigenpair is still the best Ritz pair
+    /// found, but callers should check `residual` before trusting it.
+    pub converged: bool,
 }
 
 /// Compute the smallest eigenvalue and corresponding eigenvector of a
@@ -113,6 +119,7 @@ where
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
     let mut converged_z: Dense<T::Real> = Dense::new(vec![T::Real::one()], vec![1]);
+    let mut converged = false;
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -167,6 +174,7 @@ where
             // is quadratic in the residual, so an "eigenvalue stagnation"
             // criterion (prev λ ≈ λ) would exit ~half the precision early —
             // we deliberately do not use it.
+            converged = true;
             break;
         }
 
@@ -177,7 +185,9 @@ where
         if beta <= beta_floor {
             // β has collapsed to the bottom of the FP range; we cannot safely
             // form v_{j+1} = w / β. The Krylov subspace is effectively
-            // exhausted at this point.
+            // exhausted at this point — the current Ritz pair is exact in
+            // the spanned subspace, so we report convergence.
+            converged = true;
             break;
         }
         let inv = T::Real::one() / beta;
@@ -210,6 +220,7 @@ where
         eigenvector: psi,
         iters,
         residual,
+        converged,
     }
 }
 

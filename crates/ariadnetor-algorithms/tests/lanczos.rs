@@ -104,6 +104,7 @@ fn lanczos_diagonal_returns_min_eigenvalue() {
 
     assert_abs_diff_eq!(result.eigenvalue, -3.0, epsilon = 1e-10);
     assert!(result.residual < 1e-9, "residual = {}", result.residual);
+    assert!(result.converged, "expected converged = true");
 }
 
 #[test]
@@ -134,6 +135,7 @@ fn lanczos_random_symmetric_matches_eigh() {
             "n = {n}: residual = {}",
             result.residual
         );
+        assert!(result.converged, "n = {n}: expected converged = true");
     }
 }
 
@@ -170,6 +172,7 @@ fn lanczos_near_degenerate_cluster() {
     let v = result.eigenvector.data();
     assert!(v[0].abs() > 0.99, "v[0] = {} (expected near ±1)", v[0]);
     assert!(result.residual < 1e-7);
+    assert!(result.converged, "expected converged = true");
 }
 
 // ---------------------------------------------------------------------------
@@ -199,4 +202,5 @@ fn lanczos_complex_hermitian_matches_eigh() {
         result.eigenvalue
     );
     assert!(result.residual < 1e-7, "residual = {}", result.residual);
+    assert!(result.converged, "expected converged = true");
 }
