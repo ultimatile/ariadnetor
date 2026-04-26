@@ -4,6 +4,7 @@ members = [
   "crates/ariadnetor-tensor",
   "crates/ariadnetor-linalg",
   "crates/ariadnetor-native",
+  "crates/ariadnetor-mps",
   "crates/ariadnetor",
 ]
 resolver = "2"

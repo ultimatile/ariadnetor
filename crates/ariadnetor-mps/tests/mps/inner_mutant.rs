@@ -4,7 +4,7 @@
 //! Mixed{center} returning the center tensor's Frobenius norm.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{self, CanonicalForm, Mps, TensorChain};
+use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
 use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::make_4site_mps;

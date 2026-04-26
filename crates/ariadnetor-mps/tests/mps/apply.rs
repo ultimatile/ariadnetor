@@ -1,8 +1,8 @@
 //! MPO-MPS apply operation tests.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{
-    self, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
+use arnet_mps::{
+    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
     TruncateParams,
 };
 use arnet_tensor::Dense;

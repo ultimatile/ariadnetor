@@ -1,27 +1,20 @@
 [package]
-name = "ariadnetor"
+name = "ariadnetor-mps"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "High-performance tensor network framework in Pure Rust"
-
-[features]
-default = ["mps"]
-mps = ["dep:ariadnetor-mps"]
+description = "Matrix Product State / Operator (MPS / MPO) data structures and operations for Ariadnetor"
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 ariadnetor-linalg = { path = "../ariadnetor-linalg" }
 ariadnetor-native = { path = "../ariadnetor-native" }
-ariadnetor-mps = { path = "../ariadnetor-mps", optional = true }
-anyhow = { workspace = true }
-lru = { workspace = true }
 num-traits = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
 
 [lib]
-name = "arnet"
+name = "arnet_mps"
 path = "src/lib.rs"

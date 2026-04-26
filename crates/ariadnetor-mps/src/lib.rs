@@ -1,7 +1,11 @@
-//! Matrix Product State (MPS) and Matrix Product Operator (MPO) module.
+//! Matrix Product State (MPS) and Matrix Product Operator (MPO) crate.
 //!
 //! Provides data structures and operations for tensor chains
 //! used in tensor network algorithms (DMRG, TDVP, TEBD, etc.).
+//!
+//! Sits between the low-level tensor / linalg crates and algorithm crates
+//! so that the latter can depend on the middle layer without consuming the
+//! umbrella `arnet` crate.
 //!
 //! # Index convention
 //!

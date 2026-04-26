@@ -1,7 +1,7 @@
 //! Inner product, norm, and expectation value tests.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{self, CanonicalForm, Mpo, Mps, TensorChain};
+use arnet_mps::{self as mps, CanonicalForm, Mpo, Mps, TensorChain};
 use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::make_4site_mps;

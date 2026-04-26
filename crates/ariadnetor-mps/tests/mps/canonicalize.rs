@@ -1,6 +1,6 @@
 //! Canonicalization tests.
 
-use arnet::mps::{self, CanonicalForm, Mps, TensorChain};
+use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
 use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};

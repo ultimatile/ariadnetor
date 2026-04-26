@@ -1,8 +1,8 @@
 //! apply tests: apply a BlockSparse MPO to a BlockSparse MPS.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{
-    self, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
+use arnet_mps::{
+    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
     TruncateParams, apply, inner, norm,
 };
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};

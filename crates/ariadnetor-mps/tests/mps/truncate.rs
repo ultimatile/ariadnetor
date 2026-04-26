@@ -1,8 +1,8 @@
 //! Truncation operation tests.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{
-    self, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
+use arnet_mps::{
+    self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
 use arnet_tensor::{Dense, MemoryOrder};
 
