@@ -318,7 +318,7 @@ fn sub_complex_axpy<T: Scalar>(w: &Dense<T>, gamma: T, v: &Dense<T>) -> Dense<T>
 /// helper covers real and complex `T`: the imaginary part is dropped for
 /// real scalars (see [`Scalar::from_real_imag`]).
 fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
-    let data: Vec<T> = (0..dim)
+    let mut data: Vec<T> = (0..dim)
         .map(|_| {
             let re_f64: f64 = rng.random_range(-0.5..0.5);
             let im_f64: f64 = rng.random_range(-0.5..0.5);
@@ -327,6 +327,13 @@ fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
             T::from_real_imag(re, im)
         })
         .collect();
+    // Probability of all components sampling to exactly zero is on the order
+    // of `2^(-53*dim)` for f64 — astronomical for any reasonable `dim`, but
+    // not strictly impossible. Substitute a deterministic non-zero vector so
+    // the subsequent `normalize` cannot panic.
+    if data.iter().all(|x| x.abs() == T::Real::zero()) {
+        data[0] = T::one();
+    }
     let v = Dense::new(data, vec![dim]);
     let (normalized, _) = normalize(&v);
     normalized
