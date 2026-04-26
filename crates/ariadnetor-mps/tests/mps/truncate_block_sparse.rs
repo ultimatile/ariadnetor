@@ -5,7 +5,7 @@
 //! invariants (per-sector isometry, flux preservation, block-level
 //! state comparison).
 
-use arnet::mps::{
+use arnet_mps::{
     CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams, canonicalize,
     truncate,
 };

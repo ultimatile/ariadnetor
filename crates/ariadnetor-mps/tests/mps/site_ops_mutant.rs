@@ -4,7 +4,7 @@
 //! SpinHalf::dim, SpinHalf::sz negation, and Qubit y/z/h sign patterns.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{Qubit, SiteOps, SpinHalf};
+use arnet_mps::{Qubit, SiteOps, SpinHalf};
 
 // --------------------------------------------------------------------------
 // SpinHalf::dim — catch mutant replacing 2 with 0 or 1

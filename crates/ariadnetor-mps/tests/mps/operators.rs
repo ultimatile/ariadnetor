@@ -4,7 +4,7 @@
 //! The `cm` helper computes the CM flat index for element access.
 
 use approx::assert_abs_diff_eq;
-use arnet::mps::{Qubit, SiteOps, SpinHalf};
+use arnet_mps::{Qubit, SiteOps, SpinHalf};
 
 /// Column-major flat index for 2D (i, j) in shape [rows, cols].
 fn cm(i: usize, j: usize, rows: usize) -> usize {

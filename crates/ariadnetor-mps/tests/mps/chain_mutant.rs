@@ -3,7 +3,7 @@
 //! Focuses on exact value assertions for bond_dim, bond_dims,
 //! max_bond_dim, and is_empty to catch arithmetic/comparison mutants.
 
-use arnet::mps::{Mps, TensorChain};
+use arnet_mps::{Mps, TensorChain};
 use arnet_tensor::Dense;
 
 /// Two-site MPS with asymmetric bond dimensions to distinguish index choices.
