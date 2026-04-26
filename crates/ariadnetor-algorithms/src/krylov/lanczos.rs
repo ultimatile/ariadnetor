@@ -81,11 +81,22 @@ where
     Op: LinearOp<T>,
 {
     assert!(dim >= 1, "lanczos: dim must be >= 1");
+    assert!(
+        params.tol.is_finite() && params.tol >= 0.0,
+        "lanczos: tol must be a finite non-negative f64, got {}",
+        params.tol,
+    );
     let max_iter = params.max_iter.min(dim).max(1);
     let backend = NativeBackend::shared();
 
     let tol_real: T::Real = real_from_f64::<T>(params.tol);
-    let beta_floor: T::Real = real_from_f64::<T>(1e-14);
+    // `beta_floor` is only a guard against dividing by an unrepresentably
+    // small β when normalizing v_{j+1} — it must NOT override the user's
+    // tolerance. Convergence is decided exclusively by `residual_estimate`
+    // (which is itself bounded by β, so any `tol`-meeting β is caught
+    // there first). We trip only when β is at the bottom of the
+    // floating-point range, where the next 1/β would overflow.
+    let beta_floor: T::Real = real_from_f64::<T>(f64::MIN_POSITIVE);
 
     let mut rng = match params.seed {
         Some(s) => StdRng::seed_from_u64(s),
@@ -106,9 +117,9 @@ where
         let v_j = basis[j].clone();
         let mut w = op.apply(&v_j);
         debug_assert_eq!(
-            w.len(),
-            dim,
-            "LinearOp::apply must return a vector of length dim",
+            w.shape(),
+            &[dim],
+            "LinearOp::apply must return a rank-1 tensor of shape [dim]",
         );
 
         // alpha_j = Re<v_j, H v_j>; the imaginary part is zero up to
@@ -147,10 +158,6 @@ where
         let z_last = Float::abs(converged_z.data()[m - 1]);
         let residual_estimate = beta * z_last;
 
-        if beta < beta_floor {
-            // Invariant subspace exhausted; further iterations cannot improve.
-            break;
-        }
         if residual_estimate < tol_real {
             // The Ritz residual ||(H - λ I) ψ|| in the Lanczos basis is at most
             // beta * |z[m-1]|; with full reorthogonalization this also bounds
@@ -165,6 +172,12 @@ where
             break;
         }
 
+        if beta < beta_floor {
+            // β has collapsed to the bottom of the FP range; we cannot safely
+            // form v_{j+1} = w / β. The Krylov subspace is effectively
+            // exhausted at this point.
+            break;
+        }
         let inv = T::Real::one() / beta;
         let v_next_data: Vec<T> = w.data().iter().map(|&x| x.scale_real(inv)).collect();
         basis.push(Dense::new(v_next_data, vec![dim]));
