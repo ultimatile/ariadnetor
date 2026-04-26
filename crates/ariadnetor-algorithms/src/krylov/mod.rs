@@ -1,6 +1,6 @@
 //! Krylov-subspace eigensolvers.
 //!
-//! Currently exposes a single entry point, [`lanczos::lanczos_smallest`],
+//! Currently exposes a single entry point, [`lanczos_smallest`],
 //! which finds the smallest eigenvalue and corresponding eigenvector of
 //! a Hermitian linear operator using the Lanczos iteration with full
 //! reorthogonalization. The operator is supplied through the

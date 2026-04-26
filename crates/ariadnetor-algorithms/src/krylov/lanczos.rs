@@ -35,8 +35,14 @@ where
 pub struct LanczosParams {
     /// Maximum number of Lanczos iterations. Capped internally at `dim`.
     pub max_iter: usize,
-    /// Convergence tolerance on the Lanczos residual estimate
-    /// `beta_j * |z[j]|`. Interpreted as the corresponding `T::Real`.
+    /// Convergence tolerance, interpreted as the corresponding `T::Real`.
+    ///
+    /// Used in two places: (1) the iteration loop exits as soon as the
+    /// cheap Lanczos residual estimate `beta_j * |z[m-1]|` falls at or
+    /// below `tol`, and (2) the returned [`LanczosResult::converged`]
+    /// flag is set from the *true* residual `||H psi - lambda psi||_2`
+    /// against the same `tol`, so the flag is consistent with the
+    /// residual the caller sees.
     pub tol: f64,
     /// Optional seed for the initial vector. `None` draws from the OS RNG.
     pub seed: Option<u64>,
@@ -223,6 +229,11 @@ where
 
     // True residual: ||H psi - lambda psi||.
     let h_psi = op.apply(&psi);
+    assert_eq!(
+        h_psi.shape(),
+        &[dim],
+        "LinearOp::apply must return a rank-1 tensor of shape [dim]",
+    );
     let lambda_t = T::from_real_imag(converged_lambda, T::Real::zero());
     let neg_lambda = lambda_t.scale_real(-T::Real::one());
     let residual_vec =
@@ -356,6 +367,12 @@ where
     (lambda, Dense::new(z_data, vec![m]))
 }
 
+/// Cast a (validated) `f64` constant to `T::Real`.
+///
+/// Callers must validate inputs upstream (e.g. `params.tol` is
+/// asserted finite and non-negative); the helper itself is a hard
+/// boundary — an unrepresentable value is a bug, not a silent zero.
 fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
-    <T::Real as NumCast>::from(x).unwrap_or_else(T::Real::zero)
+    <T::Real as NumCast>::from(x)
+        .unwrap_or_else(|| panic!("real_from_f64: {x} is not representable in T::Real"))
 }
