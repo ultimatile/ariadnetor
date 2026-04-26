@@ -77,6 +77,18 @@ pub struct LanczosResult<T: Scalar> {
 /// `dim` is the length of the flat vector the operator acts on. The
 /// initial Lanczos vector is drawn at random and normalized; pass
 /// [`LanczosParams::seed`] for reproducibility.
+///
+/// # Numerical preconditions
+///
+/// - `params.tol` is honored down to roughly `T::Real::epsilon()`. Asking
+///   for a tolerance below working precision (e.g. `1e-10` for `f32`,
+///   whose epsilon is `~1.2e-7`) cannot be satisfied; `converged` will
+///   reflect the achievable precision rather than the requested one.
+/// - The 2-norm used to compute β is the straightforward
+///   `sum |x|^2 -> sqrt`. Operator outputs whose elements approach
+///   `sqrt(T::Real::MAX)` (roughly `1e19` for `f32`, `1e154` for `f64`)
+///   may overflow during squaring. DMRG-scale Hermitians stay far below
+///   this in practice.
 pub fn lanczos_smallest<T, Op>(op: &Op, dim: usize, params: &LanczosParams) -> LanczosResult<T>
 where
     T: Scalar,
@@ -119,7 +131,6 @@ where
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
     let mut converged_z: Dense<T::Real> = Dense::new(vec![T::Real::one()], vec![1]);
-    let mut converged = false;
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -174,7 +185,11 @@ where
             // is quadratic in the residual, so an "eigenvalue stagnation"
             // criterion (prev λ ≈ λ) would exit ~half the precision early —
             // we deliberately do not use it.
-            converged = true;
+            //
+            // Note: `converged` is decided AFTER computing the true residual
+            // below. Asking for `tol` below working precision cannot be
+            // satisfied (Ritz says yes, true residual says no); honesty over
+            // optimism.
             break;
         }
 
@@ -186,8 +201,7 @@ where
             // β has collapsed to the bottom of the FP range; we cannot safely
             // form v_{j+1} = w / β. The Krylov subspace is effectively
             // exhausted at this point — the current Ritz pair is exact in
-            // the spanned subspace, so we report convergence.
-            converged = true;
+            // the spanned subspace.
             break;
         }
         let inv = T::Real::one() / beta;
@@ -214,6 +228,12 @@ where
     let residual_vec =
         linear_combine(&[&h_psi, &psi], &[T::one(), neg_lambda]).expect("residual lc");
     let residual = norm(&residual_vec);
+
+    // Set `converged` from the true residual rather than the Lanczos estimate,
+    // so the flag is consistent with the residual the caller sees: the Ritz
+    // estimate can claim convergence while the true residual still exceeds
+    // `tol` (e.g. when the requested tolerance is below working precision).
+    let converged = residual <= tol_real;
 
     LanczosResult {
         eigenvalue: converged_lambda,
