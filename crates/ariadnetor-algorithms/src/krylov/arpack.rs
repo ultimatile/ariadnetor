@@ -38,8 +38,14 @@ mod sealed {
 /// scalar type.
 #[derive(Debug, Clone)]
 pub struct ArpackParams {
-    /// Convergence tolerance forwarded to ARPACK. `0.0` accepts
-    /// ARPACK's default (machine epsilon for the working precision).
+    /// Convergence tolerance — must be **strictly positive**. Used
+    /// both as ARPACK's relative stopping criterion and as the
+    /// wrapper's absolute threshold for `ArpackResult::converged`.
+    /// The "tol = 0 means machine-epsilon default" sentinel that
+    /// `arpack-rs` forwards is rejected at this layer because it
+    /// would silently break the `converged` divergence indicator
+    /// (`residual <= 0` is unreachable). Pass an explicit value
+    /// (e.g. `1e-12` for `f64` precision targets, `1e-5` for `f32`).
     pub tol: f64,
     /// Maximum number of restart iterations.
     pub max_iter: usize,
@@ -116,6 +122,30 @@ pub enum ArpackError {
         n_matvec: usize,
     },
 }
+
+impl std::fmt::Display for ArpackError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArpackError::InvalidParam(msg) => write!(f, "invalid parameter: {msg}"),
+            ArpackError::AupdFailed(info) => write!(f, "ARPACK *aupd returned info = {info}"),
+            ArpackError::EupdFailed(info) => write!(f, "ARPACK *eupd returned info = {info}"),
+            ArpackError::UnexpectedIdo(ido) => {
+                write!(f, "ARPACK requested unsupported ido = {ido}")
+            }
+            ArpackError::MaxIterReached {
+                iters,
+                nconv,
+                n_matvec,
+            } => write!(
+                f,
+                "ARPACK hit max_iter without convergence: iters = {iters}, \
+                 nconv = {nconv}, n_matvec = {n_matvec}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ArpackError {}
 
 impl From<arpack::Error> for ArpackError {
     fn from(e: arpack::Error) -> Self {
@@ -240,11 +270,11 @@ where
     Op: LinearOp<T>,
 {
     assert!(dim >= 1, "arpack_smallest: dim must be >= 1");
-    assert!(
-        params.tol.is_finite() && params.tol >= 0.0,
-        "arpack_smallest: tol must be a finite non-negative f64, got {}",
-        params.tol,
-    );
+    if !params.tol.is_finite() || params.tol <= 0.0 {
+        return Err(ArpackError::InvalidParam(
+            "params.tol must be finite and strictly positive",
+        ));
+    }
 
     // Drive ARPACK with a closure that adapts ARPACK's slice-in /
     // slice-out matvec interface to the `LinearOp` Dense-in / Dense-

@@ -283,6 +283,27 @@ fn arpack_converged_flag_reflects_absolute_tol() {
 }
 
 // ---------------------------------------------------------------------------
+// `tol` validation — tol = 0 (and non-finite / negative) must be rejected
+// up-front since the wrapper's absolute `converged` check can't honor
+// ARPACK's "tol = 0 means machine-epsilon default" sentinel.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn arpack_rejects_tol_zero() {
+    let n = 4;
+    let result = arpack_smallest::<f64, _>(
+        &|_v: &Dense<f64>| unreachable!("matvec should not run when params are rejected"),
+        n,
+        &ArpackParams {
+            tol: 0.0,
+            max_iter: 100,
+            ncv: None,
+        },
+    );
+    assert!(matches!(result, Err(ArpackError::InvalidParam(_))));
+}
+
+// ---------------------------------------------------------------------------
 // MaxIterReached propagation
 // ---------------------------------------------------------------------------
 
