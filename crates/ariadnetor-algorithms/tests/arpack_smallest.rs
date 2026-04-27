@@ -288,6 +288,20 @@ fn arpack_converged_flag_reflects_absolute_tol() {
 // ARPACK's "tol = 0 means machine-epsilon default" sentinel.
 // ---------------------------------------------------------------------------
 
+/// Compile-time contract: `ArpackError` must implement the standard
+/// error traits so callers can use `?` in `anyhow::Result` /
+/// `Box<dyn Error>` contexts. Asserted via a generic stub that only
+/// type-checks when the bounds are satisfied.
+#[test]
+fn arpack_error_implements_standard_traits() {
+    fn assert_standard_error<E>()
+    where
+        E: std::error::Error + std::fmt::Display + std::fmt::Debug + Send + Sync + 'static,
+    {
+    }
+    assert_standard_error::<ArpackError>();
+}
+
 #[test]
 fn arpack_rejects_tol_zero() {
     let n = 4;
