@@ -166,6 +166,12 @@ impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
         chi_r: usize,
         backend: Arc<B>,
     ) -> Self {
+        // Rank checks first so a malformed tensor surfaces a useful
+        // assertion message rather than panicking on `shape()[N]`.
+        debug_assert_eq!(left.shape().len(), 3, "left.rank == 3");
+        debug_assert_eq!(right.shape().len(), 3, "right.rank == 3");
+        debug_assert_eq!(w_i.shape().len(), 4, "W[i].rank == 4");
+        debug_assert_eq!(w_ip1.shape().len(), 4, "W[i+1].rank == 4");
         debug_assert!(
             chi_l > 0 && d_i > 0 && d_ip1 > 0 && chi_r > 0,
             "heff: dims must be > 0"
@@ -294,12 +300,30 @@ pub struct TwoSiteStepResult<T: Scalar> {
 ///
 /// # Errors
 ///
-/// - [`DmrgHeffError::InvalidSite`] if `site + 1 >= n_sites`.
+/// - [`DmrgHeffError::InvalidSite`] if `site + 1 >= n_sites` (the
+///   `+1` is computed via `saturating_sub` so `site = usize::MAX`
+///   does not overflow).
 /// - [`DmrgHeffError::LengthMismatch`] if MPS / MPO / envs disagree.
 /// - [`DmrgHeffError::StaleEnv`] if `left(site)` or `right(site +
 ///   2)` is `None`.
+/// - [`DmrgHeffError::ShapeMismatch`] if any tensor rank, bond, or
+///   physical dimension reached by the matvec does not match its
+///   neighbours, or if a dimension is zero (Lanczos and `contract`
+///   reject zero-length axes).
+/// - [`DmrgHeffError::InvalidLanczosParams`] if `params.max_iter`
+///   is zero or `params.tol` is non-finite or negative — these
+///   would otherwise trip `lanczos_smallest`'s internal asserts.
 /// - [`DmrgHeffError::Contract`] propagates an underlying linalg
 ///   failure from the truncated SVD step.
+///
+/// Backend / allocation failures during the matvec body itself
+/// (`LinalgError::Backend` from a downstream GEMM / transpose) still
+/// propagate as a panic. Closing that path requires making the
+/// Krylov [`crate::krylov::LinearOp`] trait fallible, which is a
+/// cross-cutting change deferred to a later phase; the standard
+/// preconditions for `contract` are validated at the entry, so this
+/// branch is only reachable on genuine backend / allocation
+/// failures rather than user input.
 pub fn dmrg_2site_step<T, B>(
     envs: &DmrgEnvs<T, B>,
     mps: &Mps<Dense<T>, B>,
