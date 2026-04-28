@@ -665,6 +665,23 @@ fn heff_error_paths() {
         "got {:?}",
         bad_neg
     );
+
+    // Contract: trunc_svd rejects `chi_max = Some(0)` with
+    // `LinalgError::InvalidArgument`. The step wraps that into the
+    // `Contract(_)` variant after Lanczos succeeds. Use a fresh
+    // env (the original `envs` had its right slots invalidated by
+    // the StaleEnv setup above).
+    let envs_fresh = DmrgEnvs::build(&mps, &mpo).expect("fresh build");
+    let bad_trunc = TruncSvdParams {
+        chi_max: Some(0),
+        target_trunc_err: None,
+    };
+    let bad_contract = dmrg_2site_step(&envs_fresh, &mps, &mpo, 0, &lan_params, &bad_trunc);
+    assert!(
+        matches!(bad_contract, Err(DmrgHeffError::Contract(_))),
+        "got {:?}",
+        bad_contract
+    );
 }
 
 // ---------------------------------------------------------------------------
