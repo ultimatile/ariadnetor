@@ -7,7 +7,7 @@
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_linalg::contract;
-use arnet_mps::{Mpo, Mps, braket};
+use arnet_mps::{Mpo, Mps, TensorChain, braket};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
@@ -88,21 +88,30 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<Dense<f64>> {
     Mpo::from_storages(storages)
 }
 
-/// Fold a left env all the way through to the right edge by pulling
-/// in the remaining sites. Used by the cross-check test: starting
-/// from `DmrgEnvs::left(0)` and folding sites `0..N` should reproduce
-/// the full braket scalar `<psi|H|psi>`.
-fn fold_left_to_scalar(mps: &Mps<Dense<f64>>, mpo: &Mpo<Dense<f64>>, initial: &Dense<f64>) -> f64 {
+/// Fold an L env forward by absorbing sites `0..upto`. Stand-alone
+/// helper that does not touch any `DmrgEnvs` state, so callers can
+/// compute `left[upto]` independently and pair it with the existing
+/// `env.right(upto)` produced by `build()`.
+fn fold_left_to_boundary(
+    mps: &Mps<Dense<f64>>,
+    mpo: &Mpo<Dense<f64>>,
+    initial: &Dense<f64>,
+    upto: usize,
+) -> Dense<f64> {
     let backend = NativeBackend::shared();
-    use arnet_mps::TensorChain;
     let mut env = initial.clone();
-    for i in 0..mps.len() {
+    for i in 0..upto {
         let bra = mps.storage(i).conj();
         let t1 = contract(&*backend, &env, &bra, "abc,ade->bcde").expect("step 1");
         let t2 = contract(&*backend, &t1, mpo.storage(i), "bcde,bfdg->cefg").expect("step 2");
         env = contract(&*backend, &t2, mps.storage(i), "cefg,cfh->egh").expect("step 3");
     }
-    // Final env is 1x1x1.
+    env
+}
+
+/// Fold an L env all the way through the chain to a 1×1×1 scalar.
+fn fold_left_to_scalar(mps: &Mps<Dense<f64>>, mpo: &Mpo<Dense<f64>>, initial: &Dense<f64>) -> f64 {
+    let env = fold_left_to_boundary(mps, mpo, initial, mps.len());
     env.data()[0]
 }
 
@@ -146,6 +155,25 @@ fn env_build_consistency_with_braket() {
 
     let reference = braket(&mps, &mpo, &mps);
     assert_abs_diff_eq!(folded, reference, epsilon = 1e-9);
+
+    // Cross-check that pins build()'s right-loop: at any interior
+    // boundary j, `<left(j), right(j)>` reduced over (top, W, bot)
+    // must equal the global braket scalar. We compute `left(j)` via a
+    // stand-alone fold so the env's right slots are not invalidated
+    // by `advance_left`. `env.right(j)` here is whatever build()
+    // produced — if the right-loop or `extend_right_step` axis order
+    // is wrong, this check breaks.
+    let j = 3;
+    let l_at_j = fold_left_to_boundary(&mps, &mpo, l0, j);
+    let r_at_j = env.right(j).expect("right(j) — populated by build");
+    assert_eq!(l_at_j.shape(), r_at_j.shape(), "boundary bonds must match");
+    let scalar: f64 = l_at_j
+        .data()
+        .iter()
+        .zip(r_at_j.data().iter())
+        .map(|(a, b)| a * b)
+        .sum();
+    assert_abs_diff_eq!(scalar, reference, epsilon = 1e-9);
 }
 
 // ---------------------------------------------------------------------------
