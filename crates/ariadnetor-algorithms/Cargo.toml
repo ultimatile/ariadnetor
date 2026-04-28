@@ -14,6 +14,7 @@ ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 ariadnetor-linalg = { path = "../ariadnetor-linalg" }
 ariadnetor-native = { path = "../ariadnetor-native" }
+ariadnetor-mps = { path = "../ariadnetor-mps" }
 num-traits = { workspace = true }
 num-complex = { workspace = true, optional = true }
 rand = { workspace = true }
