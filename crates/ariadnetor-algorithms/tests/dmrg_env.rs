@@ -155,25 +155,50 @@ fn env_build_consistency_with_braket() {
 
     let reference = braket(&mps, &mpo, &mps);
     assert_abs_diff_eq!(folded, reference, epsilon = 1e-9);
+}
 
-    // Cross-check that pins build()'s right-loop: at any interior
-    // boundary j, `<left(j), right(j)>` reduced over (top, W, bot)
-    // must equal the global braket scalar. We compute `left(j)` via a
-    // stand-alone fold so the env's right slots are not invalidated
-    // by `advance_left`. `env.right(j)` here is whatever build()
-    // produced — if the right-loop or `extend_right_step` axis order
-    // is wrong, this check breaks.
-    let j = 3;
-    let l_at_j = fold_left_to_boundary(&mps, &mpo, l0, j);
-    let r_at_j = env.right(j).expect("right(j) — populated by build");
-    assert_eq!(l_at_j.shape(), r_at_j.shape(), "boundary bonds must match");
-    let scalar: f64 = l_at_j
-        .data()
-        .iter()
-        .zip(r_at_j.data().iter())
-        .map(|(a, b)| a * b)
-        .sum();
-    assert_abs_diff_eq!(scalar, reference, epsilon = 1e-9);
+// ---------------------------------------------------------------------------
+// Contract — at every interior boundary j, <left(j), right(j)> reduced
+// over (top, W, bot) equals the global braket scalar. This is the
+// boundary-decomposition contract that DMRG sweeps rely on: a 2-site
+// step at (i, i+1) consumes left(i) and right(i+2), and their product
+// with the on-site tensors must reproduce the global expectation
+// value. Parameterizing over every interior j pins build()'s entire
+// right-loop, including the first iteration (right[N-1]) and the last
+// (right[1] before the explicit break at j == 1).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn env_decomposition_holds_at_every_interior_boundary() {
+    let n = 6;
+    let d = 2;
+    let chi = 3;
+    let w = 2;
+    let mps = random_mps_f64(n, d, chi, 0xDEAD_BEEF);
+    let mpo = random_mpo_f64(n, d, w, 0xC0FFEE);
+
+    let env = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let l0 = env.left(0).expect("left(0)");
+    let reference = braket(&mps, &mpo, &mps);
+
+    for j in 1..n {
+        let l_at_j = fold_left_to_boundary(&mps, &mpo, l0, j);
+        let r_at_j = env
+            .right(j)
+            .unwrap_or_else(|| panic!("right({j}) must be populated by build"));
+        assert_eq!(
+            l_at_j.shape(),
+            r_at_j.shape(),
+            "boundary {j}: shape mismatch"
+        );
+        let scalar: f64 = l_at_j
+            .data()
+            .iter()
+            .zip(r_at_j.data().iter())
+            .map(|(a, b)| a * b)
+            .sum();
+        assert_abs_diff_eq!(scalar, reference, epsilon = 1e-9);
+    }
 }
 
 // ---------------------------------------------------------------------------
