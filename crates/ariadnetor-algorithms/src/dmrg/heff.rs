@@ -50,6 +50,11 @@ pub enum DmrgHeffError {
     /// MPS and MPO chain lengths disagree, or disagree with the
     /// envs the function was given.
     LengthMismatch { mps: usize, mpo: usize, envs: usize },
+    /// `LanczosParams` violates the solver's preconditions
+    /// (`max_iter >= 1`, `tol` finite and non-negative). Surfaced
+    /// here so callers see a fallible `Result` instead of the
+    /// `lanczos_smallest` panic.
+    InvalidLanczosParams { detail: &'static str },
     /// A bond / physical dimension on one of the inputs to the
     /// 2-site step did not match the expectation derived from the
     /// surrounding tensors. Surfaced *before* the matvec runs so
@@ -99,6 +104,9 @@ impl std::fmt::Display for DmrgHeffError {
                 f,
                 "shape mismatch at site {site}, {field}: expected {expected}, got {actual}"
             ),
+            DmrgHeffError::InvalidLanczosParams { detail } => {
+                write!(f, "invalid LanczosParams: {detail}")
+            }
             DmrgHeffError::Contract(_) => {
                 write!(f, "linalg failure during two-site DMRG step")
             }
@@ -314,8 +322,30 @@ where
             envs: n_sites,
         });
     }
-    if site + 1 >= n_sites {
+    // Use saturating_sub so `site = usize::MAX` does not overflow the
+    // `site + 1` check. `n_sites < 2` (valid 2-site step requires at
+    // least 2 sites) collapses to "every site is invalid" thanks to
+    // saturating_sub returning 0.
+    if site >= n_sites.saturating_sub(1) {
         return Err(DmrgHeffError::InvalidSite { site, n_sites });
+    }
+
+    // ---- Lanczos params sanity (mirrors lanczos_smallest's
+    // internal asserts so callers see `Err`, not a panic). -------
+    if params.max_iter == 0 {
+        return Err(DmrgHeffError::InvalidLanczosParams {
+            detail: "max_iter must be >= 1",
+        });
+    }
+    if !params.tol.is_finite() {
+        return Err(DmrgHeffError::InvalidLanczosParams {
+            detail: "tol must be finite",
+        });
+    }
+    if params.tol < 0.0 {
+        return Err(DmrgHeffError::InvalidLanczosParams {
+            detail: "tol must be non-negative",
+        });
     }
 
     // ---- Env slot Some-check ------------------------------------

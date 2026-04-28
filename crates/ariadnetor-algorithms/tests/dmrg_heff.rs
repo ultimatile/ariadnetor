@@ -618,6 +618,53 @@ fn heff_error_paths() {
         "got {:?}",
         bad_shape
     );
+
+    // InvalidSite: site = usize::MAX must not overflow the +1 check
+    // — it surfaces InvalidSite cleanly.
+    let overflow = dmrg_2site_step(&envs, &mps, &mpo, usize::MAX, &lan_params, &trunc);
+    assert!(
+        matches!(
+            overflow,
+            Err(DmrgHeffError::InvalidSite { site, n_sites })
+                if site == usize::MAX && n_sites == n
+        ),
+        "got {:?}",
+        overflow
+    );
+
+    // InvalidLanczosParams: max_iter = 0 / NaN / negative tol all
+    // assert inside lanczos_smallest. The standard path must catch
+    // them at entry instead of panicking.
+    let bad_iter_params = LanczosParams {
+        max_iter: 0,
+        ..LanczosParams::default()
+    };
+    let bad_iter = dmrg_2site_step(&envs, &mps, &mpo, 0, &bad_iter_params, &trunc);
+    assert!(
+        matches!(bad_iter, Err(DmrgHeffError::InvalidLanczosParams { .. })),
+        "got {:?}",
+        bad_iter
+    );
+    let bad_nan_params = LanczosParams {
+        tol: f64::NAN,
+        ..LanczosParams::default()
+    };
+    let bad_nan = dmrg_2site_step(&envs, &mps, &mpo, 0, &bad_nan_params, &trunc);
+    assert!(
+        matches!(bad_nan, Err(DmrgHeffError::InvalidLanczosParams { .. })),
+        "got {:?}",
+        bad_nan
+    );
+    let bad_neg_params = LanczosParams {
+        tol: -1.0,
+        ..LanczosParams::default()
+    };
+    let bad_neg = dmrg_2site_step(&envs, &mps, &mpo, 0, &bad_neg_params, &trunc);
+    assert!(
+        matches!(bad_neg, Err(DmrgHeffError::InvalidLanczosParams { .. })),
+        "got {:?}",
+        bad_neg
+    );
 }
 
 // ---------------------------------------------------------------------------
