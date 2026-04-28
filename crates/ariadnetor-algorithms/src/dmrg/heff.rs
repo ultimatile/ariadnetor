@@ -332,20 +332,9 @@ where
     let mps_i = mps.storage(site);
     let mps_ip1 = mps.storage(site + 1);
 
-    // ---- Shape derivation + cross-check -------------------------
-    // env shape (top-bra, W, bot-ket) with bra=ket → both bond axes share dim.
-    let chi_l = left.shape()[0];
-    let chi_r = right.shape()[0];
-    let d_i = mps_i.shape()[1];
-    let d_ip1 = mps_ip1.shape()[1];
-
-    // Pin all the bond / physical dimensions reached into during the
-    // matvec. These run unconditionally (release builds included) so
-    // the matvec body's `.expect("shape pre-validated")` calls cannot
-    // fire on dimension mismatches. The validation also covers the
-    // bra-physical (axis 2) leg of each MPO site, which would
-    // otherwise propagate silently through `apply` if `axis 1 ==
-    // axis 2` happened to differ.
+    // ---- Rank checks first (must precede any `shape()[N]` access)
+    // so an unexpectedly-ranked tensor surfaces a `ShapeMismatch`
+    // instead of an out-of-bounds panic.
     let backend: Arc<B> = mps.backend_arc().clone();
     let check_eq =
         |expected: usize, actual: usize, field: &'static str| -> Result<(), DmrgHeffError> {
@@ -360,54 +349,52 @@ where
                 })
             }
         };
-    if left.shape().len() != 3 {
-        return Err(DmrgHeffError::ShapeMismatch {
-            site,
-            field: "left.rank",
-            expected: 3,
-            actual: left.shape().len(),
-        });
-    }
-    if right.shape().len() != 3 {
-        return Err(DmrgHeffError::ShapeMismatch {
-            site,
-            field: "right.rank",
-            expected: 3,
-            actual: right.shape().len(),
-        });
-    }
-    if w_i.shape().len() != 4 {
-        return Err(DmrgHeffError::ShapeMismatch {
-            site,
-            field: "W[i].rank",
-            expected: 4,
-            actual: w_i.shape().len(),
-        });
-    }
-    if w_ip1.shape().len() != 4 {
-        return Err(DmrgHeffError::ShapeMismatch {
-            site,
-            field: "W[i+1].rank",
-            expected: 4,
-            actual: w_ip1.shape().len(),
-        });
-    }
-    if mps_i.shape().len() != 3 {
-        return Err(DmrgHeffError::ShapeMismatch {
-            site,
-            field: "MPS[i].rank",
-            expected: 3,
-            actual: mps_i.shape().len(),
-        });
-    }
-    if mps_ip1.shape().len() != 3 {
-        return Err(DmrgHeffError::ShapeMismatch {
-            site,
-            field: "MPS[i+1].rank",
-            expected: 3,
-            actual: mps_ip1.shape().len(),
-        });
-    }
+    let check_at_least =
+        |min: usize, actual: usize, field: &'static str| -> Result<(), DmrgHeffError> {
+            if actual >= min {
+                Ok(())
+            } else {
+                Err(DmrgHeffError::ShapeMismatch {
+                    site,
+                    field,
+                    expected: min,
+                    actual,
+                })
+            }
+        };
+    check_eq(3, left.shape().len(), "left.rank")?;
+    check_eq(3, right.shape().len(), "right.rank")?;
+    check_eq(4, w_i.shape().len(), "W[i].rank")?;
+    check_eq(4, w_ip1.shape().len(), "W[i+1].rank")?;
+    check_eq(3, mps_i.shape().len(), "MPS[i].rank")?;
+    check_eq(3, mps_ip1.shape().len(), "MPS[i+1].rank")?;
+
+    // ---- Shape derivation + cross-check -------------------------
+    // env shape (top-bra, W, bot-ket) with bra=ket → both bond axes share dim.
+    let chi_l = left.shape()[0];
+    let chi_r = right.shape()[0];
+    let d_i = mps_i.shape()[1];
+    let d_ip1 = mps_ip1.shape()[1];
+
+    // Reject zero-sized bond / physical dims explicitly. Lanczos
+    // panics on `dim < 1` and contract refuses zero-length axes, so
+    // surface this here as `ShapeMismatch { expected: 1, .. }`
+    // instead of letting it reach the operator.
+    check_at_least(1, chi_l, "chi_l (left bond)")?;
+    check_at_least(1, chi_r, "chi_r (right bond)")?;
+    check_at_least(1, d_i, "d_i (MPS[i] physical)")?;
+    check_at_least(1, d_ip1, "d_ip1 (MPS[i+1] physical)")?;
+    check_at_least(1, w_i.shape()[0], "W[i].W_l")?;
+    check_at_least(1, w_i.shape()[3], "W[i].W_r (= W_mid)")?;
+    check_at_least(1, w_ip1.shape()[3], "W[i+1].W_r")?;
+
+    // Pin all the bond / physical dimensions reached into during the
+    // matvec. These run unconditionally (release builds included) so
+    // the matvec body's `.expect("shape pre-validated")` calls cannot
+    // fire on dimension mismatches. The validation also covers the
+    // bra-physical (axis 2) leg of each MPO site, which would
+    // otherwise propagate silently through `apply` if `axis 1 ==
+    // axis 2` happened to differ.
     check_eq(
         left.shape()[2],
         mps_i.shape()[0],
