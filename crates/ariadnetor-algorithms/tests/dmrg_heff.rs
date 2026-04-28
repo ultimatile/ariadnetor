@@ -601,6 +601,23 @@ fn heff_error_paths() {
         "got {:?}",
         mismatch
     );
+
+    // ShapeMismatch: feed in an MPO whose physical dim differs from
+    // the MPS the envs were built against. Same length, so we get
+    // past the length check and surface the bond/physical mismatch
+    // on the standard path. This pins the entry-point validation
+    // (release builds also exercise it, unlike the constructor's
+    // `debug_assert!` guards).
+    let mps_d2 = product_state_mps(n, 2);
+    let mpo_d2 = identity_mpo(n, 2);
+    let envs_d2 = DmrgEnvs::build(&mps_d2, &mpo_d2).expect("build envs(d=2)");
+    let mpo_d3 = identity_mpo(n, 3);
+    let bad_shape = dmrg_2site_step(&envs_d2, &mps_d2, &mpo_d3, 0, &lan_params, &trunc);
+    assert!(
+        matches!(bad_shape, Err(DmrgHeffError::ShapeMismatch { site: 0, .. })),
+        "got {:?}",
+        bad_shape
+    );
 }
 
 // ---------------------------------------------------------------------------

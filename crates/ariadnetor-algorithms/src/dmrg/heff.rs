@@ -50,6 +50,18 @@ pub enum DmrgHeffError {
     /// MPS and MPO chain lengths disagree, or disagree with the
     /// envs the function was given.
     LengthMismatch { mps: usize, mpo: usize, envs: usize },
+    /// A bond / physical dimension on one of the inputs to the
+    /// 2-site step did not match the expectation derived from the
+    /// surrounding tensors. Surfaced *before* the matvec runs so
+    /// the operator's `.expect` calls can stay infallible. `field`
+    /// names the constraint that failed (e.g.,
+    /// `"left.bot_ket vs mps[i].left_bond"`).
+    ShapeMismatch {
+        site: usize,
+        field: &'static str,
+        expected: usize,
+        actual: usize,
+    },
     /// An underlying `arnet_linalg` call (currently the truncated
     /// SVD) failed. The matvec body itself is shape-validated up
     /// front and never reaches this branch.
@@ -77,6 +89,15 @@ impl std::fmt::Display for DmrgHeffError {
             DmrgHeffError::LengthMismatch { mps, mpo, envs } => write!(
                 f,
                 "chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}"
+            ),
+            DmrgHeffError::ShapeMismatch {
+                site,
+                field,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "shape mismatch at site {site}, {field}: expected {expected}, got {actual}"
             ),
             DmrgHeffError::Contract(_) => {
                 write!(f, "linalg failure during two-site DMRG step")
@@ -318,31 +339,112 @@ where
     let d_i = mps_i.shape()[1];
     let d_ip1 = mps_ip1.shape()[1];
 
-    // Sanity-pin the bonds we reach into during the matvec so any
-    // contract failure inside the LinearOp would be caught here
-    // first. This keeps the matvec body's `.expect("...")` honest.
+    // Pin all the bond / physical dimensions reached into during the
+    // matvec. These run unconditionally (release builds included) so
+    // the matvec body's `.expect("shape pre-validated")` calls cannot
+    // fire on dimension mismatches. The validation also covers the
+    // bra-physical (axis 2) leg of each MPO site, which would
+    // otherwise propagate silently through `apply` if `axis 1 ==
+    // axis 2` happened to differ.
     let backend: Arc<B> = mps.backend_arc().clone();
-    debug_assert_eq!(
+    let check_eq =
+        |expected: usize, actual: usize, field: &'static str| -> Result<(), DmrgHeffError> {
+            if expected == actual {
+                Ok(())
+            } else {
+                Err(DmrgHeffError::ShapeMismatch {
+                    site,
+                    field,
+                    expected,
+                    actual,
+                })
+            }
+        };
+    if left.shape().len() != 3 {
+        return Err(DmrgHeffError::ShapeMismatch {
+            site,
+            field: "left.rank",
+            expected: 3,
+            actual: left.shape().len(),
+        });
+    }
+    if right.shape().len() != 3 {
+        return Err(DmrgHeffError::ShapeMismatch {
+            site,
+            field: "right.rank",
+            expected: 3,
+            actual: right.shape().len(),
+        });
+    }
+    if w_i.shape().len() != 4 {
+        return Err(DmrgHeffError::ShapeMismatch {
+            site,
+            field: "W[i].rank",
+            expected: 4,
+            actual: w_i.shape().len(),
+        });
+    }
+    if w_ip1.shape().len() != 4 {
+        return Err(DmrgHeffError::ShapeMismatch {
+            site,
+            field: "W[i+1].rank",
+            expected: 4,
+            actual: w_ip1.shape().len(),
+        });
+    }
+    if mps_i.shape().len() != 3 {
+        return Err(DmrgHeffError::ShapeMismatch {
+            site,
+            field: "MPS[i].rank",
+            expected: 3,
+            actual: mps_i.shape().len(),
+        });
+    }
+    if mps_ip1.shape().len() != 3 {
+        return Err(DmrgHeffError::ShapeMismatch {
+            site,
+            field: "MPS[i+1].rank",
+            expected: 3,
+            actual: mps_ip1.shape().len(),
+        });
+    }
+    check_eq(
         left.shape()[2],
         mps_i.shape()[0],
-        "left bot-ket / MPS[i] left bond"
-    );
-    debug_assert_eq!(
+        "left.bot_ket vs MPS[i].left_bond",
+    )?;
+    check_eq(
+        left.shape()[2],
+        chi_l,
+        "left.bot_ket vs left.top_bra (bra=ket)",
+    )?;
+    check_eq(
         right.shape()[2],
         mps_ip1.shape()[2],
-        "right bot-ket / MPS[i+1] right bond"
-    );
-    debug_assert_eq!(left.shape()[1], w_i.shape()[0], "left W / W[i] W_l");
-    debug_assert_eq!(right.shape()[1], w_ip1.shape()[3], "right W / W[i+1] W_r");
-    debug_assert_eq!(
+        "right.bot_ket vs MPS[i+1].right_bond",
+    )?;
+    check_eq(
+        right.shape()[2],
+        chi_r,
+        "right.bot_ket vs right.top_bra (bra=ket)",
+    )?;
+    check_eq(left.shape()[1], w_i.shape()[0], "left.W_bond vs W[i].W_l")?;
+    check_eq(
+        right.shape()[1],
+        w_ip1.shape()[3],
+        "right.W_bond vs W[i+1].W_r",
+    )?;
+    check_eq(
         w_i.shape()[3],
         w_ip1.shape()[0],
-        "W[i] W_r / W[i+1] W_l (W_mid)"
-    );
-    debug_assert_eq!(w_i.shape()[1], d_i, "W[i] d_ket / MPS[i] physical");
-    debug_assert_eq!(w_ip1.shape()[1], d_ip1, "W[i+1] d_ket / MPS[i+1] physical");
+        "W[i].W_r vs W[i+1].W_l (W_mid)",
+    )?;
+    check_eq(w_i.shape()[1], d_i, "W[i].d_ket vs MPS[i].physical")?;
+    check_eq(w_i.shape()[2], d_i, "W[i].d_bra vs MPS[i].physical")?;
+    check_eq(w_ip1.shape()[1], d_ip1, "W[i+1].d_ket vs MPS[i+1].physical")?;
+    check_eq(w_ip1.shape()[2], d_ip1, "W[i+1].d_bra vs MPS[i+1].physical")?;
 
-    let heff = EffectiveHamiltonian2Site {
+    let heff = EffectiveHamiltonian2Site::new(
         left,
         w_i,
         w_ip1,
@@ -351,8 +453,8 @@ where
         d_i,
         d_ip1,
         chi_r,
-        backend: Arc::clone(&backend),
-    };
+        Arc::clone(&backend),
+    );
 
     // ---- Drive Lanczos ------------------------------------------
     let dim = heff.dim();
