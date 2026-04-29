@@ -71,8 +71,8 @@ exclude_re = [
     # scale_input: at s=0 the scaling is the identity, so > vs >= at the boundary is a no-op.
     "replace > with >= in scale_input",
     # restore_center_sweep_dense: prior right and left sweeps already truncate every bond
-    # to chi_max + target_trunc_err, so each step's err is structurally 0 in exact
-    # arithmetic. Subtracting 0 is a no-op, hence + with - is equivalent. The peer
+    # to chi_max (and to target_trunc_err if set), so each step's err is structurally 0
+    # in exact arithmetic. Subtracting 0 is a no-op, hence + with - is equivalent. The peer
     # + with * mutation is NOT equivalent (would zero the prior accumulator) and remains.
     "replace \\+ with - in restore_center_sweep_dense",
     # contract_to_tensor trans-flag predicates: any mutation that forces the predicate

@@ -93,7 +93,7 @@ where
 /// or a future parameter change produces a non-zero step error in release
 /// builds.
 ///
-/// Wraps the sweep so the equivalent-mutant exclusion (`+= with -=`, where
+/// Wraps the sweep so the equivalent-mutant exclusion (`+ -> -`, where
 /// subtracting 0 is a no-op) can be anchored by function name rather than
 /// by line number.
 fn restore_center_sweep_dense<T, B, C>(
