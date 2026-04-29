@@ -7,6 +7,11 @@
 
 mod env;
 mod heff;
+mod sweep;
 
 pub use env::{DmrgEnvError, DmrgEnvs};
 pub use heff::{DmrgHeffError, EffectiveHamiltonian2Site, TwoSiteStepResult, dmrg_2site_step};
+pub use sweep::{
+    DmrgResult, DmrgStepRecord, DmrgSweepError, DmrgSweepParams, DmrgSweepRecord, SweepDirection,
+    dmrg_2site_sweep,
+};
