@@ -548,19 +548,23 @@ mod tests {
         }
     }
 
-    /// `s == 0` early-return path: when `norm <= theta`, the input is
-    /// returned unchanged with `s = 0`. The `== with !=` mutation on the
-    /// early-return guard would skip the early return and run the scaling
-    /// path with `s = 0`, which is observably wrong (the doubling-loop
-    /// branch divides by `1u64 << 0 = 1` then multiplies elementwise — same
-    /// data, but the path executes; an `== with !=` mutation would early-return
-    /// `(a, 0)` for non-zero `s` instead, breaking the public expm flow on
-    /// any large-norm input).
+    /// `s == 0` early-return path: when `norm <= theta`, the helper returns
+    /// the input matrix without copying. Asserting pointer identity (rather
+    /// than just data equality) is what kills the `== with !=` mutation:
+    /// under that mutation the early return is skipped and the scaling path
+    /// runs with `s = 0`, producing a fresh allocation whose elements equal
+    /// the input but whose storage pointer differs.
     #[test]
     fn compute_scaling_decision_zero_steps_returns_input_unchanged() {
         let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let a_ptr = a.data().as_ptr();
         let (b, s) = compute_scaling_decision::<f64>(a, 0.5, 1.0);
         assert_eq!(s, 0);
         assert_eq!(b.data(), &[1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(
+            b.data().as_ptr(),
+            a_ptr,
+            "s = 0 path must return input without copying"
+        );
     }
 }
