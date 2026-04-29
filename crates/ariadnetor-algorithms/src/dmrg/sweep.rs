@@ -157,15 +157,17 @@ pub enum DmrgSweepError {
         site: usize,
         source: DmrgEnvError,
     },
-    /// An underlying `arnet_linalg` call (`diagonal_scale`)
-    /// failed.
-    Linalg(LinalgError),
-}
-
-impl From<LinalgError> for DmrgSweepError {
-    fn from(e: LinalgError) -> Self {
-        DmrgSweepError::Linalg(e)
-    }
+    /// `arnet_linalg::diagonal_scale` failed during the post-step
+    /// S-absorb. Carries the same `(sweep, direction, site)`
+    /// breadcrumbs as `Step` / `Env` so the caller can pin down
+    /// where the failure occurred without having to walk the
+    /// `DmrgResult::sweeps` history manually.
+    Scale {
+        sweep: usize,
+        direction: SweepDirection,
+        site: usize,
+        source: LinalgError,
+    },
 }
 
 impl std::fmt::Display for DmrgSweepError {
@@ -203,9 +205,15 @@ impl std::fmt::Display for DmrgSweepError {
                 f,
                 "DmrgEnvs advance failed at sweep {sweep}, {direction:?}, site {site}"
             ),
-            DmrgSweepError::Linalg(_) => {
-                write!(f, "linalg failure during sweep (diagonal_scale)")
-            }
+            DmrgSweepError::Scale {
+                sweep,
+                direction,
+                site,
+                ..
+            } => write!(
+                f,
+                "diagonal_scale failed during sweep {sweep}, {direction:?}, site {site}"
+            ),
         }
     }
 }
@@ -215,7 +223,7 @@ impl std::error::Error for DmrgSweepError {
         match self {
             DmrgSweepError::Step { source, .. } => Some(source),
             DmrgSweepError::Env { source, .. } => Some(source),
-            DmrgSweepError::Linalg(err) => Some(err),
+            DmrgSweepError::Scale { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -459,19 +467,30 @@ where
 
     let bond_dim = result.s.shape()[0];
 
+    // Wrap any `diagonal_scale` failure with the same
+    // (sweep, direction, site) breadcrumbs as `Step` / `Env`.
+    let scale_err = |source: LinalgError| DmrgSweepError::Scale {
+        sweep: sweep_idx,
+        direction,
+        site,
+        source,
+    };
+
     // Absorb S into the sweep direction and write back to MPS.
     match direction {
         SweepDirection::LeftToRight => {
             // site i ← U (left-isometric)
             // site i+1 ← S·Vt (axis 0 = new bond, carries S right)
-            let s_vt = diagonal_scale(&**backend, &result.vt, result.s.data(), 0)?;
+            let s_vt =
+                diagonal_scale(&**backend, &result.vt, result.s.data(), 0).map_err(scale_err)?;
             *mps.storage_mut(site) = result.u;
             *mps.storage_mut(site + 1) = s_vt;
         }
         SweepDirection::RightToLeft => {
             // site i   ← U·S  (axis 2 = new bond, carries S left)
             // site i+1 ← Vt   (right-isometric)
-            let u_s = diagonal_scale(&**backend, &result.u, result.s.data(), 2)?;
+            let u_s =
+                diagonal_scale(&**backend, &result.u, result.s.data(), 2).map_err(scale_err)?;
             *mps.storage_mut(site) = u_s;
             *mps.storage_mut(site + 1) = result.vt;
         }
