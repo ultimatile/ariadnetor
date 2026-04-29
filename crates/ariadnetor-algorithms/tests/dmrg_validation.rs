@@ -46,12 +46,16 @@ fn op_sz(k: usize, b: usize) -> f64 {
     }
 }
 
-// σ⁺ = [[0,1],[0,0]] → ⟨0|σ⁺|1⟩ = 1 (raise: |down⟩ → |up⟩ in our bit convention).
+// σ⁺ raises: |down⟩ → |up⟩ in our bit convention.
+// Single non-zero matrix element ⟨bra=0|σ⁺|ket=1⟩ = 1, so under
+// the `(k_ket, b_bra)` indexing of `Op` this is op_sp(k=1, b=0) = 1.
 fn op_sp(k: usize, b: usize) -> f64 {
     if k == 1 && b == 0 { 1.0 } else { 0.0 }
 }
 
-// σ⁻ = [[0,0],[1,0]] → ⟨1|σ⁻|0⟩ = 1 (lower: |up⟩ → |down⟩).
+// σ⁻ lowers: |up⟩ → |down⟩.
+// Single non-zero matrix element ⟨bra=1|σ⁻|ket=0⟩ = 1, so under
+// the `(k_ket, b_bra)` indexing of `Op` this is op_sm(k=0, b=1) = 1.
 fn op_sm(k: usize, b: usize) -> f64 {
     if k == 0 && b == 1 { 1.0 } else { 0.0 }
 }
