@@ -7,13 +7,22 @@
 //! `.expect(...)` on the returned `Option`.
 
 use arnet_core::Scalar;
-use num_traits::NumCast;
+use num_traits::{Float, NumCast};
 
 /// Attempt to cast `x: f64` into the `T::Real` real type.
 ///
-/// Returns `None` when `x` is not representable in `T::Real` — this
-/// shows up in practice when `T::Real == f32` and the input exceeds
-/// `f32::MAX` or is a non-finite value the caller did not screen out.
+/// Returns `None` when `x` is not representable in `T::Real` as a
+/// finite value. Two distinct overflow modes are guarded:
+///
+/// - `NumCast::from` itself may return `None` for unsupported
+///   conversions (rare in practice for the `f32`/`f64` real types).
+/// - For `T::Real == f32`, `NumCast::from` does NOT return `None`
+///   on out-of-range inputs — it returns `Some(±inf)`. We
+///   post-check `is_finite()` so an `f64` value like `1e300`
+///   surfaces as `None` instead of silently becoming infinity.
+///   Without this check a downstream comparison like
+///   `abs_delta <= tol_real` would always be `true` and report
+///   spurious convergence.
 ///
 /// Callers should:
 /// - Drive a fallible public API with `?`
@@ -23,5 +32,6 @@ use num_traits::NumCast;
 ///   not silent zero.
 #[inline]
 pub(crate) fn try_real_from_f64<T: Scalar>(x: f64) -> Option<T::Real> {
-    <T::Real as NumCast>::from(x)
+    let cast = <T::Real as NumCast>::from(x)?;
+    if cast.is_finite() { Some(cast) } else { None }
 }
