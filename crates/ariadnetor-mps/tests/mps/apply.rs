@@ -368,12 +368,16 @@ fn test_apply_zipup_dense_no_params_reduces_bond_dims_vs_naive() {
 
 /// Dense mirror of `zipup_truncated_matches_naive_truncated_chi1`.
 ///
-/// With `chi_max=1` on the 3-site test fixture, the forward sweep enters the
-/// truncated-SVD branch on at least one site (rank exceeds
-/// `ZIPUP_SVD_RATIO * chi_max = 4`). The full state vector after backward
-/// sweep must match the naive truncated path because both methods' SVD
-/// truncations are hierarchical (forward keeps top-cap singular vectors,
-/// backward keeps top-1 of those — same as top-1 of full).
+/// On the 3-site test fixture with `chi_max=1`, both zip-up and naive
+/// `apply` produce a chi=1 approximation of MPO·MPS. The fully contracted
+/// state vectors must agree because forward QR/SVD intermediates are
+/// gauge-equivalent up to a less-aggressive truncation that backward
+/// chi_max=1 refines identically.
+///
+/// Catches mutations whose forward intermediate is *not* gauge-equivalent
+/// (off-by-one boundary, backward-sweep axis errors). Forward branch
+/// decisions and rank-computation perturbations are equivalent at this
+/// budget and are documented in `.cargo/mutants.toml`.
 #[test]
 fn test_apply_zipup_dense_truncated_matches_naive_truncated_chi1() {
     let psi = make_3site_test_mps();

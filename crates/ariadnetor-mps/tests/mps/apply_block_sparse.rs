@@ -404,23 +404,25 @@ fn zipup_truncates_bond_dim() {
     }
 }
 
-/// Pin the QR/SVD branch decision in the forward sweep of `apply_zipup_bsp`.
+/// Contract-level chi=1 equivalence check between zip-up and naive `apply`.
 ///
-/// On `make_4site_u1_mps` × `make_total_n_u1_mpo(4)` with `chi_max=1`, the
-/// per-site forward shapes are `[1,2,6]`, `[2,2,10]`, `[4,2,6]`. With
-/// `chi_max_forward = ZIPUP_SVD_RATIO * chi_max = 4`, only `j=2`
-/// (`forward_rank_estimate_bsp = min(4*2, 6) = 6`) clears the threshold and
-/// enters the truncated-SVD branch; `j=0,1` stay on the QR branch.
+/// On `make_4site_u1_mps` × `make_total_n_u1_mpo(4)` with `chi_max=1`, both
+/// methods produce a chi=1 approximation of the MPO·MPS state. Their
+/// fully contracted BlockSparse tensors must agree, because forward
+/// QR/SVD intermediate states are gauge-equivalent up to a less-aggressive
+/// truncation that the backward chi_max=1 sweep refines identically.
 ///
-/// Comparing zip-up output against `apply` (naive product, then
-/// canonicalize+truncate from one end) under the *same* `chi_max=1` budget
-/// pins the forward sweep semantics: both algorithms must keep the same
-/// dominant Schmidt direction at every bond, so the contracted full tensors
-/// agree numerically. Each missed mutation shifts which singular vector the
-/// forward sweep keeps at j=2 (e.g. `forward_rank_estimate_bsp -> 0` makes
-/// `rank > cap` always false → QR is used everywhere; `delete !` flips QR
-/// and SVD branches; `> → ==/</>=` perturbs the threshold check), and the
-/// resulting chi=1 chain disagrees with the naive reference.
+/// What this test catches: mutations whose forward intermediate is *not*
+/// gauge-equivalent to the original — e.g. an off-by-one boundary that
+/// drops a carry absorption (`<` → `<=`) or a backward-sweep axis-index
+/// off-by-one (`494:52 - → +`), both of which produce a state that
+/// disagrees with naive at chi=1.
+///
+/// What this test does NOT pin: forward QR-vs-SVD branch decisions and
+/// `forward_rank_estimate_bsp` perturbations are gauge-equivalent at
+/// chi=1 because `cap = chi_max * ZIPUP_SVD_RATIO ≥ chi_max` makes any
+/// forward truncation hierarchically lossless w.r.t. the backward
+/// truncation. Those mutants are documented in `.cargo/mutants.toml`.
 #[test]
 fn zipup_truncated_matches_naive_truncated_chi1() {
     let psi = make_4site_u1_mps();
