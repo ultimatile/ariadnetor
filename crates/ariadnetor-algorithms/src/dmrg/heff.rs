@@ -20,8 +20,8 @@
 //! Lanczos solver without materializing `H_eff` as a dense matrix.
 //! [`dmrg_2site_step`] wires that operator through Lanczos and then
 //! through `arnet_linalg::trunc_svd`, returning the U / S / Vt
-//! factors separately so the sweep driver (Phase 4) can decide which
-//! direction absorbs S.
+//! factors separately so callers (e.g. the sweep driver) can decide
+//! which direction absorbs S.
 
 use std::sync::Arc;
 
@@ -262,9 +262,9 @@ impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T> for EffectiveHamiltonian2Site
 /// Result of a single 2-site DMRG step: the smallest local
 /// eigenpair plus the truncated-SVD split of its eigenvector.
 ///
-/// `u` and `vt` are returned **separately from `s`**. Phase 3 does
-/// not pick a sweep direction; the sweep driver (Phase 4) will
-/// absorb `s` into whichever side moves.
+/// `u` and `vt` are returned **separately from `s`**. This function
+/// does not pick a sweep direction; the caller absorbs `s` into
+/// whichever side moves.
 #[derive(Debug, Clone)]
 pub struct TwoSiteStepResult<T: Scalar> {
     pub eigenvalue: T::Real,
