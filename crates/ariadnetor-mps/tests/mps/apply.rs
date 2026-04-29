@@ -338,6 +338,74 @@ fn test_apply_zipup_truncates_bond_dim() {
     }
 }
 
+/// Dense mirror of `zipup_no_params_reduces_bond_dims_vs_naive_at_early_sites`.
+///
+/// `apply_dense` (naive) leaves every bond at the unfused `w_R * chi_R` size.
+/// `apply_zipup_dense` runs `qr(p, 2)` at every interior site, producing a
+/// bond `min(left*d, right) ≤ right`. With non-trivial MPO bond, the early
+/// QR-reduced bonds are strictly smaller than naive's bonds. If `j < n - 1`
+/// is mutated to a relop that's never satisfied (e.g. `<` → `>`), every
+/// site raw-pushes its local product and bond dims match naive exactly —
+/// assertion fails.
+#[test]
+fn test_apply_zipup_dense_no_params_reduces_bond_dims_vs_naive() {
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let phi_naive = mps::apply(&op, &psi, None);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
+
+    let bd_naive = phi_naive.bond_dims();
+    let bd_zipup = phi_zipup.bond_dims();
+    assert_eq!(bd_naive.len(), bd_zipup.len());
+    let any_strictly_smaller = bd_zipup.iter().zip(bd_naive.iter()).any(|(z, n)| z < n);
+    assert!(
+        any_strictly_smaller,
+        "expected zip-up to reduce at least one bond below naive — \
+         zipup={bd_zipup:?}, naive={bd_naive:?}"
+    );
+}
+
+/// Dense mirror of `zipup_truncated_matches_naive_truncated_chi1`.
+///
+/// On the 3-site test fixture with `chi_max=1`, both zip-up and naive
+/// `apply` produce a chi=1 approximation of MPO·MPS. The fully contracted
+/// state vectors must agree because forward QR/SVD intermediates are
+/// gauge-equivalent up to a less-aggressive truncation that backward
+/// chi_max=1 refines identically.
+///
+/// Catches mutations whose forward intermediate is *not* gauge-equivalent
+/// (off-by-one boundary, backward-sweep axis errors). Forward branch
+/// decisions and rank-computation perturbations are equivalent at this
+/// budget and are documented in `.cargo/mutants.toml`.
+#[test]
+fn test_apply_zipup_dense_truncated_matches_naive_truncated_chi1() {
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+
+    let phi_naive = mps::apply(&op, &psi, Some(&params));
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+
+    for d in phi_zipup.bond_dims() {
+        assert!(d <= 1, "zipup bond {d} exceeds chi_max=1");
+    }
+    for d in phi_naive.bond_dims() {
+        assert!(d <= 1, "naive bond {d} exceeds chi_max=1");
+    }
+
+    let v_naive = mps_to_dense(&phi_naive);
+    let v_zipup = mps_to_dense(&phi_zipup);
+    // Loose tolerance: zip-up's forward SVD truncation and naive's
+    // post-product SVD truncation hit rounding noise at ≈ 3e-8 on this
+    // fixture. We're pinning the dominant Schmidt direction, not the
+    // last few digits of the state vector.
+    assert_dense_close(&v_naive, &v_zipup, 1e-6);
+}
+
 /// Dispatch parity contract: every `TruncateParams` field that zip-up does
 /// not yet honor must trigger an up-front panic. Silent divergence from the
 /// naive path is forbidden.
