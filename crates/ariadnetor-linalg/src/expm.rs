@@ -3,7 +3,7 @@ use std::any::TypeId;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_tensor::Dense;
-use num_traits::{Float, NumCast, One, Zero};
+use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract;
 use crate::eigen::eigh;
@@ -157,58 +157,51 @@ fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
     Ok(())
 }
 
-/// Compute the number of scaling-and-squaring steps `s` such that
-/// `norm(A / 2^s) <= theta_13` for the [13/13] Pade approximant.
+/// Decide the scaling parameter `s` for [13/13] Pade scaling-and-squaring
+/// and produce `B = A / 2^s` such that `||B||_1 <= theta`.
 ///
-/// Wraps the scaling-decision branch in a named fn so the equivalent-mutant
-/// exclusions (boundary `>` mutation at `norm > theta` and the `/` mutation
-/// inside the ratio) can be anchored by function name. At the boundary
-/// (`norm == theta_13`) the result is 0 either way; for `norm <= theta_13`
-/// the body of the `if` is unreachable so its inner mutations are equivalent.
-fn compute_scale_steps<R: Float>(norm: R, theta: R) -> usize {
-    if norm > theta {
+/// Implements Higham (2005) Algorithm 5.1 steps 2-3 as one cohesive step:
+/// pick the smallest `s >= 0` with `norm / 2^s <= theta`, then form
+/// `B = A / 2^s`. When `s == 0` the input is returned unchanged (no copy).
+/// For `s > 62` the `2^s` factor is built via a doubling loop so the
+/// `1u64 << s` fast path stays a safe distance from the `u64` shift limit.
+///
+/// Equivalent-mutant claims that anchor under this function name:
+/// - `norm > theta` boundary: at `norm == theta`, `s = 0` either way.
+/// - `norm / theta` ratio: any non-divisor op produces a different `s`,
+///   but the final `exp(A) = (exp(B))^(2^s)` reconstructs identically
+///   because each squaring inverts one halving (modulo numerical noise
+///   absorbed by Pade's tolerance).
+/// - `s <= 62` boundary: at `s == 62` both the shift and the doubling
+///   loop produce `2^62`.
+fn compute_scaling_decision<T: Scalar>(
+    a: Dense<T>,
+    norm: T::Real,
+    theta: T::Real,
+) -> (Dense<T>, usize) {
+    let s = if norm > theta {
         let ratio = norm / theta;
         ratio.log2().ceil().to_usize().unwrap_or(0)
     } else {
         0
-    }
-}
+    };
 
-/// Compute `2^s` in real arithmetic, using a direct `1u64 << s` for
-/// `s <= 62` and a doubling loop for larger `s`. The 62 cutoff stays
-/// safely below the `u64` shift limit (`s == 64` would panic / wrap)
-/// while keeping the fast path open for every realistic Pade scaling
-/// step. Both branches compute the same `2^s`.
-///
-/// Wraps the boundary branch in a named fn so the equivalent-mutant
-/// exclusion (`<=` boundary) can be anchored by function name. The
-/// loop's `v + v` mutations are NOT equivalent and are killed by
-/// `two_pow_s_real_above_shift_threshold`.
-fn two_pow_s_real<R: Float + One + NumCast>(s: usize) -> R {
-    if s <= 62 {
-        <R as NumCast>::from(1u64 << s).unwrap()
+    if s == 0 {
+        return (a, 0);
+    }
+
+    let two_pow_s: T::Real = if s <= 62 {
+        <T::Real as NumCast>::from(1u64 << s).unwrap()
     } else {
-        let mut v = <R as One>::one();
+        let mut v = <T::Real as One>::one();
         for _ in 0..s {
             v = v + v;
         }
         v
-    }
-}
-
-/// Apply scaling `B = A / 2^s` (i.e., multiply by `scale_factor = 1/2^s`).
-/// Skips the multiplication when `s == 0` since `scale_factor` is then 1.
-/// Takes ownership of `a` so the `s == 0` branch can return it without a copy.
-///
-/// Wraps the skip branch in a named fn so the equivalent-mutant exclusion
-/// (`>` boundary at `s > 0`) can be anchored by function name. At `s == 0`
-/// the scaling is the identity either way.
-fn scale_input<T: Scalar>(a: Dense<T>, scale_factor: T::Real, s: usize) -> Dense<T> {
-    if s > 0 {
-        scale_real(&a, scale_factor)
-    } else {
-        a
-    }
+    };
+    let scale_factor = <T::Real as One>::one() / two_pow_s;
+    let b = scale_real(&a, scale_factor);
+    (b, s)
 }
 
 /// Scale each element of a tensor by a real factor.
@@ -472,15 +465,9 @@ pub fn expm<T: Scalar>(
         }
     }
 
-    // Use [13/13] Pade with scaling
+    // Use [13/13] Pade with scaling: pick s and form B = A / 2^s
     let theta_13: T::Real = <T::Real as num_traits::NumCast>::from(theta[4].1).unwrap();
-    let s = compute_scale_steps::<T::Real>(norm, theta_13);
-
-    // Scale: B = A / 2^s
-    let two_pow_s = two_pow_s_real::<T::Real>(s);
-    let scale_factor = <T::Real as One>::one() / two_pow_s;
-
-    let b = scale_input(a, scale_factor, s);
+    let (b, s) = compute_scaling_decision::<T>(a, norm, theta_13);
 
     let (u, v) = pade_uv_13(backend, &b, n)?;
     let mut result = solve_pade(backend, &u, &v)?;
@@ -515,7 +502,8 @@ fn solve_pade<T: Scalar>(
 
 #[cfg(test)]
 mod tests {
-    use super::{two_pow_s_real, validate_expm_nrow};
+    use super::{compute_scaling_decision, validate_expm_nrow};
+    use arnet_tensor::Dense;
 
     #[test]
     fn validate_expm_nrow_rejects_zero() {
@@ -538,13 +526,45 @@ mod tests {
         assert!(validate_expm_nrow(2, 3).is_ok());
     }
 
-    /// `s > 62` forces the doubling-loop branch; verifies the branch's
-    /// output equals `2^s`. Kills `+ -> -` (yields 0 from the first
-    /// subtraction) and `+ -> *` (yields 1 forever from `1 * 1`) on the
-    /// `v = v + v` accumulator.
+    /// `norm = 1.5 * 2^62` with `theta = 1` forces `s = ceil(log2(1.5 * 2^62)) = 63`,
+    /// which selects the doubling-loop branch (`s > 62`). Verifies both the
+    /// returned `s` and that the matrix is scaled by `1 / 2^63`. Kills the
+    /// `v + v -> v - v` (yields 0) and `v + v -> v * v` (yields 1) mutations
+    /// on the doubling accumulator.
     #[test]
-    fn two_pow_s_real_above_shift_threshold() {
-        let result: f64 = two_pow_s_real(63);
-        assert_eq!(result, 2.0_f64.powi(63));
+    fn compute_scaling_decision_above_shift_threshold() {
+        let theta = 1.0_f64;
+        let norm = (1u64 << 62) as f64 * 1.5;
+        let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let (b, s) = compute_scaling_decision::<f64>(a, norm, theta);
+        assert_eq!(s, 63);
+        let expected_factor = 1.0_f64 / 2.0_f64.powi(63);
+        for (i, &x) in b.data().iter().enumerate() {
+            let expected = (i + 1) as f64 * expected_factor;
+            assert!(
+                (x - expected).abs() < 1e-30,
+                "b[{i}] = {x}, expected {expected}"
+            );
+        }
+    }
+
+    /// `s == 0` early-return path: when `norm <= theta`, the helper returns
+    /// the input matrix without copying. Asserting pointer identity (rather
+    /// than just data equality) is what kills the `== with !=` mutation:
+    /// under that mutation the early return is skipped and the scaling path
+    /// runs with `s = 0`, producing a fresh allocation whose elements equal
+    /// the input but whose storage pointer differs.
+    #[test]
+    fn compute_scaling_decision_zero_steps_returns_input_unchanged() {
+        let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let a_ptr = a.data().as_ptr();
+        let (b, s) = compute_scaling_decision::<f64>(a, 0.5, 1.0);
+        assert_eq!(s, 0);
+        assert_eq!(b.data(), &[1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(
+            b.data().as_ptr(),
+            a_ptr,
+            "s = 0 path must return input without copying"
+        );
     }
 }
