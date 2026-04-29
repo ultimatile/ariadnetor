@@ -253,14 +253,22 @@ where
 
     // ---- Param validation ---------------------------------------
     validate_params(params)?;
-    // The cast may fail when `T::Real == f32` and the user supplied a
-    // value outside f32 range (NumCast::from returns None). Surface
-    // that as `InvalidParams` so the public API stays fallible
-    // end-to-end instead of panicking.
+    // Casts may fail when `T::Real == f32` and the user supplied a
+    // finite value outside f32 range (NumCast::from returns Some(inf),
+    // which try_real_from_f64 then maps to None). Surface that as
+    // `InvalidParams` so the public API stays fallible end-to-end
+    // instead of panicking inside lanczos. lanczos.tol is gated here
+    // too so a borderline f32 tol does not slip past sweep-level
+    // validation only to abort the run from inside the local solve.
     let energy_tol_real: T::Real =
         try_real_from_f64::<T>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
             detail: "energy_tol is not representable in T::Real",
         })?;
+    if try_real_from_f64::<T>(params.lanczos.tol).is_none() {
+        return Err(DmrgSweepError::InvalidParams {
+            detail: "lanczos.tol is not representable in T::Real",
+        });
+    }
 
     // ---- Canonical-form contract --------------------------------
     match mps.canonical_form() {
