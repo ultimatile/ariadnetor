@@ -371,6 +371,15 @@ where
             detail: "tol must be non-negative",
         });
     }
+    // Reject f64 tolerances that overflow `T::Real` to ±inf during
+    // the cast (only reachable for `T::Real == f32`). Without this
+    // gate lanczos's internal `try_real_from_f64` returns `None`
+    // and panics, bypassing this fallible API's contract.
+    if crate::numeric::try_real_from_f64::<T>(params.tol).is_none() {
+        return Err(DmrgHeffError::InvalidLanczosParams {
+            detail: "tol is not representable in T::Real",
+        });
+    }
 
     // ---- Env slot Some-check ------------------------------------
     let left = envs.left(site).ok_or(DmrgHeffError::StaleEnv {
