@@ -320,8 +320,9 @@ mod tests {
 
     /// Multi-tuple input with `block_dim > 1` per tuple — kills the
     /// `+= with -=` and `+= with *=` mutants on the offset accumulator.
-    /// (`-=` underflows on usize on the second iteration; `*=` produces
-    /// `[0, 0, 0]` since `0 *= d = 0`.)
+    /// (`-=` underflows on usize on the first iteration since `0 -= 2`
+    /// wraps in release / panics in debug; `*=` produces `[0, 0, 0]`
+    /// since `0 *= d = 0`.)
     #[test]
     fn cumulative_offsets_multi_tuple_multi_dim() {
         assert_eq!(cumulative_offsets(&[2, 3, 4]), vec![0, 2, 5]);
