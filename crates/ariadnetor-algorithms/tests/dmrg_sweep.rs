@@ -25,8 +25,8 @@ use rand::rngs::StdRng;
 // Fixtures
 // ---------------------------------------------------------------------------
 
-/// Random-but-seeded right-canonical MPS, n sites, d physical, chi_init internal.
-fn random_right_canonical_mps_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+/// Random-but-seeded MPS in `Mixed { center: 0 }` form (sweep driver's accepted entry state).
+fn random_mps_center_zero_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<Dense<f64>> = (0..n)
@@ -43,7 +43,7 @@ fn random_right_canonical_mps_f64(n: usize, d: usize, chi: usize, seed: u64) -> 
     mps
 }
 
-fn random_right_canonical_mps_c64(
+fn random_mps_center_zero_c64(
     n: usize,
     d: usize,
     chi: usize,
@@ -201,7 +201,7 @@ fn standard_params_f64(seed: u64) -> DmrgSweepParams {
 fn t1_psd_product_converges_to_product_of_min_eigs_f64() {
     let n = 4;
     let d = 3;
-    let mut mps = random_right_canonical_mps_f64(n, d, 4, 0xA1A1);
+    let mut mps = random_mps_center_zero_f64(n, d, 4, 0xA1A1);
     let (mpo, hs) = psd_local_mpo_f64(n, d, 0x1234);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = standard_params_f64(0xB00B);
@@ -227,7 +227,7 @@ fn t1_psd_product_converges_to_product_of_min_eigs_f64() {
 fn t2_energy_monotone_nonincreasing_across_sweeps() {
     let n = 4;
     let d = 2;
-    let mut mps = random_right_canonical_mps_f64(n, d, 4, 0xC0DE);
+    let mut mps = random_mps_center_zero_f64(n, d, 4, 0xC0DE);
     let mpo = hermitian_local_mpo_f64(n, d, 0xF00D);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
@@ -267,7 +267,7 @@ fn t2_energy_monotone_nonincreasing_across_sweeps() {
 fn t3_boundary_sites_covered_each_sweep() {
     let n = 4;
     let d = 2;
-    let mut mps = random_right_canonical_mps_f64(n, d, 3, 0x33);
+    let mut mps = random_mps_center_zero_f64(n, d, 3, 0x33);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x44);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
@@ -313,7 +313,7 @@ fn t3_boundary_sites_covered_each_sweep() {
 fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
     let n = 4;
     let d = 2;
-    let mut mps = random_right_canonical_mps_f64(n, d, 3, 0x4444);
+    let mut mps = random_mps_center_zero_f64(n, d, 3, 0x4444);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x5555);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     // First, run one full cycle.
@@ -387,7 +387,7 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
 fn t5_n_sites_two_edge_case() {
     let n = 2;
     let d = 2;
-    let mut mps = random_right_canonical_mps_f64(n, d, 2, 0x77);
+    let mut mps = random_mps_center_zero_f64(n, d, 2, 0x77);
     let (mpo, hs) = psd_local_mpo_f64(n, d, 0x88);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = standard_params_f64(0x99);
@@ -412,10 +412,10 @@ fn t6_length_mismatch_mps_vs_envs() {
     let n_a = 4;
     let n_b = 3;
     let d = 2;
-    let mut mps_a = random_right_canonical_mps_f64(n_a, d, 2, 0x10);
+    let mut mps_a = random_mps_center_zero_f64(n_a, d, 2, 0x10);
     let (mpo_a, _) = psd_local_mpo_f64(n_a, d, 0x11);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps_a, &mpo_a).expect("build");
-    let mut mps_b = random_right_canonical_mps_f64(n_b, d, 2, 0x12);
+    let mut mps_b = random_mps_center_zero_f64(n_b, d, 2, 0x12);
     // We still need an MPO of *some* length; the function checks both
     // mps and mpo against envs.n_sites.
     let (mpo_b, _) = psd_local_mpo_f64(n_b, d, 0x13);
@@ -458,7 +458,7 @@ fn t6_too_few_sites() {
 fn t6_invalid_params_max_sweeps_zero() {
     let n = 4;
     let d = 2;
-    let mps = random_right_canonical_mps_f64(n, d, 2, 0x21);
+    let mps = random_mps_center_zero_f64(n, d, 2, 0x21);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x22);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
@@ -472,7 +472,7 @@ fn t6_invalid_params_max_sweeps_zero() {
 fn t6_invalid_params_min_exceeds_max() {
     let n = 4;
     let d = 2;
-    let mps = random_right_canonical_mps_f64(n, d, 2, 0x24);
+    let mps = random_mps_center_zero_f64(n, d, 2, 0x24);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x25);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
@@ -487,7 +487,7 @@ fn t6_invalid_params_min_exceeds_max() {
 fn t6_invalid_params_chi_max_zero() {
     let n = 4;
     let d = 2;
-    let mps = random_right_canonical_mps_f64(n, d, 2, 0x27);
+    let mps = random_mps_center_zero_f64(n, d, 2, 0x27);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x28);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
@@ -501,7 +501,7 @@ fn t6_invalid_params_chi_max_zero() {
 fn t6_invalid_params_energy_tol_negative() {
     let n = 4;
     let d = 2;
-    let mps = random_right_canonical_mps_f64(n, d, 2, 0x2A);
+    let mps = random_mps_center_zero_f64(n, d, 2, 0x2A);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x2B);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
@@ -515,7 +515,7 @@ fn t6_invalid_params_energy_tol_negative() {
 fn t6_canonical_form_left_rejected() {
     let n = 4;
     let d = 2;
-    let mut mps = random_right_canonical_mps_f64(n, d, 2, 0x2D);
+    let mut mps = random_mps_center_zero_f64(n, d, 2, 0x2D);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x2E);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     // Move center to N-1 (i.e., left-canonical at sites 0..N-1) — not
@@ -530,7 +530,7 @@ fn t6_canonical_form_left_rejected() {
 fn t6_canonical_form_unknown_rejected() {
     let n = 4;
     let d = 2;
-    let mps_init = random_right_canonical_mps_f64(n, d, 2, 0x30);
+    let mps_init = random_mps_center_zero_f64(n, d, 2, 0x30);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x31);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps_init, &mpo).expect("build");
     // Construct a fresh MPS with `from_storages` (which sets
@@ -571,7 +571,7 @@ fn t6_step_error_propagated() {
         .collect();
     let mpo = Mpo::from_storages(mpo_storages);
     // Build envs from a *separately* matching pair so envs.n_sites == 3.
-    let env_mps = random_right_canonical_mps_f64(n, d_mpo, 1, 0xB1);
+    let env_mps = random_mps_center_zero_f64(n, d_mpo, 1, 0xB1);
     let mut env_mpo_storages = Vec::new();
     for _ in 0..n {
         let mut m = vec![0.0_f64; d_mpo * d_mpo];
@@ -601,7 +601,7 @@ fn t6_step_error_propagated() {
 fn t7_c64_psd_product_converges() {
     let n = 3;
     let d = 2;
-    let mut mps = random_right_canonical_mps_c64(n, d, 3, 0xC1);
+    let mut mps = random_mps_center_zero_c64(n, d, 3, 0xC1);
     let (mpo, hs) = psd_local_mpo_c64(n, d, 0xC2);
     let mut envs: DmrgEnvs<Complex<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
@@ -633,7 +633,7 @@ fn t7_c64_psd_product_converges() {
 fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
     let n = 4;
     let d = 2;
-    let mut mps = random_right_canonical_mps_f64(n, d, 2, 0xE1);
+    let mut mps = random_mps_center_zero_f64(n, d, 2, 0xE1);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0xE2);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     // Force Lanczos to fail convergence with max_iter=1 and an
@@ -674,7 +674,7 @@ fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
 fn t9_diagnostics_fields_consistent() {
     let n = 4;
     let d = 2;
-    let mut mps = random_right_canonical_mps_f64(n, d, 3, 0xD0);
+    let mut mps = random_mps_center_zero_f64(n, d, 3, 0xD0);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0xD1);
     let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
@@ -773,7 +773,7 @@ fn t10_post_sweep_envs_have_no_stale_some_slots() {
     }
     for &n in &[2usize, 4] {
         let d = 2;
-        let mut mps = random_right_canonical_mps_f64(n, d, 2, 0xF0 ^ n as u64);
+        let mut mps = random_mps_center_zero_f64(n, d, 2, 0xF0 ^ n as u64);
         let (mpo, _) = psd_local_mpo_f64(n, d, 0xF1 ^ n as u64);
         let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
         let params = DmrgSweepParams {
