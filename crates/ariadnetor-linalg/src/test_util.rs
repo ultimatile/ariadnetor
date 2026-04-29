@@ -129,10 +129,12 @@ impl ComputeBackend for RecordingBackend {
 /// exercised. The production `NativeBackend` is column-major, leaving the
 /// RM branch otherwise unreachable from tests.
 ///
-/// Only methods that consult `preferred_order()` without invoking BLAS-style
-/// kernels are safe to call against this backend; everything else delegates
-/// to the inner `NativeBackend` and assumes the caller hasn't pre-laid data
-/// out for RM consumption.
+/// All kernels still delegate to the inner `NativeBackend`, whose GEMM /
+/// transpose / decomposition implementations honor each descriptor's
+/// `order` field for both `RowMajor` and `ColumnMajor`. Callers must pass
+/// descriptors and buffers consistent with the memory order they expect —
+/// this backend only forces RM-branch selection in layout-aware code that
+/// dispatches on `preferred_order()`.
 pub(crate) struct RowMajorBackend {
     inner: NativeBackend,
 }
