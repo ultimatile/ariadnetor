@@ -12,7 +12,6 @@ use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgResult, DmrgSweepError, DmrgSweepParams, SweepDirection, dmrg_2site_sweep,
 };
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_core::Scalar;
 use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;

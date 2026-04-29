@@ -24,9 +24,10 @@ use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{LinalgError, diagonal_scale};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, norm};
 use arnet_tensor::Dense;
-use num_traits::{NumCast, Zero};
+use num_traits::Zero;
 
 use crate::krylov::LanczosParams;
+use crate::numeric::try_real_from_f64;
 
 use super::env::{DmrgEnvError, DmrgEnvs};
 use super::heff::{DmrgHeffError, dmrg_2site_step};
@@ -252,7 +253,14 @@ where
 
     // ---- Param validation ---------------------------------------
     validate_params(params)?;
-    let energy_tol_real: T::Real = real_from_f64::<T>(params.energy_tol);
+    // The cast may fail when `T::Real == f32` and the user supplied a
+    // value outside f32 range (NumCast::from returns None). Surface
+    // that as `InvalidParams` so the public API stays fallible
+    // end-to-end instead of panicking.
+    let energy_tol_real: T::Real =
+        try_real_from_f64::<T>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
+            detail: "energy_tol is not representable in T::Real",
+        })?;
 
     // ---- Canonical-form contract --------------------------------
     match mps.canonical_form() {
@@ -523,14 +531,4 @@ fn validate_params(params: &DmrgSweepParams) -> Result<(), DmrgSweepError> {
         }
     }
     Ok(())
-}
-
-/// Convert an `f64` tolerance to `T::Real` via `NumCast`.
-///
-/// Mirrors the helper of the same name in `crate::krylov::lanczos`.
-/// Inlined here to avoid making a public re-export for a 4-line
-/// utility; keep the two definitions in sync.
-fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
-    <T::Real as NumCast>::from(x)
-        .unwrap_or_else(|| panic!("real_from_f64: {x} is not representable in T::Real"))
 }

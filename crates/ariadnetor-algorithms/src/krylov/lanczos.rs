@@ -5,7 +5,7 @@ use arnet_core::Scalar;
 use arnet_linalg::{eigh, linear_combine, norm, normalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
-use num_traits::{Float, NumCast, One, Zero};
+use num_traits::{Float, One, Zero};
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -116,7 +116,13 @@ where
     let max_iter = params.max_iter.min(dim);
     let backend = NativeBackend::shared();
 
-    let tol_real: T::Real = real_from_f64::<T>(params.tol);
+    let tol_real: T::Real =
+        crate::numeric::try_real_from_f64::<T>(params.tol).unwrap_or_else(|| {
+            panic!(
+                "real_from_f64: {} is not representable in T::Real",
+                params.tol
+            )
+        });
     // `beta_floor` is only a guard against dividing by an unrepresentably
     // small β when normalizing v_{j+1} — it must NOT override the user's
     // tolerance. Convergence is decided exclusively by `residual_estimate`
@@ -322,8 +328,13 @@ fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
         .map(|_| {
             let re_f64: f64 = rng.random_range(-0.5..0.5);
             let im_f64: f64 = rng.random_range(-0.5..0.5);
-            let re = real_from_f64::<T>(re_f64);
-            let im = real_from_f64::<T>(im_f64);
+            // Random samples drawn from `(-0.5, 0.5)` are always
+            // representable in any `Scalar::Real` (`f32`/`f64`), so
+            // `try_real_from_f64` will not return `None` here.
+            let re = crate::numeric::try_real_from_f64::<T>(re_f64)
+                .expect("uniform [-0.5, 0.5) sample fits in Scalar::Real");
+            let im = crate::numeric::try_real_from_f64::<T>(im_f64)
+                .expect("uniform [-0.5, 0.5) sample fits in Scalar::Real");
             T::from_real_imag(re, im)
         })
         .collect();
@@ -374,14 +385,4 @@ where
     // smallest eigenvalue: indices 0..m.
     let z_data = eigvecs.data()[0..m].to_vec();
     (lambda, Dense::new(z_data, vec![m]))
-}
-
-/// Cast a (validated) `f64` constant to `T::Real`.
-///
-/// Callers must validate inputs upstream (e.g. `params.tol` is
-/// asserted finite and non-negative); the helper itself is a hard
-/// boundary — an unrepresentable value is a bug, not a silent zero.
-fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
-    <T::Real as NumCast>::from(x)
-        .unwrap_or_else(|| panic!("real_from_f64: {x} is not representable in T::Real"))
 }
