@@ -71,10 +71,10 @@ where
         total_err_sq = total_err_sq + left_trunc_step(chain, j, svd_params, absorb);
     }
 
-    // Right sweep from 0 to center-1: restore center position
-    for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
-    }
+    // Right sweep from 0 to center-1: restore center position.
+    // No err accumulation: by the time this runs, every bond has already
+    // been truncated to chi_max in the prior sweeps, so each step's err is 0.
+    restore_center_sweep_dense(chain, center, svd_params, absorb);
 
     // Both distributes √S to both sides, breaking isometry on all sites.
     let form = match absorb {
@@ -84,6 +84,34 @@ where
     chain.set_canonical_form(form);
     TruncResult {
         error: total_err_sq.sqrt(),
+    }
+}
+
+/// Final right sweep that restores the orthogonality center after the
+/// preceding right and left sweeps. By the time this runs, every bond has
+/// already been truncated to `chi_max`, so each step's squared error is
+/// structurally 0 — the function therefore returns `()` and the prior
+/// `total_err_sq` accumulator at the call site is left untouched.
+///
+/// The `debug_assert!` encodes this invariant so that any future change
+/// that violates it (e.g., reducing `chi_max` mid-sweep) is caught in
+/// debug builds.
+fn restore_center_sweep_dense<T, B, C>(
+    chain: &mut C,
+    center: usize,
+    svd_params: &TruncSvdParams,
+    absorb: SvdAbsorb,
+) where
+    T: Scalar,
+    B: ComputeBackend,
+    C: TensorChain<Dense<T>, B>,
+{
+    for j in 0..center {
+        let step_err_sq = right_trunc_step(chain, j, svd_params, absorb);
+        debug_assert!(
+            step_err_sq == T::Real::zero(),
+            "restore_center_sweep_dense expects zero step error after prior sweeps truncated to chi_max"
+        );
     }
 }
 

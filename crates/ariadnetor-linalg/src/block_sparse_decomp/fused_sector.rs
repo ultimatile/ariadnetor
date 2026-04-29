@@ -313,3 +313,27 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
     }
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::cumulative_offsets;
+
+    /// Multi-tuple input with `block_dim > 1` per tuple — kills the
+    /// `+= with -=` and `+= with *=` mutants on the offset accumulator.
+    /// (`-=` underflows on usize on the second iteration; `*=` produces
+    /// `[0, 0, 0]` since `0 *= d = 0`.)
+    #[test]
+    fn cumulative_offsets_multi_tuple_multi_dim() {
+        assert_eq!(cumulative_offsets(&[2, 3, 4]), vec![0, 2, 5]);
+    }
+
+    #[test]
+    fn cumulative_offsets_empty_input() {
+        assert_eq!(cumulative_offsets(&[]), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn cumulative_offsets_single_tuple() {
+        assert_eq!(cumulative_offsets(&[7]), vec![0]);
+    }
+}
