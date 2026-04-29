@@ -45,14 +45,6 @@ fn shapes_rank3() -> Vec<TensorShape> {
     }]
 }
 
-#[allow(dead_code)]
-fn shapes_rank4() -> Vec<TensorShape> {
-    vec![TensorShape {
-        label: "32x4x4x32",
-        shape: vec![32, 4, 4, 32],
-    }]
-}
-
 fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
     Dense::random(shape, &mut rng())
 }

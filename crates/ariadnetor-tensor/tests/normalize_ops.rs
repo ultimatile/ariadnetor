@@ -7,12 +7,6 @@
 use arnet_tensor::Dense;
 use num_complex::Complex;
 
-/// Compute row-major flat index for (i, j) in shape [rows, cols]
-#[allow(dead_code)]
-fn rm(i: usize, j: usize, cols: usize) -> usize {
-    i * cols + j
-}
-
 const EPSILON: f64 = 1e-10;
 
 // ============================================================================

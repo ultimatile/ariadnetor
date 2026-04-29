@@ -1,11 +1,5 @@
 use arnet_tensor::Dense;
 
-/// Compute row-major flat index for (i, j) in shape [rows, cols]
-#[allow(dead_code)]
-fn rm(i: usize, j: usize, cols: usize) -> usize {
-    i * cols + j
-}
-
 #[test]
 fn test_tensor_storage_zeros() {
     let tensor = Dense::<f64>::zeros(vec![3, 4]);

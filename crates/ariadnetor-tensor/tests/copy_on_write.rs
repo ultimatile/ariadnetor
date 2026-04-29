@@ -4,12 +4,6 @@
 
 use arnet_tensor::Dense;
 
-/// Compute row-major flat index for (i, j) in shape [rows, cols]
-#[allow(dead_code)]
-fn rm(i: usize, j: usize, cols: usize) -> usize {
-    i * cols + j
-}
-
 #[test]
 fn test_clone_is_cheap() {
     let tensor1 = Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
