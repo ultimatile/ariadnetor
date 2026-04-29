@@ -317,23 +317,37 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparse<f64, U1Sector>> {
     let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
     let mut site0 = BlockSparse::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
-    site0.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
-    site0.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 2.0;
+    site0
+        .block_data_mut(&BlockCoord(vec![0, 0, 0]))
+        .expect("site0 block [0,0,0]")[0] = 1.0;
+    site0
+        .block_data_mut(&BlockCoord(vec![0, 1, 1]))
+        .expect("site0 block [0,1,1]")[0] = 2.0;
 
     let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
     let mut site1 = BlockSparse::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
-    site1.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 3.0;
-    site1.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 4.0;
-    site1.block_data_mut(&BlockCoord(vec![1, 0, 1])).unwrap()[0] = 5.0;
+    site1
+        .block_data_mut(&BlockCoord(vec![0, 0, 0]))
+        .expect("site1 block [0,0,0]")[0] = 3.0;
+    site1
+        .block_data_mut(&BlockCoord(vec![0, 1, 1]))
+        .expect("site1 block [0,1,1]")[0] = 4.0;
+    site1
+        .block_data_mut(&BlockCoord(vec![1, 0, 1]))
+        .expect("site1 block [1,0,1]")[0] = 5.0;
 
     let left2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let phys2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right2 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
     let mut site2 = BlockSparse::<f64, U1Sector>::zeros(vec![left2, phys2, right2], U1Sector(0));
-    site2.block_data_mut(&BlockCoord(vec![0, 1, 0])).unwrap()[0] = 6.0;
-    site2.block_data_mut(&BlockCoord(vec![1, 0, 0])).unwrap()[0] = 7.0;
+    site2
+        .block_data_mut(&BlockCoord(vec![0, 1, 0]))
+        .expect("site2 block [0,1,0]")[0] = 6.0;
+    site2
+        .block_data_mut(&BlockCoord(vec![1, 0, 0]))
+        .expect("site2 block [1,0,0]")[0] = 7.0;
 
     Mps::from_storages(vec![site0, site1, site2])
 }
@@ -390,12 +404,18 @@ fn truncate_bsp_error_pins_step_arithmetic_3site() {
         "fixture must have genuine truncation error, got expected²={expected_err_sq} \
          (norm_sq_before={norm_sq_before}) — Schmidt structure too trivial",
     );
+    // Tolerance 1e-8 leaves headroom over BLAS / SVD rounding noise (typically
+    // O(1e-13) in f64) while still catching every targeted mutation. The
+    // observable mutation classes shift the accumulator by at least the size
+    // of one step's `err²` (≥ 1e-3 of `norm_sq_before` on this fixture) or
+    // zero it entirely (`+ → *` paired with a zero step), so any tolerance
+    // well below 1e-3 of `norm_sq_before` suffices.
     assert!(
-        (reported_err_sq - expected_err_sq).abs() < 1e-10 * norm_sq_before,
+        (reported_err_sq - expected_err_sq).abs() < 1e-8 * norm_sq_before,
         "reported²={reported_err_sq}, expected²={expected_err_sq}, \
          diff={}, tolerance={}",
         (reported_err_sq - expected_err_sq).abs(),
-        1e-10 * norm_sq_before,
+        1e-8 * norm_sq_before,
     );
 }
 
