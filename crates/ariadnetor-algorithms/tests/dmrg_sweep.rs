@@ -668,18 +668,7 @@ fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// T9 — diagnostics consistency
-//
-// Every per-step / per-sweep diagnostics field is *populated* by the
-// driver. T1–T8 assert on the headline ones (energy, converged,
-// direction, site, eigenvalue, trunc_err, lanczos_converged), but the
-// supporting fields (`step.residual`, `step.bond_dim`,
-// `step.lanczos_iters`, `sweep.min_step_eigenvalue`,
-// `sweep.max_trunc_err`, `sweep.max_bond`,
-// `sweep.all_lanczos_converged`) need their own contract test.
-// Acceptance #5 of the Phase 4 plan explicitly requires this.
-// ---------------------------------------------------------------------------
+// T9 — diagnostics-field consistency for the fields T1–T8 do not assert on.
 #[test]
 fn t9_diagnostics_fields_consistent() {
     let n = 4;
@@ -760,4 +749,51 @@ fn t9_diagnostics_fields_consistent() {
         "last sweep.max_bond {} must equal post-sweep MPS max_bond_dim {}",
         last_sweep.max_bond, final_max_bond
     );
+}
+
+// T10 — post-sweep DmrgEnvs staleness contract: every populated slot
+// must match a fresh `DmrgEnvs::build` against the post-sweep MPS,
+// pinning the n=2 boundary case codex flagged.
+#[test]
+fn t10_post_sweep_envs_have_no_stale_some_slots() {
+    fn check(side: &str, j: usize, n: usize, a: Option<&Dense<f64>>, b: Option<&Dense<f64>>) {
+        match (a, b) {
+            (Some(a), Some(b)) => {
+                assert_eq!(a.shape(), b.shape(), "{side}[{j}] shape (n={n})");
+                for (x, y) in a.data().iter().zip(b.data().iter()) {
+                    assert_abs_diff_eq!(*x, *y, epsilon = 1e-10);
+                }
+            }
+            (Some(_), None) => {
+                panic!("post-sweep envs.{side}({j}) Some but fresh build None — stale-Some (n={n})")
+            }
+            _ => {}
+        }
+    }
+    for &n in &[2usize, 4] {
+        let d = 2;
+        let mut mps = random_right_canonical_mps_f64(n, d, 2, 0xF0 ^ n as u64);
+        let (mpo, _) = psd_local_mpo_f64(n, d, 0xF1 ^ n as u64);
+        let mut envs: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("build");
+        let params = DmrgSweepParams {
+            max_sweeps: 1,
+            min_sweeps: 1,
+            energy_tol: 0.0,
+            lanczos: LanczosParams {
+                max_iter: 100,
+                tol: 1e-10,
+                seed: Some(0xF2),
+            },
+            trunc: TruncSvdParams {
+                chi_max: Some(1),
+                target_trunc_err: None,
+            },
+        };
+        dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+        let fresh: DmrgEnvs<f64> = DmrgEnvs::build(&mps, &mpo).expect("rebuild");
+        for j in 0..=n {
+            check("left", j, n, envs.left(j), fresh.left(j));
+            check("right", j, n, envs.right(j), fresh.right(j));
+        }
+    }
 }

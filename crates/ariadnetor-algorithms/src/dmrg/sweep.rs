@@ -325,18 +325,25 @@ where
             )?;
             steps.push(record);
 
-            // Skip the trailing advance at site = 0: the next L→R
-            // step at site = 0 consumes `right(2)` which is still
-            // valid from this half-sweep's earlier work.
-            if site > 0 {
-                envs.advance_right(mps, mpo, site + 1)
-                    .map_err(|source| DmrgSweepError::Env {
-                        sweep: sweep_idx,
-                        direction: SweepDirection::RightToLeft,
-                        site,
-                        source,
-                    })?;
-            }
+            // Always advance, including at the trailing `site == 0`
+            // boundary. Skipping the boundary advance would leave
+            // `right[1]` stale-but-`Some` (it would still hold the
+            // pre-sweep `DmrgEnvs::build` value, computed against
+            // the original MPS site 1) and `left[1]` stale-but-
+            // `Some` (it would still hold the L→R-time value, even
+            // though R→L has further mutated MPS site 0). Both are
+            // contract violations against
+            // `DmrgEnvs`'s "stale = None" convention even though
+            // they do not affect the next sweep iteration's
+            // numerics, which overwrites `left[1]` via
+            // `advance_left(0)` before consumption.
+            envs.advance_right(mps, mpo, site + 1)
+                .map_err(|source| DmrgSweepError::Env {
+                    sweep: sweep_idx,
+                    direction: SweepDirection::RightToLeft,
+                    site,
+                    source,
+                })?;
         }
 
         // R→L ends with the orthogonality center at site 0
