@@ -404,6 +404,79 @@ fn zipup_truncates_bond_dim() {
     }
 }
 
+/// Pin the QR/SVD branch decision in the forward sweep of `apply_zipup_bsp`.
+///
+/// On `make_4site_u1_mps` × `make_total_n_u1_mpo(4)` with `chi_max=1`, the
+/// per-site forward shapes are `[1,2,6]`, `[2,2,10]`, `[4,2,6]`. With
+/// `chi_max_forward = ZIPUP_SVD_RATIO * chi_max = 4`, only `j=2`
+/// (`forward_rank_estimate_bsp = min(4*2, 6) = 6`) clears the threshold and
+/// enters the truncated-SVD branch; `j=0,1` stay on the QR branch.
+///
+/// Comparing zip-up output against `apply` (naive product, then
+/// canonicalize+truncate from one end) under the *same* `chi_max=1` budget
+/// pins the forward sweep semantics: both algorithms must keep the same
+/// dominant Schmidt direction at every bond, so the contracted full tensors
+/// agree numerically. Each missed mutation shifts which singular vector the
+/// forward sweep keeps at j=2 (e.g. `forward_rank_estimate_bsp -> 0` makes
+/// `rank > cap` always false → QR is used everywhere; `delete !` flips QR
+/// and SVD branches; `> → ==/</>=` perturbs the threshold check), and the
+/// resulting chi=1 chain disagrees with the naive reference.
+#[test]
+fn zipup_truncated_matches_naive_truncated_chi1() {
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+
+    let phi_naive = apply(&op, &psi, Some(&params));
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+
+    for d in phi_zipup.bond_dims() {
+        assert!(d <= 1, "zipup bond {d} exceeds chi_max=1");
+    }
+    for d in phi_naive.bond_dims() {
+        assert!(d <= 1, "naive bond {d} exceeds chi_max=1");
+    }
+
+    let v_naive = bsp_mps_contract_full(&phi_naive);
+    let v_zipup = bsp_mps_contract_full(&phi_zipup);
+    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
+}
+
+/// Pin the forward-sweep boundary control flow (`j < n - 1`) in
+/// `apply_zipup_bsp` by asserting at least one zip-up bond is strictly
+/// smaller than the corresponding naive bond.
+///
+/// `apply` (naive) builds the full local product per site, leaving every
+/// bond at `w_R * chi_R` (no rank reduction). Zip-up's forward sweep at
+/// `j < n - 1` runs `qr_block_sparse(p, 2)`, whose Q has bond
+/// `min(left*d, right) ≤ right`. With non-trivial MPO bond, the QR-reduced
+/// bond is strictly smaller than the naive bond at the early sites
+/// (`j = 0, 1`) where carry is small. If the boundary check is mutated to a
+/// relop that never enters the interior branch (e.g. `<` → `>`), the entire
+/// forward sweep raw-pushes per-site products and the resulting bond dims
+/// match naive exactly — assertion fails.
+#[test]
+fn zipup_no_params_reduces_bond_dims_vs_naive_at_early_sites() {
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+
+    let phi_naive = apply(&op, &psi, None);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
+
+    let bd_naive = phi_naive.bond_dims();
+    let bd_zipup = phi_zipup.bond_dims();
+    assert_eq!(bd_naive.len(), bd_zipup.len());
+    let any_strictly_smaller = bd_zipup.iter().zip(bd_naive.iter()).any(|(z, n)| z < n);
+    assert!(
+        any_strictly_smaller,
+        "expected zip-up to reduce at least one bond below naive — \
+         zipup={bd_zipup:?}, naive={bd_naive:?}"
+    );
+}
+
 /// Block-sparse mirror of the dense dispatch parity contract: every
 /// `TruncateParams` field zip-up does not yet honor for `BlockSparse` must
 /// trigger an up-front panic. Extend the `unsupported` table when zip-up
