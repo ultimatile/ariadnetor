@@ -9,8 +9,7 @@ use arnet_mps::{
     CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams, canonicalize,
     truncate,
 };
-use arnet_tensor::BlockSparse;
-use arnet_tensor::U1Sector;
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, is_left_canonical_bsp,
@@ -299,6 +298,104 @@ fn truncate_bsp_error_matches_reconstruction_error() {
         "reported²={reported_err_sq}, expected²={expected_err_sq}, \
          diff={}",
         (reported_err_sq - expected_err_sq).abs(),
+    );
+}
+
+// --------------------------------------------------------------------------
+// Per-step error accumulator pinning
+// --------------------------------------------------------------------------
+
+/// 3-site U(1) MPS in the total-charge-1 sector with non-trivial Schmidt
+/// structure on every bond. Block coefficients chosen so that
+/// `canonicalize(center=1)` followed by `chi_max=1` truncation produces a
+/// nonzero err contribution at the right sweep (j=1), the left sweep (j=1),
+/// and a zero contribution at the final right sweep — making 5 of the 6 sweep
+/// positions distinguish the original arithmetic from each missed mutant on
+/// `truncate.rs:349/354/424/482`.
+fn make_3site_u1_truncate_fixture() -> Mps<BlockSparse<f64, U1Sector>> {
+    let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
+    let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let mut site0 = BlockSparse::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
+    site0.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
+    site0.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 2.0;
+
+    let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let right1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let mut site1 = BlockSparse::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
+    site1.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 3.0;
+    site1.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 4.0;
+    site1.block_data_mut(&BlockCoord(vec![1, 0, 1])).unwrap()[0] = 5.0;
+
+    let left2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let phys2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let right2 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
+    let mut site2 = BlockSparse::<f64, U1Sector>::zeros(vec![left2, phys2, right2], U1Sector(0));
+    site2.block_data_mut(&BlockCoord(vec![0, 1, 0])).unwrap()[0] = 6.0;
+    site2.block_data_mut(&BlockCoord(vec![1, 0, 0])).unwrap()[0] = 7.0;
+
+    Mps::from_storages(vec![site0, site1, site2])
+}
+
+/// Pin the reported truncation error against the Pythagorean reconstruction
+/// identity on a fixture with genuine multi-Schmidt structure per bond.
+///
+/// `truncate_bsp` accumulates squared step errors across three sweeps. Each
+/// step in `right_trunc_step_block_sparse` / `left_trunc_step_block_sparse`
+/// returns `err * err` (squared), and `truncate_bsp` adds them at three
+/// `+`-loops (right, left, final-right). For the identity
+/// `result.error² == ||before||² - ||after||²` to hold under the original
+/// arithmetic, every `+` and every `*` must be present as written:
+///
+/// * `+` → `-` (line 349, left sweep): flips the sign of left contributions,
+///   so the accumulated total drops below the reconstruction value (or goes
+///   negative → NaN).
+/// * `+` → `*` (line 349 or 354): zeros the entire accumulator the first
+///   time a step value is zero, giving `result.error = 0` while
+///   `||before||² > ||after||²`.
+/// * `* → +` in `right_trunc_step_block_sparse` (line 424) /
+///   `left_trunc_step_block_sparse` (line 482): each step returns
+///   `err + err = 2err` instead of `err²`. The accumulator becomes a sum of
+///   `2*err_step` instead of `err_step²`, which matches the reconstruction
+///   identity only at the trivial `err_step = 0` case the prior 4-site
+///   fixture happened to hit.
+///
+/// `center=1` exercises the right sweep range `1..2 = {1}` AND the final
+/// right sweep range `0..1 = {0}`, so `truncate.rs:354 + → *` is observable
+/// (its prior accumulator is nonzero from the right + left sweeps, and the
+/// final-right step multiplies by 0 instead of adding 0).
+#[test]
+fn truncate_bsp_error_pins_step_arithmetic_3site() {
+    let mut mps = make_3site_u1_truncate_fixture();
+    canonicalize(&mut mps, 1);
+    let state_before = bsp_mps_contract_full(&mps);
+    let norm_before = state_before.norm();
+    let norm_sq_before = norm_before * norm_before;
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+    let result = truncate(&mut mps, &params);
+    let state_after = bsp_mps_contract_full(&mps);
+    let norm_after = state_after.norm();
+    let norm_sq_after = norm_after * norm_after;
+
+    let expected_err_sq = norm_sq_before - norm_sq_after;
+    let reported_err_sq = result.error * result.error;
+
+    assert!(
+        expected_err_sq > 1e-3 * norm_sq_before,
+        "fixture must have genuine truncation error, got expected²={expected_err_sq} \
+         (norm_sq_before={norm_sq_before}) — Schmidt structure too trivial",
+    );
+    assert!(
+        (reported_err_sq - expected_err_sq).abs() < 1e-10 * norm_sq_before,
+        "reported²={reported_err_sq}, expected²={expected_err_sq}, \
+         diff={}, tolerance={}",
+        (reported_err_sq - expected_err_sq).abs(),
+        1e-10 * norm_sq_before,
     );
 }
 
