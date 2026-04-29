@@ -258,3 +258,55 @@ fn bsv_map_basic() {
     assert!((sqrt_bsv.values[1].1[1] - 4.0).abs() < 1e-14);
     assert!((sqrt_bsv.values[1].1[2] - 5.0).abs() < 1e-14);
 }
+
+#[test]
+fn rowmajor_branch_distinguishes_inner_stride_at_non_trailing_axis() {
+    // Pin the RowMajor branch of `inner_stride` at line 83 of
+    // block_sparse_scale/mod.rs. With block_shape=[2, 3, 4] and axis=1:
+    //
+    //   original `axis + 1`: stride = block_shape[2..].product() = 4
+    //   mutant   `axis - 1`: stride = block_shape[0..].product() = 24
+    //   mutant   `axis * 1`: stride = block_shape[1..].product() = 12
+    //
+    // Different strides drive `i_axis = (idx / stride) % d_axis` to pick a
+    // different weight per element, so the per-position result discriminates
+    // all three values.
+    use crate::test_util::RowMajorBackend;
+
+    let backend = RowMajorBackend::new();
+
+    let idx_a = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let idx_b = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
+    let idx_c = QNIndex::new(vec![(U1Sector(0), 4)], Direction::Out);
+    let mut tensor = BlockSparse::<f64, U1Sector>::zeros(vec![idx_a, idx_b, idx_c], U1Sector(0));
+    let coord = BlockCoord(vec![0, 0, 0]);
+    tensor
+        .block_data_mut(&coord)
+        .unwrap()
+        .iter_mut()
+        .for_each(|e| *e = 1.0);
+
+    let weights = BlockSingularValues {
+        values: vec![(U1Sector(0), vec![1.0, 2.0, 3.0])],
+    };
+
+    let scaled = diagonal_scale_block_sparse(&backend, &tensor, &weights, 1).unwrap();
+    let data = scaled.block_data(&coord).unwrap();
+
+    // RowMajor: flat[i, j, k] = i * 12 + j * 4 + k. Expected scaled value is
+    // weights[0].1[j] (the axis-1 entry).
+    for i in 0..2 {
+        for j in 0..3 {
+            for k in 0..4 {
+                let flat = i * 12 + j * 4 + k;
+                let expected = weights.values[0].1[j];
+                assert!(
+                    (data[flat] - expected).abs() < 1e-12,
+                    "rowmajor scale mismatch at (i={i}, j={j}, k={k}): \
+                     got {actual}, expected {expected}",
+                    actual = data[flat]
+                );
+            }
+        }
+    }
+}
