@@ -9,6 +9,7 @@ fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
 }
 
 /// Compute row-major flat index for (i, j) in shape [rows, cols]
+#[allow(dead_code)]
 fn rm(i: usize, j: usize, cols: usize) -> usize {
     i * cols + j
 }

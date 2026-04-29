@@ -355,8 +355,8 @@ fn block_sparse_tuple_symmetry() {
     let s00 = (U1Sector(0), Z2Sector::new(0));
     let s11 = (U1Sector(1), Z2Sector::new(1));
 
-    let row = QNIndex::new(vec![(s00.clone(), 2), (s11.clone(), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(s00.clone(), 2), (s11.clone(), 3)], Direction::In);
+    let row = QNIndex::new(vec![(s00, 2), (s11, 3)], Direction::Out);
+    let col = QNIndex::new(vec![(s00, 2), (s11, 3)], Direction::In);
 
     // flux = identity = (0, 0)
     // Block (0,0): Out(0,0) fuse In(0,0).dual() = (0,0) ✓

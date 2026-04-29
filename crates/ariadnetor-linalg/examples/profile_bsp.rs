@@ -41,15 +41,15 @@ fn main() {
             a.stored_len()
         );
 
-        bench_loop(&format!("  contract_bsp [1],[0] (aligned)"), iters, || {
+        bench_loop("  contract_bsp [1],[0] (aligned)", iters, || {
             let _ = contract_block_sparse(&backend, &a, &b, &[1], &[0]).unwrap();
         });
 
-        bench_loop(&format!("  contract_bsp [0],[1] (permuted)"), iters, || {
+        bench_loop("  contract_bsp [0],[1] (permuted)", iters, || {
             let _ = contract_block_sparse(&backend, &a, &b, &[0], &[1]).unwrap();
         });
 
-        bench_loop(&format!("  svd_block_sparse"), iters, || {
+        bench_loop("  svd_block_sparse", iters, || {
             let _ = svd_block_sparse(&backend, &a, 1).unwrap();
         });
     }

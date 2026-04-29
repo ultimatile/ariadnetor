@@ -51,7 +51,7 @@ fn main() {
             a.stored_len()
         );
 
-        bench_loop(&format!("  svd_block_sparse"), iters, || {
+        bench_loop("  svd_block_sparse", iters, || {
             let _ = svd_block_sparse(&backend, &a, 1).unwrap();
         });
 
@@ -63,11 +63,11 @@ fn main() {
             },
         );
 
-        bench_loop(&format!("  qr_block_sparse"), iters, || {
+        bench_loop("  qr_block_sparse", iters, || {
             let _ = qr_block_sparse(&backend, &a, 1).unwrap();
         });
 
-        bench_loop(&format!("  lq_block_sparse"), iters, || {
+        bench_loop("  lq_block_sparse", iters, || {
             let _ = lq_block_sparse(&backend, &a, 1).unwrap();
         });
     }

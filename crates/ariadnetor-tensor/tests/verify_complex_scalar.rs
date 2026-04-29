@@ -1,6 +1,6 @@
 //! Verification test for Complex<T> with Scalar trait
 
-use arnet_tensor::{Dense, MemoryOrder, Scalar};
+use arnet_tensor::{Dense, Scalar};
 use num_complex::Complex;
 
 #[test]

@@ -45,6 +45,7 @@ fn shapes_rank3() -> Vec<TensorShape> {
     }]
 }
 
+#[allow(dead_code)]
 fn shapes_rank4() -> Vec<TensorShape> {
     vec![TensorShape {
         label: "32x4x4x32",

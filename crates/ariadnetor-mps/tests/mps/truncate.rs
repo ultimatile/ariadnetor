@@ -4,7 +4,7 @@ use approx::assert_abs_diff_eq;
 use arnet_mps::{
     self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 

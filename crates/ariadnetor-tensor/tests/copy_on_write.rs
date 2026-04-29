@@ -2,9 +2,10 @@
 //!
 //! Tests that Arc-based shared ownership and CoW work correctly.
 
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 
 /// Compute row-major flat index for (i, j) in shape [rows, cols]
+#[allow(dead_code)]
 fn rm(i: usize, j: usize, cols: usize) -> usize {
     i * cols + j
 }

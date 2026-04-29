@@ -36,7 +36,7 @@ fn assert_solve_laws<T: Scalar>(
         for i in 0..n {
             let mut ax = Complex::new(0.0, 0.0);
             for k in 0..n {
-                ax = ax + a64[k * n + i] * x64[j * n + k];
+                ax += a64[k * n + i] * x64[j * n + k];
             }
             assert!(
                 (ax.re - b64[j * n + i].re).abs() < tol && (ax.im - b64[j * n + i].im).abs() < tol,

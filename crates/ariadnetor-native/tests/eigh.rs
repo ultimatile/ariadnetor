@@ -38,7 +38,7 @@ fn assert_eigh_laws<T: Scalar>(
         for i in 0..n {
             let mut av = Complex::new(0.0, 0.0);
             for k in 0..n {
-                av = av + a64[k * n + i] * v64[j * n + k];
+                av += a64[k * n + i] * v64[j * n + k];
             }
             let wv = Complex::new(wj, 0.0) * v64[j * n + i];
             assert!(

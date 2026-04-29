@@ -540,13 +540,12 @@ fn test_expm_different_pade_orders_agree() {
         let c = t.cos();
         let s = t.sin();
         let expected = [[c, s], [-s, c]];
-        for i in 0..2 {
-            for j in 0..2 {
+        for (i, row) in expected.iter().enumerate() {
+            for (j, &exp_ij) in row.iter().enumerate() {
                 assert!(
-                    (result.get(&[i, j]) - expected[i][j]).abs() < 1e-10,
-                    "t={t}: r[{i},{j}]={}, expected {}",
+                    (result.get(&[i, j]) - exp_ij).abs() < 1e-10,
+                    "t={t}: r[{i},{j}]={}, expected {exp_ij}",
                     result.get(&[i, j]),
-                    expected[i][j]
                 );
             }
         }

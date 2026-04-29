@@ -2,7 +2,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{self as mps, CanonicalForm, Mpo, Mps, TensorChain};
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::Dense;
 
 use super::helpers::make_4site_mps;
 
