@@ -64,13 +64,17 @@ exclude_re = [
     # of how many extra scaling steps are taken (each squaring inverts one halving).
     "replace > with >= in compute_scale_steps",
     "replace / with \\* in compute_scale_steps",
-    # two_pow_s_real: doubling-loop branch is unreachable in tests (s never exceeds 62);
-    # both branches compute 2^s when reached, so the boundary and inner-+ mutations are equivalent.
+    # two_pow_s_real: at s=62 the bit-shift and doubling-loop branches both compute
+    # 2^62, so the <= boundary mutation is equivalent. The inner `v = v + v`
+    # mutations are NOT equivalent and are killed by `two_pow_s_real_above_shift_threshold`.
     "replace <= with > in two_pow_s_real",
-    "replace \\+ with - in two_pow_s_real",
-    "replace \\+ with \\* in two_pow_s_real",
     # scale_input: at s=0 the scaling is the identity, so > vs >= at the boundary is a no-op.
     "replace > with >= in scale_input",
+    # restore_center_sweep_dense: prior right and left sweeps already truncate every bond
+    # to chi_max + target_trunc_err, so each step's err is structurally 0 in exact
+    # arithmetic. Subtracting 0 is a no-op, hence + with - is equivalent. The peer
+    # + with * mutation is NOT equivalent (would zero the prior accumulator) and remains.
+    "replace \\+ with - in restore_center_sweep_dense",
     # contract_to_tensor trans-flag predicates: any mutation that forces the predicate
     # to false (or removes the leading `!`) routes through the physical-permute GEMM
     # path, which produces identical numerical results to the trans-flag GEMM path

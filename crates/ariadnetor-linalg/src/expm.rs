@@ -194,15 +194,16 @@ fn two_pow_s_real<R: Float + One + NumCast>(s: usize) -> R {
 
 /// Apply scaling `B = A / 2^s` (i.e., multiply by `scale_factor = 1/2^s`).
 /// Skips the multiplication when `s == 0` since `scale_factor` is then 1.
+/// Takes ownership of `a` so the `s == 0` branch can return it without a copy.
 ///
 /// Wraps the skip branch in a named fn so the equivalent-mutant exclusion
 /// (`>` boundary at `s > 0`) can be anchored by function name. At `s == 0`
 /// the scaling is the identity either way.
-fn scale_input<T: Scalar>(a: &Dense<T>, scale_factor: T::Real, s: usize) -> Dense<T> {
+fn scale_input<T: Scalar>(a: Dense<T>, scale_factor: T::Real, s: usize) -> Dense<T> {
     if s > 0 {
-        scale_real(a, scale_factor)
+        scale_real(&a, scale_factor)
     } else {
-        a.clone()
+        a
     }
 }
 
@@ -475,7 +476,7 @@ pub fn expm<T: Scalar>(
     let two_pow_s = two_pow_s_real::<T::Real>(s);
     let scale_factor = <T::Real as One>::one() / two_pow_s;
 
-    let b = scale_input(&a, scale_factor, s);
+    let b = scale_input(a, scale_factor, s);
 
     let (u, v) = pade_uv_13(backend, &b, n)?;
     let mut result = solve_pade(backend, &u, &v)?;
@@ -510,7 +511,7 @@ fn solve_pade<T: Scalar>(
 
 #[cfg(test)]
 mod tests {
-    use super::validate_expm_nrow;
+    use super::{two_pow_s_real, validate_expm_nrow};
 
     #[test]
     fn validate_expm_nrow_rejects_zero() {
@@ -531,5 +532,15 @@ mod tests {
     fn validate_expm_nrow_accepts_valid() {
         assert!(validate_expm_nrow(1, 3).is_ok());
         assert!(validate_expm_nrow(2, 3).is_ok());
+    }
+
+    /// `s > 62` forces the doubling-loop branch; verifies the branch's
+    /// output equals `2^s`. Kills `+ -> -` (yields 0 from the first
+    /// subtraction) and `+ -> *` (yields 1 forever from `1 * 1`) on the
+    /// `v = v + v` accumulator.
+    #[test]
+    fn two_pow_s_real_above_shift_threshold() {
+        let result: f64 = two_pow_s_real(63);
+        assert_eq!(result, 2.0_f64.powi(63));
     }
 }

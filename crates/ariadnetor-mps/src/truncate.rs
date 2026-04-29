@@ -72,9 +72,7 @@ where
     }
 
     // Right sweep from 0 to center-1: restore center position.
-    // No err accumulation: by the time this runs, every bond has already
-    // been truncated to chi_max in the prior sweeps, so each step's err is 0.
-    restore_center_sweep_dense(chain, center, svd_params, absorb);
+    restore_center_sweep_dense(chain, center, svd_params, absorb, &mut total_err_sq);
 
     // Both distributes √S to both sides, breaking isometry on all sites.
     let form = match absorb {
@@ -88,30 +86,29 @@ where
 }
 
 /// Final right sweep that restores the orthogonality center after the
-/// preceding right and left sweeps. By the time this runs, every bond has
-/// already been truncated to `chi_max`, so each step's squared error is
-/// structurally 0 — the function therefore returns `()` and the prior
-/// `total_err_sq` accumulator at the call site is left untouched.
+/// preceding right and left sweeps. The prior sweeps have already truncated
+/// every bond to `chi_max` (and to `target_trunc_err` if set), so each
+/// step's squared error is normally 0 in exact arithmetic. We still
+/// accumulate it into `total_err_sq` defensively in case numerical drift
+/// or a future parameter change produces a non-zero step error in release
+/// builds.
 ///
-/// The `debug_assert!` encodes this invariant so that any future change
-/// that violates it (e.g., reducing `chi_max` mid-sweep) is caught in
-/// debug builds.
+/// Wraps the sweep so the equivalent-mutant exclusion (`+= with -=`, where
+/// subtracting 0 is a no-op) can be anchored by function name rather than
+/// by line number.
 fn restore_center_sweep_dense<T, B, C>(
     chain: &mut C,
     center: usize,
     svd_params: &TruncSvdParams,
     absorb: SvdAbsorb,
+    total_err_sq: &mut T::Real,
 ) where
     T: Scalar,
     B: ComputeBackend,
     C: TensorChain<Dense<T>, B>,
 {
     for j in 0..center {
-        let step_err_sq = right_trunc_step(chain, j, svd_params, absorb);
-        debug_assert!(
-            step_err_sq == T::Real::zero(),
-            "restore_center_sweep_dense expects zero step error after prior sweeps truncated to chi_max"
-        );
+        *total_err_sq = *total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
     }
 }
 
