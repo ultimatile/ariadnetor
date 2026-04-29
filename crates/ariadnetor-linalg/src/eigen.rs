@@ -62,7 +62,7 @@ pub fn eigh_with_policy<T: Scalar>(
 
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
 
@@ -183,7 +183,7 @@ pub fn eig_with_policy<T: Scalar>(
 
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
 

@@ -3,7 +3,7 @@ use std::any::TypeId;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_tensor::Dense;
-use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
+use num_traits::{Float, NumCast, One, Zero};
 
 use crate::contract::contract;
 use crate::eigen::eigh;
@@ -145,6 +145,70 @@ fn matmul<T: Scalar>(
     b: &Dense<T>,
 ) -> Result<Dense<T>, LinalgError> {
     contract(backend, a, b, "ij,jk->ik")
+}
+
+/// Validate the `nrow` argument for [`expm`]: must satisfy `1 <= nrow < rank`.
+fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
+    if nrow == 0 || nrow >= rank {
+        return Err(LinalgError::InvalidArgument(format!(
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
+        )));
+    }
+    Ok(())
+}
+
+/// Compute the number of scaling-and-squaring steps `s` such that
+/// `norm(A / 2^s) <= theta_13` for the [13/13] Pade approximant.
+///
+/// Wraps the scaling-decision branch in a named fn so the equivalent-mutant
+/// exclusions (boundary `>` mutation at `norm > theta` and the `/` mutation
+/// inside the ratio) can be anchored by function name. At the boundary
+/// (`norm == theta_13`) the result is 0 either way; for `norm <= theta_13`
+/// the body of the `if` is unreachable so its inner mutations are equivalent.
+fn compute_scale_steps<R: Float>(norm: R, theta: R) -> usize {
+    if norm > theta {
+        let ratio = norm / theta;
+        ratio.log2().ceil().to_usize().unwrap_or(0)
+    } else {
+        0
+    }
+}
+
+/// Compute `2^s` in real arithmetic, using a direct `1u64 << s` for
+/// `s <= 62` and a doubling loop for larger `s`. The 62 cutoff stays
+/// safely below the `u64` shift limit (`s == 64` would panic / wrap)
+/// while keeping the fast path open for every realistic Pade scaling
+/// step. Both branches compute the same `2^s`.
+///
+/// Wraps the boundary branch in a named fn so the equivalent-mutant
+/// exclusion (`<=` boundary) can be anchored by function name. The
+/// loop's `v + v` mutations are NOT equivalent and are killed by
+/// `two_pow_s_real_above_shift_threshold`.
+fn two_pow_s_real<R: Float + One + NumCast>(s: usize) -> R {
+    if s <= 62 {
+        <R as NumCast>::from(1u64 << s).unwrap()
+    } else {
+        let mut v = <R as One>::one();
+        for _ in 0..s {
+            v = v + v;
+        }
+        v
+    }
+}
+
+/// Apply scaling `B = A / 2^s` (i.e., multiply by `scale_factor = 1/2^s`).
+/// Skips the multiplication when `s == 0` since `scale_factor` is then 1.
+/// Takes ownership of `a` so the `s == 0` branch can return it without a copy.
+///
+/// Wraps the skip branch in a named fn so the equivalent-mutant exclusion
+/// (`>` boundary at `s > 0`) can be anchored by function name. At `s == 0`
+/// the scaling is the identity either way.
+fn scale_input<T: Scalar>(a: Dense<T>, scale_factor: T::Real, s: usize) -> Dense<T> {
+    if s > 0 {
+        scale_real(&a, scale_factor)
+    } else {
+        a
+    }
 }
 
 /// Scale each element of a tensor by a real factor.
@@ -360,11 +424,7 @@ pub fn expm<T: Scalar>(
     let shape = tensor.shape();
     let rank = tensor.rank();
 
-    if nrow == 0 || nrow >= rank {
-        return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
-        )));
-    }
+    validate_expm_nrow(nrow, rank)?;
 
     let m_dim: usize = shape[..nrow].iter().product();
     let n_dim: usize = shape[nrow..].iter().product();
@@ -414,30 +474,13 @@ pub fn expm<T: Scalar>(
 
     // Use [13/13] Pade with scaling
     let theta_13: T::Real = <T::Real as num_traits::NumCast>::from(theta[4].1).unwrap();
-    let s = if norm > theta_13 {
-        let ratio = norm / theta_13;
-        ratio.log2().ceil().to_usize().unwrap_or(0)
-    } else {
-        0
-    };
+    let s = compute_scale_steps::<T::Real>(norm, theta_13);
 
     // Scale: B = A / 2^s
-    let two_pow_s: T::Real = if s <= 62 {
-        <T::Real as NumCast>::from(1u64 << s).unwrap()
-    } else {
-        let mut v = <T::Real as One>::one();
-        for _ in 0..s {
-            v = v + v;
-        }
-        v
-    };
+    let two_pow_s = two_pow_s_real::<T::Real>(s);
     let scale_factor = <T::Real as One>::one() / two_pow_s;
 
-    let b = if s > 0 {
-        scale_real(&a, scale_factor)
-    } else {
-        a
-    };
+    let b = scale_input(a, scale_factor, s);
 
     let (u, v) = pade_uv_13(backend, &b, n)?;
     let mut result = solve_pade(backend, &u, &v)?;
@@ -468,4 +511,40 @@ fn solve_pade<T: Scalar>(
 
     // Reshape rhs to n x n for solve (nrow_a=1 since shape is [n, n])
     solve(backend, &lhs, &rhs, 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{two_pow_s_real, validate_expm_nrow};
+
+    #[test]
+    fn validate_expm_nrow_rejects_zero() {
+        assert!(validate_expm_nrow(0, 2).is_err());
+    }
+
+    #[test]
+    fn validate_expm_nrow_rejects_equal_to_rank() {
+        assert!(validate_expm_nrow(2, 2).is_err());
+    }
+
+    #[test]
+    fn validate_expm_nrow_rejects_greater_than_rank() {
+        assert!(validate_expm_nrow(3, 2).is_err());
+    }
+
+    #[test]
+    fn validate_expm_nrow_accepts_valid() {
+        assert!(validate_expm_nrow(1, 3).is_ok());
+        assert!(validate_expm_nrow(2, 3).is_ok());
+    }
+
+    /// `s > 62` forces the doubling-loop branch; verifies the branch's
+    /// output equals `2^s`. Kills `+ -> -` (yields 0 from the first
+    /// subtraction) and `+ -> *` (yields 1 forever from `1 * 1`) on the
+    /// `v = v + v` accumulator.
+    #[test]
+    fn two_pow_s_real_above_shift_threshold() {
+        let result: f64 = two_pow_s_real(63);
+        assert_eq!(result, 2.0_f64.powi(63));
+    }
 }

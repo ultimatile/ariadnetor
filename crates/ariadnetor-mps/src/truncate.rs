@@ -71,10 +71,8 @@ where
         total_err_sq = total_err_sq + left_trunc_step(chain, j, svd_params, absorb);
     }
 
-    // Right sweep from 0 to center-1: restore center position
-    for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
-    }
+    // Right sweep from 0 to center-1: restore center position.
+    restore_center_sweep_dense(chain, center, svd_params, absorb, &mut total_err_sq);
 
     // Both distributes √S to both sides, breaking isometry on all sites.
     let form = match absorb {
@@ -84,6 +82,33 @@ where
     chain.set_canonical_form(form);
     TruncResult {
         error: total_err_sq.sqrt(),
+    }
+}
+
+/// Final right sweep that restores the orthogonality center after the
+/// preceding right and left sweeps. The prior sweeps have already truncated
+/// every bond to `chi_max` (and to `target_trunc_err` if set), so each
+/// step's squared error is normally 0 in exact arithmetic. We still
+/// accumulate it into `total_err_sq` defensively in case numerical drift
+/// or a future parameter change produces a non-zero step error in release
+/// builds.
+///
+/// Wraps the sweep so the equivalent-mutant exclusion (`+ -> -`, where
+/// subtracting 0 is a no-op) can be anchored by function name rather than
+/// by line number.
+fn restore_center_sweep_dense<T, B, C>(
+    chain: &mut C,
+    center: usize,
+    svd_params: &TruncSvdParams,
+    absorb: SvdAbsorb,
+    total_err_sq: &mut T::Real,
+) where
+    T: Scalar,
+    B: ComputeBackend,
+    C: TensorChain<Dense<T>, B>,
+{
+    for j in 0..center {
+        *total_err_sq = *total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
     }
 }
 
