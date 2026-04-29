@@ -4,6 +4,8 @@ use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::{U1Sector, Z2Sector};
 
+mod transpose_flag;
+
 fn b() -> NativeBackend {
     NativeBackend::new()
 }

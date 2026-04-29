@@ -123,3 +123,72 @@ impl ComputeBackend for RecordingBackend {
     // par_for_*, so the trait default matches the BSp wrapper's intent. Tests
     // for the expert wrapper pass policy explicitly.
 }
+
+/// Test-only backend that returns `MemoryOrder::RowMajor` from
+/// `preferred_order()` so RM-only branches in layout-aware ops can be
+/// exercised. The production `NativeBackend` is column-major, leaving the
+/// RM branch otherwise unreachable from tests.
+///
+/// All kernels still delegate to the inner `NativeBackend`, whose GEMM /
+/// transpose / decomposition implementations honor each descriptor's
+/// `order` field for both `RowMajor` and `ColumnMajor`. Callers must pass
+/// descriptors and buffers consistent with the memory order they expect —
+/// this backend only forces RM-branch selection in layout-aware code that
+/// dispatches on `preferred_order()`.
+pub(crate) struct RowMajorBackend {
+    inner: NativeBackend,
+}
+
+impl RowMajorBackend {
+    pub(crate) fn new() -> Self {
+        Self {
+            inner: NativeBackend::new(),
+        }
+    }
+}
+
+impl ComputeBackend for RowMajorBackend {
+    fn name(&self) -> &'static str {
+        "row-major-test"
+    }
+
+    fn device_type(&self) -> DeviceType {
+        self.inner.device_type()
+    }
+
+    fn preferred_order(&self) -> MemoryOrder {
+        MemoryOrder::RowMajor
+    }
+
+    fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.gemm(desc)
+    }
+
+    fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.transpose(desc)
+    }
+
+    fn svd<T: Scalar>(&self, desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.svd(desc)
+    }
+
+    fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.qr(desc)
+    }
+
+    fn lq<T: Scalar>(&self, desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.lq(desc)
+    }
+
+    fn eigh<T: Scalar>(&self, desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.eigh(desc)
+    }
+
+    fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.eig(desc)
+    }
+
+    fn solve<T: Scalar>(&self, desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.solve(desc)
+    }
+}
