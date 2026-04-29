@@ -28,20 +28,19 @@ exclude_re = [
     # so offsets=[0] regardless of += vs *=. Needs multi-tuple with block_dim > 1.
     # (can't use function-name pattern: only one += exists, but fixing test coverage is preferred)
     "fused_sector.rs:133.* replace \\+= with",
-
-    # --- Function-name-based patterns (stable across line changes) ---
-    # norm_1: tie-breaking order doesn't affect max value
-    "replace > with >= in norm_1",
     # contract_to_tensor: delete `!` from `!lhs_is_id` / `!rhs_is_id` flips
     # trans_flag from true to false, but `lhs_needs_physical_t = !id && !trans_flag`
     # then becomes true, routing through `transpose_block_data` instead of the
     # GEMM trans flag. Both paths are designed to produce identical numerical
     # results, so this mutation is equivalent in contract_to_tensor's output.
-    # Line numbers are fragile; the `delete !` mutations on the matching
-    # `!lhs_trans_flag` / `!rhs_trans_flag` operands (lines 304, 314) are NOT
-    # equivalent and remain in scope.
+    # The `delete !` mutations on the matching `!lhs_trans_flag` / `!rhs_trans_flag`
+    # operands (lines 304, 314) are NOT equivalent and remain in scope.
     "block_sparse_contract.rs:303:9: delete !",
     "block_sparse_contract.rs:313:9: delete !",
+
+    # --- Function-name-based patterns (stable across line changes) ---
+    # norm_1: tie-breaking order doesn't affect max value
+    "replace > with >= in norm_1",
     # einsum: 0-input arm is unreachable (parse always produces >= 1 input)
     "delete match arm 0 in einsum$",
     # einsum: Hadamard is an optimization of batched_contract; both produce same result

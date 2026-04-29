@@ -14,16 +14,14 @@
 //! * Config B — natural prefix axes (`axes=[0,1]` for lhs,
 //!   `axes=[1,2]` for rhs). Forces the GEMM trans-flag path
 //!   (`trans_flag=true`, `needs_physical=false`). Catches `delete !`
-//!   on the `!*_is_id` operand and `delete !` on `!*_trans_flag`
-//!   (the latter would add a redundant physical permutation under a
-//!   trans-flag GEMM, producing a wrong result).
+//!   on the `!*_trans_flag` operand (which would add a redundant
+//!   physical permutation under a trans-flag GEMM, producing a wrong
+//!   result).
 //!
-//! Note: under the dispatcher invariant `free_*` is auto-sorted ascending
-//! (line 79-80 of `block_sparse_contract.rs`), so
-//! `is_ascending_prefix(axes)` and `is_ascending_suffix(free, rank)` always
-//! co-vary. The `&&` between those two predicate calls (column 53 on
-//! lines 303 and 313) is therefore equivalent to `||` under the invariant
-//! and cannot be killed end-to-end without a non-conforming caller.
+//! Config A's non-prefix axes (e.g. `[1, 0]`) make `is_ascending_prefix`
+//! return `false` while `is_ascending_suffix` returns `true` on the
+//! auto-sorted `free_*`, so the second `&&` on the trans-flag expression
+//! is observable and `&&` → `||` flips the result.
 
 use super::*;
 
