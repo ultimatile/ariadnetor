@@ -119,7 +119,7 @@ where
     let tol_real: T::Real =
         crate::numeric::try_real_from_f64::<T>(params.tol).unwrap_or_else(|| {
             panic!(
-                "real_from_f64: {} is not representable in T::Real",
+                "try_real_from_f64: tol = {} is not representable in T::Real",
                 params.tol
             )
         });
