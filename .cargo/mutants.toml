@@ -44,21 +44,6 @@ exclude_re = [
     # The `+ → *` mutation on the same line is NOT equivalent (multiplying by 0
     # zeros the accumulator) and remains in scope.
     "truncate.rs:354:37: replace \\+ with - in truncate_bsp",
-    # apply_zipup_{dense,bsp} forward-sweep boundary `j < n - 1` → `j > n - 1`:
-    # the relop becomes always-false, so every site goes through the `else` arm
-    # (raw push of the local product) and no QR/SVD is performed. The forward
-    # sweep degenerates to the naive product, but for `params=Some(chi_max)`
-    # the backward truncated-SVD sweep refines this naive intermediate to the
-    # same chi_max approximation as the original zipup (forward QR/SVD is a
-    # gauge-equivalent reduction that the backward truncation re-derives), so
-    # the final contracted state matches naive within the test tolerance.
-    # Caught only via bond-dim observation under `params=None`, where the
-    # zipup forward QR strictly reduces bond dims below naive — the dedicated
-    # `*_no_params_reduces_bond_dims_vs_naive*` tests pin that path. The other
-    # relop variants (`<` → `==`, `<=`) DO produce divergent contracted states
-    # (skipped/extra interior step at j=n-1) and remain in scope.
-    "apply.rs:204:14: replace < with > in apply_zipup_dense",
-    "apply.rs:445:14: replace < with > in apply_zipup_bsp",
     # apply_zipup_bsp backward sweep `tensors[j - 1]` → `tensors[j / 1]`:
     # `j / 1 = j`, and adjacent rank-3 sites in any standard MPS share rank
     # (all sites are 3-leg [left, phys, right]), so `tensors[j].rank() - 1 ==
