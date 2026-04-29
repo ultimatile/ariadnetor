@@ -8,10 +8,10 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-      - id: cargo-check
-        name: cargo check
-        description: Check Rust code with cargo check
-        entry: cargo check --workspace
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Lint Rust code with clippy (denies warnings; covers all targets including tests)
+        entry: cargo clippy --workspace --all-targets -- -D warnings
         language: system
         types: [rust]
         pass_filenames: false
