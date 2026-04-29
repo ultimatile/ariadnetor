@@ -59,17 +59,17 @@ exclude_re = [
     "delete match arm 0 in einsum$",
     # einsum: Hadamard is an optimization of batched_contract; both produce same result
     "replace == with != in einsum_pair",
-    # expm scaling-decision boundary: norm == theta_13 gives s=0 either way; the / mutation
-    # to * is mathematically equivalent because repeated squaring reconstructs exp(A) regardless
-    # of how many extra scaling steps are taken (each squaring inverts one halving).
-    "replace > with >= in compute_scale_steps",
-    "replace / with \\* in compute_scale_steps",
-    # two_pow_s_real: at s=62 the bit-shift and doubling-loop branches both compute
-    # 2^62, so the <= boundary mutation is equivalent. The inner `v = v + v`
-    # mutations are NOT equivalent and are killed by `two_pow_s_real_above_shift_threshold`.
-    "replace <= with > in two_pow_s_real",
-    # scale_input: at s=0 the scaling is the identity, so > vs >= at the boundary is a no-op.
-    "replace > with >= in scale_input",
+    # compute_scaling_decision boundary equivalences:
+    # - `norm > theta` boundary: at norm == theta, s=0 either way.
+    # - `norm / theta` ratio: any non-divisor op produces a different s, but the final
+    #   exp(A) = (exp(B))^(2^s) reconstructs identically because each squaring inverts
+    #   one halving (within Pade tolerance).
+    # - `s <= 62` boundary: at s=62 both the bit-shift and the doubling-loop branches
+    #   compute 2^62. The doubling loop's `v + v` mutations are NOT equivalent and are
+    #   killed by `compute_scaling_decision_above_shift_threshold`.
+    "replace > with >= in compute_scaling_decision",
+    "replace / with \\* in compute_scaling_decision",
+    "replace <= with > in compute_scaling_decision",
     # restore_center_sweep_dense: prior right and left sweeps already truncate every bond
     # to chi_max (and to target_trunc_err if set), so each step's err is structurally 0
     # in exact arithmetic. Subtracting 0 is a no-op, hence + with - is equivalent. The peer
