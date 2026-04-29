@@ -71,8 +71,8 @@ fn random_right_canonical_mps_c64(
     mps
 }
 
-/// Per-site PSD Hermitian: `h_i = G^† G + ε I`, all eigenvalues > 0.
-/// Returns (mpo, per-site h matrices in dense row-major form).
+/// Per-site PSD Hermitian `h_i = G^† G + ε I`. `h` and MPO storage are
+/// column-major (`make_tensor` reads `backend.preferred_order()`).
 fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> (Mpo<Dense<f64>>, Vec<Vec<f64>>) {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
@@ -80,7 +80,7 @@ fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> (Mpo<Dense<f64>>, Vec<Vec
     let mut hs: Vec<Vec<f64>> = Vec::with_capacity(n);
     let storages: Vec<Dense<f64>> = (0..n)
         .map(|_| {
-            // Random G (d×d), real.
+            // `g` is internal scratch; only `h`'s layout has to match the backend.
             let g: Vec<f64> = (0..d * d)
                 .map(|_| rng.random_range(-1.0_f64..1.0))
                 .collect();
@@ -92,9 +92,9 @@ fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> (Mpo<Dense<f64>>, Vec<Vec
                     for k in 0..d {
                         acc += g[k * d + s] * g[k * d + t];
                     }
-                    h[s * d + t] = acc;
+                    h[s + d * t] = acc;
                 }
-                h[s * d + s] += eps;
+                h[s + d * s] += eps;
             }
             hs.push(h.clone());
             backend.make_tensor(h, vec![1, d, d, 1])
@@ -120,7 +120,7 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
                     Complex::new(re, im)
                 })
                 .collect();
-            // h = G^† G + eps I.
+            // h = G^† G + eps I, stored column-major to match NativeBackend.
             let mut h = vec![Complex::new(0.0, 0.0); d * d];
             for s in 0..d {
                 for t in 0..d {
@@ -128,9 +128,9 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
                     for k in 0..d {
                         acc += g[k * d + s].conj() * g[k * d + t];
                     }
-                    h[s * d + t] = acc;
+                    h[s + d * t] = acc;
                 }
-                h[s * d + s] += eps;
+                h[s + d * s] += eps;
             }
             hs.push(h.clone());
             backend.make_tensor(h, vec![1, d, d, 1])
@@ -140,6 +140,7 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
 }
 
 /// Hermitian (real-symmetric, mixed-sign) bond-dim-1 product MPO.
+/// `m` is stored column-major to match NativeBackend.
 fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<Dense<f64>> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
@@ -151,7 +152,7 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<Dense<f64>> {
             let mut m = vec![0.0_f64; d * d];
             for s in 0..d {
                 for t in 0..d {
-                    m[s * d + t] = 0.5 * (r[s * d + t] + r[t * d + s]);
+                    m[s + d * t] = 0.5 * (r[s * d + t] + r[t * d + s]);
                 }
             }
             backend.make_tensor(m, vec![1, d, d, 1])
@@ -160,7 +161,7 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<Dense<f64>> {
     Mpo::from_storages(storages)
 }
 
-/// Smallest eigenvalue of a real-symmetric `d×d` matrix via `eigh`.
+/// Smallest eigenvalue of a real-symmetric `d×d` matrix; `h` is CM.
 fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
     let backend = NativeBackend::new();
     let m = backend.make_tensor(h.to_vec(), vec![d, d]);
@@ -168,7 +169,7 @@ fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
     eigvals.data().iter().cloned().fold(f64::INFINITY, f64::min)
 }
 
-/// Smallest eigenvalue of a complex Hermitian `d×d` matrix.
+/// Smallest eigenvalue of a complex Hermitian `d×d` matrix (CM, see above).
 fn min_eig_complex_herm(h: &[Complex<f64>], d: usize) -> f64 {
     let backend = NativeBackend::new();
     let m = backend.make_tensor(h.to_vec(), vec![d, d]);
