@@ -1,6 +1,16 @@
-//! Pluggable compute backend trait
+//! Pluggable compute backend trait.
 //!
-//! Based on dev-docs/design/gpu_readiness_plan.md
+//! [`ComputeBackend`] unifies the numerical primitives the algorithm
+//! layer needs (GEMM, transpose, SVD / QR / LQ / eigh / eig / solve)
+//! behind a single trait so the algorithm layer never names a
+//! concrete backend. Each backend declares its identity through the
+//! `name` / `device_type` / `preferred_order` accessors and then
+//! overrides only the operations it actually supports — the default
+//! implementations return [`BackendError::NotSupported`], so a
+//! partial backend still compiles. Per-call parallelism is selected
+//! by the caller through [`ExecPolicy`] and shaped by the
+//! per-operation `par_for_*` hooks; see those docstrings for how a
+//! given backend interprets `Parallel(n)`.
 
 use crate::scalar::Scalar;
 
