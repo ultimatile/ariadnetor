@@ -62,7 +62,7 @@ pub fn solve_with_policy<T: Scalar>(
 
     if nrow_a == 0 || nrow_a >= a_rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow_a must be in 1..rank, got nrow_a={nrow_a} for rank={a_rank}"
+            "nrow_a must satisfy 1 <= nrow_a < rank, got nrow_a={nrow_a} for rank={a_rank}"
         )));
     }
 
@@ -147,7 +147,7 @@ pub fn inverse<T: Scalar>(
 
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
 

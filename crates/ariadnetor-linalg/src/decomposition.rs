@@ -113,7 +113,7 @@ pub fn svd_with_policy<T: Scalar>(
 
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
 
@@ -365,7 +365,7 @@ pub fn qr_with_policy<T: Scalar>(
 
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
 
@@ -447,7 +447,7 @@ pub fn lq_with_policy<T: Scalar>(
 
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
 

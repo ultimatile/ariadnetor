@@ -151,7 +151,7 @@ fn matmul<T: Scalar>(
 fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
     Ok(())
@@ -174,12 +174,16 @@ fn compute_scale_steps<R: Float>(norm: R, theta: R) -> usize {
     }
 }
 
-/// Compute `2^s` in real arithmetic, falling back to a doubling loop for
-/// `s > 62` where `1u64 << s` would overflow.
+/// Compute `2^s` in real arithmetic, using a direct `1u64 << s` for
+/// `s <= 62` and a doubling loop for larger `s`. The 62 cutoff stays
+/// safely below the `u64` shift limit (`s == 64` would panic / wrap)
+/// while keeping the fast path open for every realistic Pade scaling
+/// step. Both branches compute the same `2^s`.
 ///
 /// Wraps the boundary branch in a named fn so the equivalent-mutant
-/// exclusions (`<=` boundary at 62, `+` doubling) can be anchored by
-/// function name. Both branches compute the same `2^s`.
+/// exclusion (`<=` boundary) can be anchored by function name. The
+/// loop's `v + v` mutations are NOT equivalent and are killed by
+/// `two_pow_s_real_above_shift_threshold`.
 fn two_pow_s_real<R: Float + One + NumCast>(s: usize) -> R {
     if s <= 62 {
         <R as NumCast>::from(1u64 << s).unwrap()

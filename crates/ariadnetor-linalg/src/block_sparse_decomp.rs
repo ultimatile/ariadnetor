@@ -398,7 +398,7 @@ fn truncate_rows<T: Scalar>(
 fn validate_nrow(rank: usize, nrow: usize) -> Result<(), LinalgError> {
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "nrow must be in 1..rank, got nrow={nrow} for rank={rank}"
+            "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
         )));
     }
     Ok(())
