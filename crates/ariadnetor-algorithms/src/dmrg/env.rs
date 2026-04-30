@@ -86,11 +86,21 @@ impl std::fmt::Display for DmrgEnvError {
             DmrgEnvError::Contract(_) => {
                 write!(f, "contract failure during DMRG environment update")
             }
-            DmrgEnvError::MalformedEdgeBond { leg } => write!(
-                f,
-                "malformed edge bond on {leg}: must be dim-1 / single-sector \
-                 with sectors fusing to identity flux"
-            ),
+            DmrgEnvError::MalformedEdgeBond { leg } => {
+                // MPS edges only need dim-1 / single-sector (any charge is
+                // OK because env_leg0 and env_leg2 carry the same MPS sector
+                // with opposite directions and cancel). MPO edges
+                // additionally require an identity-fusing sector to land a
+                // (0,0,0) boundary block under flux=identity.
+                let detail = match *leg {
+                    "mps_left" | "mps_right" => "must be dim-1 / single-sector",
+                    "mpo_left" | "mpo_right" => {
+                        "must be dim-1 / single-sector with sector fusing to identity flux"
+                    }
+                    _ => "must be dim-1 / single-sector",
+                };
+                write!(f, "malformed edge bond on {leg}: {detail}")
+            }
         }
     }
 }

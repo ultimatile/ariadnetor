@@ -7,7 +7,6 @@
 //! malformed right edge, flux-disallowed boundary block, length
 //! mismatch, empty chain).
 
-use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::{
@@ -231,12 +230,11 @@ fn assert_dense_close(a: &Dense<f64>, b: &Dense<f64>, tol: f64, label: &str) {
     let av = a.data();
     let bv = b.data();
     for (k, (x, y)) in av.iter().zip(bv.iter()).enumerate() {
-        assert_abs_diff_eq!(*x, *y, epsilon = tol);
-        // assert_abs_diff_eq panics with a generic message; provide an
-        // index-aware fallback for easier debugging.
-        if (*x - *y).abs() > tol {
-            panic!("{label}: divergence at flat index {k}: {x} vs {y}");
-        }
+        let diff = (*x - *y).abs();
+        assert!(
+            diff <= tol,
+            "{label}: divergence at flat index {k}: {x} vs {y} (|diff|={diff} > {tol})"
+        );
     }
 }
 
