@@ -8,7 +8,7 @@ use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, TensorChain};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockSparse, Dense, Direction, QNIndex, Sector, U1Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, Dense, Direction, QNIndex, Sector, U1Sector};
 use num_complex::Complex;
 
 use super::fixtures::{
@@ -98,6 +98,92 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_flux() {
     assert!(
         matches!(r, Err(DmrgHeffError::QnMismatch { field, .. }) if field.contains("flux")),
         "expected QnMismatch on flux, got {:?}",
+        r.as_ref().err().map(|e| format!("{e}"))
+    );
+}
+
+#[test]
+fn bsp_heff_step_error_paths_empty_psi_template() {
+    // Construct an MPS pair where each individual site has allowed
+    // blocks AND env construction succeeds, but the derived
+    // 2-site psi template flux has no flux-allowed tuple in the
+    // outer-axis sector lattice. Without the dedicated guard,
+    // `lanczos_smallest`'s `assert!(dim >= 1)` would panic.
+    //
+    // Construction:
+    //   MPS[0]: left=(0,1) Out, phys=(0,1) Out, right=(0,1) In, flux=identity
+    //   MPS[1]: left=(0,1) Out, phys=(0,1) Out, right=(2,1) In, flux=U1(2)
+    //
+    // MPS[0] has block (0,0,0). MPS[1] needs q_l + q_p - q_r = 2,
+    // i.e. 0 + 0 - 2 = -2 ≠ 2 — so MPS[1] in fact has no allowed
+    // blocks; envs.build would still succeed because boundary
+    // helpers only require dim-1 / single-sector edge bonds, but
+    // the derived psi_flux = identity + U1(2) = U1(2) cannot be
+    // satisfied on a `(0,1)`-everywhere outer-axis lattice. Pre-
+    // guard, this triggers the Lanczos panic. With the guard, it
+    // surfaces as `QnMismatch { field: "psi_template", .. }`.
+    let phys = vec![(U1Sector(0), 1)];
+    let trivial = vec![(U1Sector(0), 1)];
+    let charged_right = vec![(U1Sector(2), 1)];
+
+    let mut mps0 = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(trivial.clone(), Direction::Out),
+            QNIndex::new(phys.clone(), Direction::Out),
+            QNIndex::new(trivial.clone(), Direction::In),
+        ],
+        U1Sector::identity(),
+    );
+    mps0.block_data_mut(&BlockCoord(vec![0, 0, 0]))
+        .expect("(0,0,0)")[0] = 1.0;
+
+    let mps1 = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(trivial.clone(), Direction::Out),
+            QNIndex::new(phys.clone(), Direction::Out),
+            QNIndex::new(charged_right, Direction::In),
+        ],
+        U1Sector(2),
+    );
+
+    let mps = arnet_mps::Mps::from_storages(vec![mps0, mps1]);
+
+    // Minimal MPO with dim-1 / single-sector edge bonds satisfying
+    // the Phase 6.1 boundary contract. Identity propagator on the
+    // single phys sector.
+    let mut w0 = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(trivial.clone(), Direction::Out),
+            QNIndex::new(phys.clone(), Direction::In),
+            QNIndex::new(phys.clone(), Direction::Out),
+            QNIndex::new(trivial.clone(), Direction::In),
+        ],
+        U1Sector::identity(),
+    );
+    w0.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
+    let mut w1 = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(trivial.clone(), Direction::Out),
+            QNIndex::new(phys.clone(), Direction::In),
+            QNIndex::new(phys, Direction::Out),
+            QNIndex::new(trivial, Direction::In),
+        ],
+        U1Sector::identity(),
+    );
+    w1.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
+    let mpo = arnet_mps::Mpo::from_storages(vec![w0, w1]);
+
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
+
+    let params = LanczosParams::default();
+    let trunc = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: None,
+    };
+    let r = dmrg_2site_step_block_sparse(&envs, &mps, &mpo, 0, &params, &trunc);
+    assert!(
+        matches!(r, Err(DmrgHeffError::QnMismatch { field, .. }) if field == "psi_template"),
+        "expected QnMismatch on psi_template (empty flux-allowed set), got {:?}",
         r.as_ref().err().map(|e| format!("{e}"))
     );
 }
