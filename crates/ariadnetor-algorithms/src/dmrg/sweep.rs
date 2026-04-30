@@ -236,7 +236,7 @@ impl std::error::Error for DmrgSweepError {
 /// See the module-level rustdoc for the canonical-form contract on
 /// the input MPS and for the convergence criterion.
 pub fn dmrg_2site_sweep<T, B>(
-    envs: &mut DmrgEnvs<T, B>,
+    envs: &mut DmrgEnvs<Dense<T>, B>,
     mps: &mut Mps<Dense<T>, B>,
     mpo: &Mpo<Dense<T>, B>,
     params: &DmrgSweepParams,
@@ -442,7 +442,7 @@ where
 /// trailing boundary of a half-sweep).
 #[allow(clippy::too_many_arguments)]
 fn run_step<T, B>(
-    envs: &DmrgEnvs<T, B>,
+    envs: &DmrgEnvs<Dense<T>, B>,
     mps: &mut Mps<Dense<T>, B>,
     mpo: &Mpo<Dense<T>, B>,
     site: usize,
