@@ -4,8 +4,9 @@
 //! back into a left-canonical / right-canonical pair via truncated
 //! SVD.
 //!
-//! Axis convention (consistent with [`super::env`] and
-//! `arnet_mps::inner::braket_dense`):
+//! Axis convention (consistent with [`super::env`] and the
+//! `arnet_mps::inner` braket family — `braket_dense` for [`Dense<T>`],
+//! `braket_bsp` for `BlockSparse<T, S>`):
 //!
 //! - Env tensor `(top-bra-bond, W-bond, bot-ket-bond)` with bra = ket
 //!   = psi for ground-state DMRG.
@@ -325,7 +326,7 @@ pub struct TwoSiteStepResult<T: Scalar> {
 /// branch is only reachable on genuine backend / allocation
 /// failures rather than user input.
 pub fn dmrg_2site_step<T, B>(
-    envs: &DmrgEnvs<T, B>,
+    envs: &DmrgEnvs<Dense<T>, B>,
     mps: &Mps<Dense<T>, B>,
     mpo: &Mpo<Dense<T>, B>,
     site: usize,

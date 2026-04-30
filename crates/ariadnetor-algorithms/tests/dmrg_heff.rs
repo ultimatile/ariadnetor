@@ -177,7 +177,7 @@ where
 /// envs at the requested two-site index. Returns the operator plus
 /// the envs (kept alive so the borrowed references stay valid).
 fn make_heff<'a, T>(
-    envs: &'a DmrgEnvs<T>,
+    envs: &'a DmrgEnvs<Dense<T>>,
     mps: &'a Mps<Dense<T>>,
     mpo: &'a Mpo<Dense<T>>,
     site: usize,
