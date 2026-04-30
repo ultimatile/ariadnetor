@@ -253,6 +253,12 @@ fn bsp_heff_complex_path() {
         }
     }
     for i in 0..dim {
+        // Diagonal entries of a Hermitian matrix must be real.
+        let diag_im = h_data[i + dim * i].im.abs();
+        assert!(
+            diag_im <= 1e-10,
+            "complex matvec not Hermitian: H[{i},{i}].im = {diag_im} (expected ≈ 0)"
+        );
         for j in (i + 1)..dim {
             let a = h_data[i + dim * j];
             let b = h_data[j + dim * i].conj();
