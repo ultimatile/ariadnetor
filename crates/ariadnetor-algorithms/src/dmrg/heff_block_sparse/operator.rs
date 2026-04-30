@@ -183,16 +183,45 @@ where
             }
         };
 
-        debug_assert_eq!(
+        // Structural invariants: the gather walks the psi
+        // template's `block_metas()` and looks up each coord in
+        // `out`. If `out`'s indices / flux disagree with the
+        // template (only reachable when a caller constructs
+        // `EffectiveHamiltonian2SiteBlockSparse::new` directly with
+        // unvalidated inputs — `dmrg_2site_step_block_sparse`'s
+        // entry-point validation rules this out), the gather
+        // would silently return wrong (mostly-zero) results. Hard
+        // assertions here turn the silent failure into a loud
+        // panic regardless of build profile. Cost is O(rank ×
+        // num_sectors), small relative to the four BlockSparse
+        // contractions above.
+        assert_eq!(
             out.flux(),
             &self.psi_flux,
             "BlockSparse heff matvec output flux must equal psi_flux"
         );
-        debug_assert_eq!(
+        assert_eq!(
             out.indices().len(),
-            4,
-            "BlockSparse heff matvec output must be rank 4"
+            self.psi_template.indices().len(),
+            "BlockSparse heff matvec output rank must match template"
         );
+        for (axis, (out_idx, tmpl_idx)) in out
+            .indices()
+            .iter()
+            .zip(self.psi_template.indices().iter())
+            .enumerate()
+        {
+            assert_eq!(
+                out_idx.direction(),
+                tmpl_idx.direction(),
+                "BlockSparse heff matvec output axis {axis} direction must match template"
+            );
+            assert_eq!(
+                out_idx.blocks(),
+                tmpl_idx.blocks(),
+                "BlockSparse heff matvec output axis {axis} sector list must match template"
+            );
+        }
 
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
         arnet_tensor::Dense::new(flat, vec![self.dim])
