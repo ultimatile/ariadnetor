@@ -19,7 +19,7 @@
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{BlockSparseContractResult, LinalgError, contract_block_sparse};
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, MemoryOrder, QNIndex, Sector, flat_index};
 
 use super::env::{DmrgEnvError, DmrgEnvOps};
 
@@ -38,13 +38,11 @@ fn flip(d: Direction) -> Direction {
 /// counterpart receives `(c, b, a)` and must swap to `(a, b, c)` to
 /// match the env axis convention.
 ///
-/// Per-block data is stored in `backend.preferred_order()` (ColumnMajor
-/// for `NativeBackend`). The element at logical position `(c, b, a)`
-/// in the old shape `(d0, d1, d2)` lives at CM flat index
-/// `c + b * d0 + a * d0 * d1`; the same logical content sits at new
-/// position `(a, b, c)` in shape `(d2, d1, d0)` with CM flat index
-/// `a + b * d2 + c * d2 * d1`.
-fn swap_axes_0_and_2<T, S>(t: &BlockSparse<T, S>) -> BlockSparse<T, S>
+/// `order` is the per-block memory layout used by the contracting
+/// backend (`backend.preferred_order()`). Both old and new buffers
+/// share that layout, so the helper is correct for either RowMajor
+/// or ColumnMajor without code changes.
+fn swap_axes_0_and_2<T, S>(t: &BlockSparse<T, S>, order: MemoryOrder) -> BlockSparse<T, S>
 where
     T: Scalar,
     S: Sector,
@@ -60,17 +58,17 @@ where
         let old_coord = &meta.coord;
         let new_coord = BlockCoord(vec![old_coord.0[2], old_coord.0[1], old_coord.0[0]]);
         let old_data = t.block_data(old_coord).expect("allocated block");
-        let block_shape = t.block_shape(old_coord).expect("block shape");
-        let (d0, d1, d2) = (block_shape[0], block_shape[1], block_shape[2]);
+        let old_shape = t.block_shape(old_coord).expect("block shape");
+        let new_shape = vec![old_shape[2], old_shape[1], old_shape[0]];
         let new_block = out
             .block_data_mut(&new_coord)
             .expect("flux-allowed under axis swap");
+        let (d0, d1, d2) = (old_shape[0], old_shape[1], old_shape[2]);
         for a in 0..d2 {
             for b in 0..d1 {
                 for c in 0..d0 {
-                    // Old layout (d0, d1, d2) CM, new layout (d2, d1, d0) CM.
-                    let old_idx = c + b * d0 + a * d0 * d1;
-                    let new_idx = a + b * d2 + c * d2 * d1;
+                    let old_idx = flat_index(&[c, b, a], &old_shape, order);
+                    let new_idx = flat_index(&[a, b, c], &new_shape, order);
                     new_block[new_idx] = old_data[old_idx];
                 }
             }
@@ -241,6 +239,6 @@ where
             }
         };
 
-        Ok(swap_axes_0_and_2(&env_raw))
+        Ok(swap_axes_0_and_2(&env_raw, backend.preferred_order()))
     }
 }
