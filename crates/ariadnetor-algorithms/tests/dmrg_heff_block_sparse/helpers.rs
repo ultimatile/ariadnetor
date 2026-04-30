@@ -6,11 +6,8 @@
 
 #![allow(dead_code)]
 
-use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparse, Dense, MemoryOrder, Sector, U1Sector, reorder};
 use num_complex::Complex;
-
-use arnet_algorithms::dmrg::EffectiveHamiltonian2SiteBlockSparse;
 
 pub fn densify_bsp_f64(bsp: &BlockSparse<f64, U1Sector>) -> Dense<f64> {
     densify_bsp_generic(bsp, 0.0)
@@ -104,20 +101,6 @@ pub fn template_from_mps_pair(
     ];
     let psi_flux = mps_i.flux().fuse(mps_ip1.flux());
     BlockSparse::<f64, U1Sector>::zeros(psi_indices, psi_flux)
-}
-
-/// The `EffectiveHamiltonian2SiteBlockSparse` does not expose its
-/// internal psi template publicly. This helper rebuilds an
-/// equivalent template from a pair of MPS sites — caller passes the
-/// same MPS sites that built the heff.
-pub fn bsp_heff_template_from_n2_mps(
-    heff: &EffectiveHamiltonian2SiteBlockSparse<'_, f64, U1Sector, NativeBackend>,
-    mps_0: &BlockSparse<f64, U1Sector>,
-    mps_1: &BlockSparse<f64, U1Sector>,
-) -> BlockSparse<f64, U1Sector> {
-    let _ = heff.dim();
-    let _ = heff.psi_flux();
-    template_from_mps_pair(mps_0, mps_1)
 }
 
 /// Densified rank-4 → flat-template-aware vec. Used to build the

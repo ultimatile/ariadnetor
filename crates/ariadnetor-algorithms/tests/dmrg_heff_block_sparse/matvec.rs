@@ -16,8 +16,8 @@ use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_f64, make_n2_mps_f64, make_n3_mpo_f64, make_n3_mps_f64,
 };
 use super::helpers::{
-    bsp_heff_template_from_n2_mps, build_dense_psi_from_flat, dense_to_template_flat,
-    densify_bsp_f64, template_block_offsets, template_from_mps_pair,
+    build_dense_psi_from_flat, dense_to_template_flat, densify_bsp_f64, template_block_offsets,
+    template_from_mps_pair,
 };
 
 #[test]
@@ -55,7 +55,7 @@ fn bsp_heff_matvec_matches_dense_oracle() {
         (0..dim).map(|i| ((i as i32 - 2) as f64) * 0.7).collect(),
         vec![1.0; dim],
     ];
-    let template = bsp_heff_template_from_n2_mps(&bsp_heff, mps.storage(0), mps.storage(1));
+    let template = template_from_mps_pair(mps.storage(0), mps.storage(1));
     for (case, v) in test_inputs.iter().enumerate() {
         let v_dense_flat = Dense::new(v.clone(), vec![dim]);
         let bsp_out = bsp_heff.apply(&v_dense_flat);
@@ -158,7 +158,7 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
 }
 
 #[test]
-fn bsp_heff_step_eigvalue_matches_eigh_on_bsp_flat() {
+fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);

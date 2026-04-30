@@ -16,7 +16,7 @@ use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparse, Sector};
+use arnet_tensor::{BlockSparse, Sector};
 
 use crate::krylov::LinearOp;
 
@@ -149,7 +149,7 @@ where
         {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {
-                unreachable!("rank 3 + rank 4 over 1 axis keeps rank 6 prior to free-axis count")
+                unreachable!("rank 3 + rank 4 over 1 axis keeps rank 5")
             }
         };
 
@@ -243,16 +243,15 @@ where
     S: Sector,
 {
     let mut out = template.clone();
-    let coords: Vec<BlockCoord> = template
-        .block_metas()
-        .iter()
-        .map(|m| m.coord.clone())
-        .collect();
-    for (k, coord) in coords.iter().enumerate() {
+    // `template` and `out` are separate `BlockSparse` instances
+    // after `clone`, so iterating `template.block_metas()` while
+    // mutating `out.block_data_mut(...)` is a clean two-borrow
+    // pattern — no per-call `Vec<BlockCoord>` cache needed.
+    for (k, meta) in template.block_metas().iter().enumerate() {
         let lo = block_offsets[k];
         let hi = block_offsets[k + 1];
         let dst = out
-            .block_data_mut(coord)
+            .block_data_mut(&meta.coord)
             .expect("template's allocated block must be writable");
         debug_assert_eq!(
             dst.len(),

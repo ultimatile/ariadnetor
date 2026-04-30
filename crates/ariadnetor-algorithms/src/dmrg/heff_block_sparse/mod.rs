@@ -129,6 +129,33 @@ where
         Arc::clone(&v.backend),
     );
     let dim = heff.dim();
+    if dim == 0 {
+        // Per-axis `total_dim() >= 1` checks in `validate_inputs`
+        // ensure individual outer axes are non-empty, but the
+        // combined `psi_flux = mps_i.flux ⊕ mps_ip1.flux` may
+        // still be unreachable on the (axis_0 × axis_1 × axis_1
+        // × axis_2) sector lattice — in which case
+        // `BlockSparse::zeros(...)` allocates zero blocks. Without
+        // this check, `lanczos_smallest`'s internal
+        // `assert!(dim >= 1)` would panic on otherwise valid user
+        // input. Doing the check here (post `new`) avoids a
+        // second `BlockSparse::zeros` allocation that a
+        // validation-time check would have required.
+        return Err(DmrgHeffError::QnMismatch {
+            site,
+            field: "psi_template",
+            detail: format!(
+                "no flux-allowed (q_l, q_p, q_p, q_r) tuple satisfies psi_flux = {:?} \
+                 given MPS[i].axis 0 = {:?}, MPS[i].axis 1 = {:?}, \
+                 MPS[i+1].axis 1 = {:?}, MPS[i+1].axis 2 = {:?}",
+                heff.psi_flux(),
+                v.mps_i.indices()[0].blocks(),
+                v.mps_i.indices()[1].blocks(),
+                v.mps_ip1.indices()[1].blocks(),
+                v.mps_ip1.indices()[2].blocks(),
+            ),
+        });
+    }
     let lan = lanczos_smallest::<T, _>(&heff, dim, params);
 
     let psi_4d = operator::scatter_flat_to_template(

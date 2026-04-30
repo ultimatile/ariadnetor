@@ -296,39 +296,12 @@ where
         });
     }
 
-    // Verify the derived psi template has at least one
-    // flux-allowed block. Per-axis `total_dim() >= 1` checks above
-    // ensure individual axes are non-empty, but the combined
-    // `psi_flux = mps_i.flux ⊕ mps_ip1.flux` may still be
-    // unreachable on the (axis_0 × axis_1 × axis_1 × axis_2)
-    // sector lattice — in which case `BlockSparse::zeros(...)`
-    // allocates zero blocks, `dim = 0`, and `lanczos_smallest`'s
-    // internal `assert!(dim >= 1)` would panic on otherwise valid
-    // user input. Surface as `QnMismatch` instead.
-    let psi_indices_check = vec![
-        mps_i.indices()[0].clone(),
-        mps_i.indices()[1].clone(),
-        mps_ip1.indices()[1].clone(),
-        mps_ip1.indices()[2].clone(),
-    ];
-    let psi_flux_check = mps_i.flux().fuse(mps_ip1.flux());
-    let psi_template_check = BlockSparse::<T, S>::zeros(psi_indices_check, psi_flux_check.clone());
-    if psi_template_check.num_blocks() == 0 {
-        return Err(DmrgHeffError::QnMismatch {
-            site,
-            field: "psi_template",
-            detail: format!(
-                "no flux-allowed (q_l, q_p, q_p, q_r) tuple satisfies psi_flux = {:?} \
-                 given MPS[i].axis 0 = {:?}, MPS[i].axis 1 = {:?}, \
-                 MPS[i+1].axis 1 = {:?}, MPS[i+1].axis 2 = {:?}",
-                psi_flux_check,
-                mps_i.indices()[0].blocks(),
-                mps_i.indices()[1].blocks(),
-                mps_ip1.indices()[1].blocks(),
-                mps_ip1.indices()[2].blocks(),
-            ),
-        });
-    }
+    // (The empty-psi-template guard — checking that
+    // `BlockSparse::zeros(psi_indices, psi_flux)` has at least one
+    // flux-allowed block — is handled in the entry point after
+    // `EffectiveHamiltonian2SiteBlockSparse::new` builds the real
+    // template, to avoid allocating it twice. See the
+    // `heff.dim() == 0` branch in `mod.rs::dmrg_2site_step_block_sparse`.)
 
     // Identity-flux preconditions on env / MPO sites. Without
     // these the matvec output's flux drifts away from psi_flux and
