@@ -95,10 +95,7 @@ where
         let mut running = 0_usize;
         for meta in psi_template.block_metas() {
             block_offsets.push(running);
-            let shape = psi_template
-                .block_shape(&meta.coord)
-                .expect("template block has shape");
-            running += shape.iter().product::<usize>();
+            running += meta.size;
         }
         block_offsets.push(running);
         let dim = running;

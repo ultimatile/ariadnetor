@@ -37,7 +37,13 @@ use crate::krylov::{LanczosParams, LinearOp, lanczos_smallest};
 
 use super::env::DmrgEnvs;
 
-/// Errors raised by [`dmrg_2site_step`].
+/// Errors raised by the 2-site DMRG step entry points
+/// ([`dmrg_2site_step`] for the Dense path, and
+/// [`super::dmrg_2site_step_block_sparse`] for the BlockSparse /
+/// U(1) path). Most variants are produced by both; the
+/// [`DmrgHeffError::QnMismatch`] variant is BlockSparse-specific
+/// and only surfaces from the BlockSparse entry point's QN /
+/// Direction / sector / per-site-flux pre-validation.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DmrgHeffError {
