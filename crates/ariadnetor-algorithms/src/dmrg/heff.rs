@@ -37,7 +37,13 @@ use crate::krylov::{LanczosParams, LinearOp, lanczos_smallest};
 
 use super::env::DmrgEnvs;
 
-/// Errors raised by [`dmrg_2site_step`].
+/// Errors raised by the 2-site DMRG step entry points
+/// ([`dmrg_2site_step`] for the Dense path, and
+/// [`super::dmrg_2site_step_block_sparse`] for the BlockSparse /
+/// U(1) path). Most variants are produced by both; the
+/// [`DmrgHeffError::QnMismatch`] variant is BlockSparse-specific
+/// and only surfaces from the BlockSparse entry point's QN /
+/// Direction / sector / per-site-flux pre-validation.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DmrgHeffError {
@@ -67,6 +73,19 @@ pub enum DmrgHeffError {
         field: &'static str,
         expected: usize,
         actual: usize,
+    },
+    /// A QNIndex / Direction / sector / per-site-flux compatibility
+    /// check on a BlockSparse 2-site step's inputs failed. Surfaced
+    /// up front by `dmrg_2site_step_block_sparse` so the matvec
+    /// body's `.expect` calls cannot fire on user input. `field`
+    /// names the leg pair (or single leg for MPO well-formedness
+    /// checks), and `detail` carries a human-readable summary of
+    /// the offending `(sector list, direction, flux-if-applicable)`
+    /// data on each side.
+    QnMismatch {
+        site: usize,
+        field: &'static str,
+        detail: String,
     },
     /// An underlying `arnet_linalg` call (currently the truncated
     /// SVD) failed. The matvec body itself is shape-validated up
@@ -108,6 +127,11 @@ impl std::fmt::Display for DmrgHeffError {
             DmrgHeffError::InvalidLanczosParams { detail } => {
                 write!(f, "invalid LanczosParams: {detail}")
             }
+            DmrgHeffError::QnMismatch {
+                site,
+                field,
+                detail,
+            } => write!(f, "QN mismatch at site {site}, {field}: {detail}"),
             DmrgHeffError::Contract(_) => {
                 write!(f, "linalg failure during two-site DMRG step")
             }

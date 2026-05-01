@@ -1,0 +1,178 @@
+//! BlockSparse / U(1) variant of the 2-site DMRG local update.
+//!
+//! Mirrors [`super::heff`] (the Dense path) for a
+//! `BlockSparse<T, S>`-backed chain. The effective Hamiltonian
+//! built from `(left(i), W[i], W[i+1], right(i+2))` is exposed as
+//! a [`crate::krylov::LinearOp<T>`] so the existing Dense Lanczos
+//! solver drives it without a separate native BlockSparse Krylov
+//! path.
+//!
+//! ## Flat-buffer adapter
+//!
+//! `LinearOp<T>` operates on `Dense<T>` flat vectors. The
+//! BlockSparse Heff implements `apply(&Dense<T>) -> Dense<T>` via:
+//!
+//! 1. **Scatter** the flat input into a populated `BlockSparse`
+//!    2-site tensor whose indices and flux match the psi template
+//!    derived from the MPS sites at `(site, site+1)`.
+//! 2. **Contract** through the env / W tensors using
+//!    [`arnet_linalg::contract_block_sparse`] in four steps. The
+//!    axis convention mirrors `arnet_mps::inner::braket_bsp` and
+//!    the Phase 6.1 `extend_*_step` kernels; the natural output
+//!    order `lhs_free | rhs_free` ends in
+//!    `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
+//!    no axis swap.
+//! 3. **Gather** the rank-4 result back into a flat `Dense<T>` of
+//!    the same length, walking the psi template's
+//!    [`BlockSparse::block_metas`] and looking up each block in
+//!    the contracted output by coordinate.
+//!
+//! Symmetry preservation is structural: the psi template only
+//! allocates flux-allowed blocks, and `contract_block_sparse`
+//! propagates flux as `lhs.flux().fuse(rhs.flux())`. With env /
+//! MPO fluxes pre-validated to identity at the entry point, the
+//! matvec output's flux equals `psi.flux()` by construction.
+
+mod operator;
+mod validation;
+
+pub use operator::EffectiveHamiltonian2SiteBlockSparse;
+
+use std::sync::Arc;
+
+use arnet_core::Scalar;
+use arnet_core::backend::ComputeBackend;
+use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse};
+use arnet_mps::{Mpo, Mps};
+use arnet_tensor::{BlockSparse, Sector};
+
+use crate::krylov::{LanczosParams, lanczos_smallest};
+
+use super::env::DmrgEnvs;
+use super::heff::DmrgHeffError;
+
+/// Result of a single BlockSparse 2-site DMRG step: smallest local
+/// eigenpair plus the truncated-SVD split of its eigenvector.
+///
+/// `u`, `s`, `vt` are returned **separately** so the caller (a
+/// future BlockSparse sweep driver) decides which side absorbs `S`.
+/// Mirrors [`super::heff::TwoSiteStepResult`] for the Dense path.
+///
+/// `Debug` is not derived because `BlockSparse: !Debug`; tests that
+/// need to inspect the result destructure its fields directly.
+pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
+    pub eigenvalue: T::Real,
+    pub residual: T::Real,
+    pub iters: usize,
+    /// `true` iff Lanczos's true-residual test fell at or below
+    /// `LanczosParams::tol`. On `false`, the caller still receives
+    /// the best-effort eigenpair plus its split.
+    pub converged: bool,
+    /// Left singular vectors. Legs `[chi_l, d_i, bond(In)]`,
+    /// `flux = identity()`. Left-canonical at axes `(chi_l, d_i)`.
+    pub u: BlockSparse<T, S>,
+    /// Singular values per fused sector (descending within each
+    /// sector).
+    pub s: BlockSingularValues<<T as Scalar>::Real, S>,
+    /// Right singular vectors. Legs `[bond(Out), d_{i+1}, chi_r]`,
+    /// `flux = psi_flux`. Right-canonical at axes `(d_{i+1}, chi_r)`.
+    pub vt: BlockSparse<T, S>,
+    /// Frobenius norm of the discarded singular values.
+    pub trunc_err: T::Real,
+}
+
+/// Run a single 2-site DMRG step at sites `(site, site+1)` on a
+/// BlockSparse-backed chain. Mirrors [`super::heff::dmrg_2site_step`]
+/// for the BlockSparse / U(1) path.
+///
+/// Builds the local effective Hamiltonian, drives Lanczos via the
+/// flat-buffer adapter, then splits the optimized two-site block
+/// via [`trunc_svd_block_sparse`] with `nrow = 2`. Caller advances
+/// envs separately.
+///
+/// # Errors
+///
+/// - [`DmrgHeffError::InvalidSite`], [`DmrgHeffError::LengthMismatch`],
+///   [`DmrgHeffError::StaleEnv`], [`DmrgHeffError::ShapeMismatch`],
+///   [`DmrgHeffError::InvalidLanczosParams`],
+///   [`DmrgHeffError::Contract`] — same semantics as
+///   [`super::heff::dmrg_2site_step`].
+/// - [`DmrgHeffError::QnMismatch`] — BlockSparse-specific QN /
+///   Direction / sector / per-site-flux compatibility check
+///   failed. The matvec body's `.expect` calls cannot fire on user
+///   input because every contract pair, MPO well-formedness
+///   property, env-template-compatibility property, and identity-flux
+///   precondition is validated up front.
+pub fn dmrg_2site_step_block_sparse<T, S, B>(
+    envs: &DmrgEnvs<BlockSparse<T, S>, B>,
+    mps: &Mps<BlockSparse<T, S>, B>,
+    mpo: &Mpo<BlockSparse<T, S>, B>,
+    site: usize,
+    params: &LanczosParams,
+    trunc: &TruncSvdParams,
+) -> Result<TwoSiteStepResultBlockSparse<T, S>, DmrgHeffError>
+where
+    T: Scalar,
+    T::Real: Scalar<Real = T::Real>,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let v = validation::validate_inputs(envs, mps, mpo, site, params)?;
+
+    let heff = EffectiveHamiltonian2SiteBlockSparse::new(
+        v.left,
+        v.w_i,
+        v.w_ip1,
+        v.right,
+        v.mps_i,
+        v.mps_ip1,
+        Arc::clone(&v.backend),
+    );
+    let dim = heff.dim();
+    if dim == 0 {
+        // Per-axis `total_dim() >= 1` checks in `validate_inputs`
+        // ensure individual outer axes are non-empty, but the
+        // combined `psi_flux = mps_i.flux ⊕ mps_ip1.flux` may
+        // still be unreachable on the (axis_0 × axis_1 × axis_1
+        // × axis_2) sector lattice — in which case
+        // `BlockSparse::zeros(...)` allocates zero blocks. Without
+        // this check, `lanczos_smallest`'s internal
+        // `assert!(dim >= 1)` would panic on otherwise valid user
+        // input. Doing the check here (post `new`) avoids a
+        // second `BlockSparse::zeros` allocation that a
+        // validation-time check would have required.
+        return Err(DmrgHeffError::QnMismatch {
+            site,
+            field: "psi_template",
+            detail: format!(
+                "no flux-allowed (q_l, q_p, q_p, q_r) tuple satisfies psi_flux = {:?} \
+                 given MPS[i].axis 0 = {:?}, MPS[i].axis 1 = {:?}, \
+                 MPS[i+1].axis 1 = {:?}, MPS[i+1].axis 2 = {:?}",
+                heff.psi_flux(),
+                v.mps_i.indices()[0].blocks(),
+                v.mps_i.indices()[1].blocks(),
+                v.mps_ip1.indices()[1].blocks(),
+                v.mps_ip1.indices()[2].blocks(),
+            ),
+        });
+    }
+    let lan = lanczos_smallest::<T, _>(&heff, dim, params);
+
+    let psi_4d = operator::scatter_flat_to_template(
+        lan.eigenvector.data(),
+        &heff.psi_template,
+        &heff.block_offsets,
+    );
+    let (u, s, vt, trunc_err) = trunc_svd_block_sparse(&*v.backend, &psi_4d, 2, trunc)?;
+
+    Ok(TwoSiteStepResultBlockSparse {
+        eigenvalue: lan.eigenvalue,
+        residual: lan.residual,
+        iters: lan.iters,
+        converged: lan.converged,
+        u,
+        s,
+        vt,
+        trunc_err,
+    })
+}
