@@ -291,7 +291,8 @@ where
 
     // ---- Param validation ---------------------------------------
     validate_params(params)?;
-    // Casts may fail when `T::Real == f32` and the user supplied a
+    // Casts may fail when the storage's real scalar type
+    // (`<R::Elem as Scalar>::Real`) is `f32` and the user supplied a
     // finite value outside f32 range (NumCast::from returns Some(inf),
     // which try_real_from_f64 then maps to None). Surface that as
     // `InvalidParams` so the public API stays fallible end-to-end
@@ -300,11 +301,11 @@ where
     // validation only to abort the run from inside the local solve.
     let energy_tol_real: <R::Elem as Scalar>::Real =
         try_real_from_f64::<R::Elem>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
-            detail: "energy_tol is not representable in T::Real",
+            detail: "energy_tol is not representable in the storage's real scalar type",
         })?;
     if try_real_from_f64::<R::Elem>(params.lanczos.tol).is_none() {
         return Err(DmrgSweepError::InvalidParams {
-            detail: "lanczos.tol is not representable in T::Real",
+            detail: "lanczos.tol is not representable in the storage's real scalar type",
         });
     }
 
@@ -404,7 +405,7 @@ where
         let bra_h_ket = braket(mps, mpo, mps);
         let nrm = norm(mps);
         let nrm_sq: <R::Elem as Scalar>::Real = nrm * nrm;
-        // T::Real / T::Real is always available since T::Real: Float.
+        // The Float bound on the storage's real scalar type guarantees division.
         let sweep_energy: <R::Elem as Scalar>::Real = bra_h_ket.re() / nrm_sq;
 
         let max_bond = mps.max_bond_dim();
