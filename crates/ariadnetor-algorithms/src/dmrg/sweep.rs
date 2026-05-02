@@ -45,7 +45,10 @@ pub enum SweepDirection {
     RightToLeft,
 }
 
-/// Caller-supplied parameters for [`dmrg_2site_sweep`].
+/// Caller-supplied parameters for both
+/// [`dmrg_2site_sweep`] (Dense) and
+/// [`super::sweep_block_sparse::dmrg_2site_sweep_block_sparse`]
+/// (BlockSparse / U(1)).
 ///
 /// Stored as plain `f64` for `energy_tol`; the entry point converts
 /// it to `T::Real` via the same `NumCast::from(f64)` idiom as
@@ -64,9 +67,13 @@ pub struct DmrgSweepParams {
     /// convergence requires `|E_n - E_{n-1}| <= energy_tol`. Must
     /// be finite and non-negative.
     pub energy_tol: f64,
-    /// Local-solver parameters, forwarded to [`dmrg_2site_step`].
+    /// Local-solver parameters, forwarded to the per-step driver
+    /// (Dense `dmrg_2site_step` or BlockSparse
+    /// `dmrg_2site_step_block_sparse`).
     pub lanczos: LanczosParams,
-    /// Truncated-SVD parameters, forwarded to [`dmrg_2site_step`].
+    /// Truncated-SVD parameters, forwarded to the per-step driver
+    /// (Dense `dmrg_2site_step` or BlockSparse
+    /// `dmrg_2site_step_block_sparse`).
     pub trunc: arnet_linalg::TruncSvdParams,
 }
 
@@ -123,7 +130,10 @@ pub struct DmrgResult<R> {
     pub sweeps: Vec<DmrgSweepRecord<R>>,
 }
 
-/// Errors raised by [`dmrg_2site_sweep`].
+/// Errors raised by the 2-site DMRG sweep drivers
+/// ([`dmrg_2site_sweep`] for Dense and
+/// [`super::sweep_block_sparse::dmrg_2site_sweep_block_sparse`] for
+/// BlockSparse / U(1)).
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DmrgSweepError {
@@ -138,7 +148,9 @@ pub enum DmrgSweepError {
     /// `Unknown` is also rejected — see the module-level docs for
     /// the rationale.
     MpsNotRightCanonical { found: CanonicalForm },
-    /// `dmrg_2site_step` returned an error. Source preserved.
+    /// The per-step driver (`dmrg_2site_step` or
+    /// `dmrg_2site_step_block_sparse`) returned an error. Source
+    /// preserved.
     Step {
         sweep: usize,
         direction: SweepDirection,
@@ -157,8 +169,9 @@ pub enum DmrgSweepError {
         site: usize,
         source: DmrgEnvError,
     },
-    /// `arnet_linalg::diagonal_scale` failed during the post-step
-    /// S-absorb. Carries the same `(sweep, direction, site)`
+    /// The post-step S-absorb (`arnet_linalg::diagonal_scale` for
+    /// Dense or `diagonal_scale_block_sparse` for BlockSparse)
+    /// failed. Carries the same `(sweep, direction, site)`
     /// breadcrumbs as `Step` / `Env` so the caller can pin down
     /// where the failure occurred without having to walk the
     /// `DmrgResult::sweeps` history manually.
