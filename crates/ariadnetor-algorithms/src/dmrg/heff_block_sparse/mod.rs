@@ -54,9 +54,11 @@ use super::heff::DmrgHeffError;
 /// Result of a single BlockSparse 2-site DMRG step: smallest local
 /// eigenpair plus the truncated-SVD split of its eigenvector.
 ///
-/// `u`, `s`, `vt` are returned **separately** so the caller (a
-/// future BlockSparse sweep driver) decides which side absorbs `S`.
-/// Mirrors [`super::heff::TwoSiteStepResult`] for the Dense path.
+/// `u`, `s`, `vt` are returned **separately** so the caller (the
+/// BlockSparse sweep driver
+/// [`super::dmrg_2site_sweep_block_sparse`]) decides which side
+/// absorbs `S`. Mirrors [`super::heff::TwoSiteStepResult`] for the
+/// Dense path.
 ///
 /// `Debug` is not derived because `BlockSparse: !Debug`; tests that
 /// need to inspect the result destructure its fields directly.
