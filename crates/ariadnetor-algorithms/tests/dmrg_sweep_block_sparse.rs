@@ -22,7 +22,7 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, norm};
-use arnet_tensor::{BlockSparse, U1Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, Sector, U1Sector};
 use num_complex::Complex;
 
 use fixtures::{
@@ -405,5 +405,175 @@ fn bsp_sweep_lanczos_nonconvergence_blocks_dmrg_convergence() {
     );
     for sweep in &result.sweeps {
         assert!(!sweep.all_lanczos_converged);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T6 — TooFewSites and Step error propagation
+// ---------------------------------------------------------------------------
+
+type BspMpsF64 = Mps<BlockSparse<f64, U1Sector>>;
+type BspMpoF64 = Mpo<BlockSparse<f64, U1Sector>>;
+
+/// Build a 1-site BlockSparse MPS / MPO pair with trivial dim-1
+/// sectors so `DmrgEnvs::build` succeeds at n=1; the sweep must
+/// then reject n_sites < 2 with `TooFewSites`.
+fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
+    let trivial = vec![(U1Sector(0), 1)];
+    let phys = vec![(U1Sector(0), 1)];
+    let mut mps_site = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(trivial.clone(), Direction::Out),
+            QNIndex::new(phys.clone(), Direction::Out),
+            QNIndex::new(trivial.clone(), Direction::In),
+        ],
+        U1Sector::identity(),
+    );
+    mps_site
+        .block_data_mut(&BlockCoord(vec![0, 0, 0]))
+        .expect("a")[0] = 1.0;
+    let mut mpo_site = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(trivial.clone(), Direction::Out),
+            QNIndex::new(phys.clone(), Direction::In),
+            QNIndex::new(phys, Direction::Out),
+            QNIndex::new(trivial, Direction::In),
+        ],
+        U1Sector::identity(),
+    );
+    mpo_site
+        .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
+        .expect("b")[0] = 1.0;
+    (
+        Mps::from_storages(vec![mps_site]),
+        Mpo::from_storages(vec![mpo_site]),
+    )
+}
+
+#[test]
+fn bsp_sweep_error_too_few_sites() {
+    let (mut mps, mpo) = make_n1_trivial_f64();
+    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build n=1");
+    let params = standard_params(0);
+    let err = dmrg_2site_sweep_block_sparse(&mut envs, &mut mps, &mpo, &params).expect_err("err");
+    assert!(matches!(err, DmrgSweepError::TooFewSites { n_sites: 1 }));
+}
+
+#[test]
+fn bsp_sweep_error_step_error_propagated() {
+    // Build envs from a valid n=2 fixture so envs.n_sites = 2 and
+    // sweep-level validation passes, then call sweep with an MPO
+    // whose W[0] carries non-identity flux. The step's
+    // identity-flux precondition fires inside the loop, surfacing
+    // as DmrgSweepError::Step wrapping DmrgHeffError::QnMismatch.
+    let mut mps = make_n2_mps_f64();
+    let mpo_good = make_n2_mpo_f64(1.0);
+    let mut envs = setup_f64(&mut mps, &mpo_good);
+
+    let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
+    let trivial = vec![(U1Sector(0), 1)];
+    let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
+    let bad_w0 = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(trivial, Direction::Out),
+            QNIndex::new(phys.clone(), Direction::In),
+            QNIndex::new(phys, Direction::Out),
+            QNIndex::new(xy_bond, Direction::In),
+        ],
+        U1Sector(2),
+    );
+    let bad_mpo = Mpo::from_storages(vec![bad_w0, mpo_good.storage(1).clone()]);
+
+    let params = standard_params(0);
+    let err =
+        dmrg_2site_sweep_block_sparse(&mut envs, &mut mps, &bad_mpo, &params).expect_err("err");
+    assert!(matches!(
+        err,
+        DmrgSweepError::Step {
+            sweep: 0,
+            site: 0,
+            ..
+        }
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// T9 — post-sweep envs slot-vs-fresh-rebuild equality (n=2 boundary
+// case + n=3 bulk case). Catches stale-Some env slots that survive
+// the sweep without being consumed — the failure mode the
+// twin-sweep T4 cannot detect.
+// ---------------------------------------------------------------------------
+
+fn assert_bsp_close(
+    a: &BlockSparse<f64, U1Sector>,
+    b: &BlockSparse<f64, U1Sector>,
+    eps: f64,
+    ctx: &str,
+) {
+    assert_eq!(a.indices().len(), b.indices().len(), "{ctx}: rank");
+    for ax in 0..a.indices().len() {
+        let ia = &a.indices()[ax];
+        let ib = &b.indices()[ax];
+        assert_eq!(ia.direction(), ib.direction(), "{ctx}: axis {ax} dir");
+        assert_eq!(
+            ia.blocks().to_vec(),
+            ib.blocks().to_vec(),
+            "{ctx}: axis {ax} sectors"
+        );
+    }
+    assert_eq!(a.flux(), b.flux(), "{ctx}: flux");
+    for meta in a.block_metas() {
+        let coord = &meta.coord;
+        let da = a.block_data(coord).expect("a block");
+        let db = b
+            .block_data(coord)
+            .unwrap_or_else(|| panic!("{ctx}: stale-Some block at {:?}", coord));
+        assert_eq!(da.len(), db.len(), "{ctx}: block size at {:?}", coord);
+        for (i, (x, y)) in da.iter().zip(db.iter()).enumerate() {
+            assert!(
+                (x - y).abs() < eps,
+                "{ctx}: block {:?}[{i}] {x} vs {y}",
+                coord
+            );
+        }
+    }
+    for meta in b.block_metas() {
+        a.block_data(&meta.coord)
+            .unwrap_or_else(|| panic!("{ctx}: extra block in b at {:?}", meta.coord));
+    }
+}
+
+#[test]
+fn bsp_sweep_post_sweep_envs_have_no_stale_some_slots() {
+    for label in ["n2", "n3"] {
+        let (mut mps, mpo) = if label == "n2" {
+            (make_n2_mps_f64(), make_n2_mpo_f64(1.0))
+        } else {
+            (make_n3_mps_f64(), make_n3_mpo_f64(1.0))
+        };
+        let mut envs = setup_f64(&mut mps, &mpo);
+        let params = DmrgSweepParams {
+            max_sweeps: 1,
+            min_sweeps: 1,
+            energy_tol: 0.0,
+            ..standard_params(0xF2)
+        };
+        dmrg_2site_sweep_block_sparse(&mut envs, &mut mps, &mpo, &params).expect("sweep");
+        let fresh = DmrgEnvs::build(&mps, &mpo).expect("rebuild");
+        let n = mps.len();
+        for j in 0..=n {
+            if let Some(maintained) = envs.left(j) {
+                let f = fresh
+                    .left(j)
+                    .unwrap_or_else(|| panic!("{label}: stale-Some left[{j}]"));
+                assert_bsp_close(maintained, f, 1e-10, &format!("{label} left[{j}]"));
+            }
+            if let Some(maintained) = envs.right(j) {
+                let f = fresh
+                    .right(j)
+                    .unwrap_or_else(|| panic!("{label}: stale-Some right[{j}]"));
+                assert_bsp_close(maintained, f, 1e-10, &format!("{label} right[{j}]"));
+            }
+        }
     }
 }
