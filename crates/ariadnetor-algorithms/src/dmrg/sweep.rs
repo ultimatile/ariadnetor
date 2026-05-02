@@ -116,7 +116,10 @@ pub struct DmrgSweepRecord<R> {
     pub steps: Vec<DmrgStepRecord<R>>,
 }
 
-/// Final result of [`dmrg_2site_sweep`].
+/// Final result of either 2-site DMRG sweep driver
+/// ([`dmrg_2site_sweep`] for Dense and
+/// [`super::sweep_block_sparse::dmrg_2site_sweep_block_sparse`] for
+/// BlockSparse / U(1)).
 #[derive(Debug, Clone)]
 pub struct DmrgResult<R> {
     /// Last cycle's `sweep_energy`.
@@ -207,7 +210,7 @@ impl std::fmt::Display for DmrgSweepError {
                 ..
             } => write!(
                 f,
-                "dmrg_2site_step failed at sweep {sweep}, {direction:?}, site {site}"
+                "2-site DMRG step failed at sweep {sweep}, {direction:?}, site {site}"
             ),
             DmrgSweepError::Env {
                 sweep,
@@ -225,7 +228,7 @@ impl std::fmt::Display for DmrgSweepError {
                 ..
             } => write!(
                 f,
-                "diagonal_scale failed during sweep {sweep}, {direction:?}, site {site}"
+                "S-absorb (diagonal scale) failed during sweep {sweep}, {direction:?}, site {site}"
             ),
         }
     }
