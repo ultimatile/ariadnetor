@@ -21,3 +21,10 @@ repos:
         entry: scripts/check-file-lines.sh
         language: script
         types: [rust]
+      - id: protect-default-branch
+        name: refuse commits on default branch
+        entry: scripts/protect-default-branch.sh
+        language: script
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
