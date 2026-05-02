@@ -47,7 +47,7 @@ pub enum SweepDirection {
 
 /// Caller-supplied parameters for both
 /// [`dmrg_2site_sweep`] (Dense) and
-/// [`super::sweep_block_sparse::dmrg_2site_sweep_block_sparse`]
+/// [`super::dmrg_2site_sweep_block_sparse`]
 /// (BlockSparse / U(1)).
 ///
 /// Stored as plain `f64` for `energy_tol`; the entry point converts
@@ -118,7 +118,7 @@ pub struct DmrgSweepRecord<R> {
 
 /// Final result of either 2-site DMRG sweep driver
 /// ([`dmrg_2site_sweep`] for Dense and
-/// [`super::sweep_block_sparse::dmrg_2site_sweep_block_sparse`] for
+/// [`super::dmrg_2site_sweep_block_sparse`] for
 /// BlockSparse / U(1)).
 #[derive(Debug, Clone)]
 pub struct DmrgResult<R> {
@@ -135,7 +135,7 @@ pub struct DmrgResult<R> {
 
 /// Errors raised by the 2-site DMRG sweep drivers
 /// ([`dmrg_2site_sweep`] for Dense and
-/// [`super::sweep_block_sparse::dmrg_2site_sweep_block_sparse`] for
+/// [`super::dmrg_2site_sweep_block_sparse`] for
 /// BlockSparse / U(1)).
 #[derive(Debug)]
 #[non_exhaustive]
