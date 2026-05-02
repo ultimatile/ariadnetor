@@ -18,7 +18,7 @@
 //!
 //! Test-internal helpers; no public API additions.
 
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, dmrg_2site_sweep_block_sparse};
+use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
@@ -399,8 +399,8 @@ fn run_validation_bsp(
     let mut envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
     let params = validation_params_bsp(chi_max, lanczos_seed);
 
-    let result = dmrg_2site_sweep_block_sparse(&mut envs, &mut mps, &mpo, &params)
-        .unwrap_or_else(|e| panic!("{name}: dmrg_2site_sweep_block_sparse failed: {e:?}"));
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params)
+        .unwrap_or_else(|e| panic!("{name}: sweep_2site failed: {e:?}"));
 
     let delta = (result.energy - e_ed).abs();
     assert!(

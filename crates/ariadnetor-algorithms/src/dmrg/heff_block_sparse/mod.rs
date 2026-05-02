@@ -56,7 +56,7 @@ use super::heff::DmrgHeffError;
 ///
 /// `u`, `s`, `vt` are returned **separately** so the caller (the
 /// BlockSparse sweep driver
-/// [`super::dmrg_2site_sweep_block_sparse`]) decides which side
+/// [`super::sweep_2site`]) decides which side
 /// absorbs `S`. Mirrors [`super::heff::TwoSiteStepResult`] for the
 /// Dense path.
 ///
