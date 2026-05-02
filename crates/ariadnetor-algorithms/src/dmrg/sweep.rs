@@ -509,7 +509,7 @@ where
     })
 }
 
-fn validate_params(params: &DmrgSweepParams) -> Result<(), DmrgSweepError> {
+pub(super) fn validate_params(params: &DmrgSweepParams) -> Result<(), DmrgSweepError> {
     if params.max_sweeps == 0 {
         return Err(DmrgSweepError::InvalidParams {
             detail: "max_sweeps must be >= 1",
