@@ -177,28 +177,58 @@ fn bsp_sweep_n3_covers_boundary_sites_each_cycle() {
 
 #[test]
 fn bsp_sweep_envs_equivalent_to_fresh_rebuild_after_sweep() {
+    // Run a prep sweep that mutates `envs` in place, then run an
+    // identical (seed-pinned) comparison sweep twice: once from the
+    // maintained envs, once from a fresh DmrgEnvs::build of the
+    // post-prep MPS snapshot. If the maintained envs drifted from
+    // what a fresh build would produce, the two paths solve
+    // different local Heff problems and diverge — caught by the
+    // per-step eigenvalue and final-energy comparisons.
     let mut mps = make_n3_mps_f64();
     let mpo = make_n3_mpo_f64(1.0);
     let mut envs = setup_f64(&mut mps, &mpo);
-    let params = standard_params(99);
+    let prep_params = DmrgSweepParams {
+        max_sweeps: 1,
+        min_sweeps: 1,
+        energy_tol: 0.0,
+        ..standard_params(0x4242)
+    };
+    dmrg_2site_sweep_block_sparse(&mut envs, &mut mps, &mpo, &prep_params).expect("prep");
 
-    let _ = dmrg_2site_sweep_block_sparse(&mut envs, &mut mps, &mpo, &params).expect("sweep");
+    let mut mps_a = mps.clone();
+    let mut envs_a = envs.clone();
+    let mut mps_b = mps.clone();
+    let mut envs_b = DmrgEnvs::build(&mps_b, &mpo).expect("rebuild");
 
-    // Compare expectation values computed via braket against a
-    // sentinel: braket on a freshly-rebuilt DmrgEnvs of the
-    // post-sweep MPS yields the same value as the post-sweep
-    // braket. (`braket` itself is env-independent; the assertion
-    // covers env reusability — fresh build must succeed without
-    // contract-violation errors on the post-sweep MPS state.)
-    let bra_h_ket_now = braket(&mps, &mpo, &mps);
-    let mps_clone = mps.clone();
-    let _fresh_envs =
-        DmrgEnvs::build(&mps_clone, &mpo).expect("fresh envs build on post-sweep MPS");
-    let bra_h_ket_fresh = braket(&mps_clone, &mpo, &mps_clone);
-    let nrm_now = norm(&mps);
-    let nrm_fresh = norm(&mps_clone);
-    assert!((bra_h_ket_now - bra_h_ket_fresh).abs() < 1e-12);
-    assert!((nrm_now - nrm_fresh).abs() < 1e-12);
+    let cmp_params = DmrgSweepParams {
+        max_sweeps: 1,
+        min_sweeps: 1,
+        energy_tol: 0.0,
+        ..standard_params(0xDEAD)
+    };
+
+    let res_a =
+        dmrg_2site_sweep_block_sparse(&mut envs_a, &mut mps_a, &mpo, &cmp_params).expect("a");
+    let res_b =
+        dmrg_2site_sweep_block_sparse(&mut envs_b, &mut mps_b, &mpo, &cmp_params).expect("b");
+
+    assert!((res_a.energy - res_b.energy).abs() < 1e-9);
+    assert_eq!(res_a.sweeps[0].steps.len(), res_b.sweeps[0].steps.len());
+    for (sa, sb) in res_a.sweeps[0]
+        .steps
+        .iter()
+        .zip(res_b.sweeps[0].steps.iter())
+    {
+        assert!((sa.eigenvalue - sb.eigenvalue).abs() < 1e-9);
+        assert!((sa.trunc_err - sb.trunc_err).abs() < 1e-9);
+    }
+    // Final post-sweep energy and norm must agree across paths.
+    let e_a = braket(&mps_a, &mpo, &mps_a);
+    let e_b = braket(&mps_b, &mpo, &mps_b);
+    assert!((e_a - e_b).abs() < 1e-9);
+    let n_a = norm(&mps_a);
+    let n_b = norm(&mps_b);
+    assert!((n_a - n_b).abs() < 1e-9);
 }
 
 // ---------------------------------------------------------------------------
