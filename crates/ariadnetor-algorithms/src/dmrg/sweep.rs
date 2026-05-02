@@ -1,10 +1,24 @@
 //! 2-site DMRG sweep driver.
 //!
-//! Runs alternating L→R / R→L half-sweeps on top of [`super::heff::dmrg_2site_step`],
-//! mutating the MPS site tensors and the [`DmrgEnvs`] in place. Caller
-//! supplies a right-canonical (or `Mixed { center: 0 }`) MPS plus a
-//! freshly-built `DmrgEnvs`; the driver does **not** auto-canonicalize
-//! because doing so would silently invalidate the caller-supplied envs.
+//! Runs alternating L→R / R→L half-sweeps over a [`super::DmrgOps`]
+//! storage type, dispatching the storage-specific local solve and
+//! S-absorb through the trait. Mutates the MPS site tensors and the
+//! [`DmrgEnvs`] in place. Caller supplies a right-canonical (or
+//! `Mixed { center: 0 }`) MPS plus a freshly-built `DmrgEnvs`; the
+//! driver does **not** auto-canonicalize because doing so would
+//! silently invalidate the caller-supplied envs.
+//!
+//! # Canonical-form precondition
+//!
+//! The local effective-Hamiltonian eigenvalue equation returns
+//! physical energy directly only when, with active block `(i, i+1)`,
+//! sites `(0..i)` are left-canonical and sites `(i+2..N-1)` are
+//! right-canonical. The driver starts L→R from `i = 0`, so the
+//! binding precondition is right-canonicality of `(2..N-1)`, met
+//! exactly by `Right` and `Mixed { center: 0 }`. This argument is
+//! storage-independent (the local-block requirement does not depend
+//! on Dense vs BlockSparse representation), so the gate applies
+//! uniformly through the trait.
 //!
 //! # Convergence
 //!
@@ -21,16 +35,16 @@ use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{LinalgError, diagonal_scale};
+use arnet_linalg::LinalgError;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, norm};
-use arnet_tensor::Dense;
 use num_traits::Zero;
 
 use crate::krylov::LanczosParams;
 use crate::numeric::try_real_from_f64;
 
+use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvs};
-use super::heff::{DmrgHeffError, dmrg_2site_step};
+use super::heff::DmrgHeffError;
 
 /// Direction of a half-sweep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,15 +59,15 @@ pub enum SweepDirection {
     RightToLeft,
 }
 
-/// Caller-supplied parameters for both
-/// [`dmrg_2site_sweep`] (Dense) and
-/// [`super::dmrg_2site_sweep_block_sparse`]
-/// (BlockSparse / U(1)).
+/// Caller-supplied parameters for [`sweep_2site`] (the storage-generic
+/// 2-site DMRG sweep driver, dispatched over `R: super::DmrgOps` so
+/// the same params type covers both the Dense and BlockSparse / U(1)
+/// paths).
 ///
 /// Stored as plain `f64` for `energy_tol`; the entry point converts
-/// it to `T::Real` via the same `NumCast::from(f64)` idiom as
-/// [`LanczosParams::tol`]. This keeps the params type non-generic
-/// across `T`.
+/// it to `<R::Elem as Scalar>::Real` via the same `NumCast::from(f64)`
+/// idiom as [`LanczosParams::tol`]. This keeps the params type
+/// non-generic across the scalar type.
 #[derive(Debug, Clone)]
 pub struct DmrgSweepParams {
     /// Maximum number of full L→R + R→L cycles. Must be `>= 1`;
@@ -116,10 +130,7 @@ pub struct DmrgSweepRecord<R> {
     pub steps: Vec<DmrgStepRecord<R>>,
 }
 
-/// Final result of either 2-site DMRG sweep driver
-/// ([`dmrg_2site_sweep`] for Dense and
-/// [`super::dmrg_2site_sweep_block_sparse`] for
-/// BlockSparse / U(1)).
+/// Final result of the 2-site DMRG sweep driver [`sweep_2site`].
 #[derive(Debug, Clone)]
 pub struct DmrgResult<R> {
     /// Last cycle's `sweep_energy`.
@@ -133,10 +144,7 @@ pub struct DmrgResult<R> {
     pub sweeps: Vec<DmrgSweepRecord<R>>,
 }
 
-/// Errors raised by the 2-site DMRG sweep drivers
-/// ([`dmrg_2site_sweep`] for Dense and
-/// [`super::dmrg_2site_sweep_block_sparse`] for
-/// BlockSparse / U(1)).
+/// Errors raised by the 2-site DMRG sweep driver [`sweep_2site`].
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DmrgSweepError {
@@ -246,20 +254,26 @@ impl std::error::Error for DmrgSweepError {
 }
 
 /// Run alternating L→R / R→L sweeps until convergence or
-/// `max_sweeps`. Mutates `mps` and `envs` in place; the final MPS
-/// state is `CanonicalForm::Mixed { center: 0 }` (R→L runs last).
+/// `max_sweeps` over a [`DmrgOps`] storage type. Mutates `mps` and
+/// `envs` in place; the final MPS state is
+/// `CanonicalForm::Mixed { center: 0 }` (R→L runs last).
+///
+/// Generic over `R: DmrgOps`, so a single call site covers both the
+/// Dense (`R = Dense<T>`) and BlockSparse / U(1)
+/// (`R = BlockSparse<T, S>`) paths. The trait dispatches the local
+/// solve and S-absorb to the storage-specific implementations.
 ///
 /// See the module-level rustdoc for the canonical-form contract on
 /// the input MPS and for the convergence criterion.
-pub fn dmrg_2site_sweep<T, B>(
-    envs: &mut DmrgEnvs<Dense<T>, B>,
-    mps: &mut Mps<Dense<T>, B>,
-    mpo: &Mpo<Dense<T>, B>,
+pub fn sweep_2site<R, B>(
+    envs: &mut DmrgEnvs<R, B>,
+    mps: &mut Mps<R, B>,
+    mpo: &Mpo<R, B>,
     params: &DmrgSweepParams,
-) -> Result<DmrgResult<T::Real>, DmrgSweepError>
+) -> Result<DmrgResult<<R::Elem as Scalar>::Real>, DmrgSweepError>
 where
-    T: Scalar,
-    T::Real: Scalar<Real = T::Real>,
+    R: DmrgOps,
+    <R::Elem as Scalar>::Real: Scalar<Real = <R::Elem as Scalar>::Real>,
     B: ComputeBackend,
 {
     // ---- Length / size validation -------------------------------
@@ -277,20 +291,21 @@ where
 
     // ---- Param validation ---------------------------------------
     validate_params(params)?;
-    // Casts may fail when `T::Real == f32` and the user supplied a
+    // Casts may fail when the storage's real scalar type
+    // (`<R::Elem as Scalar>::Real`) is `f32` and the user supplied a
     // finite value outside f32 range (NumCast::from returns Some(inf),
     // which try_real_from_f64 then maps to None). Surface that as
     // `InvalidParams` so the public API stays fallible end-to-end
     // instead of panicking inside lanczos. lanczos.tol is gated here
     // too so a borderline f32 tol does not slip past sweep-level
     // validation only to abort the run from inside the local solve.
-    let energy_tol_real: T::Real =
-        try_real_from_f64::<T>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
-            detail: "energy_tol is not representable in T::Real",
+    let energy_tol_real: <R::Elem as Scalar>::Real =
+        try_real_from_f64::<R::Elem>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
+            detail: "energy_tol is not representable in the storage's real scalar type",
         })?;
-    if try_real_from_f64::<T>(params.lanczos.tol).is_none() {
+    if try_real_from_f64::<R::Elem>(params.lanczos.tol).is_none() {
         return Err(DmrgSweepError::InvalidParams {
-            detail: "lanczos.tol is not representable in T::Real",
+            detail: "lanczos.tol is not representable in the storage's real scalar type",
         });
     }
 
@@ -306,14 +321,16 @@ where
     }
 
     let backend: Arc<B> = mps.backend_arc().clone();
-    let mut sweeps: Vec<DmrgSweepRecord<T::Real>> = Vec::with_capacity(params.max_sweeps);
-    let mut last_energy: Option<T::Real> = None;
+    let mut sweeps: Vec<DmrgSweepRecord<<R::Elem as Scalar>::Real>> =
+        Vec::with_capacity(params.max_sweeps);
+    let mut last_energy: Option<<R::Elem as Scalar>::Real> = None;
     let mut converged = false;
     let mut completed_sweeps = 0usize;
 
     // ---- Main sweep loop ----------------------------------------
     for sweep_idx in 0..params.max_sweeps {
-        let mut steps: Vec<DmrgStepRecord<T::Real>> = Vec::with_capacity(2 * (n_sites - 1));
+        let mut steps: Vec<DmrgStepRecord<<R::Elem as Scalar>::Real>> =
+            Vec::with_capacity(2 * (n_sites - 1));
 
         // L→R half-sweep.
         for site in 0..n_sites - 1 {
@@ -387,9 +404,9 @@ where
         // ---- Post-sweep diagnostics -----------------------------
         let bra_h_ket = braket(mps, mpo, mps);
         let nrm = norm(mps);
-        let nrm_sq: T::Real = nrm * nrm;
-        // T::Real / T::Real is always available since T::Real: Float.
-        let sweep_energy: T::Real = bra_h_ket.re() / nrm_sq;
+        let nrm_sq: <R::Elem as Scalar>::Real = nrm * nrm;
+        // The Float bound on the storage's real scalar type guarantees division.
+        let sweep_energy: <R::Elem as Scalar>::Real = bra_h_ket.re() / nrm_sq;
 
         let max_bond = mps.max_bond_dim();
         let mut min_eig = steps[0].eigenvalue;
@@ -424,7 +441,7 @@ where
             && let Some(prev) = last_energy
         {
             let delta = sweep_energy - prev;
-            let abs_delta = if delta < T::Real::zero() {
+            let abs_delta = if delta < <R::Elem as Scalar>::Real::zero() {
                 -delta
             } else {
                 delta
@@ -450,41 +467,41 @@ where
     })
 }
 
-/// Run a single 2-site step at `site`, then mutate the MPS site
-/// tensors at `site` and `site + 1` according to `direction`.
+/// Run a single 2-site step at `site` over a [`DmrgOps`] storage,
+/// then mutate the MPS site tensors at `site` and `site + 1`
+/// according to `direction`.
 ///
 /// Returns the step's diagnostics record. The caller is responsible
 /// for advancing the env afterwards (or skipping the advance at the
 /// trailing boundary of a half-sweep).
 #[allow(clippy::too_many_arguments)]
-fn run_step<T, B>(
-    envs: &DmrgEnvs<Dense<T>, B>,
-    mps: &mut Mps<Dense<T>, B>,
-    mpo: &Mpo<Dense<T>, B>,
+fn run_step<R, B>(
+    envs: &DmrgEnvs<R, B>,
+    mps: &mut Mps<R, B>,
+    mpo: &Mpo<R, B>,
     site: usize,
     params: &DmrgSweepParams,
     sweep_idx: usize,
     direction: SweepDirection,
     backend: &Arc<B>,
-) -> Result<DmrgStepRecord<T::Real>, DmrgSweepError>
+) -> Result<DmrgStepRecord<<R::Elem as Scalar>::Real>, DmrgSweepError>
 where
-    T: Scalar,
-    T::Real: Scalar<Real = T::Real>,
+    R: DmrgOps,
+    <R::Elem as Scalar>::Real: Scalar<Real = <R::Elem as Scalar>::Real>,
     B: ComputeBackend,
 {
-    let result = dmrg_2site_step(envs, mps, mpo, site, &params.lanczos, &params.trunc).map_err(
-        |source| DmrgSweepError::Step {
-            sweep: sweep_idx,
-            direction,
-            site,
-            source,
-        },
-    )?;
+    let result =
+        R::step(envs, mps, mpo, site, &params.lanczos, &params.trunc).map_err(|source| {
+            DmrgSweepError::Step {
+                sweep: sweep_idx,
+                direction,
+                site,
+                source,
+            }
+        })?;
 
-    let bond_dim = result.s.shape()[0];
-
-    // Wrap any `diagonal_scale` failure with the same
-    // (sweep, direction, site) breadcrumbs as `Step` / `Env`.
+    // Wrap any S-absorb failure with the same (sweep, direction, site)
+    // breadcrumbs as `Step` / `Env`.
     let scale_err = |source: LinalgError| DmrgSweepError::Scale {
         sweep: sweep_idx,
         direction,
@@ -492,36 +509,20 @@ where
         source,
     };
 
-    // Absorb S into the sweep direction and write back to MPS.
-    match direction {
-        SweepDirection::LeftToRight => {
-            // site i ← U (left-isometric)
-            // site i+1 ← S·Vt (axis 0 = new bond, carries S right)
-            let s_vt =
-                diagonal_scale(&**backend, &result.vt, result.s.data(), 0).map_err(scale_err)?;
-            *mps.storage_mut(site) = result.u;
-            *mps.storage_mut(site + 1) = s_vt;
-        }
-        SweepDirection::RightToLeft => {
-            // site i   ← U·S  (axis 2 = new bond, carries S left)
-            // site i+1 ← Vt   (right-isometric)
-            let u_s =
-                diagonal_scale(&**backend, &result.u, result.s.data(), 2).map_err(scale_err)?;
-            *mps.storage_mut(site) = u_s;
-            *mps.storage_mut(site + 1) = result.vt;
-        }
-    }
+    let absorbed = R::commit_step(&**backend, result, direction).map_err(scale_err)?;
+    *mps.storage_mut(site) = absorbed.site_i;
+    *mps.storage_mut(site + 1) = absorbed.site_ip1;
 
     Ok(DmrgStepRecord {
         sweep: sweep_idx,
         direction,
         site,
-        eigenvalue: result.eigenvalue,
-        residual: result.residual,
-        trunc_err: result.trunc_err,
-        bond_dim,
-        lanczos_iters: result.iters,
-        lanczos_converged: result.converged,
+        eigenvalue: absorbed.eigenvalue,
+        residual: absorbed.residual,
+        trunc_err: absorbed.trunc_err,
+        bond_dim: absorbed.bond_dim,
+        lanczos_iters: absorbed.iters,
+        lanczos_converged: absorbed.converged,
     })
 }
 

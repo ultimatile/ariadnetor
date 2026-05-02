@@ -4,7 +4,7 @@
 //! (XXX). Test-internal MPO builders and ED reference are inlined
 //! here; no public API is added.
 
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, dmrg_2site_sweep};
+use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
@@ -343,8 +343,8 @@ fn run_validation(
     let mut envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
     let params = validation_params(chi_max, lanczos_seed);
 
-    let result = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params)
-        .unwrap_or_else(|e| panic!("{name}: dmrg_2site_sweep failed: {e:?}"));
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params)
+        .unwrap_or_else(|e| panic!("{name}: sweep_2site failed: {e:?}"));
 
     let delta = (result.energy - e_ed).abs();
     assert!(

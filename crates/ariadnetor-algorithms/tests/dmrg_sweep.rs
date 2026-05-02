@@ -9,7 +9,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
-    DmrgEnvs, DmrgResult, DmrgSweepError, DmrgSweepParams, SweepDirection, dmrg_2site_sweep,
+    DmrgEnvs, DmrgResult, DmrgSweepError, DmrgSweepParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh};
@@ -206,7 +206,7 @@ fn t1_psd_product_converges_to_product_of_min_eigs_f64() {
     let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = standard_params_f64(0xB00B);
 
-    let result = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
 
     let reference = hs.iter().map(|h| min_eig_real_sym(h, d)).product::<f64>();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
@@ -245,7 +245,7 @@ fn t2_energy_monotone_nonincreasing_across_sweeps() {
         },
     };
 
-    let result = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
     assert_eq!(result.sweeps.len(), params.max_sweeps);
     let energies: Vec<f64> = result.sweeps.iter().map(|s| s.sweep_energy).collect();
     for w in energies.windows(2) {
@@ -285,7 +285,7 @@ fn t3_boundary_sites_covered_each_sweep() {
         },
     };
 
-    let result = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
     for sweep in &result.sweeps {
         let mut saw = (false, false, false, false);
         for step in &sweep.steps {
@@ -331,7 +331,7 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
             target_trunc_err: None,
         },
     };
-    dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &prep_params).expect("prep");
+    sweep_2site(&mut envs, &mut mps, &mpo, &prep_params).expect("prep");
 
     // Snapshot the post-prep MPS and run the comparison sweep twice:
     // (a) with the incremental envs we just maintained,
@@ -358,8 +358,8 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
         },
     };
 
-    let res_a = dmrg_2site_sweep(&mut envs_a, &mut mps_a, &mpo, &cmp_params).expect("a");
-    let res_b = dmrg_2site_sweep(&mut envs_b, &mut mps_b, &mpo, &cmp_params).expect("b");
+    let res_a = sweep_2site(&mut envs_a, &mut mps_a, &mpo, &cmp_params).expect("a");
+    let res_b = sweep_2site(&mut envs_b, &mut mps_b, &mpo, &cmp_params).expect("b");
 
     assert_abs_diff_eq!(res_a.energy, res_b.energy, epsilon = 1e-9);
     let steps_a = &res_a.sweeps[0].steps;
@@ -392,7 +392,7 @@ fn t5_n_sites_two_edge_case() {
     let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = standard_params_f64(0x99);
 
-    let result = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
     let reference = hs.iter().map(|h| min_eig_real_sym(h, d)).product::<f64>();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
     assert!(result.converged);
@@ -422,10 +422,10 @@ fn t6_length_mismatch_mps_vs_envs() {
 
     // First sweep with the original (consistent) triple to make sure
     // the setup itself is healthy, then break the contract.
-    let _ = dmrg_2site_sweep(&mut envs, &mut mps_a, &mpo_a, &standard_params_f64(0x14)).unwrap();
+    let _ = sweep_2site(&mut envs, &mut mps_a, &mpo_a, &standard_params_f64(0x14)).unwrap();
 
     // Now break it: pass mismatched chain to the same envs.
-    let err = dmrg_2site_sweep(&mut envs, &mut mps_b, &mpo_b, &standard_params_f64(0x14))
+    let err = sweep_2site(&mut envs, &mut mps_b, &mpo_b, &standard_params_f64(0x14))
         .expect_err("length mismatch should fail");
     matches!(
         err,
@@ -449,7 +449,7 @@ fn t6_too_few_sites() {
     ]);
     let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
-    let err = dmrg_2site_sweep(&mut envs, &mut mps2, &mpo, &standard_params_f64(0x20))
+    let err = sweep_2site(&mut envs, &mut mps2, &mpo, &standard_params_f64(0x20))
         .expect_err("n=1 should fail");
     assert!(matches!(err, DmrgSweepError::TooFewSites { n_sites: 1 }));
 }
@@ -464,7 +464,7 @@ fn t6_invalid_params_max_sweeps_zero() {
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x23);
     p.max_sweeps = 0;
-    let err = dmrg_2site_sweep(&mut envs, &mut mps2, &mpo, &p).expect_err("max_sweeps=0");
+    let err = sweep_2site(&mut envs, &mut mps2, &mpo, &p).expect_err("max_sweeps=0");
     assert!(matches!(err, DmrgSweepError::InvalidParams { .. }));
 }
 
@@ -479,7 +479,7 @@ fn t6_invalid_params_min_exceeds_max() {
     let mut p = standard_params_f64(0x26);
     p.min_sweeps = 10;
     p.max_sweeps = 5;
-    let err = dmrg_2site_sweep(&mut envs, &mut mps2, &mpo, &p).expect_err("min>max");
+    let err = sweep_2site(&mut envs, &mut mps2, &mpo, &p).expect_err("min>max");
     assert!(matches!(err, DmrgSweepError::InvalidParams { .. }));
 }
 
@@ -493,7 +493,7 @@ fn t6_invalid_params_chi_max_zero() {
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x29);
     p.trunc.chi_max = Some(0);
-    let err = dmrg_2site_sweep(&mut envs, &mut mps2, &mpo, &p).expect_err("chi=0");
+    let err = sweep_2site(&mut envs, &mut mps2, &mpo, &p).expect_err("chi=0");
     assert!(matches!(err, DmrgSweepError::InvalidParams { .. }));
 }
 
@@ -507,7 +507,7 @@ fn t6_invalid_params_energy_tol_negative() {
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x2C);
     p.energy_tol = -1e-10;
-    let err = dmrg_2site_sweep(&mut envs, &mut mps2, &mpo, &p).expect_err("neg tol");
+    let err = sweep_2site(&mut envs, &mut mps2, &mpo, &p).expect_err("neg tol");
     assert!(matches!(err, DmrgSweepError::InvalidParams { .. }));
 }
 
@@ -521,7 +521,7 @@ fn t6_canonical_form_left_rejected() {
     // Move center to N-1 (i.e., left-canonical at sites 0..N-1) — not
     // allowed for the sweep entry point.
     canonicalize(&mut mps, n - 1);
-    let err = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &standard_params_f64(0x2F))
+    let err = sweep_2site(&mut envs, &mut mps, &mpo, &standard_params_f64(0x2F))
         .expect_err("left canonical reject");
     assert!(matches!(err, DmrgSweepError::MpsNotRightCanonical { .. }));
 }
@@ -537,7 +537,7 @@ fn t6_canonical_form_unknown_rejected() {
     // `Unknown`), then pass it without canonicalizing.
     let mut mps_unk = Mps::from_storages(mps_init.storages().to_vec());
     assert_eq!(*mps_unk.canonical_form(), CanonicalForm::Unknown);
-    let err = dmrg_2site_sweep(&mut envs, &mut mps_unk, &mpo, &standard_params_f64(0x32))
+    let err = sweep_2site(&mut envs, &mut mps_unk, &mpo, &standard_params_f64(0x32))
         .expect_err("Unknown rejected");
     assert!(matches!(err, DmrgSweepError::MpsNotRightCanonical { .. }));
 }
@@ -582,7 +582,7 @@ fn t6_step_error_propagated() {
     }
     let env_mpo = Mpo::from_storages(env_mpo_storages);
     let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&env_mps, &env_mpo).expect("build");
-    let err = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &standard_params_f64(0xB2))
+    let err = sweep_2site(&mut envs, &mut mps, &mpo, &standard_params_f64(0xB2))
         .expect_err("step shape mismatch");
     assert!(matches!(
         err,
@@ -620,7 +620,7 @@ fn t7_c64_psd_product_converges() {
     };
 
     let result: DmrgResult<f64> =
-        dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+        sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
     let reference: f64 = hs.iter().map(|h| min_eig_complex_herm(h, d)).product();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
     assert!(result.converged);
@@ -653,7 +653,7 @@ fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
         },
     };
 
-    let result = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
     assert!(
         !result.converged,
         "DmrgResult.converged must be false when any step has lanczos_converged=false"
@@ -692,7 +692,7 @@ fn t9_diagnostics_fields_consistent() {
         },
     };
 
-    let result = dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
 
     for sweep in &result.sweeps {
         // Per-step contract.
@@ -790,7 +790,7 @@ fn t10_post_sweep_envs_have_no_stale_some_slots() {
                 target_trunc_err: None,
             },
         };
-        dmrg_2site_sweep(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+        sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
         let fresh: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("rebuild");
         for j in 0..=n {
             check("left", j, n, envs.left(j), fresh.left(j));
