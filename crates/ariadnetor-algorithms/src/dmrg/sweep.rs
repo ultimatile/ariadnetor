@@ -37,7 +37,6 @@ use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::LinalgError;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, norm};
-use num_traits::Zero;
 
 use crate::krylov::LanczosParams;
 use crate::numeric::try_real_from_f64;
@@ -440,12 +439,7 @@ where
         if completed_sweeps >= params.min_sweeps
             && let Some(prev) = last_energy
         {
-            let delta = sweep_energy - prev;
-            let abs_delta = if delta < <R::Elem as Scalar>::Real::zero() {
-                -delta
-            } else {
-                delta
-            };
+            let abs_delta = (sweep_energy - prev).abs();
             if abs_delta <= energy_tol_real && all_ok {
                 converged = true;
                 break;
