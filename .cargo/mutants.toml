@@ -75,6 +75,29 @@ exclude_re = [
     # in exact arithmetic. Subtracting 0 is a no-op, hence + with - is equivalent. The peer
     # + with * mutation is NOT equivalent (would zero the prior accumulator) and remains.
     "replace \\+ with - in restore_center_sweep_dense",
+    # sweep_2site L→R trailing-advance skip is a perf optimization, not a
+    # correctness gate: the mutated extra advance_left(n-2) sets
+    # left[n-1] = Some(stale) and right[n-1] = None. The next R→L step
+    # at site = n-2 reads left(n-2) and right(n) (both still valid),
+    # then runs advance_right(n-1) which (j > 0 clause in env.rs) sets
+    # left[n-1] = None and right[n-1] = Some. Subsequent R→L steps at
+    # site < n-2 read left[site], never left[n-1], so the stale value
+    # is never observed. End-of-sweep state matches the original
+    # exactly. Confirmed via cargo-mutants run on these two mutants
+    # alone — both MISSED across the full test suite by design.
+    "sweep.rs:351:21: replace < with <= in sweep_2site",
+    "sweep.rs:351:31: replace - with \\+ in sweep_2site",
+    # sweep_2site per-step diagnostics aggregation: tracking-min
+    # (`<` / `<=`) and tracking-max (`>` / `>=`) yield identical
+    # values for any finite input — distinct values pick the extremum
+    # once, tied values overwrite with the same value. NaN comparisons
+    # are false either way, so neither variant updates on a NaN step
+    # (NaN-sticky semantics are preserved). Not refactored to
+    # `Float::min` / `Float::max` because those mask NaN by returning
+    # the non-NaN argument, which would change the diagnostic on
+    # numerically broken runs.
+    "sweep.rs:415:29: replace < with <= in sweep_2site",
+    "sweep.rs:418:28: replace > with >= in sweep_2site",
     # contract_to_tensor trans-flag predicates: any mutation that forces the predicate
     # to false (or removes the leading `!`) routes through the physical-permute GEMM
     # path, which produces identical numerical results to the trans-flag GEMM path
