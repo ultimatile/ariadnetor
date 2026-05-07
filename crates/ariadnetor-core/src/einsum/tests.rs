@@ -237,6 +237,22 @@ fn is_matmul_false_outer_product() {
     assert!(!expr.is_matrix_multiply());
 }
 
+#[test]
+fn is_matmul_false_lhs_rank2_rhs_rank3() {
+    // Asymmetric per-input rank with 3 unique indices and 1 contracted index:
+    // probes the rhs branch of the per-input rank short-circuit.
+    let expr = EinsumExpr::parse("ij,ijk->ik").unwrap();
+    assert!(!expr.is_matrix_multiply());
+}
+
+#[test]
+fn is_matmul_false_lhs_rank3_rhs_rank2() {
+    // Symmetric counterpart probing the lhs branch of the per-input rank
+    // short-circuit.
+    let expr = EinsumExpr::parse("ijk,ij->ik").unwrap();
+    assert!(!expr.is_matrix_multiply());
+}
+
 // ---- infer_output_shape ----
 
 #[test]
