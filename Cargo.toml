@@ -40,3 +40,7 @@ rayon = "1"
 # Dev dependencies
 approx = "0.5"
 criterion = { version = "0.5", features = ["html_reports"] }
+
+[profile.bench]
+debug = "line-tables-only"
+split-debuginfo = "packed"
