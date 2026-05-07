@@ -419,3 +419,66 @@ fn env_stale_neighbor_surfaces_as_error() {
         })
     ));
 }
+
+// ---------------------------------------------------------------------------
+// Test 10 — asymmetric length mismatch in advance_left / advance_right
+// ---------------------------------------------------------------------------
+//
+// The length predicate is `mpo.len() != n_sites || mps.len() != n_sites`.
+// When both are mismatched, the symmetric existing test passes under
+// either `||` or `&&`. The asymmetric configuration (one matched, one
+// mismatched) is what distinguishes the original `||` from the `&&`
+// mutation: under `&&`, the mutated condition is `false && true = false`
+// and the function continues past the length check, surfacing a
+// different error or panic instead of `LengthMismatch`. Asserting
+// the explicit `mps`/`mpo` values pinpoints the variant.
+
+#[test]
+fn env_advance_left_asymmetric_length_mismatch() {
+    let n = 4;
+    let mps_4 = product_state_mps(n);
+    let mpo_4 = identity_mpo(n, 2);
+    let mut env = DmrgEnvs::build(&mps_4, &mpo_4).expect("build");
+
+    let mps_3 = product_state_mps(3);
+    let mpo_3 = identity_mpo(3, 2);
+
+    // mpo matches n_sites = 4, mps does not (3).
+    let result = env.advance_left(&mps_3, &mpo_4, 0);
+    assert!(
+        matches!(result, Err(DmrgEnvError::LengthMismatch { mps: 3, mpo: 4 })),
+        "expected LengthMismatch {{ mps: 3, mpo: 4 }}, got {result:?}",
+    );
+
+    // mps matches n_sites = 4, mpo does not (3).
+    let result = env.advance_left(&mps_4, &mpo_3, 0);
+    assert!(
+        matches!(result, Err(DmrgEnvError::LengthMismatch { mps: 4, mpo: 3 })),
+        "expected LengthMismatch {{ mps: 4, mpo: 3 }}, got {result:?}",
+    );
+}
+
+#[test]
+fn env_advance_right_asymmetric_length_mismatch() {
+    let n = 4;
+    let mps_4 = product_state_mps(n);
+    let mpo_4 = identity_mpo(n, 2);
+    let mut env = DmrgEnvs::build(&mps_4, &mpo_4).expect("build");
+
+    let mps_3 = product_state_mps(3);
+    let mpo_3 = identity_mpo(3, 2);
+
+    // advance_right targets `right[j+1]`. Use j = 0 so the read of
+    // right[1] never happens (length check fires first).
+    let result = env.advance_right(&mps_3, &mpo_4, 0);
+    assert!(
+        matches!(result, Err(DmrgEnvError::LengthMismatch { mps: 3, mpo: 4 })),
+        "expected LengthMismatch {{ mps: 3, mpo: 4 }}, got {result:?}",
+    );
+
+    let result = env.advance_right(&mps_4, &mpo_3, 0);
+    assert!(
+        matches!(result, Err(DmrgEnvError::LengthMismatch { mps: 4, mpo: 3 })),
+        "expected LengthMismatch {{ mps: 4, mpo: 3 }}, got {result:?}",
+    );
+}
