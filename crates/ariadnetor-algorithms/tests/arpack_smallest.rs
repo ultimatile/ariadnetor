@@ -10,11 +10,11 @@
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
 use arnet_core::Scalar;
-use arnet_linalg::eigh;
+use arnet_linalg::{eigh, norm};
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
 use num_complex::Complex;
-use num_traits::{Float, NumCast, Zero};
+use num_traits::{Float, NumCast, One, Zero};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -114,6 +114,45 @@ where
         expected,
         err,
     );
+
+    // Eigenvector dimension contract
+    assert_eq!(
+        result.eigenvector.shape(),
+        &[n],
+        "scalar type {}: eigenvector shape mismatch",
+        std::any::type_name::<T>(),
+    );
+
+    // Unit normalization. The wrapper applies `normalize` to its
+    // output, so ||v|| equals 1 modulo IEEE rounding. 1e-5 is
+    // generous against the f32 floor (~few * ULP * sqrt(n)) and
+    // trivial against the f64 floor.
+    let v_norm = norm(&result.eigenvector);
+    let one_real = T::Real::one();
+    let norm_eps_real: T::Real = NumCast::from(1e-5_f64).unwrap();
+    assert!(
+        Float::abs(v_norm - one_real) < norm_eps_real,
+        "scalar type {}: ||v|| = {:?}, expected ~1",
+        std::any::type_name::<T>(),
+        v_norm,
+    );
+
+    // True residual ||H psi - lambda psi||. ARPACK's stopping
+    // criterion is relative (residual <= tol * |lambda|); for the
+    // hardcoded tol = 1e-6 here the wrapper-recomputed residual is
+    // at most a few * 1e-6 across all four scalar types. Bound
+    // 1e-4 * (|lambda| + 1) keeps two orders of headroom.
+    let lambda_abs = Float::abs(result.eigenvalue);
+    let res_mult: T::Real = NumCast::from(1e-4_f64).unwrap();
+    let residual_bound = res_mult * (lambda_abs + one_real);
+    assert!(
+        result.residual < residual_bound,
+        "scalar type {}: residual = {:?} exceeds bound {:?}",
+        std::any::type_name::<T>(),
+        result.residual,
+        residual_bound,
+    );
+
     assert!(result.n_matvec >= 1);
 }
 
@@ -167,6 +206,12 @@ fn arpack_diagonal_f64_returns_smallest() {
     // `tol = 1e-10` the wrapper-recomputed residual lands well below
     // 1e-8.
     assert!(result.residual < 1e-8, "residual = {}", result.residual);
+    assert_eq!(
+        result.eigenvector.shape(),
+        &[n],
+        "eigenvector shape mismatch",
+    );
+    assert_abs_diff_eq!(norm(&result.eigenvector), 1.0_f64, epsilon = 1e-12);
     assert!(
         result.n_matvec >= 1,
         "matvec count should be positive: {}",
@@ -283,9 +328,8 @@ fn arpack_converged_flag_reflects_absolute_tol() {
 }
 
 // ---------------------------------------------------------------------------
-// `tol` validation — tol = 0 (and non-finite / negative) must be rejected
-// up-front since the wrapper's absolute `converged` check can't honor
-// ARPACK's "tol = 0 means machine-epsilon default" sentinel.
+// `ArpackError` contract — trait bounds, From-arpack conversion preserves
+// each variant, and Display carries payload-derived content.
 // ---------------------------------------------------------------------------
 
 /// Compile-time contract: `ArpackError` must implement the standard
@@ -302,19 +346,95 @@ fn arpack_error_implements_standard_traits() {
     assert_standard_error::<ArpackError>();
 }
 
+/// Each `arpack::Error` variant must round-trip into the matching
+/// `ArpackError` variant (no collapsing into the catch-all
+/// `InvalidParam("unrecognized arpack error variant")`), and the
+/// resulting Display output must carry a payload-derived substring.
+fn assert_round_trip<F>(input: arpack::Error, expected_substr: &str, predicate: F)
+where
+    F: FnOnce(&ArpackError) -> bool,
+{
+    let converted: ArpackError = input.into();
+    assert!(
+        predicate(&converted),
+        "variant lost on conversion: got {converted:?}",
+    );
+    let display = format!("{converted}");
+    assert!(
+        display.contains(expected_substr),
+        "Display missing {expected_substr:?}: {display:?}",
+    );
+}
+
 #[test]
-fn arpack_rejects_tol_zero() {
-    let n = 4;
-    let result = arpack_smallest::<f64, _>(
-        &|_v: &Dense<f64>| unreachable!("matvec should not run when params are rejected"),
-        n,
-        &ArpackParams {
-            tol: 0.0,
-            max_iter: 100,
-            ncv: None,
+fn arpack_error_from_arpack_preserves_variant_and_display() {
+    use arpack::Error;
+
+    assert_round_trip(Error::InvalidParam("dummy"), "dummy", |e| {
+        matches!(e, ArpackError::InvalidParam("dummy"))
+    });
+    assert_round_trip(Error::AupdFailed(7), "7", |e| {
+        matches!(e, ArpackError::AupdFailed(7))
+    });
+    assert_round_trip(Error::EupdFailed(-3), "-3", |e| {
+        matches!(e, ArpackError::EupdFailed(-3))
+    });
+    assert_round_trip(Error::UnexpectedIdo(99), "99", |e| {
+        matches!(e, ArpackError::UnexpectedIdo(99))
+    });
+    assert_round_trip(
+        Error::MaxIterReached {
+            iters: 10,
+            nconv: 0,
+            n_matvec: 50,
+        },
+        "iters = 10",
+        |e| {
+            matches!(
+                e,
+                ArpackError::MaxIterReached {
+                    iters: 10,
+                    nconv: 0,
+                    n_matvec: 50,
+                }
+            )
         },
     );
-    assert!(matches!(result, Err(ArpackError::InvalidParam(_))));
+}
+
+// ---------------------------------------------------------------------------
+// `tol` validation — non-finite and non-positive `tol` must be rejected
+// up-front since the wrapper's absolute `converged` check can't honor
+// ARPACK's "tol = 0 means machine-epsilon default" sentinel.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn arpack_rejects_invalid_tol() {
+    let n = 4;
+    let bad_tols = [
+        ("zero", 0.0_f64),
+        ("negative", -1.0),
+        ("nan", f64::NAN),
+        ("infinity", f64::INFINITY),
+        ("negative infinity", f64::NEG_INFINITY),
+    ];
+    for (label, tol) in bad_tols {
+        let result = arpack_smallest::<f64, _>(
+            &|_v: &Dense<f64>| {
+                unreachable!("matvec must not run when tol = {label} is rejected up-front")
+            },
+            n,
+            &ArpackParams {
+                tol,
+                max_iter: 100,
+                ncv: None,
+            },
+        );
+        assert!(
+            matches!(result, Err(ArpackError::InvalidParam(_))),
+            "tol = {label} should be rejected, got {result:?}",
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
