@@ -11,8 +11,11 @@ use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Dense, Direction, QNIndex, Sector, U1Sector};
 use num_complex::Complex;
 
+use arnet_mps::Mps;
+
 use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_c64, make_n2_mpo_f64, make_n2_mps_c64, make_n2_mps_f64,
+    make_n3_mpo_f64, make_n3_mps_f64,
 };
 use super::helpers::densify_bsp_c64;
 
@@ -283,4 +286,143 @@ fn bsp_heff_complex_path() {
     assert!(result.eigenvalue.is_finite());
     assert!(result.converged);
     let _ = densify_bsp_c64(&result.u);
+}
+
+// Asymmetric length mismatch: exactly one of `mps.len()` and
+// `mpo.len()` matches `envs.n_sites()`. The original `||` predicate
+// returns `LengthMismatch` either way; mutating to `&&` suppresses
+// the asymmetric branch and continues into the rank checks. Binding
+// the explicit `mps`/`mpo`/`envs` values pins the variant.
+#[test]
+fn bsp_validate_inputs_asymmetric_length_mismatch() {
+    let mps_n2 = make_n2_mps_f64();
+    let mpo_n2 = make_n2_mpo_f64(1.5);
+    let envs_n2 = build_envs_n2_f64(&mps_n2, &mpo_n2);
+    let mps_n3 = make_n3_mps_f64();
+    let mpo_n3 = make_n3_mpo_f64(1.5);
+
+    let params = LanczosParams::default();
+    let trunc = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: None,
+    };
+
+    let result = dmrg_2site_step_block_sparse(&envs_n2, &mps_n3, &mpo_n2, 0, &params, &trunc);
+    assert!(
+        matches!(
+            result,
+            Err(DmrgHeffError::LengthMismatch {
+                mps: 3,
+                mpo: 2,
+                envs: 2,
+            })
+        ),
+        "expected LengthMismatch {{ mps: 3, mpo: 2, envs: 2 }}, got {:?}",
+        result.as_ref().err().map(|e| format!("{e}")),
+    );
+
+    let result = dmrg_2site_step_block_sparse(&envs_n2, &mps_n2, &mpo_n3, 0, &params, &trunc);
+    assert!(
+        matches!(
+            result,
+            Err(DmrgHeffError::LengthMismatch {
+                mps: 2,
+                mpo: 3,
+                envs: 2,
+            })
+        ),
+        "expected LengthMismatch {{ mps: 2, mpo: 3, envs: 2 }}, got {:?}",
+        result.as_ref().err().map(|e| format!("{e}")),
+    );
+}
+
+// StaleEnv reports `index: site + 2`. For site = 0 the original
+// reports `index = 2`; the `+ → *` mutant reports `index = 0`. The
+// binding on `index: 2` distinguishes them. Setting up a stale
+// `right[2]` requires the n=3 fixture: `advance_left(0)` clears
+// `right[1]`, `advance_left(1)` clears `right[2]` (interior since
+// `1 + 1 < 3`).
+#[test]
+fn bsp_validate_inputs_stale_right_index_pinpoint() {
+    let mps = make_n3_mps_f64();
+    let mpo = make_n3_mpo_f64(1.5);
+    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("envs build n=3");
+
+    envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
+    envs.advance_left(&mps, &mpo, 1).expect("advance_left(1)");
+
+    let params = LanczosParams::default();
+    let trunc = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: None,
+    };
+    let result = dmrg_2site_step_block_sparse(&envs, &mps, &mpo, 0, &params, &trunc);
+    assert!(
+        matches!(
+            result,
+            Err(DmrgHeffError::StaleEnv {
+                side: "right",
+                index: 2,
+            })
+        ),
+        "expected StaleEnv {{ side: \"right\", index: 2 }}, got {:?}",
+        result.as_ref().err().map(|e| format!("{e}")),
+    );
+}
+
+// Isolate `check_qn_pair`'s sector-list comparison. Build envs from
+// the standard n=2 fixture, then call the step with an alternate MPS
+// whose `mps_alt[0].indices()[0]` declares a different sector list
+// (with the same total dim and the same direction as the original).
+// All earlier checks pass — rank, total-dim equality, the inline
+// W-bra/MPS-phys direction equalities, and flux-identity. The first
+// `check_qn_pair("left.bot_ket vs psi.axis 0 (MPS[i].left_bond)", _)`
+// fails on sector-list mismatch. Under the stub `Ok(())` mutation,
+// that call returns success, validation continues, and the surfaced
+// error has a different `field` string. Exact-match `field` binding
+// distinguishes original from mutation.
+#[test]
+fn bsp_validate_inputs_qn_mismatch_contracted_axis_sectors() {
+    let mps_envs = make_n2_mps_f64();
+    let mpo = make_n2_mpo_f64(1.5);
+    let envs = build_envs_n2_f64(&mps_envs, &mpo);
+
+    let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
+    let alt_left = vec![(U1Sector(2), 1)];
+    let alt_mid = vec![(U1Sector(2), 1), (U1Sector(3), 1)];
+    let trivial = vec![(U1Sector(0), 1)];
+
+    let mps_alt0 = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(alt_left, Direction::Out),
+            QNIndex::new(phys.clone(), Direction::Out),
+            QNIndex::new(alt_mid.clone(), Direction::In),
+        ],
+        U1Sector::identity(),
+    );
+    let mps_alt1 = BlockSparse::<f64, U1Sector>::zeros(
+        vec![
+            QNIndex::new(alt_mid, Direction::Out),
+            QNIndex::new(phys, Direction::Out),
+            QNIndex::new(trivial, Direction::In),
+        ],
+        U1Sector(2),
+    );
+    let mps_alt = Mps::from_storages(vec![mps_alt0, mps_alt1]);
+
+    let params = LanczosParams::default();
+    let trunc = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: None,
+    };
+    let result = dmrg_2site_step_block_sparse(&envs, &mps_alt, &mpo, 0, &params, &trunc);
+    assert!(
+        matches!(
+            &result,
+            Err(DmrgHeffError::QnMismatch { field, .. })
+                if *field == "left.bot_ket vs psi.axis 0 (MPS[i].left_bond)"
+        ),
+        "expected QnMismatch on \"left.bot_ket vs psi.axis 0 (MPS[i].left_bond)\", got {:?}",
+        result.as_ref().err().map(|e| format!("{e}")),
+    );
 }
