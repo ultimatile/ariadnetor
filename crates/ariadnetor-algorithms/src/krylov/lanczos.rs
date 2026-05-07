@@ -504,6 +504,13 @@ mod tests {
             })
             .fold(T::Real::zero(), |acc, x| acc + x)
             .sqrt();
+        // The seed is chosen so the random draw is non-zero, exercising the
+        // un-overwritten code path. If raw_norm collapses (RNG semantics change
+        // or seed swap), surface that explicitly rather than NaN-mismatching.
+        assert!(
+            raw_norm > T::Real::zero(),
+            "test seed must produce a non-zero sample so the un-overwritten path is exercised",
+        );
         let inv_norm = T::Real::one() / raw_norm;
         let expected_data: Vec<T> = raw.iter().map(|&x| x.scale_real(inv_norm)).collect();
         let expected = Dense::new(expected_data, vec![dim]);
