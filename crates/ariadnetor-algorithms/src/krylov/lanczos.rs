@@ -386,3 +386,141 @@ where
     let z_data = eigvecs.data()[0..m].to_vec();
     (lambda, Dense::new(z_data, vec![m]))
 }
+
+#[cfg(test)]
+mod tests {
+    //! Direct unit tests for the private helpers `sub_real_axpy`,
+    //! `sub_two_real_axpy`, and `random_unit_vector`. These helpers feed the
+    //! Lanczos recurrence and the initial-vector draw; sign or branch
+    //! mutations inside them are absorbed downstream (the recurrence by full
+    //! reorthogonalization, the random helper by normalization), so they
+    //! cannot be killed end-to-end. Pinning each helper against an exact
+    //! hand-computed or RNG-replicated reference closes that gap.
+    use super::*;
+    use num_complex::Complex;
+
+    fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
+        crate::numeric::try_real_from_f64::<T>(x)
+            .expect("test value must be representable in T::Real")
+    }
+
+    fn dense_from_real<T: Scalar>(values: &[f64]) -> Dense<T> {
+        let data: Vec<T> = values
+            .iter()
+            .map(|&x| T::from_real_imag(real_from_f64::<T>(x), T::Real::zero()))
+            .collect();
+        Dense::new(data, vec![values.len()])
+    }
+
+    fn assert_dense_close<T>(got: &Dense<T>, expected: &Dense<T>, tol: T::Real)
+    where
+        T: Scalar + std::fmt::Debug,
+        T::Real: std::fmt::Debug,
+    {
+        assert_eq!(got.shape(), expected.shape());
+        let neg_one = T::Real::zero() - T::Real::one();
+        for (i, (&g, &e)) in got.data().iter().zip(expected.data().iter()).enumerate() {
+            let diff = Scalar::abs(g + e.scale_real(neg_one));
+            assert!(
+                diff <= tol,
+                "mismatch at index {i}: got = {g:?}, expected = {e:?}, diff = {diff:?}",
+            );
+        }
+    }
+
+    fn check_sub_real_axpy<T>()
+    where
+        T: Scalar + std::fmt::Debug,
+        T::Real: std::fmt::Debug,
+    {
+        let w = dense_from_real::<T>(&[10.0, 20.0, 30.0]);
+        let v = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
+        let alpha = real_from_f64::<T>(2.0);
+        // w - alpha v = [10-2, 20-4, 30-6] = [8, 16, 24]
+        let expected = dense_from_real::<T>(&[8.0, 16.0, 24.0]);
+        let result = sub_real_axpy(&w, alpha, &v);
+        assert_dense_close::<T>(&result, &expected, real_from_f64::<T>(1e-12));
+    }
+
+    #[test]
+    fn sub_real_axpy_subtracts_alpha_v_for_real_and_complex() {
+        check_sub_real_axpy::<f64>();
+        check_sub_real_axpy::<Complex<f64>>();
+    }
+
+    fn check_sub_two_real_axpy<T>()
+    where
+        T: Scalar + std::fmt::Debug,
+        T::Real: std::fmt::Debug,
+    {
+        let w = dense_from_real::<T>(&[10.0, 20.0]);
+        let v = dense_from_real::<T>(&[1.0, 2.0]);
+        let u = dense_from_real::<T>(&[4.0, 5.0]);
+        let alpha = real_from_f64::<T>(2.0);
+        let beta = real_from_f64::<T>(3.0);
+        // w - 2 v - 3 u = [10-2-12, 20-4-15] = [-4, 1]
+        let expected = dense_from_real::<T>(&[-4.0, 1.0]);
+        let result = sub_two_real_axpy(&w, alpha, &v, beta, &u);
+        assert_dense_close::<T>(&result, &expected, real_from_f64::<T>(1e-12));
+    }
+
+    #[test]
+    fn sub_two_real_axpy_subtracts_alpha_v_and_beta_u_for_real_and_complex() {
+        check_sub_two_real_axpy::<f64>();
+        check_sub_two_real_axpy::<Complex<f64>>();
+    }
+
+    fn check_random_unit_vector_matches_unaltered_path<T>()
+    where
+        T: Scalar + std::fmt::Debug,
+        T::Real: std::fmt::Debug,
+    {
+        // Production helper consumes one re-sample and one im-sample per
+        // element regardless of T. Reconstruct the un-overwritten path with
+        // the same RNG consumption order so we compare against a vector that
+        // could only be produced when the all-zero retry branch is NOT taken.
+        // The mutation `== → !=` flips that branch into "always take", which
+        // would overwrite data[0] = T::one() before normalization and produce
+        // a different vector here.
+        let dim = 4;
+        let seed = 42_u64;
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let observed = random_unit_vector::<T>(dim, &mut rng);
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let raw: Vec<T> = (0..dim)
+            .map(|_| {
+                let re_f64: f64 = rng.random_range(-0.5..0.5);
+                let im_f64: f64 = rng.random_range(-0.5..0.5);
+                T::from_real_imag(real_from_f64::<T>(re_f64), real_from_f64::<T>(im_f64))
+            })
+            .collect();
+        let raw_norm = raw
+            .iter()
+            .map(|&x| {
+                let a = Scalar::abs(x);
+                a * a
+            })
+            .fold(T::Real::zero(), |acc, x| acc + x)
+            .sqrt();
+        // The seed is chosen so the random draw is non-zero, exercising the
+        // un-overwritten code path. If raw_norm collapses (RNG semantics change
+        // or seed swap), surface that explicitly rather than NaN-mismatching.
+        assert!(
+            raw_norm > T::Real::zero(),
+            "test seed must produce a non-zero sample so the un-overwritten path is exercised",
+        );
+        let inv_norm = T::Real::one() / raw_norm;
+        let expected_data: Vec<T> = raw.iter().map(|&x| x.scale_real(inv_norm)).collect();
+        let expected = Dense::new(expected_data, vec![dim]);
+
+        assert_dense_close::<T>(&observed, &expected, real_from_f64::<T>(1e-12));
+    }
+
+    #[test]
+    fn random_unit_vector_matches_unaltered_path_for_real_and_complex() {
+        check_random_unit_vector_matches_unaltered_path::<f64>();
+        check_random_unit_vector_matches_unaltered_path::<Complex<f64>>();
+    }
+}

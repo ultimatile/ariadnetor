@@ -204,3 +204,33 @@ fn lanczos_complex_hermitian_matches_eigh() {
     assert!(result.residual < 1e-7, "residual = {}", result.residual);
     assert!(result.converged, "expected converged = true");
 }
+
+// ---------------------------------------------------------------------------
+// Iteration-count contract
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lanczos_n1_returns_iters_one() {
+    // dim = 1 forces max_iter to be capped to 1, so the loop runs once at j = 0.
+    // The unit-norm initial vector is ±1; alpha = h[0,0]; the recurrence yields
+    // w = h*v_0 - alpha*v_0 = 0 exactly, beta = 0 ≤ tol, so the residual check
+    // breaks at the end of the iteration with iters = j + 1 = 1. The mutation
+    // `iters = j + 1 → j * 1` would set iters = 0 in this scenario.
+    let h = Dense::new(vec![5.0_f64], vec![1, 1]);
+    let result = lanczos_smallest::<f64, _>(
+        &|v: &Dense<f64>| matvec_cm(&h, 1, v),
+        1,
+        &LanczosParams {
+            max_iter: 10,
+            tol: 1e-12,
+            seed: Some(0),
+        },
+    );
+
+    assert_eq!(
+        result.iters, 1,
+        "n=1 must converge in exactly one iteration"
+    );
+    assert_abs_diff_eq!(result.eigenvalue, 5.0, epsilon = 1e-12);
+    assert!(result.converged, "expected converged = true");
+}
