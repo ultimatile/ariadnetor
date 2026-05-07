@@ -131,4 +131,21 @@ exclude_re = [
     "ContractionError>::fmt .* Ok",
     # norm Mixed arm: optimization shortcut; fallback computes same result via full inner product
     "inner.rs.*delete match arm.*Mixed.*in norm",
+    # lanczos_smallest: equivalent mutants under full reorthogonalization.
+    # 169:35 — `basis[j - 1]` → `basis[j / 1]` = `basis[j]` (= v_j). The recurrence's
+    # altered subtraction lives entirely in span(basis); two passes of classical
+    # Gram-Schmidt reorthogonalization re-project w onto span(basis)^perp to working
+    # precision, so β, alpha, tridiagonal entries, and basis are indistinguishable.
+    # Tests at tol >> eps cannot distinguish. The peer mutation `:168:37 - → /`
+    # (`betas[j - 1]` → `betas[j]`) is NOT equivalent: betas.len() == j at iter j > 0,
+    # so betas[j] is OOB and the mutation panics out.
+    "lanczos.rs:169:35: replace - with / in lanczos_smallest",
+    # 210:14 — `j + 1 == max_iter` → `j * 1 == max_iter`. The `for j in 0..max_iter`
+    # loop terminates at j = max_iter - 1 in both versions; the mutation only inserts
+    # an extra basis.push / betas.push before the natural loop exit. Neither is
+    # surfaced in LanczosResult, and Ritz reconstruction uses `take(m)` with
+    # m ≤ max_iter so the extra entry is never read. The peer mutation
+    # `:210:18 == → !=` is NOT equivalent (would break at every j ≠ max_iter - 1,
+    # including j = 0) and is caught.
+    "lanczos.rs:210:14: replace \\+ with \\* in lanczos_smallest",
 ]
