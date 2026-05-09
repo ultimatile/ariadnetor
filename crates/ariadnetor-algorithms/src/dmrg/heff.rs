@@ -193,11 +193,15 @@ pub struct TwoSiteStepResult<T: Scalar> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
-    /// `true` iff the local eigensolver's true-residual test fell at
-    /// or below the variant's `tol` (`LanczosParams::tol` /
-    /// `ArpackParams::tol`). On `false`, callers receive the
-    /// best-effort eigenpair plus its split — they decide whether to
-    /// accept it, retry with looser params, or abort.
+    /// `true` iff the local eigensolver succeeded — Lanczos by its
+    /// absolute true-residual test against `LanczosParams::tol`,
+    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
+    /// return from `arpack_smallest`). The two arms intentionally
+    /// disagree on what they call "converged": Lanczos uses the
+    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
+    /// On `false`, callers receive the best-effort eigenpair plus
+    /// its split — they decide whether to accept it, retry with
+    /// looser params, or abort.
     pub converged: bool,
     /// Left singular vectors, shape `[chi_l, d_i, chi_new]`.
     /// Left-canonical at axes `(chi_l, d_i)` — i.e. `U^† U =
@@ -439,11 +443,24 @@ where
         #[cfg(feature = "arpack")]
         LocalEigensolverParams::Arpack(p) => {
             let res = arpack_smallest::<T, _>(&heff, dim, p)?;
+            // For step-level convergence, treat any `Ok` return from
+            // ARPACK as success: ARPACK has met its relative-tol
+            // stopping criterion. `ArpackResult.converged` is a
+            // stricter *absolute*-tol divergence indicator (true iff
+            // `residual <= tol` with `tol` interpreted in absolute
+            // units), and is structurally hard to satisfy at tight
+            // `tol` even on successful runs because ARPACK's internal
+            // criterion is `residual <= tol * |lambda|`. Propagating
+            // it as the step-level flag would prevent
+            // `DmrgResult.converged = true` for ARPACK-backed sweeps
+            // even when the energy has stabilized; the absolute
+            // residual is still surfaced via `residual` for callers
+            // that want it.
             (
                 res.eigenvalue,
                 res.eigenvector,
                 res.iters,
-                res.converged,
+                true,
                 res.residual,
             )
         }

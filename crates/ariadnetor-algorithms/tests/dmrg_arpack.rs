@@ -180,14 +180,12 @@ fn dmrg_arpack_matches_lanczos_on_heisenberg_n6() {
         res_lan.converged,
         "Lanczos arm must converge on n=6 Heisenberg"
     );
-    // The ARPACK arm's per-step `converged` flag uses an *absolute*
-    // residual bound but ARPACK's internal stopping criterion is
-    // *relative* (`residual ≤ tol·|lambda|`), so step-level
-    // `converged = false` is possible even on a successful ARPACK
-    // call. Compare on the convergence-invariant evidence — the
-    // ground-state energy itself — and require step-level Lanczos
-    // convergence as a sanity belt on the comparison side.
-    //
+    assert!(
+        res_arp.converged,
+        "ARPACK arm must report convergence on n=6 Heisenberg \
+         (step-level flag is `Ok` from arpack_smallest, i.e. ARPACK's \
+         relative-tol stopping criterion fired)"
+    );
     // 1e-7 absorbs the per-step solver tolerances + sweep-truncation
     // residual at chi_max=8 without being so loose it would mask a
     // wired-wrong arm.

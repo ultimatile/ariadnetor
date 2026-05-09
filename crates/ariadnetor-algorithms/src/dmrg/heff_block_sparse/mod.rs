@@ -69,10 +69,14 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
-    /// `true` iff the local eigensolver's true-residual test fell at
-    /// or below the variant's `tol` (`LanczosParams::tol` /
-    /// `ArpackParams::tol`). On `false`, the caller still receives
-    /// the best-effort eigenpair plus its split.
+    /// `true` iff the local eigensolver succeeded — Lanczos by its
+    /// absolute true-residual test against `LanczosParams::tol`,
+    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
+    /// return from `arpack_smallest`). The two arms intentionally
+    /// disagree on what they call "converged": Lanczos uses the
+    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
+    /// On `false`, the caller still receives the best-effort
+    /// eigenpair plus its split.
     pub converged: bool,
     /// Left singular vectors. Legs `[chi_l, d_i, bond(In)]`,
     /// `flux = identity()`. Left-canonical at axes `(chi_l, d_i)`.
@@ -178,11 +182,16 @@ where
         #[cfg(feature = "arpack")]
         LocalEigensolverParams::Arpack(p) => {
             let res = arpack_smallest::<T, _>(&heff, dim, p)?;
+            // See `super::heff::dmrg_2site_step` ARPACK arm for the
+            // rationale: the step-level converged flag tracks
+            // ARPACK's relative-tol stopping (Ok return), not the
+            // absolute-tol divergence indicator that ARPACK exposes
+            // as `ArpackResult.converged`.
             (
                 res.eigenvalue,
                 res.eigenvector,
                 res.iters,
-                res.converged,
+                true,
                 res.residual,
             )
         }

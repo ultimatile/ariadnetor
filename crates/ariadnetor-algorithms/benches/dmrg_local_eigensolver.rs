@@ -20,7 +20,7 @@ use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
-use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -208,6 +208,11 @@ const RNG_SEED: u64 = 0xD3_BE_BC_AB_CD_EF_00_01;
 fn bench_dmrg_local_eigensolver(c: &mut Criterion) {
     let mut group = c.benchmark_group("dmrg_local_eigensolver");
 
+    // `dmrg_2site` takes `&Mpo` / `&Mps` and clones `psi0` internally
+    // before mutating it — so each iteration's true incremental cost
+    // is one Mps clone + one full sweep. `b.iter` re-invokes the
+    // closure, so the inputs can be borrowed across iterations
+    // without per-iteration cloning at the bench layer.
     for case in &cases() {
         let mpo = heisenberg_mpo_f64(case.n_sites, 1.0);
         let psi0 = random_mps_unknown_f64(case.n_sites, case.chi_max, RNG_SEED);
@@ -219,11 +224,7 @@ fn bench_dmrg_local_eigensolver(c: &mut Criterion) {
                 BenchmarkId::new("lanczos", case.label),
                 &(&mpo, &psi0, &params),
                 |b, (mpo, psi0, params)| {
-                    b.iter_batched(
-                        || ((*mpo).clone(), (*psi0).clone()),
-                        |(mpo, psi)| dmrg_2site(&mpo, &psi, params).expect("dmrg lanczos"),
-                        BatchSize::SmallInput,
-                    );
+                    b.iter(|| dmrg_2site(mpo, psi0, params).expect("dmrg lanczos"));
                 },
             );
         }
@@ -238,11 +239,7 @@ fn bench_dmrg_local_eigensolver(c: &mut Criterion) {
                 BenchmarkId::new("arpack", case.label),
                 &(&mpo, &psi0, &params),
                 |b, (mpo, psi0, params)| {
-                    b.iter_batched(
-                        || ((*mpo).clone(), (*psi0).clone()),
-                        |(mpo, psi)| dmrg_2site(&mpo, &psi, params).expect("dmrg arpack"),
-                        BatchSize::SmallInput,
-                    );
+                    b.iter(|| dmrg_2site(mpo, psi0, params).expect("dmrg arpack"));
                 },
             );
         }
