@@ -18,7 +18,7 @@ ariadnetor-mps = { path = "../ariadnetor-mps" }
 num-traits = { workspace = true }
 num-complex = { workspace = true, optional = true }
 rand = { workspace = true }
-arpack = { git = "https://github.com/ultimatile/arpack-rs.git", optional = true }
+arpack = { version = "0.0.1", optional = true }
 
 [dev-dependencies]
 approx = { workspace = true }
