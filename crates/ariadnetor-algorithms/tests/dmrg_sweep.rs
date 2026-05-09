@@ -9,7 +9,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
-    DmrgEnvs, DmrgResult, DmrgSweepError, DmrgSweepParams, SweepDirection, sweep_2site,
+    DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh};
@@ -182,11 +182,11 @@ fn standard_params_f64(seed: u64) -> DmrgSweepParams {
         max_sweeps: 20,
         min_sweeps: 1,
         energy_tol: 1e-10,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 200,
             tol: 1e-10,
             seed: Some(seed),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(1),
             target_trunc_err: None,
@@ -234,11 +234,11 @@ fn t2_energy_monotone_nonincreasing_across_sweeps() {
         max_sweeps: 10,
         min_sweeps: 10, // force all sweeps to run for a full energy trace.
         energy_tol: 0.0,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 200,
             tol: 1e-12,
             seed: Some(0xBEEF),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(2),
             target_trunc_err: None,
@@ -274,11 +274,11 @@ fn t3_boundary_sites_covered_each_sweep() {
         max_sweeps: 3,
         min_sweeps: 3,
         energy_tol: 0.0,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 100,
             tol: 1e-10,
             seed: Some(0x55),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(1),
             target_trunc_err: None,
@@ -321,11 +321,11 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
         max_sweeps: 1,
         min_sweeps: 1,
         energy_tol: 0.0,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 100,
             tol: 1e-10,
             seed: Some(0x42),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(1),
             target_trunc_err: None,
@@ -345,13 +345,13 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
         max_sweeps: 1,
         min_sweeps: 1,
         energy_tol: 0.0,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 100,
             tol: 1e-10,
             // SEED PINNED so the two parallel runs draw identical
             // initial Lanczos vectors.
             seed: Some(0xDEAD),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(1),
             target_trunc_err: None,
@@ -608,26 +608,25 @@ fn t7_c64_psd_product_converges() {
         max_sweeps: 20,
         min_sweeps: 1,
         energy_tol: 1e-10,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 200,
             tol: 1e-10,
             seed: Some(0xC3),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(1),
             target_trunc_err: None,
         },
     };
 
-    let result: DmrgResult<f64> =
-        sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
+    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
     let reference: f64 = hs.iter().map(|h| min_eig_complex_herm(h, d)).product();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
     assert!(result.converged);
 }
 
 // ---------------------------------------------------------------------------
-// T8 — lanczos_converged propagation
+// T8 — eigensolver_converged propagation
 // ---------------------------------------------------------------------------
 #[test]
 fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
@@ -642,11 +641,11 @@ fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
         max_sweeps: 5,
         min_sweeps: 1,
         energy_tol: 1.0, // very loose — energy delta will satisfy it.
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 1,
             tol: 1e-15,
             seed: Some(0xE3),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(1),
             target_trunc_err: None,
@@ -656,13 +655,13 @@ fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
     assert!(
         !result.converged,
-        "DmrgResult.converged must be false when any step has lanczos_converged=false"
+        "DmrgResult.converged must be false when any step has eigensolver_converged=false"
     );
     let any_step_failed = result
         .sweeps
         .iter()
         .flat_map(|s| s.steps.iter())
-        .any(|s| !s.lanczos_converged);
+        .any(|s| !s.eigensolver_converged);
     assert!(
         any_step_failed,
         "test fixture should produce at least one non-converged Lanczos step"
@@ -681,11 +680,11 @@ fn t9_diagnostics_fields_consistent() {
         max_sweeps: 3,
         min_sweeps: 3,
         energy_tol: 0.0,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 100,
             tol: 1e-10,
             seed: Some(0xD2),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(2),
             target_trunc_err: None,
@@ -703,9 +702,9 @@ fn t9_diagnostics_fields_consistent() {
                 step.residual
             );
             assert!(
-                step.lanczos_iters >= 1,
-                "step.lanczos_iters = {} must be >= 1 (Lanczos always runs at least once)",
-                step.lanczos_iters
+                step.eigensolver_iters >= 1,
+                "step.eigensolver_iters = {} must be >= 1 (Lanczos always runs at least once)",
+                step.eigensolver_iters
             );
             assert!(
                 step.bond_dim >= 1,
@@ -734,11 +733,11 @@ fn t9_diagnostics_fields_consistent() {
             .iter()
             .map(|s| s.trunc_err)
             .fold(f64::NEG_INFINITY, f64::max);
-        let expected_all_ok = sweep.steps.iter().all(|s| s.lanczos_converged);
+        let expected_all_ok = sweep.steps.iter().all(|s| s.eigensolver_converged);
 
         assert_abs_diff_eq!(sweep.min_step_eigenvalue, expected_min, epsilon = 0.0);
         assert_abs_diff_eq!(sweep.max_trunc_err, expected_max_te, epsilon = 0.0);
-        assert_eq!(sweep.all_lanczos_converged, expected_all_ok);
+        assert_eq!(sweep.all_eigensolver_converged, expected_all_ok);
     }
 
     // sweep.max_bond on the *last* sweep matches the actual MPS bond
@@ -780,11 +779,11 @@ fn t10_post_sweep_envs_have_no_stale_some_slots() {
             max_sweeps: 1,
             min_sweeps: 1,
             energy_tol: 0.0,
-            lanczos: LanczosParams {
+            eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
                 max_iter: 100,
                 tol: 1e-10,
                 seed: Some(0xF2),
-            },
+            }),
             trunc: TruncSvdParams {
                 chi_max: Some(1),
                 target_trunc_err: None,

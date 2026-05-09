@@ -15,7 +15,9 @@
 //!   accepted, negative rejected, NaN rejected, positive accepted.
 
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepError, DmrgSweepParams, sweep_2site};
+use arnet_algorithms::dmrg::{
+    DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
+};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_core::Scalar;
 use arnet_linalg::TruncSvdParams;
@@ -165,11 +167,11 @@ fn base_params(chi_max: Option<usize>, seed: u64) -> DmrgSweepParams {
         max_sweeps: 1,
         min_sweeps: 1,
         energy_tol: 0.0,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 100,
             tol: 1e-10,
             seed: Some(seed),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max,
             target_trunc_err: None,
@@ -231,11 +233,11 @@ fn n_sweeps_reaches_max_when_min_locked() {
         max_sweeps: 3,
         min_sweeps: 3,
         energy_tol: 0.0,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 100,
             tol: 1e-10,
             seed: Some(0xBEEF),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(2),
             target_trunc_err: None,
@@ -269,11 +271,11 @@ fn no_premature_convergence_on_tight_tol() {
         max_sweeps: 5,
         min_sweeps: 2,
         energy_tol: 1e-15,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 100,
             tol: 1e-10,
             seed: Some(0xFEED),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(2),
             target_trunc_err: None,

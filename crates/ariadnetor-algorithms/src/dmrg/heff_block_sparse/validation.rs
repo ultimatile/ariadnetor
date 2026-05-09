@@ -6,8 +6,9 @@
 //! QNIndex compatibility (opposite directions + matching sector
 //! lists), env free-output-leg equality with the psi template, MPO
 //! well-formedness (bra-ket duality and bra-vs-MPS-phys direction),
-//! identity-flux preconditions on env / MPO sites, and Lanczos
-//! parameter sanity.
+//! identity-flux preconditions on env / MPO sites, and the selected
+//! local eigensolver's parameter sanity (Lanczos by default, ARPACK
+//! behind the `arpack` feature).
 
 use std::sync::Arc;
 
@@ -16,14 +17,13 @@ use arnet_core::backend::ComputeBackend;
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::{BlockSparse, QNIndex, Sector};
 
-use crate::krylov::LanczosParams;
-
 use super::super::env::DmrgEnvs;
-use super::super::heff::DmrgHeffError;
+use super::super::heff_error::DmrgHeffError;
+use super::super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eigensolver_params};
 
 /// Validated input handles + derived dims, returned to the caller
 /// (the entry point in `mod.rs`) so it can build the Heff and drive
-/// Lanczos without re-deriving anything.
+/// the local eigensolver without re-deriving anything.
 pub(super) struct ValidatedInputs<'a, T: Scalar, S: Sector, B: ComputeBackend> {
     pub left: &'a BlockSparse<T, S>,
     pub right: &'a BlockSparse<T, S>,
@@ -39,7 +39,7 @@ pub(super) fn validate_inputs<'a, T, S, B>(
     mps: &'a Mps<BlockSparse<T, S>, B>,
     mpo: &'a Mpo<BlockSparse<T, S>, B>,
     site: usize,
-    params: &LanczosParams,
+    eigensolver: &LocalEigensolverParams,
 ) -> Result<ValidatedInputs<'a, T, S, B>, DmrgHeffError>
 where
     T: Scalar,
@@ -58,23 +58,10 @@ where
         return Err(DmrgHeffError::InvalidSite { site, n_sites });
     }
 
-    if params.max_iter == 0 {
-        return Err(DmrgHeffError::InvalidLanczosParams {
-            detail: "max_iter must be >= 1",
-        });
-    }
-    if !params.tol.is_finite() {
-        return Err(DmrgHeffError::InvalidLanczosParams {
-            detail: "tol must be finite",
-        });
-    }
-    if params.tol < 0.0 {
-        return Err(DmrgHeffError::InvalidLanczosParams {
-            detail: "tol must be non-negative",
-        });
-    }
-    if crate::numeric::try_real_from_f64::<T>(params.tol).is_none() {
-        return Err(DmrgHeffError::InvalidLanczosParams {
+    validate_eigensolver_params(eigensolver)
+        .map_err(|detail| DmrgHeffError::InvalidEigensolverParams { detail })?;
+    if crate::numeric::try_real_from_f64::<T>(eigensolver_tol(eigensolver)).is_none() {
+        return Err(DmrgHeffError::InvalidEigensolverParams {
             detail: "tol is not representable in T::Real",
         });
     }

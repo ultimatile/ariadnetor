@@ -3,9 +3,9 @@
 //! Mirrors [`super::heff`] (the Dense path) for a
 //! `BlockSparse<T, S>`-backed chain. The effective Hamiltonian
 //! built from `(left(i), W[i], W[i+1], right(i+2))` is exposed as
-//! a [`crate::krylov::LinearOp<T>`] so the existing Dense Lanczos
-//! solver drives it without a separate native BlockSparse Krylov
-//! path.
+//! a [`crate::krylov::LinearOp<T>`] so the existing Dense Krylov
+//! solvers (Lanczos by default, ARPACK behind the `arpack` feature)
+//! drive it without a separate native BlockSparse Krylov path.
 //!
 //! ## Flat-buffer adapter
 //!
@@ -46,10 +46,13 @@ use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse};
 use arnet_mps::{Mpo, Mps};
 use arnet_tensor::{BlockSparse, Sector};
 
-use crate::krylov::{LanczosParams, lanczos_smallest};
+#[cfg(feature = "arpack")]
+use crate::krylov::arpack_smallest;
+use crate::krylov::lanczos_smallest;
 
 use super::env::DmrgEnvs;
-use super::heff::DmrgHeffError;
+use super::heff_error::DmrgHeffError;
+use super::solver::{DmrgScalar, LocalEigensolverParams};
 
 /// Result of a single BlockSparse 2-site DMRG step: smallest local
 /// eigenpair plus the truncated-SVD split of its eigenvector.
@@ -66,8 +69,9 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
-    /// `true` iff Lanczos's true-residual test fell at or below
-    /// `LanczosParams::tol`. On `false`, the caller still receives
+    /// `true` iff the local eigensolver's true-residual test fell at
+    /// or below the variant's `tol` (`LanczosParams::tol` /
+    /// `ArpackParams::tol`). On `false`, the caller still receives
     /// the best-effort eigenpair plus its split.
     pub converged: bool,
     /// Left singular vectors. Legs `[chi_l, d_i, bond(In)]`,
@@ -87,16 +91,18 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
 /// BlockSparse-backed chain. Mirrors [`super::heff::dmrg_2site_step`]
 /// for the BlockSparse / U(1) path.
 ///
-/// Builds the local effective Hamiltonian, drives Lanczos via the
-/// flat-buffer adapter, then splits the optimized two-site block
-/// via [`trunc_svd_block_sparse`] with `nrow = 2`. Caller advances
-/// envs separately.
+/// Builds the local effective Hamiltonian, drives the selected
+/// local eigensolver (per [`LocalEigensolverParams`] — Lanczos by
+/// default, ARPACK behind the `arpack` feature) via the flat-buffer
+/// adapter, then splits the optimized two-site block via
+/// [`trunc_svd_block_sparse`] with `nrow = 2`. Caller advances envs
+/// separately.
 ///
 /// # Errors
 ///
 /// - [`DmrgHeffError::InvalidSite`], [`DmrgHeffError::LengthMismatch`],
 ///   [`DmrgHeffError::StaleEnv`], [`DmrgHeffError::ShapeMismatch`],
-///   [`DmrgHeffError::InvalidLanczosParams`],
+///   [`DmrgHeffError::InvalidEigensolverParams`],
 ///   [`DmrgHeffError::Contract`] — same semantics as
 ///   [`super::heff::dmrg_2site_step`].
 /// - [`DmrgHeffError::QnMismatch`] — BlockSparse-specific QN /
@@ -110,16 +116,16 @@ pub fn dmrg_2site_step_block_sparse<T, S, B>(
     mps: &Mps<BlockSparse<T, S>, B>,
     mpo: &Mpo<BlockSparse<T, S>, B>,
     site: usize,
-    params: &LanczosParams,
+    eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
 ) -> Result<TwoSiteStepResultBlockSparse<T, S>, DmrgHeffError>
 where
-    T: Scalar,
+    T: DmrgScalar,
     T::Real: Scalar<Real = T::Real>,
     S: Sector,
     B: ComputeBackend,
 {
-    let v = validation::validate_inputs(envs, mps, mpo, site, params)?;
+    let v = validation::validate_inputs(envs, mps, mpo, site, eigensolver)?;
 
     let heff = EffectiveHamiltonian2SiteBlockSparse::new(
         v.left,
@@ -138,11 +144,11 @@ where
         // still be unreachable on the (axis_0 × axis_1 × axis_1
         // × axis_2) sector lattice — in which case
         // `BlockSparse::zeros(...)` allocates zero blocks. Without
-        // this check, `lanczos_smallest`'s internal
-        // `assert!(dim >= 1)` would panic on otherwise valid user
-        // input. Doing the check here (post `new`) avoids a
-        // second `BlockSparse::zeros` allocation that a
-        // validation-time check would have required.
+        // this check the underlying solver's `dim >= 1`
+        // precondition fires (Lanczos panics, ARPACK rejects with
+        // `InvalidParam`) on otherwise valid user input. Doing the
+        // check here (post `new`) avoids a second `BlockSparse::zeros`
+        // allocation that a validation-time check would have required.
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "psi_template",
@@ -158,20 +164,42 @@ where
             ),
         });
     }
-    let lan = lanczos_smallest::<T, _>(&heff, dim, params);
+    let (eigenvalue, eigenvector, iters, converged, residual) = match eigensolver {
+        LocalEigensolverParams::Lanczos(p) => {
+            let lan = lanczos_smallest::<T, _>(&heff, dim, p);
+            (
+                lan.eigenvalue,
+                lan.eigenvector,
+                lan.iters,
+                lan.converged,
+                lan.residual,
+            )
+        }
+        #[cfg(feature = "arpack")]
+        LocalEigensolverParams::Arpack(p) => {
+            let res = arpack_smallest::<T, _>(&heff, dim, p)?;
+            (
+                res.eigenvalue,
+                res.eigenvector,
+                res.iters,
+                res.converged,
+                res.residual,
+            )
+        }
+    };
 
     let psi_4d = operator::scatter_flat_to_template(
-        lan.eigenvector.data(),
+        eigenvector.data(),
         &heff.psi_template,
         &heff.block_offsets,
     );
     let (u, s, vt, trunc_err) = trunc_svd_block_sparse(&*v.backend, &psi_4d, 2, trunc)?;
 
     Ok(TwoSiteStepResultBlockSparse {
-        eigenvalue: lan.eigenvalue,
-        residual: lan.residual,
-        iters: lan.iters,
-        converged: lan.converged,
+        eigenvalue,
+        residual,
+        iters,
+        converged,
         u,
         s,
         vt,

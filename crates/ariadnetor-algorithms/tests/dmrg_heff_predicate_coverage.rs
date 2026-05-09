@@ -5,7 +5,7 @@
 //! the minimum needed to drive the predicate paths — no oracles or
 //! cross-checks.
 
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, dmrg_2site_step};
+use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
@@ -59,7 +59,7 @@ fn heff_2site_step_asymmetric_length_and_zero_tol() {
     let mps_3 = product_state_mps(3, d);
     let mpo_3 = identity_mpo(3, d);
 
-    let lan_default = LanczosParams::default();
+    let lan_default = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -94,15 +94,15 @@ fn heff_2site_step_asymmetric_length_and_zero_tol() {
     );
 
     // tol = 0.0 must be accepted by the `< 0.0` predicate.
-    let zero_tol = LanczosParams {
+    let zero_tol = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 1,
         tol: 0.0,
         seed: Some(0),
-    };
+    });
     let result = dmrg_2site_step(&envs_4, &mps_4, &mpo_4, 0, &zero_tol, &trunc);
-    if let Err(DmrgHeffError::InvalidLanczosParams { detail }) = &result {
+    if let Err(DmrgHeffError::InvalidEigensolverParams { detail }) = &result {
         assert_ne!(
-            *detail, "tol must be non-negative",
+            *detail, "lanczos.tol must be non-negative",
             "tol = 0.0 must not surface the non-negative rejection (got {result:?})",
         );
     }
