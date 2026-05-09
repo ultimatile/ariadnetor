@@ -125,8 +125,8 @@ impl std::fmt::Display for DmrgHeffError {
                 write!(f, "linalg failure during two-site DMRG step")
             }
             #[cfg(feature = "arpack")]
-            DmrgHeffError::Arpack(_) => {
-                write!(f, "ARPACK failure during two-site DMRG step")
+            DmrgHeffError::Arpack(err) => {
+                write!(f, "ARPACK failure during two-site DMRG step: {err}")
             }
         }
     }

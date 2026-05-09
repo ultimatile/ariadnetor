@@ -308,9 +308,12 @@ where
     // finite value outside f32 range (NumCast::from returns Some(inf),
     // which try_real_from_f64 then maps to None). Surface that as
     // `InvalidParams` so the public API stays fallible end-to-end
-    // instead of panicking inside lanczos. lanczos.tol is gated here
-    // too so a borderline f32 tol does not slip past sweep-level
-    // validation only to abort the run from inside the local solve.
+    // instead of failing inside the local eigensolver (Lanczos's
+    // internal `try_real_from_f64` would panic; ARPACK's `tol_real`
+    // cast would also panic). The selected eigensolver's `tol` is
+    // gated here too so a borderline f32 tol does not slip past
+    // sweep-level validation only to abort the run from inside the
+    // local solve.
     let energy_tol_real: <R::Elem as Scalar>::Real =
         try_real_from_f64::<R::Elem>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
             detail: "energy_tol is not representable in the storage's real scalar type",
