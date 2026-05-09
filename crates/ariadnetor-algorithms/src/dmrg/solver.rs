@@ -65,8 +65,8 @@ impl From<ArpackParams> for LocalEigensolverParams {
 /// Returns the `&'static str` detail of the first failing constraint
 /// so the caller can wrap it into either
 /// [`super::sweep::DmrgSweepError::InvalidParams`] or
-/// [`super::heff::DmrgHeffError::InvalidEigensolverParams`] without
-/// duplicating the per-variant logic.
+/// [`super::heff_error::DmrgHeffError::InvalidEigensolverParams`]
+/// without duplicating the per-variant logic.
 pub(crate) fn validate_eigensolver_params(
     params: &LocalEigensolverParams,
 ) -> Result<(), &'static str> {

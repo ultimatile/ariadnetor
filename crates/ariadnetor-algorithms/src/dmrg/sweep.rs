@@ -65,8 +65,8 @@ pub enum SweepDirection {
 ///
 /// Stored as plain `f64` for `energy_tol`; the entry point converts
 /// it to `<R::Elem as Scalar>::Real` via the same `NumCast::from(f64)`
-/// idiom as [`LanczosParams::tol`]. This keeps the params type
-/// non-generic across the scalar type.
+/// idiom as [`crate::krylov::LanczosParams::tol`]. This keeps the
+/// params type non-generic across the scalar type.
 #[derive(Debug, Clone)]
 pub struct DmrgSweepParams {
     /// Maximum number of full L→R + R→L cycles. Must be `>= 1`;
