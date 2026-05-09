@@ -112,8 +112,14 @@ pub struct DmrgStepRecord<R> {
     /// For Lanczos this is the inner loop count; for ARPACK it is
     /// the restart-iteration count returned in `iparam[2]`.
     pub eigensolver_iters: usize,
-    /// `true` iff the local eigensolver's true-residual test fell at
-    /// or below the requested tolerance.
+    /// `true` iff the local eigensolver succeeded — Lanczos by its
+    /// absolute true-residual test against `LanczosParams::tol`,
+    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
+    /// return from `arpack_smallest`). The two arms intentionally
+    /// disagree on what they call "converged": Lanczos uses the
+    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
+    /// See [`super::heff::TwoSiteStepResult::converged`] for the
+    /// upstream contract this field forwards from.
     pub eigensolver_converged: bool,
 }
 
