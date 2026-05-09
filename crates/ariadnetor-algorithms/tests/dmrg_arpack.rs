@@ -230,4 +230,22 @@ fn dmrg_arpack_max_iter_one_returns_arpack_error() {
         ),
         "expected DmrgHeffError::Arpack(ArpackError::MaxIterReached), got {result:?}",
     );
+
+    // Contract: Display forwards the wrapped ArpackError so callers
+    // who print the top-level error see ARPACK's own diagnostic
+    // payload (iters / nconv / n_matvec for `MaxIterReached`)
+    // without having to traverse `source()`. The wrapped error's
+    // Display contains "ARPACK hit max_iter without convergence",
+    // which must appear in the wrapping error's formatted output.
+    let err = result.expect_err("error path verified above");
+    let inner = match &err {
+        DmrgHeffError::Arpack(inner) => format!("{inner}"),
+        _ => unreachable!(),
+    };
+    let outer = format!("{err}");
+    assert!(
+        outer.contains(&inner),
+        "DmrgHeffError::Arpack Display must forward the wrapped error: \
+         outer = {outer:?}, inner = {inner:?}",
+    );
 }
