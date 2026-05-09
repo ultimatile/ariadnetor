@@ -12,7 +12,9 @@
 //! BlockSparse path is already implied by the Dense equivalence
 //! tests plus the BlockSparse `sweep_2site` validation suite.
 
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgError, DmrgSweepParams, dmrg_2site, sweep_2site};
+use arnet_algorithms::dmrg::{
+    DmrgEnvs, DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
+};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
@@ -144,11 +146,11 @@ fn small_params(seed: u64) -> DmrgSweepParams {
         max_sweeps: 4,
         min_sweeps: 1,
         energy_tol: 1e-10,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 80,
             tol: 1e-10,
             seed: Some(seed),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(16),
             target_trunc_err: None,
@@ -189,7 +191,7 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
     );
 
     // Per-step diagnostic records identical (sweep count, eigenvalues,
-    // truncation errors, lanczos iters / converged flag).
+    // truncation errors, eigensolver iters / converged flag).
     assert_eq!(result_wrapper.sweeps.len(), result_manual.sweeps.len());
     for (sw_w, sw_m) in result_wrapper
         .sweeps
@@ -202,8 +204,8 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
         for (st_w, st_m) in sw_w.steps.iter().zip(sw_m.steps.iter()) {
             assert_eq!(st_w.eigenvalue, st_m.eigenvalue);
             assert_eq!(st_w.bond_dim, st_m.bond_dim);
-            assert_eq!(st_w.lanczos_iters, st_m.lanczos_iters);
-            assert_eq!(st_w.lanczos_converged, st_m.lanczos_converged);
+            assert_eq!(st_w.eigensolver_iters, st_m.eigensolver_iters);
+            assert_eq!(st_w.eigensolver_converged, st_m.eigensolver_converged);
         }
     }
 

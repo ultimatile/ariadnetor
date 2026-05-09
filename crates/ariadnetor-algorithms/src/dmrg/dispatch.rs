@@ -38,10 +38,11 @@ use arnet_mps::{Mpo, Mps, MpsOps};
 use arnet_tensor::{BlockSparse, Dense, Sector, TensorRepr};
 
 use super::env::{DmrgEnvOps, DmrgEnvs};
-use super::heff::{DmrgHeffError, TwoSiteStepResult, dmrg_2site_step};
+use super::heff::{TwoSiteStepResult, dmrg_2site_step};
 use super::heff_block_sparse::{TwoSiteStepResultBlockSparse, dmrg_2site_step_block_sparse};
+use super::heff_error::DmrgHeffError;
+use super::solver::{DmrgScalar, LocalEigensolverParams};
 use super::sweep::SweepDirection;
-use crate::krylov::LanczosParams;
 
 /// Per-step output projected to scalar diagnostics + post-S-absorb site
 /// storages + new bond dimension.
@@ -60,14 +61,20 @@ pub struct AbsorbedStep<R: TensorRepr> {
     pub bond_dim: usize,
     /// Smallest eigenvalue of `H_eff` at this step (pre-truncation).
     pub eigenvalue: <R::Elem as Scalar>::Real,
-    /// Lanczos true residual `‖H v − λ v‖₂`.
+    /// Local-eigensolver true residual `‖H v − λ v‖₂`.
     pub residual: <R::Elem as Scalar>::Real,
     /// Frobenius norm of the discarded singular values.
     pub trunc_err: <R::Elem as Scalar>::Real,
-    /// Number of Lanczos iterations executed.
+    /// Number of iterations the local eigensolver executed.
     pub iters: usize,
-    /// `true` iff Lanczos's true-residual test fell at or below the
-    /// requested tolerance.
+    /// `true` iff the local eigensolver succeeded — Lanczos by its
+    /// absolute true-residual test against `LanczosParams::tol`,
+    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
+    /// return from `arpack_smallest`). The two arms intentionally
+    /// disagree on what they call "converged": Lanczos uses the
+    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
+    /// See [`super::heff::TwoSiteStepResult::converged`] for the
+    /// upstream contract this field forwards from.
     pub converged: bool,
 }
 
@@ -85,16 +92,17 @@ pub trait DmrgOps: MpsOps + DmrgEnvOps + Sized {
     /// `BlockSparse<T, S>` → [`TwoSiteStepResultBlockSparse<T, S>`].
     type StepResult;
 
-    /// Build local `H_eff` at `(site, site + 1)`, drive Lanczos to its
-    /// smallest eigenpair, and return the truncated-SVD split (U, S, Vt)
-    /// of the optimized two-site block plus diagnostic scalars. Does not
-    /// mutate `mps` or `envs`.
+    /// Build local `H_eff` at `(site, site + 1)`, drive the chosen
+    /// local eigensolver (Lanczos or, behind the `arpack` feature,
+    /// ARPACK) to its smallest eigenpair, and return the
+    /// truncated-SVD split (U, S, Vt) of the optimized two-site block
+    /// plus diagnostic scalars. Does not mutate `mps` or `envs`.
     fn step<B: ComputeBackend>(
         envs: &DmrgEnvs<Self, B>,
         mps: &Mps<Self, B>,
         mpo: &Mpo<Self, B>,
         site: usize,
-        lanczos: &LanczosParams,
+        eigensolver: &LocalEigensolverParams,
         trunc: &TruncSvdParams,
     ) -> Result<Self::StepResult, DmrgHeffError>;
 
@@ -113,7 +121,7 @@ pub trait DmrgOps: MpsOps + DmrgEnvOps + Sized {
 // Dense implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar> DmrgOps for Dense<T>
+impl<T: DmrgScalar> DmrgOps for Dense<T>
 where
     T::Real: Scalar<Real = T::Real>,
 {
@@ -124,10 +132,10 @@ where
         mps: &Mps<Self, B>,
         mpo: &Mpo<Self, B>,
         site: usize,
-        lanczos: &LanczosParams,
+        eigensolver: &LocalEigensolverParams,
         trunc: &TruncSvdParams,
     ) -> Result<Self::StepResult, DmrgHeffError> {
-        dmrg_2site_step(envs, mps, mpo, site, lanczos, trunc)
+        dmrg_2site_step(envs, mps, mpo, site, eigensolver, trunc)
     }
 
     fn commit_step<B: ComputeBackend>(
@@ -167,7 +175,7 @@ where
 // BlockSparse implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar, S: Sector> DmrgOps for BlockSparse<T, S>
+impl<T: DmrgScalar, S: Sector> DmrgOps for BlockSparse<T, S>
 where
     T::Real: Scalar<Real = T::Real>,
 {
@@ -178,10 +186,10 @@ where
         mps: &Mps<Self, B>,
         mpo: &Mpo<Self, B>,
         site: usize,
-        lanczos: &LanczosParams,
+        eigensolver: &LocalEigensolverParams,
         trunc: &TruncSvdParams,
     ) -> Result<Self::StepResult, DmrgHeffError> {
-        dmrg_2site_step_block_sparse(envs, mps, mpo, site, lanczos, trunc)
+        dmrg_2site_step_block_sparse(envs, mps, mpo, site, eigensolver, trunc)
     }
 
     fn commit_step<B: ComputeBackend>(

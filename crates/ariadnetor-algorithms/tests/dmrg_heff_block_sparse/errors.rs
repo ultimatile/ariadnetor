@@ -2,7 +2,8 @@
 //! complex-storage smoke test.
 
 use arnet_algorithms::dmrg::{
-    DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2SiteBlockSparse, dmrg_2site_step_block_sparse,
+    DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2SiteBlockSparse, LocalEigensolverParams,
+    dmrg_2site_step_block_sparse,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
@@ -24,7 +25,7 @@ fn bsp_heff_step_error_paths_invalid_site() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -37,7 +38,7 @@ fn bsp_heff_step_error_paths_invalid_site() {
 }
 
 #[test]
-fn bsp_heff_step_error_paths_invalid_lanczos_params() {
+fn bsp_heff_step_error_paths_invalid_eigensolver_params() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);
@@ -46,29 +47,38 @@ fn bsp_heff_step_error_paths_invalid_lanczos_params() {
         target_trunc_err: None,
     };
 
-    let bad_iter = LanczosParams {
+    let bad_iter = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 0,
         tol: 1e-10,
         seed: None,
-    };
+    });
     let r = dmrg_2site_step_block_sparse(&envs, &mps, &mpo, 0, &bad_iter, &trunc);
-    assert!(matches!(r, Err(DmrgHeffError::InvalidLanczosParams { .. })));
+    assert!(matches!(
+        r,
+        Err(DmrgHeffError::InvalidEigensolverParams { .. })
+    ));
 
-    let bad_nan = LanczosParams {
+    let bad_nan = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: f64::NAN,
         seed: None,
-    };
+    });
     let r = dmrg_2site_step_block_sparse(&envs, &mps, &mpo, 0, &bad_nan, &trunc);
-    assert!(matches!(r, Err(DmrgHeffError::InvalidLanczosParams { .. })));
+    assert!(matches!(
+        r,
+        Err(DmrgHeffError::InvalidEigensolverParams { .. })
+    ));
 
-    let bad_neg = LanczosParams {
+    let bad_neg = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: -1.0,
         seed: None,
-    };
+    });
     let r = dmrg_2site_step_block_sparse(&envs, &mps, &mpo, 0, &bad_neg, &trunc);
-    assert!(matches!(r, Err(DmrgHeffError::InvalidLanczosParams { .. })));
+    assert!(matches!(
+        r,
+        Err(DmrgHeffError::InvalidEigensolverParams { .. })
+    ));
 }
 
 #[test]
@@ -92,7 +102,7 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_flux() {
     );
     let bad_mpo = Mpo::from_storages(vec![bad_w0, mpo_good.storage(1).clone()]);
 
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -178,7 +188,7 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
 
     let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
 
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -213,7 +223,7 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_bra_ket() {
     let envs = build_envs_n2_f64(&mps, &mpo_good);
     let bad_mpo = Mpo::from_storages(vec![bad_w0, mpo_good.storage(1).clone()]);
 
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -273,11 +283,11 @@ fn bsp_heff_complex_path() {
         }
     }
 
-    let params = LanczosParams {
+    let params = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: 1e-12,
         seed: Some(42),
-    };
+    });
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -301,7 +311,7 @@ fn bsp_validate_inputs_asymmetric_length_mismatch() {
     let mps_n3 = make_n3_mps_f64();
     let mpo_n3 = make_n3_mpo_f64(1.5);
 
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -351,7 +361,7 @@ fn bsp_validate_inputs_stale_right_index_pinpoint() {
     envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
     envs.advance_left(&mps, &mpo, 1).expect("advance_left(1)");
 
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -410,7 +420,7 @@ fn bsp_validate_inputs_qn_mismatch_contracted_axis_sectors() {
     );
     let mps_alt = Mps::from_storages(vec![mps_alt0, mps_alt1]);
 
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,

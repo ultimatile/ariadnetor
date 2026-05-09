@@ -43,8 +43,8 @@
 //!   build or the sweep would have caught it.
 //!
 //! Underlying [`DmrgEnvError`] (e.g. BlockSparse edge-bond validation)
-//! and [`DmrgSweepError`] (param validation, Lanczos / SVD failure,
-//! `TooFewSites`, etc.) are forwarded as
+//! and [`DmrgSweepError`] (param validation, local-eigensolver / SVD
+//! failure, `TooFewSites`, etc.) are forwarded as
 //! [`DmrgError::Env`] / [`DmrgError::Sweep`] respectively; the
 //! `MpsNotRightCanonical` and downstream `LengthMismatch` variants of
 //! [`DmrgSweepError`] are unreachable through the wrapper but kept

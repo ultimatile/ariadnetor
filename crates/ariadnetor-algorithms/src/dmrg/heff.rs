@@ -1,8 +1,9 @@
 //! 2-site DMRG local update: build the effective Hamiltonian
-//! operator from `(left(i), W[i], W[i+1], right(i+2))`, drive Lanczos
-//! to the smallest eigenpair, and split the optimized two-site block
-//! back into a left-canonical / right-canonical pair via truncated
-//! SVD.
+//! operator from `(left(i), W[i], W[i+1], right(i+2))`, drive the
+//! selected local eigensolver (Lanczos by default, ARPACK behind
+//! the `arpack` feature) to the smallest eigenpair, and split the
+//! optimized two-site block back into a left-canonical /
+//! right-canonical pair via truncated SVD.
 //!
 //! Axis convention (consistent with [`super::env`] and the
 //! `arnet_mps::inner` braket family — `braket_dense` for [`Dense<T>`],
@@ -17,140 +18,37 @@
 //!   physical legs occupying the inner axes.
 //!
 //! [`EffectiveHamiltonian2Site`] borrows the env / MPO references and
-//! implements [`LinearOp`] so the local matvec can drive the existing
-//! Lanczos solver without materializing `H_eff` as a dense matrix.
-//! [`dmrg_2site_step`] wires that operator through Lanczos and then
-//! through `arnet_linalg::trunc_svd`, returning the U / S / Vt
-//! factors separately so callers (e.g. the sweep driver) can decide
-//! which direction absorbs S.
+//! implements [`LinearOp`] so the local matvec can drive either
+//! Krylov solver in [`crate::krylov`] without materializing `H_eff`
+//! as a dense matrix. [`dmrg_2site_step`] dispatches over
+//! [`super::LocalEigensolverParams`] to that solver and then through
+//! `arnet_linalg::trunc_svd`, returning the U / S / Vt factors
+//! separately so callers (e.g. the sweep driver) can decide which
+//! direction absorbs S.
 
 use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::{MemoryOrder, Scalar};
-use arnet_linalg::{LinalgError, TruncSvdParams, contract, trunc_svd};
+use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, reorder};
 
-use crate::krylov::{LanczosParams, LinearOp, lanczos_smallest};
+#[cfg(feature = "arpack")]
+use crate::krylov::arpack_smallest;
+use crate::krylov::{LinearOp, lanczos_smallest};
 
 use super::env::DmrgEnvs;
-
-/// Errors raised by the 2-site DMRG step entry points
-/// ([`dmrg_2site_step`] for the Dense path, and
-/// [`super::dmrg_2site_step_block_sparse`] for the BlockSparse /
-/// U(1) path). Most variants are produced by both; the
-/// [`DmrgHeffError::QnMismatch`] variant is BlockSparse-specific
-/// and only surfaces from the BlockSparse entry point's QN /
-/// Direction / sector / per-site-flux pre-validation.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum DmrgHeffError {
-    /// `site + 1` was not a valid two-site index for the chain.
-    InvalidSite { site: usize, n_sites: usize },
-    /// The env slot required for the two-site step (`left(site)` for
-    /// the left side, `right(site + 2)` for the right side) was
-    /// `None`. Indicates the caller has not built / advanced the
-    /// envs into a state where this `site` can be optimized.
-    StaleEnv { side: &'static str, index: usize },
-    /// MPS and MPO chain lengths disagree, or disagree with the
-    /// envs the function was given.
-    LengthMismatch { mps: usize, mpo: usize, envs: usize },
-    /// `LanczosParams` violates the solver's preconditions
-    /// (`max_iter >= 1`, `tol` finite and non-negative). Surfaced
-    /// here so callers see a fallible `Result` instead of the
-    /// `lanczos_smallest` panic.
-    InvalidLanczosParams { detail: &'static str },
-    /// A bond / physical dimension on one of the inputs to the
-    /// 2-site step did not match the expectation derived from the
-    /// surrounding tensors. Surfaced *before* the matvec runs so
-    /// the operator's `.expect` calls can stay infallible. `field`
-    /// names the constraint that failed (e.g.,
-    /// `"left.bot_ket vs mps[i].left_bond"`).
-    ShapeMismatch {
-        site: usize,
-        field: &'static str,
-        expected: usize,
-        actual: usize,
-    },
-    /// A QNIndex / Direction / sector / per-site-flux compatibility
-    /// check on a BlockSparse 2-site step's inputs failed. Surfaced
-    /// up front by `dmrg_2site_step_block_sparse` so the matvec
-    /// body's `.expect` calls cannot fire on user input. `field`
-    /// names the leg pair (or single leg for MPO well-formedness
-    /// checks), and `detail` carries a human-readable summary of
-    /// the offending `(sector list, direction, flux-if-applicable)`
-    /// data on each side.
-    QnMismatch {
-        site: usize,
-        field: &'static str,
-        detail: String,
-    },
-    /// An underlying `arnet_linalg` call (currently the truncated
-    /// SVD) failed. The matvec body itself is shape-validated up
-    /// front and never reaches this branch.
-    Contract(LinalgError),
-}
-
-impl From<LinalgError> for DmrgHeffError {
-    fn from(e: LinalgError) -> Self {
-        DmrgHeffError::Contract(e)
-    }
-}
-
-impl std::fmt::Display for DmrgHeffError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DmrgHeffError::InvalidSite { site, n_sites } => write!(
-                f,
-                "two-site index {site} (with {site}+1) out of range for chain of length {n_sites}"
-            ),
-            DmrgHeffError::StaleEnv { side, index } => write!(
-                f,
-                "{side} env at index {index} is stale (None); build / advance envs into the right \
-                 state before stepping"
-            ),
-            DmrgHeffError::LengthMismatch { mps, mpo, envs } => write!(
-                f,
-                "chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}"
-            ),
-            DmrgHeffError::ShapeMismatch {
-                site,
-                field,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "shape mismatch at site {site}, {field}: expected {expected}, got {actual}"
-            ),
-            DmrgHeffError::InvalidLanczosParams { detail } => {
-                write!(f, "invalid LanczosParams: {detail}")
-            }
-            DmrgHeffError::QnMismatch {
-                site,
-                field,
-                detail,
-            } => write!(f, "QN mismatch at site {site}, {field}: {detail}"),
-            DmrgHeffError::Contract(_) => {
-                write!(f, "linalg failure during two-site DMRG step")
-            }
-        }
-    }
-}
-
-impl std::error::Error for DmrgHeffError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            DmrgHeffError::Contract(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+use super::heff_error::DmrgHeffError;
+use super::solver::{
+    DmrgScalar, LocalEigensolverParams, eigensolver_tol, validate_eigensolver_params,
+};
 
 /// Effective Hamiltonian operator for the 2-site DMRG block at sites
 /// `(i, i+1)`. Built once per local update and consumed by the
-/// Lanczos solver via [`LinearOp`].
+/// selected local eigensolver via [`LinearOp`] — Lanczos by default,
+/// ARPACK behind the `arpack` feature.
 #[derive(Debug, Clone)]
 pub struct EffectiveHamiltonian2Site<'a, T: Scalar, B: ComputeBackend = NativeBackend> {
     left: &'a Dense<T>,
@@ -295,10 +193,15 @@ pub struct TwoSiteStepResult<T: Scalar> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
-    /// `true` iff the Lanczos true-residual test fell at or below
-    /// `LanczosParams::tol`. On `false`, callers receive the
-    /// best-effort eigenpair plus its split — they decide whether to
-    /// accept it, retry with looser params, or abort.
+    /// `true` iff the local eigensolver succeeded — Lanczos by its
+    /// absolute true-residual test against `LanczosParams::tol`,
+    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
+    /// return from `arpack_smallest`). The two arms intentionally
+    /// disagree on what they call "converged": Lanczos uses the
+    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
+    /// On `false`, callers receive the best-effort eigenpair plus
+    /// its split — they decide whether to accept it, retry with
+    /// looser params, or abort.
     pub converged: bool,
     /// Left singular vectors, shape `[chi_l, d_i, chi_new]`.
     /// Left-canonical at axes `(chi_l, d_i)` — i.e. `U^† U =
@@ -317,8 +220,10 @@ pub struct TwoSiteStepResult<T: Scalar> {
 /// Run a single 2-site DMRG step at sites `(site, site+1)`.
 ///
 /// Reads `envs.left(site)` and `envs.right(site + 2)`. Builds the
-/// local effective Hamiltonian, drives Lanczos to the smallest
-/// eigenpair, then splits the optimized two-site block via
+/// local effective Hamiltonian, drives the selected local
+/// eigensolver (per [`LocalEigensolverParams`] — Lanczos by default,
+/// ARPACK behind the `arpack` feature) to the smallest eigenpair,
+/// then splits the optimized two-site block via
 /// `arnet_linalg::trunc_svd` with `nrow = 2` (grouping `(chi_l,
 /// d_i)` as rows). The function does **not** mutate the envs or
 /// the MPS — caller (sweep driver) advances the envs separately.
@@ -333,11 +238,14 @@ pub struct TwoSiteStepResult<T: Scalar> {
 ///   2)` is `None`.
 /// - [`DmrgHeffError::ShapeMismatch`] if any tensor rank, bond, or
 ///   physical dimension reached by the matvec does not match its
-///   neighbours, or if a dimension is zero (Lanczos and `contract`
-///   reject zero-length axes).
-/// - [`DmrgHeffError::InvalidLanczosParams`] if `params.max_iter`
-///   is zero or `params.tol` is non-finite or negative — these
-///   would otherwise trip `lanczos_smallest`'s internal asserts.
+///   neighbours, or if a dimension is zero (the local-eigensolver
+///   `dim` precondition and `contract` both reject zero-length
+///   axes).
+/// - [`DmrgHeffError::InvalidEigensolverParams`] if the selected
+///   eigensolver variant's params violate their preconditions
+///   (e.g. `max_iter == 0`, non-finite tol, Lanczos tol < 0,
+///   ARPACK tol <= 0). These would otherwise trip the underlying
+///   solver's internal asserts / upstream errors.
 /// - [`DmrgHeffError::Contract`] propagates an underlying linalg
 ///   failure from the truncated SVD step.
 ///
@@ -354,11 +262,11 @@ pub fn dmrg_2site_step<T, B>(
     mps: &Mps<Dense<T>, B>,
     mpo: &Mpo<Dense<T>, B>,
     site: usize,
-    params: &LanczosParams,
+    eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
 ) -> Result<TwoSiteStepResult<T>, DmrgHeffError>
 where
-    T: Scalar,
+    T: DmrgScalar,
     T::Real: Scalar<Real = T::Real>,
     B: ComputeBackend,
 {
@@ -379,29 +287,16 @@ where
         return Err(DmrgHeffError::InvalidSite { site, n_sites });
     }
 
-    // ---- Lanczos params sanity (mirrors lanczos_smallest's
-    // internal asserts so callers see `Err`, not a panic). -------
-    if params.max_iter == 0 {
-        return Err(DmrgHeffError::InvalidLanczosParams {
-            detail: "max_iter must be >= 1",
-        });
-    }
-    if !params.tol.is_finite() {
-        return Err(DmrgHeffError::InvalidLanczosParams {
-            detail: "tol must be finite",
-        });
-    }
-    if params.tol < 0.0 {
-        return Err(DmrgHeffError::InvalidLanczosParams {
-            detail: "tol must be non-negative",
-        });
-    }
-    // Reject f64 tolerances that overflow `T::Real` to ±inf during
-    // the cast (only reachable for `T::Real == f32`). Without this
-    // gate lanczos's internal `try_real_from_f64` returns `None`
-    // and panics, bypassing this fallible API's contract.
-    if crate::numeric::try_real_from_f64::<T>(params.tol).is_none() {
-        return Err(DmrgHeffError::InvalidLanczosParams {
+    // ---- Local-eigensolver params sanity ------------------------
+    // Mirrors the underlying solver's internal asserts / upstream
+    // errors so callers see `Err`, not a panic. The structural
+    // checks (max_iter, tol-finite, tol-sign) are factored into
+    // `validate_eigensolver_params`; the `T::Real` representability
+    // check stays here because it depends on the storage element.
+    validate_eigensolver_params(eigensolver)
+        .map_err(|detail| DmrgHeffError::InvalidEigensolverParams { detail })?;
+    if crate::numeric::try_real_from_f64::<T>(eigensolver_tol(eigensolver)).is_none() {
+        return Err(DmrgHeffError::InvalidEigensolverParams {
             detail: "tol is not representable in T::Real",
         });
     }
@@ -464,8 +359,9 @@ where
     let d_i = mps_i.shape()[1];
     let d_ip1 = mps_ip1.shape()[1];
 
-    // Reject zero-sized bond / physical dims explicitly. Lanczos
-    // panics on `dim < 1` and contract refuses zero-length axes, so
+    // Reject zero-sized bond / physical dims explicitly. The local
+    // eigensolver asserts `dim >= 1` (Lanczos panics, ARPACK rejects
+    // with `InvalidParam`) and contract refuses zero-length axes, so
     // surface this here as `ShapeMismatch { expected: 1, .. }`
     // instead of letting it reach the operator.
     check_at_least(1, chi_l, "chi_l (left bond)")?;
@@ -531,12 +427,47 @@ where
         Arc::clone(&backend),
     );
 
-    // ---- Drive Lanczos ------------------------------------------
+    // ---- Drive the local eigensolver ----------------------------
     let dim = heff.dim();
-    let lan = lanczos_smallest::<T, _>(&heff, dim, params);
+    let (eigenvalue, eigenvector, iters, converged, residual) = match eigensolver {
+        LocalEigensolverParams::Lanczos(p) => {
+            let lan = lanczos_smallest::<T, _>(&heff, dim, p);
+            (
+                lan.eigenvalue,
+                lan.eigenvector,
+                lan.iters,
+                lan.converged,
+                lan.residual,
+            )
+        }
+        #[cfg(feature = "arpack")]
+        LocalEigensolverParams::Arpack(p) => {
+            let res = arpack_smallest::<T, _>(&heff, dim, p)?;
+            // For step-level convergence, treat any `Ok` return from
+            // ARPACK as success: ARPACK has met its relative-tol
+            // stopping criterion. `ArpackResult.converged` is a
+            // stricter *absolute*-tol divergence indicator (true iff
+            // `residual <= tol` with `tol` interpreted in absolute
+            // units), and is structurally hard to satisfy at tight
+            // `tol` even on successful runs because ARPACK's internal
+            // criterion is `residual <= tol * |lambda|`. Propagating
+            // it as the step-level flag would prevent
+            // `DmrgResult.converged = true` for ARPACK-backed sweeps
+            // even when the energy has stabilized; the absolute
+            // residual is still surfaced via `residual` for callers
+            // that want it.
+            (
+                res.eigenvalue,
+                res.eigenvector,
+                res.iters,
+                true,
+                res.residual,
+            )
+        }
+    };
 
     // ---- Truncated SVD split ------------------------------------
-    let psi_4d = lan.eigenvector.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
+    let psi_4d = eigenvector.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
     let (u_2d, s, vt_2d, trunc_err) = trunc_svd(&*backend, &psi_4d, 2, trunc)?;
 
     let chi_new = u_2d.shape()[1];
@@ -555,10 +486,10 @@ where
     let vt = reshape_to_3d(vt_2d, vec![chi_new, d_ip1, chi_r]);
 
     Ok(TwoSiteStepResult {
-        eigenvalue: lan.eigenvalue,
-        residual: lan.residual,
-        iters: lan.iters,
-        converged: lan.converged,
+        eigenvalue,
+        residual,
+        iters,
+        converged,
         u,
         s,
         vt,

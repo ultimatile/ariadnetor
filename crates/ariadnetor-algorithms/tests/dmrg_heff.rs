@@ -13,7 +13,9 @@
 //! subspace).
 
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2Site, dmrg_2site_step};
+use arnet_algorithms::dmrg::{
+    DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2Site, LocalEigensolverParams, dmrg_2site_step,
+};
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_core::Scalar;
 use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh};
@@ -229,10 +231,10 @@ fn heff_identity_smoke() {
         &mps,
         &mpo,
         1,
-        &LanczosParams {
+        &LocalEigensolverParams::Lanczos(LanczosParams {
             seed: Some(7),
             ..LanczosParams::default()
-        },
+        }),
         &TruncSvdParams {
             chi_max: None,
             target_trunc_err: None,
@@ -317,10 +319,10 @@ fn heff_lanczos_eigvalue_matches_eigh() {
         &mps,
         &mpo,
         site,
-        &LanczosParams {
+        &LocalEigensolverParams::Lanczos(LanczosParams {
             seed: Some(11),
             ..LanczosParams::default()
-        },
+        }),
         &TruncSvdParams {
             chi_max: None,
             target_trunc_err: None,
@@ -352,10 +354,10 @@ fn heff_svd_split_is_canonical() {
         &mps,
         &mpo,
         1,
-        &LanczosParams {
+        &LocalEigensolverParams::Lanczos(LanczosParams {
             seed: Some(11),
             ..LanczosParams::default()
-        },
+        }),
         &TruncSvdParams {
             chi_max: None,
             target_trunc_err: None,
@@ -409,12 +411,13 @@ fn heff_svd_reconstruction_round_trips() {
         seed: Some(11),
         ..LanczosParams::default()
     };
+    let eigensolver = LocalEigensolverParams::Lanczos(lan_params.clone());
     let result = dmrg_2site_step(
         &envs,
         &mps,
         &mpo,
         site,
-        &lan_params,
+        &eigensolver,
         &TruncSvdParams {
             chi_max: None,
             target_trunc_err: None,
@@ -498,10 +501,10 @@ fn heff_edge_sites_succeed() {
         &mps,
         &mpo,
         0,
-        &LanczosParams {
+        &LocalEigensolverParams::Lanczos(LanczosParams {
             seed: Some(3),
             ..LanczosParams::default()
-        },
+        }),
         &TruncSvdParams {
             chi_max: None,
             target_trunc_err: None,
@@ -522,10 +525,10 @@ fn heff_edge_sites_succeed() {
         &mps,
         &mpo,
         n - 2,
-        &LanczosParams {
+        &LocalEigensolverParams::Lanczos(LanczosParams {
             seed: Some(5),
             ..LanczosParams::default()
-        },
+        }),
         &TruncSvdParams {
             chi_max: None,
             target_trunc_err: None,
@@ -547,14 +550,14 @@ fn heff_error_paths() {
     let mps = product_state_mps(n, d);
     let mpo = identity_mpo(n, d);
     let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
-    let lan_params = LanczosParams::default();
+    let eigensolver = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
     };
 
     // site + 1 == n → boundary, invalid for two-site.
-    let bad = dmrg_2site_step(&envs, &mps, &mpo, n - 1, &lan_params, &trunc);
+    let bad = dmrg_2site_step(&envs, &mps, &mpo, n - 1, &eigensolver, &trunc);
     assert!(
         matches!(bad, Err(DmrgHeffError::InvalidSite { site, n_sites })
         if site == n - 1 && n_sites == n)
@@ -570,7 +573,7 @@ fn heff_error_paths() {
     envs.advance_left(&mps, &mpo, 1).expect("advance_left(1)");
     // advance_left(i) invalidates right[i+1] when interior, so
     // right[2] is now None. site=0 needs right(2) → StaleEnv.
-    let stale = dmrg_2site_step(&envs, &mps, &mpo, 0, &lan_params, &trunc);
+    let stale = dmrg_2site_step(&envs, &mps, &mpo, 0, &eigensolver, &trunc);
     assert!(
         matches!(
             stale,
@@ -588,7 +591,7 @@ fn heff_error_paths() {
     let envs_4 = DmrgEnvs::build(&product_state_mps(n, d), &identity_mpo(n, d)).expect("build");
     let mps_3 = product_state_mps(3, d);
     let mpo_3 = identity_mpo(3, d);
-    let mismatch = dmrg_2site_step(&envs_4, &mps_3, &mpo_3, 0, &lan_params, &trunc);
+    let mismatch = dmrg_2site_step(&envs_4, &mps_3, &mpo_3, 0, &eigensolver, &trunc);
     assert!(
         matches!(
             mismatch,
@@ -612,7 +615,7 @@ fn heff_error_paths() {
     let mpo_d2 = identity_mpo(n, 2);
     let envs_d2 = DmrgEnvs::build(&mps_d2, &mpo_d2).expect("build envs(d=2)");
     let mpo_d3 = identity_mpo(n, 3);
-    let bad_shape = dmrg_2site_step(&envs_d2, &mps_d2, &mpo_d3, 0, &lan_params, &trunc);
+    let bad_shape = dmrg_2site_step(&envs_d2, &mps_d2, &mpo_d3, 0, &eigensolver, &trunc);
     assert!(
         matches!(bad_shape, Err(DmrgHeffError::ShapeMismatch { site: 0, .. })),
         "got {:?}",
@@ -621,7 +624,7 @@ fn heff_error_paths() {
 
     // InvalidSite: site = usize::MAX must not overflow the +1 check
     // — it surfaces InvalidSite cleanly.
-    let overflow = dmrg_2site_step(&envs, &mps, &mpo, usize::MAX, &lan_params, &trunc);
+    let overflow = dmrg_2site_step(&envs, &mps, &mpo, usize::MAX, &eigensolver, &trunc);
     assert!(
         matches!(
             overflow,
@@ -632,36 +635,57 @@ fn heff_error_paths() {
         overflow
     );
 
-    // InvalidLanczosParams: max_iter = 0 / NaN / negative tol all
+    // InvalidEigensolverParams: max_iter = 0 / NaN / negative tol all
     // assert inside lanczos_smallest. The standard path must catch
     // them at entry instead of panicking.
-    let bad_iter_params = LanczosParams {
-        max_iter: 0,
-        ..LanczosParams::default()
-    };
-    let bad_iter = dmrg_2site_step(&envs, &mps, &mpo, 0, &bad_iter_params, &trunc);
+    let bad_iter = dmrg_2site_step(
+        &envs,
+        &mps,
+        &mpo,
+        0,
+        &LocalEigensolverParams::Lanczos(LanczosParams {
+            max_iter: 0,
+            ..LanczosParams::default()
+        }),
+        &trunc,
+    );
     assert!(
-        matches!(bad_iter, Err(DmrgHeffError::InvalidLanczosParams { .. })),
+        matches!(
+            bad_iter,
+            Err(DmrgHeffError::InvalidEigensolverParams { .. })
+        ),
         "got {:?}",
         bad_iter
     );
-    let bad_nan_params = LanczosParams {
-        tol: f64::NAN,
-        ..LanczosParams::default()
-    };
-    let bad_nan = dmrg_2site_step(&envs, &mps, &mpo, 0, &bad_nan_params, &trunc);
+    let bad_nan = dmrg_2site_step(
+        &envs,
+        &mps,
+        &mpo,
+        0,
+        &LocalEigensolverParams::Lanczos(LanczosParams {
+            tol: f64::NAN,
+            ..LanczosParams::default()
+        }),
+        &trunc,
+    );
     assert!(
-        matches!(bad_nan, Err(DmrgHeffError::InvalidLanczosParams { .. })),
+        matches!(bad_nan, Err(DmrgHeffError::InvalidEigensolverParams { .. })),
         "got {:?}",
         bad_nan
     );
-    let bad_neg_params = LanczosParams {
-        tol: -1.0,
-        ..LanczosParams::default()
-    };
-    let bad_neg = dmrg_2site_step(&envs, &mps, &mpo, 0, &bad_neg_params, &trunc);
+    let bad_neg = dmrg_2site_step(
+        &envs,
+        &mps,
+        &mpo,
+        0,
+        &LocalEigensolverParams::Lanczos(LanczosParams {
+            tol: -1.0,
+            ..LanczosParams::default()
+        }),
+        &trunc,
+    );
     assert!(
-        matches!(bad_neg, Err(DmrgHeffError::InvalidLanczosParams { .. })),
+        matches!(bad_neg, Err(DmrgHeffError::InvalidEigensolverParams { .. })),
         "got {:?}",
         bad_neg
     );
@@ -676,7 +700,7 @@ fn heff_error_paths() {
         chi_max: Some(0),
         target_trunc_err: None,
     };
-    let bad_contract = dmrg_2site_step(&envs_fresh, &mps, &mpo, 0, &lan_params, &bad_trunc);
+    let bad_contract = dmrg_2site_step(&envs_fresh, &mps, &mpo, 0, &eigensolver, &bad_trunc);
     assert!(
         matches!(bad_contract, Err(DmrgHeffError::Contract(_))),
         "got {:?}",

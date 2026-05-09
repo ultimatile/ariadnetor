@@ -28,7 +28,7 @@
 //! the `<psi|psi>` divisor the sweep energy drifts toward zero
 //! whenever truncation happens — the divisor strips that
 //! norm-artifact away. Convergence requires energy delta within
-//! `energy_tol`, every step's Lanczos converged, and
+//! `energy_tol`, every step's local eigensolver converged, and
 //! `n_sweeps >= min_sweeps`.
 
 use std::sync::Arc;
@@ -38,12 +38,12 @@ use arnet_core::backend::ComputeBackend;
 use arnet_linalg::LinalgError;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, norm};
 
-use crate::krylov::LanczosParams;
 use crate::numeric::try_real_from_f64;
 
 use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvs};
-use super::heff::DmrgHeffError;
+use super::heff_error::DmrgHeffError;
+use super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eigensolver_params};
 
 /// Direction of a half-sweep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,8 +65,8 @@ pub enum SweepDirection {
 ///
 /// Stored as plain `f64` for `energy_tol`; the entry point converts
 /// it to `<R::Elem as Scalar>::Real` via the same `NumCast::from(f64)`
-/// idiom as [`LanczosParams::tol`]. This keeps the params type
-/// non-generic across the scalar type.
+/// idiom as [`crate::krylov::LanczosParams::tol`]. This keeps the
+/// params type non-generic across the scalar type.
 #[derive(Debug, Clone)]
 pub struct DmrgSweepParams {
     /// Maximum number of full L→R + R→L cycles. Must be `>= 1`;
@@ -80,10 +80,10 @@ pub struct DmrgSweepParams {
     /// convergence requires `|E_n - E_{n-1}| <= energy_tol`. Must
     /// be finite and non-negative.
     pub energy_tol: f64,
-    /// Local-solver parameters, forwarded to the per-step driver
-    /// (Dense `dmrg_2site_step` or BlockSparse
+    /// Local-eigensolver selector + per-variant parameters, forwarded
+    /// to the per-step driver (Dense `dmrg_2site_step` or BlockSparse
     /// `dmrg_2site_step_block_sparse`).
-    pub lanczos: LanczosParams,
+    pub eigensolver: LocalEigensolverParams,
     /// Truncated-SVD parameters, forwarded to the per-step driver
     /// (Dense `dmrg_2site_step` or BlockSparse
     /// `dmrg_2site_step_block_sparse`).
@@ -100,7 +100,7 @@ pub struct DmrgStepRecord<R> {
     /// local-block variational minimum). May lie below the
     /// post-truncation sweep energy.
     pub eigenvalue: R,
-    /// Lanczos true residual `‖H v − λ v‖₂`.
+    /// Local-eigensolver true residual `‖H v − λ v‖₂`.
     pub residual: R,
     /// Frobenius norm of singular values discarded by this step's
     /// truncated SVD.
@@ -108,8 +108,19 @@ pub struct DmrgStepRecord<R> {
     /// New bond dimension between `site` and `site + 1` after the
     /// truncated split.
     pub bond_dim: usize,
-    pub lanczos_iters: usize,
-    pub lanczos_converged: bool,
+    /// Number of iterations the local eigensolver ran for this step.
+    /// For Lanczos this is the inner loop count; for ARPACK it is
+    /// the restart-iteration count returned in `iparam[2]`.
+    pub eigensolver_iters: usize,
+    /// `true` iff the local eigensolver succeeded — Lanczos by its
+    /// absolute true-residual test against `LanczosParams::tol`,
+    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
+    /// return from `arpack_smallest`). The two arms intentionally
+    /// disagree on what they call "converged": Lanczos uses the
+    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
+    /// See [`super::heff::TwoSiteStepResult::converged`] for the
+    /// upstream contract this field forwards from.
+    pub eigensolver_converged: bool,
 }
 
 /// Per-sweep diagnostics record (one full L→R + R→L cycle).
@@ -125,7 +136,9 @@ pub struct DmrgSweepRecord<R> {
     pub min_step_eigenvalue: R,
     pub max_trunc_err: R,
     pub max_bond: usize,
-    pub all_lanczos_converged: bool,
+    /// `true` iff every step in this cycle's local-eigensolver pass
+    /// converged.
+    pub all_eigensolver_converged: bool,
     pub steps: Vec<DmrgStepRecord<R>>,
 }
 
@@ -137,7 +150,7 @@ pub struct DmrgResult<R> {
     /// `true` iff the final cycle satisfied:
     /// `n_sweeps >= min_sweeps`,
     /// `|delta_E| <= energy_tol`,
-    /// and every step's Lanczos converged.
+    /// and every step's local eigensolver converged.
     pub converged: bool,
     pub n_sweeps: usize,
     pub sweeps: Vec<DmrgSweepRecord<R>>,
@@ -295,16 +308,19 @@ where
     // finite value outside f32 range (NumCast::from returns Some(inf),
     // which try_real_from_f64 then maps to None). Surface that as
     // `InvalidParams` so the public API stays fallible end-to-end
-    // instead of panicking inside lanczos. lanczos.tol is gated here
-    // too so a borderline f32 tol does not slip past sweep-level
-    // validation only to abort the run from inside the local solve.
+    // instead of failing inside the local eigensolver (Lanczos's
+    // internal `try_real_from_f64` would panic; ARPACK's `tol_real`
+    // cast would also panic). The selected eigensolver's `tol` is
+    // gated here too so a borderline f32 tol does not slip past
+    // sweep-level validation only to abort the run from inside the
+    // local solve.
     let energy_tol_real: <R::Elem as Scalar>::Real =
         try_real_from_f64::<R::Elem>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
             detail: "energy_tol is not representable in the storage's real scalar type",
         })?;
-    if try_real_from_f64::<R::Elem>(params.lanczos.tol).is_none() {
+    if try_real_from_f64::<R::Elem>(eigensolver_tol(&params.eigensolver)).is_none() {
         return Err(DmrgSweepError::InvalidParams {
-            detail: "lanczos.tol is not representable in the storage's real scalar type",
+            detail: "eigensolver tol is not representable in the storage's real scalar type",
         });
     }
 
@@ -418,7 +434,7 @@ where
             if s.trunc_err > max_te {
                 max_te = s.trunc_err;
             }
-            if !s.lanczos_converged {
+            if !s.eigensolver_converged {
                 all_ok = false;
             }
         }
@@ -429,7 +445,7 @@ where
             min_step_eigenvalue: min_eig,
             max_trunc_err: max_te,
             max_bond,
-            all_lanczos_converged: all_ok,
+            all_eigensolver_converged: all_ok,
             steps,
         });
 
@@ -485,7 +501,7 @@ where
     B: ComputeBackend,
 {
     let result =
-        R::step(envs, mps, mpo, site, &params.lanczos, &params.trunc).map_err(|source| {
+        R::step(envs, mps, mpo, site, &params.eigensolver, &params.trunc).map_err(|source| {
             DmrgSweepError::Step {
                 sweep: sweep_idx,
                 direction,
@@ -515,8 +531,8 @@ where
         residual: absorbed.residual,
         trunc_err: absorbed.trunc_err,
         bond_dim: absorbed.bond_dim,
-        lanczos_iters: absorbed.iters,
-        lanczos_converged: absorbed.converged,
+        eigensolver_iters: absorbed.iters,
+        eigensolver_converged: absorbed.converged,
     })
 }
 
@@ -541,21 +557,8 @@ pub(super) fn validate_params(params: &DmrgSweepParams) -> Result<(), DmrgSweepE
             detail: "energy_tol must be non-negative",
         });
     }
-    if params.lanczos.max_iter == 0 {
-        return Err(DmrgSweepError::InvalidParams {
-            detail: "lanczos.max_iter must be >= 1",
-        });
-    }
-    if !params.lanczos.tol.is_finite() {
-        return Err(DmrgSweepError::InvalidParams {
-            detail: "lanczos.tol must be finite",
-        });
-    }
-    if params.lanczos.tol < 0.0 {
-        return Err(DmrgSweepError::InvalidParams {
-            detail: "lanczos.tol must be non-negative",
-        });
-    }
+    validate_eigensolver_params(&params.eigensolver)
+        .map_err(|detail| DmrgSweepError::InvalidParams { detail })?;
     if let Some(chi) = params.trunc.chi_max
         && chi == 0
     {

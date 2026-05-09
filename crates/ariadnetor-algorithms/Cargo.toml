@@ -22,9 +22,14 @@ arpack = { git = "https://github.com/ultimatile/arpack-rs.git", optional = true 
 
 [dev-dependencies]
 approx = { workspace = true }
+criterion = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }
 
 [lib]
 name = "arnet_algorithms"
 path = "src/lib.rs"
+
+[[bench]]
+name = "dmrg_local_eigensolver"
+harness = false

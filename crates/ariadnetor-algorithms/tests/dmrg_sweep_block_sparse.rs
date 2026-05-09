@@ -17,7 +17,7 @@
 mod fixtures;
 
 use arnet_algorithms::dmrg::{
-    DmrgEnvs, DmrgSweepError, DmrgSweepParams, SweepDirection, sweep_2site,
+    DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
@@ -39,11 +39,11 @@ fn standard_params(seed: u64) -> DmrgSweepParams {
         max_sweeps: 8,
         min_sweeps: 1,
         energy_tol: 1e-10,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 200,
             tol: 1e-12,
             seed: Some(seed),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(8),
             target_trunc_err: None,
@@ -377,18 +377,18 @@ fn bsp_sweep_lanczos_nonconvergence_blocks_dmrg_convergence() {
     let mpo = make_n2_mpo_f64(1.0);
     let mut envs = setup_f64(&mut mps, &mpo);
     // tol=0 → Lanczos's true-residual test cannot fire, so each step
-    // returns `converged = false`. The driver's `all_lanczos_converged
+    // returns `converged = false`. The driver's `all_eigensolver_converged
     // && |delta_E| <= tol` check should then never set the result's
     // converged flag, even if the energy stabilizes numerically.
     let params = DmrgSweepParams {
         max_sweeps: 4,
         min_sweeps: 2,
         energy_tol: 1e-10,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 1,
             tol: 0.0,
             seed: Some(123),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(8),
             target_trunc_err: None,
@@ -402,7 +402,7 @@ fn bsp_sweep_lanczos_nonconvergence_blocks_dmrg_convergence() {
         "expected non-convergence, got {result:?}"
     );
     for sweep in &result.sweeps {
-        assert!(!sweep.all_lanczos_converged);
+        assert!(!sweep.all_eigensolver_converged);
     }
 }
 

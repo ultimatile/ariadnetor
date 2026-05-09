@@ -18,7 +18,7 @@
 //!
 //! Test-internal helpers; no public API additions.
 
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, sweep_2site};
+use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
@@ -361,11 +361,11 @@ fn validation_params_bsp(chi_max: usize, lanczos_seed: u64) -> DmrgSweepParams {
         max_sweeps: 30,
         min_sweeps: 4,
         energy_tol: 1e-12,
-        lanczos: LanczosParams {
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
             max_iter: 200,
             tol: 1e-12,
             seed: Some(lanczos_seed),
-        },
+        }),
         trunc: TruncSvdParams {
             chi_max: Some(chi_max),
             target_trunc_err: None,

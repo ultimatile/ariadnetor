@@ -4,7 +4,7 @@
 
 use arnet_algorithms::dmrg::{
     DmrgEnvs, EffectiveHamiltonian2Site, EffectiveHamiltonian2SiteBlockSparse,
-    dmrg_2site_step_block_sparse,
+    LocalEigensolverParams, dmrg_2site_step_block_sparse,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::{TruncSvdParams, eigh};
@@ -142,11 +142,11 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
         }
     }
 
-    let params = LanczosParams {
+    let params = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: 1e-12,
         seed: Some(7),
-    };
+    });
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -206,11 +206,11 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     let (eigvals, _eigvecs) = eigh(backend.as_ref(), &h_dense, 1).expect("eigh");
     let eigh_smallest = eigvals.data()[0];
 
-    let params = LanczosParams {
+    let params = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: 1e-12,
         seed: Some(42),
-    };
+    });
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -233,11 +233,11 @@ fn bsp_heff_step_uvt_canonical_form() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);
-    let params = LanczosParams {
+    let params = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: 1e-12,
         seed: Some(42),
-    };
+    });
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -302,11 +302,11 @@ fn bsp_heff_step_flux_propagation() {
         "fixture must have non-identity 2-site flux"
     );
 
-    let params = LanczosParams {
+    let params = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: 1e-12,
         seed: Some(42),
-    };
+    });
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -326,7 +326,7 @@ fn bsp_heff_step_n2_edge_case() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);
-    let params = LanczosParams::default();
+    let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
