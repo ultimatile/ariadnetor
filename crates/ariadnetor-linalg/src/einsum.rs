@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, normalize_to};
 
 use crate::contract::contract;
 use crate::error::LinalgError;
@@ -146,12 +146,19 @@ fn hadamard<T: Scalar>(
         rhs.clone()
     };
 
-    let lhs_data = lhs_ordered.data();
-    let rhs_data = rhs_ordered.data();
+    // Both operands must share a common layout before element-wise zip:
+    // when no permutation was applied, `*_ordered` carries the caller's
+    // original `order()`, which may differ from the backend's preferred
+    // order; normalize to `backend.preferred_order()` so the result we
+    // tag below matches its data.
+    let order = backend.preferred_order();
+    let lhs_normalized = normalize_to(&lhs_ordered, order);
+    let rhs_normalized = normalize_to(&rhs_ordered, order);
 
-    let c_data: Vec<T> = lhs_data
+    let c_data: Vec<T> = lhs_normalized
+        .data()
         .iter()
-        .zip(rhs_data.iter())
+        .zip(rhs_normalized.data().iter())
         .map(|(&a, &b)| a * b)
         .collect();
 
@@ -491,14 +498,15 @@ fn einsum_single<T: Scalar>(
     }
 
     // Step 1: trace if needed.
-    // trace() uses RowMajor indexing, so convert from preferred_order first,
-    // then convert the result back to preferred_order for downstream transpose.
+    // `trace` normalizes its input to RowMajor internally and tags the
+    // result RowMajor; convert the result to `backend.preferred_order()`
+    // so downstream `transpose` operates on the layout the backend
+    // kernels expect.
     let order = backend.preferred_order();
     let traced = if trace_pairs.is_empty() {
         tensor.clone()
     } else {
-        let tensor_rm = reorder(tensor, order, MemoryOrder::RowMajor);
-        let result_rm = trace(&tensor_rm, &trace_pairs)?;
+        let result_rm = trace(tensor, &trace_pairs)?;
         reorder(&result_rm, MemoryOrder::RowMajor, order)
     };
 
