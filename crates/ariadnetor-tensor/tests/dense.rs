@@ -331,7 +331,7 @@ fn test_slice_2x2_from_3x3() {
     let t = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
         vec![3, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
     let s = t.slice(&[(0, 2), (1, 3)], MemoryOrder::RowMajor);
     assert_eq!(s.shape(), &[2, 2]);
@@ -374,11 +374,7 @@ fn test_slice_out_of_bounds() {
 #[test]
 fn test_expand_symmetric() {
     // RM [[1,2],[3,4]] with padding (1,1) on each axis → 4x4
-    let t = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
+    let t = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
     let e = t.expand(&[(1, 1), (1, 1)], MemoryOrder::RowMajor);
     assert_eq!(e.shape(), &[4, 4]);
     // Expected RM flat: row0=[0,0,0,0], row1=[0,1,2,0], row2=[0,3,4,0], row3=[0,0,0,0]
@@ -401,12 +397,8 @@ fn test_expand_asymmetric() {
 #[test]
 fn test_replace_slice_center() {
     // 3x3 zeros, write [[5,6],[7,8]] at position (0,1) in RM
-    let mut t = Dense::<f64>::new(vec![0.0; 9], vec![3, 3], MemoryOrder::ColumnMajor);
-    let sub = Dense::<f64>::new(
-        vec![5.0, 6.0, 7.0, 8.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
+    let mut t = Dense::<f64>::new(vec![0.0; 9], vec![3, 3], MemoryOrder::RowMajor);
+    let sub = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
     t.replace_slice(&sub, &[0, 1], MemoryOrder::RowMajor);
     // RM: row0=[0,5,6], row1=[0,7,8], row2=[0,0,0]
     assert_eq!(t.data(), &[0.0, 5.0, 6.0, 0.0, 7.0, 8.0, 0.0, 0.0, 0.0]);
