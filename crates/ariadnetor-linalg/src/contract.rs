@@ -160,8 +160,11 @@ pub fn contract_with_policy<T: Scalar>(
     let order = backend.preferred_order();
 
     // Prepare operands for GEMM: reshape to 2D.
-    // rank <= 2: no axis merge needed, data is already in preferred_order.
-    // rank > 2: RowMajor reshape (correct axis merge semantics) required.
+    // rank <= 2: no axis merge needed; `prepare_for_gemm` normalizes
+    // the operand to `order` via `normalize_to` so a caller-supplied
+    // Dense tagged in a different order is reordered at the boundary.
+    // rank > 2: RowMajor reshape (correct axis merge semantics) is
+    // required, then the reshaped tensor is reordered to `order`.
     let lhs_ready = prepare_for_gemm(&lhs_permuted, m, k, order);
     let rhs_ready = prepare_for_gemm(&rhs_permuted, k, n, order);
 
