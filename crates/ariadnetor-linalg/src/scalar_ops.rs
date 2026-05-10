@@ -368,10 +368,14 @@ pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
 /// ```rust,ignore
 /// use arnet_linalg::diagonal_scale;
 /// use arnet_native::NativeBackend;
-/// use arnet_tensor::Dense;
+/// use arnet_tensor::{Dense, MemoryOrder};
 ///
 /// let backend = NativeBackend::new();
-/// let m = Dense::new(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], vec![2, 3]);
+/// let m = Dense::new(
+///     vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
+///     vec![2, 3],
+///     MemoryOrder::ColumnMajor,
+/// );
 /// let scaled = diagonal_scale(&backend, &m, &[1.0, 2.0, 3.0], 1).unwrap();
 /// ```
 pub fn diagonal_scale<T, S>(

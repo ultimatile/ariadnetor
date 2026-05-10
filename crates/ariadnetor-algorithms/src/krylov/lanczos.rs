@@ -5,7 +5,7 @@ use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
 use arnet_linalg::{eigh, linear_combine, norm, normalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, reorder};
 use num_traits::{Float, One, Zero};
 use rand::Rng;
 use rand::SeedableRng;
@@ -151,12 +151,21 @@ where
     for j in 0..max_iter {
         iters = j + 1;
         let v_j = basis[j].clone();
-        let mut w = op.apply(&v_j);
+        let w_raw = op.apply(&v_j);
         assert_eq!(
-            w.shape(),
+            w_raw.shape(),
             &[dim],
             "LinearOp::apply must return a rank-1 tensor of shape [dim]",
         );
+        // Operators are not required to declare an output `order()`
+        // matching the Lanczos basis. Normalize against `v_j.order()`
+        // so the recurrence and the eventual `linear_combine(&basis_refs, ...)`
+        // see a uniform-order vector set; for 1D data this is metadata-only.
+        let mut w = if w_raw.order() == v_j.order() {
+            w_raw
+        } else {
+            reorder(&w_raw, w_raw.order(), v_j.order())
+        };
 
         // alpha_j = Re<v_j, H v_j>; the imaginary part is zero up to
         // numerical noise for a Hermitian operator.
@@ -238,12 +247,20 @@ where
     let (psi, _) = normalize(&psi);
 
     // True residual: ||H psi - lambda psi||.
-    let h_psi = op.apply(&psi);
+    let h_psi_raw = op.apply(&psi);
     assert_eq!(
-        h_psi.shape(),
+        h_psi_raw.shape(),
         &[dim],
         "LinearOp::apply must return a rank-1 tensor of shape [dim]",
     );
+    // Same rationale as the recurrence loop above: align `op.apply`'s
+    // declared order with `psi.order()` so `linear_combine` does not
+    // reject mixed-order inputs.
+    let h_psi = if h_psi_raw.order() == psi.order() {
+        h_psi_raw
+    } else {
+        reorder(&h_psi_raw, h_psi_raw.order(), psi.order())
+    };
     let lambda_t = T::from_real_imag(converged_lambda, T::Real::zero());
     let neg_lambda = lambda_t.scale_real(-T::Real::one());
     let residual_vec =
