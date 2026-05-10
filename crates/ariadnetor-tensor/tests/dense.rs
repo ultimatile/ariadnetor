@@ -314,7 +314,10 @@ fn test_map_mut_cow() {
 
 #[test]
 fn test_map_with_index_sum_of_indices() {
-    let t = Dense::<f64>::new(vec![0.0; 6], vec![2, 3], MemoryOrder::ColumnMajor);
+    // `map_with_index` walks coords in the iteration `order` while
+    // reading the storage linearly, so the storage must already be in
+    // that same order.
+    let t = Dense::<f64>::new(vec![0.0; 6], vec![2, 3], MemoryOrder::RowMajor);
     let r = t.map_with_index(MemoryOrder::RowMajor, |coords, _| {
         (coords[0] + coords[1]) as f64
     });

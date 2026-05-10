@@ -77,14 +77,23 @@ fn reshape_preserves_order_column_major() {
 
 #[test]
 fn map_with_index_outputs_iteration_order() {
-    let t = Dense::<f64>::new(
+    // `map_with_index` requires `order == self.order()`; build one
+    // tensor per order to verify the output order tag matches the
+    // requested iteration order in each case.
+    let t_rm = Dense::<f64>::new(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+    );
+    let row_major_out = t_rm.map_with_index(MemoryOrder::RowMajor, |_idx, &x| x);
+    assert_eq!(row_major_out.order(), MemoryOrder::RowMajor);
+
+    let t_cm = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
     );
-    let row_major_out = t.map_with_index(MemoryOrder::RowMajor, |_idx, &x| x);
-    assert_eq!(row_major_out.order(), MemoryOrder::RowMajor);
-    let col_major_out = t.map_with_index(MemoryOrder::ColumnMajor, |_idx, &x| x);
+    let col_major_out = t_cm.map_with_index(MemoryOrder::ColumnMajor, |_idx, &x| x);
     assert_eq!(col_major_out.order(), MemoryOrder::ColumnMajor);
 }
 

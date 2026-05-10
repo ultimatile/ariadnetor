@@ -42,11 +42,7 @@ fn test_concatenate_column_major_axis1() {
 
 #[test]
 fn test_concatenate_rm_axis0() {
-    let a = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
+    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
     let c = Dense::concatenate(&[&a, &a], 0, MemoryOrder::RowMajor);
     assert_eq!(c.shape(), &[4, 2]);
     assert_eq!(c.data(), &[1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]);
@@ -54,11 +50,7 @@ fn test_concatenate_rm_axis0() {
 
 #[test]
 fn test_stack_rm_axis0() {
-    let a = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
+    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
     let s = Dense::stack(&[&a, &a], 0, MemoryOrder::RowMajor);
     assert_eq!(s.shape(), &[2, 2, 2]);
     assert_eq!(s.data(), &[1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]);

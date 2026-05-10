@@ -169,12 +169,11 @@ fn test_linear_combine_column_major() {
 
 #[test]
 fn test_trace_matrix() {
-    // tr([[1,2],[3,4]]) = 1 + 4 = 5
-    let mat = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
+    // tr([[1,2],[3,4]]) = 1 + 4 = 5; the literal is the row-major
+    // flat layout `[a, b, c, d]` for `[[a, b], [c, d]]`, so tag the
+    // storage `RowMajor` to match (this happens to also be the order
+    // `trace` normalizes to internally).
+    let mat = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
     let result = trace(&mat, &[(0, 1)]).unwrap();
     assert_eq!(result.shape(), &[1]);
     assert_eq!(result.data()[0], 5.0);

@@ -170,7 +170,7 @@ fn test_expect_sz_product_state() {
     let sz_mpo = Mpo::from_storages(vec![Dense::new(
         sz_data,
         vec![1, 2, 2, 1],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     )]);
 
     // |0⟩ (spin up): ⟨0|Sz|0⟩ = 0.5

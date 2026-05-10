@@ -71,14 +71,30 @@ where
 
     /// Apply a function with multi-dimensional coordinates to each element.
     ///
-    /// Iterates coordinates in the given `order`. The output's `order()`
-    /// is set to this same order — the result data is laid out in the
-    /// iteration order.
+    /// Iterates coordinates in the given `order` while reading the storage
+    /// linearly, so the coordinate-to-value mapping is correct only when
+    /// the storage's own layout matches `order`. The caller must therefore
+    /// pass `order == self.order()`; the resulting Dense's `order()` is set
+    /// to the same `order` so its bytes are laid out in the iteration order.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if `order != self.order()`. (The release-build
+    /// behavior is to silently return a Dense whose metadata claims `order`
+    /// but whose bytes are laid out in `self.order()`.)
     pub fn map_with_index<U, F>(&self, order: MemoryOrder, f: F) -> Dense<U>
     where
         F: Fn(&[usize], &T) -> U,
         U: Clone + 'static,
     {
+        debug_assert_eq!(
+            order,
+            self.order(),
+            "map_with_index: `order` argument ({:?}) must match `self.order()` ({:?}); \
+             the linear walk over `self.data()` is only meaningful in the storage's own layout",
+            order,
+            self.order(),
+        );
         let shape = self.shape();
         let rank = shape.len();
         let total = self.len();
