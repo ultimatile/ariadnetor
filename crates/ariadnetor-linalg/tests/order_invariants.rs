@@ -66,6 +66,39 @@ fn contract_normalizes_row_major_input_against_column_major_backend() {
     assert_eq!(c_rm_norm.data(), &[19.0, 22.0, 43.0, 50.0]);
 }
 
+/// Companion to the no-permutation case above: a notation that
+/// requires permuting the LHS forces `contract` through its
+/// `transpose` preprocessing branch. If `transpose` regresses on
+/// `tensor.order()` normalization, this case detects it (the
+/// no-permutation path bypasses the transpose call entirely).
+#[test]
+fn contract_with_permutation_normalizes_row_major_input_against_column_major_backend() {
+    let backend = NativeBackend::new();
+
+    // Logical A = [[1, 2], [3, 4]] with notation `"ji,jk->ik"` →
+    // contract over A's row index j (LHS axis 0) with B's row index j
+    // (RHS axis 0). Effectively (A^T) * B.
+    // (A^T) * B with A = [[1,2],[3,4]], B = [[5,6],[7,8]] gives
+    // [[1,3],[2,4]] * [[5,6],[7,8]] = [[26, 30], [38, 44]].
+    let a_rm = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let b_rm = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
+
+    let a_cm = reorder(&a_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
+    let b_cm = reorder(&b_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
+
+    let c_rm_inputs = contract(&backend, &a_rm, &b_rm, "ji,jk->ik")
+        .expect("contract with RM-flagged inputs must normalize and succeed");
+    let c_cm_inputs = contract(&backend, &a_cm, &b_cm, "ji,jk->ik")
+        .expect("contract with CM-flagged inputs is the reference path");
+
+    let c_rm_norm = reorder(&c_rm_inputs, c_rm_inputs.order(), MemoryOrder::RowMajor);
+    let c_cm_norm = reorder(&c_cm_inputs, c_cm_inputs.order(), MemoryOrder::RowMajor);
+
+    assert_eq!(c_rm_norm.shape(), c_cm_norm.shape());
+    assert_eq!(c_rm_norm.data(), c_cm_norm.data());
+    assert_eq!(c_rm_norm.data(), &[26.0, 30.0, 38.0, 44.0]);
+}
+
 #[test]
 fn backend_make_tensor_uses_preferred_order() {
     let backend = NativeBackend::new();
