@@ -8,6 +8,12 @@ fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
+/// Convert a column-major Dense to row-major so `Dense::get` (which is
+/// row-major-fixed by design) returns the logical `[i, j]` element.
+fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
+    arnet_tensor::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
+}
+
 // --- EIGH tests ---
 
 #[test]
@@ -25,11 +31,14 @@ fn test_eigh_f64_2x2_symmetric() {
     assert!((w.data()[0] - 1.0).abs() < 1e-10);
     assert!((w.data()[1] - 3.0).abs() < 1e-10);
 
-    // Eigenvectors should be orthogonal
-    let v00 = v.get(&[0, 0]);
-    let v10 = v.get(&[1, 0]);
-    let v01 = v.get(&[0, 1]);
-    let v11 = v.get(&[1, 1]);
+    // Eigenvectors should be orthogonal. `eigh` outputs `v` in
+    // column-major (backend preferred order); convert to row-major so
+    // `Dense::get([i, j])` returns the logical `v[i, j]` element.
+    let v_rm = to_rm(&v);
+    let v00 = v_rm.get(&[0, 0]);
+    let v10 = v_rm.get(&[1, 0]);
+    let v01 = v_rm.get(&[0, 1]);
+    let v11 = v_rm.get(&[1, 1]);
     let dot = v00 * v01 + v10 * v11;
     assert!(dot.abs() < 1e-10, "Eigenvectors not orthogonal: dot={dot}");
 }
