@@ -16,6 +16,7 @@
 //! slice-in-place variant.
 
 use arnet_core::Scalar;
+use arnet_core::backend::MemoryOrder;
 use arnet_linalg::{linear_combine, norm, normalize};
 use arnet_tensor::Dense;
 use num_complex::{Complex32, Complex64};
@@ -283,7 +284,7 @@ where
     let solution = T::solve(
         dim,
         &mut |x_slice, y_slice| {
-            let x_dense = Dense::new(x_slice.to_vec(), vec![dim]);
+            let x_dense = Dense::new(x_slice.to_vec(), vec![dim], MemoryOrder::ColumnMajor);
             let y_dense = op.apply(&x_dense);
             assert_eq!(
                 y_dense.shape(),
@@ -296,7 +297,7 @@ where
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let eigenvector = Dense::new(solution.eigenvector, vec![dim]);
+    let eigenvector = Dense::new(solution.eigenvector, vec![dim], MemoryOrder::ColumnMajor);
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
     let (eigenvector, _) = normalize(&eigenvector);

@@ -79,7 +79,9 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
     /// Create a `DiagTensor` from a vector and an explicit backend.
     pub fn from_vec_with_backend(diag: Vec<S>, backend: Arc<B>) -> Self {
         let n = diag.len();
-        let storage = Dense::new(diag, vec![n]);
+        // 1D data is layout-invariant; declare the active backend's
+        // preferred order so downstream ops do not normalize.
+        let storage = Dense::new(diag, vec![n], backend.preferred_order());
         Self(Tensor::with_backend(storage, backend))
     }
 
@@ -99,11 +101,15 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
     /// # Examples
     ///
     /// ```
-    /// use arnet::{Dense, DiagTensor, Tensor};
+    /// use arnet::{Dense, DiagTensor, MemoryOrder, Tensor};
     /// use arnet_native::NativeBackend;
     ///
     /// // Diagonal matrix: data stored in column-major (NativeBackend order)
-    /// let dense = Dense::new(vec![1.0, 0.0, 0.0, 2.0], vec![2, 2]);
+    /// let dense = Dense::new(
+    ///     vec![1.0, 0.0, 0.0, 2.0],
+    ///     vec![2, 2],
+    ///     MemoryOrder::ColumnMajor,
+    /// );
     /// let t = Tensor::with_backend(dense, NativeBackend::shared());
     /// let d = DiagTensor::from_matrix(&t).unwrap();
     /// assert_eq!(d.data(), &[1.0, 2.0]);
@@ -155,8 +161,12 @@ impl<S: Scalar, B: ComputeBackend> DiagTensor<S, B> {
         for i in 0..n {
             data[i * n + i] = diag[i];
         }
-        let dense = Dense::new(data, vec![n, n]);
-        Tensor::with_backend(dense, Arc::clone(self.0.backend_arc()))
+        // Diagonal data is layout-invariant (RM and CM flat layouts
+        // place [i, i] at the same flat index `i * (n + 1)`); declare
+        // the active backend's preferred order.
+        let backend = self.0.backend_arc();
+        let dense = Dense::new(data, vec![n, n], backend.preferred_order());
+        Tensor::with_backend(dense, Arc::clone(backend))
     }
 }
 
@@ -195,6 +205,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arnet_core::backend::MemoryOrder;
 
     #[test]
     fn from_vec_basic() {
@@ -300,6 +311,7 @@ mod tests {
         let dense = Dense::new(
             vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
             vec![3, 3],
+            MemoryOrder::ColumnMajor,
         );
         let t = Tensor::with_backend(dense, NativeBackend::shared());
         let d = DiagTensor::from_matrix(&t).unwrap();
@@ -308,7 +320,11 @@ mod tests {
 
     #[test]
     fn from_matrix_rejects_non_square() {
-        let dense = Dense::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+        let dense = Dense::new(
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            vec![2, 3],
+            MemoryOrder::ColumnMajor,
+        );
         let t = Tensor::with_backend(dense, NativeBackend::shared());
         assert!(DiagTensor::<f64>::from_matrix(&t).is_err());
     }

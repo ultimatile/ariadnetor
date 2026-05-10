@@ -81,7 +81,7 @@ fn transpose_inner<T: Scalar>(
     let total = tensor.len();
 
     if total == 0 {
-        return Ok(Dense::new(vec![], new_shape));
+        return Ok(Dense::new(vec![], new_shape, order));
     }
 
     let mut output = vec![T::zero(); total];
@@ -98,5 +98,5 @@ fn transpose_inner<T: Scalar>(
 
     backend.transpose(desc)?;
 
-    Ok(Dense::new(output, new_shape))
+    Ok(Dense::new(output, new_shape, order))
 }

@@ -118,7 +118,7 @@ impl<S: Scalar, B: ComputeBackend> Tensor<Dense<S>, B> {
 
     /// Get element at given indices.
     ///
-    /// Computes the flat index using the backend's preferred memory order.
+    /// Computes the flat index using the storage's recorded memory order.
     ///
     /// # Panics
     ///
@@ -138,13 +138,13 @@ impl<S: Scalar, B: ComputeBackend> Tensor<Dense<S>, B> {
                 "Tensor::get: index {idx} out of bounds for axis {i} with size {dim}"
             );
         }
-        let flat = arnet_tensor::flat_index(indices, shape, self.backend.preferred_order());
+        let flat = arnet_tensor::flat_index(indices, shape, self.storage.order());
         self.storage.data()[flat]
     }
 
     /// Set element at given indices.
     ///
-    /// Computes the flat index using the backend's preferred memory order.
+    /// Computes the flat index using the storage's recorded memory order.
     ///
     /// # Panics
     ///
@@ -164,11 +164,8 @@ impl<S: Scalar, B: ComputeBackend> Tensor<Dense<S>, B> {
                 "Tensor::set: index {idx} out of bounds for axis {i} with size {dim}"
             );
         }
-        let flat = arnet_tensor::flat_index(
-            indices,
-            self.storage.shape(),
-            self.backend.preferred_order(),
-        );
+        let order = self.storage.order();
+        let flat = arnet_tensor::flat_index(indices, self.storage.shape(), order);
         self.storage.data_mut()[flat] = value;
     }
 

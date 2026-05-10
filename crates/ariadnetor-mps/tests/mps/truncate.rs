@@ -4,7 +4,7 @@ use approx::assert_abs_diff_eq;
 use arnet_mps::{
     self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
@@ -36,10 +36,26 @@ fn test_truncate_no_change_within_tolerance() {
 fn test_truncate_reduces_bond_dim() {
     // Build MPS with large bond dims, canonicalize, then truncate to chi_max=2
     let storages = vec![
-        Dense::new((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 4]),
-        Dense::new((1..=32).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 4]),
-        Dense::new((1..=32).map(|i| i as f64 * 0.01).collect(), vec![4, 2, 4]),
-        Dense::new((1..=8).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 1]),
+        Dense::new(
+            (1..=8).map(|i| i as f64 * 0.1).collect(),
+            vec![1, 2, 4],
+            MemoryOrder::ColumnMajor,
+        ),
+        Dense::new(
+            (1..=32).map(|i| i as f64 * 0.1).collect(),
+            vec![4, 2, 4],
+            MemoryOrder::ColumnMajor,
+        ),
+        Dense::new(
+            (1..=32).map(|i| i as f64 * 0.01).collect(),
+            vec![4, 2, 4],
+            MemoryOrder::ColumnMajor,
+        ),
+        Dense::new(
+            (1..=8).map(|i| i as f64 * 0.1).collect(),
+            vec![4, 2, 1],
+            MemoryOrder::ColumnMajor,
+        ),
     ];
     let mut mps = Mps::from_storages(storages);
     mps::canonicalize(&mut mps, 1);
@@ -102,7 +118,11 @@ fn test_truncate_with_cutoff() {
 
 #[test]
 fn test_truncate_single_site() {
-    let storages = vec![Dense::new(vec![3.0, 4.0], vec![1, 2, 1])];
+    let storages = vec![Dense::new(
+        vec![3.0, 4.0],
+        vec![1, 2, 1],
+        MemoryOrder::ColumnMajor,
+    )];
     let mut mps = Mps::from_storages(storages);
     mps::canonicalize(&mut mps, 0);
 

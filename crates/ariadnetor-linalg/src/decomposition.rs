@@ -55,8 +55,8 @@ fn reshape_for_backend<T: Scalar>(
     order: MemoryOrder,
 ) -> Dense<T> {
     // Reorder to RowMajor layout, reshape to 2D, then reorder to backend order
-    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
-    let mat_2d = Dense::new(rm.data().to_vec(), vec![m, n]);
+    let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
+    let mat_2d = Dense::new(rm.data().to_vec(), vec![m, n], MemoryOrder::RowMajor);
     // mat_2d data is in RowMajor; convert to backend's preferred order
     reorder(&mat_2d, MemoryOrder::RowMajor, order)
 }
@@ -143,7 +143,7 @@ pub fn svd_with_policy<T: Scalar>(
     backend.svd(desc)?;
 
     let u_tensor = backend.make_tensor(u_data, vec![m, k]);
-    let s_tensor = Dense::new(s_data, vec![k]);
+    let s_tensor = Dense::new(s_data, vec![k], MemoryOrder::ColumnMajor);
     let vt_tensor = backend.make_tensor(vt_data, vec![k, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor))
@@ -296,7 +296,7 @@ pub fn trunc_svd_with_policy<T: Scalar>(
     };
 
     let u_tensor = backend.make_tensor(u_trunc, vec![m, chi]);
-    let s_tensor = Dense::new(s_trunc, vec![chi]);
+    let s_tensor = Dense::new(s_trunc, vec![chi], MemoryOrder::ColumnMajor);
     let vt_tensor = backend.make_tensor(vt_trunc, vec![chi, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor, trunc_err))

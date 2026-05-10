@@ -80,7 +80,7 @@ pub fn solve_with_policy<T: Scalar>(
 
     // Ensure row-major reshape semantics, then convert to backend order
     let a_rm = reorder(a, order, MemoryOrder::RowMajor);
-    let a_2d = Dense::new(a_rm.data().to_vec(), vec![n, n]);
+    let a_2d = Dense::new(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let a_contiguous = reorder(&a_2d, MemoryOrder::RowMajor, order);
 
     let b_rm = reorder(b, order, MemoryOrder::RowMajor);
@@ -94,7 +94,7 @@ pub fn solve_with_policy<T: Scalar>(
 
     let nrhs = b_total / n;
 
-    let b_2d = Dense::new(b_rm.data().to_vec(), vec![n, nrhs]);
+    let b_2d = Dense::new(b_rm.data().to_vec(), vec![n, nrhs], MemoryOrder::RowMajor);
     let b_contiguous = reorder(&b_2d, MemoryOrder::RowMajor, order);
 
     let mut x_data = vec![T::zero(); n * nrhs];
@@ -115,7 +115,11 @@ pub fn solve_with_policy<T: Scalar>(
     // then reshape to b's original shape, then back to preferred order.
     let x_2d = backend.make_tensor(x_data, vec![n, nrhs]);
     let x_rm = reorder(&x_2d, order, MemoryOrder::RowMajor);
-    let x_reshaped = Dense::new(x_rm.data().to_vec(), b.shape().to_vec());
+    let x_reshaped = Dense::new(
+        x_rm.data().to_vec(),
+        b.shape().to_vec(),
+        MemoryOrder::RowMajor,
+    );
     Ok(reorder(&x_reshaped, MemoryOrder::RowMajor, order))
 }
 
@@ -162,14 +166,16 @@ pub fn inverse<T: Scalar>(
 
     let order = backend.preferred_order();
 
-    // Identity matrix in preferred_order for use as RHS
-    let identity_rm = Dense::<T>::eye(n);
-    let identity = reorder(&identity_rm, MemoryOrder::RowMajor, order);
+    // Identity matrix in `preferred_order` for use as RHS. The flat
+    // layout of an identity is symmetric, so the choice of order only
+    // affects the `order()` field; declaring `preferred_order()` lets
+    // `solve` consume it without normalization.
+    let identity = backend.eye::<T>(n);
 
     // Flatten tensor to n x n using RM reshape semantics, then convert to preferred_order.
     // solve() expects inputs in preferred_order.
     let a_rm = reorder(tensor, order, MemoryOrder::RowMajor);
-    let a_flat_rm = Dense::new(a_rm.data().to_vec(), vec![n, n]);
+    let a_flat_rm = Dense::new(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let a_flat = reorder(&a_flat_rm, MemoryOrder::RowMajor, order);
 
     let result = solve(backend, &a_flat, &identity, 1)?;
@@ -177,6 +183,10 @@ pub fn inverse<T: Scalar>(
     // solve() returns preferred_order data. RM intermediate for axis-split,
     // then back to preferred_order.
     let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-    let reshaped = Dense::new(result_rm.data().to_vec(), shape.to_vec());
+    let reshaped = Dense::new(
+        result_rm.data().to_vec(),
+        shape.to_vec(),
+        MemoryOrder::RowMajor,
+    );
     Ok(reorder(&reshaped, MemoryOrder::RowMajor, order))
 }

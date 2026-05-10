@@ -114,7 +114,7 @@ pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector>(
 
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::new(matrix, vec![group.m, group.n]);
+        let dense = Dense::new(matrix, vec![group.m, group.n], order);
         let (u, s, vt) = crate::decomposition::svd_with_policy(backend, &dense, 1, policy)?;
         k_per_sector.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
@@ -188,7 +188,7 @@ pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector>(
 
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::new(matrix, vec![group.m, group.n]);
+        let dense = Dense::new(matrix, vec![group.m, group.n], order);
         let (u, s, vt) = crate::decomposition::svd_with_policy(backend, &dense, 1, policy)?;
         k_full.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
@@ -425,7 +425,7 @@ where
     let mut k_per = Vec::with_capacity(groups.len());
     for group in groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::new(matrix, vec![group.m, group.n]);
+        let dense = Dense::new(matrix, vec![group.m, group.n], order);
         let (l, r) = decompose(backend, &dense)?;
         k_per.push(group.m.min(group.n));
         left_mats.push(l);

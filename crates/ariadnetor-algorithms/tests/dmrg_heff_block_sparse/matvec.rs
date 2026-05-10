@@ -57,7 +57,7 @@ fn bsp_heff_matvec_matches_dense_oracle() {
     ];
     let template = template_from_mps_pair(mps.storage(0), mps.storage(1));
     for (case, v) in test_inputs.iter().enumerate() {
-        let v_dense_flat = Dense::new(v.clone(), vec![dim]);
+        let v_dense_flat = Dense::new(v.clone(), vec![dim], MemoryOrder::ColumnMajor);
         let bsp_out = bsp_heff.apply(&v_dense_flat);
         assert_eq!(bsp_out.shape(), &[dim], "BSP output shape");
 
@@ -127,7 +127,7 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
         (0..dim).map(|i| ((i as i32 - 1) as f64) * 0.3).collect(),
     ];
     for (case, v) in test_inputs.iter().enumerate() {
-        let bsp_out = bsp_heff.apply(&Dense::new(v.clone(), vec![dim]));
+        let bsp_out = bsp_heff.apply(&Dense::new(v.clone(), vec![dim], MemoryOrder::ColumnMajor));
         let psi_dense = build_dense_psi_from_flat(v, &template);
         let dense_out = dense_heff.apply(&psi_dense.reshape(vec![chi_l * d_i * d_ip1 * chi_r]));
         let dense_out_4d = dense_out.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
@@ -184,7 +184,7 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     for j in 0..dim {
         let mut e_j = vec![0.0_f64; dim];
         e_j[j] = 1.0;
-        let out = bsp_heff.apply(&Dense::new(e_j, vec![dim]));
+        let out = bsp_heff.apply(&Dense::new(e_j, vec![dim], MemoryOrder::ColumnMajor));
         for i in 0..dim {
             h_data[i + dim * j] = out.data()[i];
         }
@@ -202,7 +202,7 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
         }
     }
 
-    let h_dense = Dense::new(h_data, vec![dim, dim]);
+    let h_dense = Dense::new(h_data, vec![dim, dim], MemoryOrder::ColumnMajor);
     let (eigvals, _eigvecs) = eigh(backend.as_ref(), &h_dense, 1).expect("eigh");
     let eigh_smallest = eigvals.data()[0];
 

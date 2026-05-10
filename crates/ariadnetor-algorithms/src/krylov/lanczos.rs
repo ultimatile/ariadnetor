@@ -2,6 +2,7 @@
 //! of a Hermitian linear operator, with full reorthogonalization.
 
 use arnet_core::Scalar;
+use arnet_core::backend::MemoryOrder;
 use arnet_linalg::{eigh, linear_combine, norm, normalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
@@ -144,7 +145,8 @@ where
 
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
-    let mut converged_z: Dense<T::Real> = Dense::new(vec![T::Real::one()], vec![1]);
+    let mut converged_z: Dense<T::Real> =
+        Dense::new(vec![T::Real::one()], vec![1], MemoryOrder::ColumnMajor);
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -220,7 +222,7 @@ where
         }
         let inv = T::Real::one() / beta;
         let v_next_data: Vec<T> = w.data().iter().map(|&x| x.scale_real(inv)).collect();
-        basis.push(Dense::new(v_next_data, vec![dim]));
+        basis.push(Dense::new(v_next_data, vec![dim], w.order()));
         betas.push(beta);
     }
 
@@ -284,7 +286,7 @@ fn sub_real_axpy<T: Scalar>(w: &Dense<T>, alpha: T::Real, v: &Dense<T>) -> Dense
         .zip(v.data().iter())
         .map(|(&wi, &vi)| wi + vi.scale_real(neg_alpha))
         .collect();
-    Dense::new(data, w.shape().to_vec())
+    Dense::new(data, w.shape().to_vec(), w.order())
 }
 
 /// Compute `w - alpha * v - beta * u` where alpha, beta are real.
@@ -304,7 +306,7 @@ fn sub_two_real_axpy<T: Scalar>(
         .zip(u.data().iter())
         .map(|((&wi, &vi), &ui)| wi + vi.scale_real(neg_alpha) + ui.scale_real(neg_beta))
         .collect();
-    Dense::new(data, w.shape().to_vec())
+    Dense::new(data, w.shape().to_vec(), w.order())
 }
 
 /// Compute `w - gamma * v` where gamma is the (possibly complex) scalar T.
@@ -316,7 +318,7 @@ fn sub_complex_axpy<T: Scalar>(w: &Dense<T>, gamma: T, v: &Dense<T>) -> Dense<T>
         .zip(v.data().iter())
         .map(|(&wi, &vi)| wi + neg_gamma * vi)
         .collect();
-    Dense::new(data, w.shape().to_vec())
+    Dense::new(data, w.shape().to_vec(), w.order())
 }
 
 /// Draw a unit-norm random vector by sampling each component independently
@@ -345,7 +347,7 @@ fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
     if data.iter().all(|x| x.abs() == T::Real::zero()) {
         data[0] = T::one();
     }
-    let v = Dense::new(data, vec![dim]);
+    let v = Dense::new(data, vec![dim], MemoryOrder::ColumnMajor);
     let (normalized, _) = normalize(&v);
     normalized
 }
@@ -365,7 +367,10 @@ where
     T::Real: Scalar<Real = T::Real>,
 {
     if m == 1 {
-        return (alphas[0], Dense::new(vec![T::Real::one()], vec![1]));
+        return (
+            alphas[0],
+            Dense::new(vec![T::Real::one()], vec![1], MemoryOrder::ColumnMajor),
+        );
     }
     // Build the m×m matrix in column-major order to match
     // `NativeBackend::preferred_order()`. For column-major, the (i, j) entry
@@ -378,13 +383,16 @@ where
             data[i + m * (i + 1)] = betas[i];
         }
     }
-    let matrix = Dense::new(data, vec![m, m]);
+    let matrix = Dense::new(data, vec![m, m], MemoryOrder::ColumnMajor);
     let (eigvals, eigvecs) = eigh(backend, &matrix, 1).expect("tridiagonal eigh");
     let lambda = eigvals.data()[0];
     // First column of eigvecs (column-major) holds the eigenvector for the
     // smallest eigenvalue: indices 0..m.
     let z_data = eigvecs.data()[0..m].to_vec();
-    (lambda, Dense::new(z_data, vec![m]))
+    (
+        lambda,
+        Dense::new(z_data, vec![m], MemoryOrder::ColumnMajor),
+    )
 }
 
 #[cfg(test)]
@@ -409,7 +417,7 @@ mod tests {
             .iter()
             .map(|&x| T::from_real_imag(real_from_f64::<T>(x), T::Real::zero()))
             .collect();
-        Dense::new(data, vec![values.len()])
+        Dense::new(data, vec![values.len()], MemoryOrder::ColumnMajor)
     }
 
     fn assert_dense_close<T>(got: &Dense<T>, expected: &Dense<T>, tol: T::Real)
@@ -513,7 +521,7 @@ mod tests {
         );
         let inv_norm = T::Real::one() / raw_norm;
         let expected_data: Vec<T> = raw.iter().map(|&x| x.scale_real(inv_norm)).collect();
-        let expected = Dense::new(expected_data, vec![dim]);
+        let expected = Dense::new(expected_data, vec![dim], MemoryOrder::ColumnMajor);
 
         assert_dense_close::<T>(&observed, &expected, real_from_f64::<T>(1e-12));
     }

@@ -2,11 +2,15 @@
 //!
 //! Tests that Arc-based shared ownership and CoW work correctly.
 
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 
 #[test]
 fn test_clone_is_cheap() {
-    let tensor1 = Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor1 = Dense::new(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
     let tensor2 = tensor1.clone();
 
     // Both should have the same values
@@ -18,7 +22,11 @@ fn test_clone_is_cheap() {
 
 #[test]
 fn test_copy_on_write_tensor_storage() {
-    let tensor1 = Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor1 = Dense::new(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
     let mut tensor2 = tensor1.clone(); // Share data (O(1) clone)
 
     // Modify tensor2 - should trigger CoW
@@ -35,7 +43,11 @@ fn test_copy_on_write_tensor_storage() {
 
 #[test]
 fn test_copy_on_write_dense_tensor() {
-    let tensor1 = Dense::new(vec![10.0, 20.0, 30.0, 40.0], vec![2, 2]);
+    let tensor1 = Dense::new(
+        vec![10.0, 20.0, 30.0, 40.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
     let mut tensor2 = tensor1.clone();
 
     // Modify tensor2
@@ -65,7 +77,11 @@ fn test_fill_triggers_cow() {
 
 #[test]
 fn test_data_mut_triggers_cow() {
-    let tensor1 = Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let tensor1 = Dense::new(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
     let mut tensor2 = tensor1.clone();
 
     // Get mutable reference - should trigger CoW
@@ -81,7 +97,11 @@ fn test_data_mut_triggers_cow() {
 
 #[test]
 fn test_multiple_clones() {
-    let original = Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let original = Dense::new(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
     let mut clone1 = original.clone();
     let mut clone2 = original.clone();
     let mut clone3 = original.clone();

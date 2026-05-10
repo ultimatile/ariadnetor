@@ -43,7 +43,7 @@ where
         let out_total: usize = out_shape.iter().product();
 
         if out_total == 0 {
-            return Self::new(Vec::new(), out_shape);
+            return Self::new(Vec::new(), out_shape, order);
         }
 
         // Check if concatenation is along the outermost axis (block copy)
@@ -82,7 +82,7 @@ where
             }
         }
 
-        Self::new(data, out_shape)
+        Self::new(data, out_shape, order)
     }
 
     /// Stack tensors along a new axis.

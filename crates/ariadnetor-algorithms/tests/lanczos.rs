@@ -9,7 +9,7 @@ use arnet_algorithms::krylov::{LanczosParams, lanczos_smallest};
 use arnet_core::Scalar;
 use arnet_linalg::eigh;
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 use num_complex::Complex;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -31,7 +31,7 @@ fn matvec_cm<T: Scalar>(h: &Dense<T>, n: usize, v: &Dense<T>) -> Dense<T> {
             *out_i = *out_i + h_data[i + n * j] * vj;
         }
     }
-    Dense::new(out, vec![n])
+    Dense::new(out, vec![n], MemoryOrder::ColumnMajor)
 }
 
 /// Build a random Hermitian matrix `H = (A + A^H) / 2` of size `n×n`,
@@ -49,7 +49,7 @@ fn random_hermitian_f64(n: usize, seed: u64) -> Dense<f64> {
             data[i + n * j] = 0.5 * (aij + aji);
         }
     }
-    Dense::new(data, vec![n, n])
+    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
 }
 
 fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
@@ -67,7 +67,7 @@ fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
             data[i + n * j] = (aij + aji.conj()) * 0.5;
         }
     }
-    Dense::new(data, vec![n, n])
+    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
 }
 
 /// Smallest eigenvalue of a Hermitian matrix via dense `eigh` (ground truth).
@@ -90,7 +90,7 @@ fn lanczos_diagonal_returns_min_eigenvalue() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = Dense::new(data, vec![n, n]);
+    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &Dense<f64>| matvec_cm(&h, n, v),
@@ -151,7 +151,7 @@ fn lanczos_near_degenerate_cluster() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = Dense::new(data, vec![n, n]);
+    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &Dense<f64>| matvec_cm(&h, n, v),
@@ -216,7 +216,7 @@ fn lanczos_n1_returns_iters_one() {
     // w = h*v_0 - alpha*v_0 = 0 exactly, beta = 0 ≤ tol, so the residual check
     // breaks at the end of the iteration with iters = j + 1 = 1. The mutation
     // `iters = j + 1 → j * 1` would set iters = 0 in this scenario.
-    let h = Dense::new(vec![5.0_f64], vec![1, 1]);
+    let h = Dense::new(vec![5.0_f64], vec![1, 1], MemoryOrder::ColumnMajor);
     let result = lanczos_smallest::<f64, _>(
         &|v: &Dense<f64>| matvec_cm(&h, 1, v),
         1,

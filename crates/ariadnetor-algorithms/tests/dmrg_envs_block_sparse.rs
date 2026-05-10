@@ -90,7 +90,7 @@ fn densify_bsp(bsp: &BlockSparse<f64, U1Sector>) -> Dense<f64> {
         }
     }
 
-    let rm = Dense::new(out, global_dims);
+    let rm = Dense::new(out, global_dims, MemoryOrder::ColumnMajor);
     // The NativeBackend's preferred order is ColumnMajor; all Dense
     // tensors flowing through `contract` must be CM. Densify produces
     // a row-major scatter, so reorder once before handing back.

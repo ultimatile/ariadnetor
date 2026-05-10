@@ -4,7 +4,7 @@
 //! - norm: Frobenius norm (sqrt(sum|element|^2))
 //! - normalize: Divide by norm and return the norm value
 
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 use num_complex::Complex;
 
 const EPSILON: f64 = 1e-10;
@@ -51,7 +51,7 @@ fn test_norm_complex_f64() {
         Complex::new(2.0, 0.0),
         Complex::new(0.0, 2.0),
     ];
-    let tensor = Dense::new(data, vec![2, 2]);
+    let tensor = Dense::new(data, vec![2, 2], MemoryOrder::ColumnMajor);
     let norm = tensor.norm();
     assert!((norm - 10.0f64.sqrt()).abs() < EPSILON);
 }
@@ -127,7 +127,7 @@ fn test_normalize_f32() {
 fn test_normalize_complex_f64() {
     // [2+0i, 0+2i]: |2+0i|^2 = 4, |0+2i|^2 = 4, sum = 8, norm = sqrt(8) = 2*sqrt(2)
     let data: Vec<Complex<f64>> = vec![Complex::new(2.0, 0.0), Complex::new(0.0, 2.0)];
-    let mut tensor = Dense::new(data, vec![2]);
+    let mut tensor = Dense::new(data, vec![2], MemoryOrder::ColumnMajor);
 
     let norm = tensor.normalize();
     assert!((norm - 8.0f64.sqrt()).abs() < EPSILON);

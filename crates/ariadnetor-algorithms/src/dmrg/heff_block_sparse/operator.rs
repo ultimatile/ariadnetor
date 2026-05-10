@@ -221,7 +221,10 @@ where
         }
 
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
-        arnet_tensor::Dense::new(flat, vec![self.dim])
+        // 1D output is layout-invariant; declare the active backend's
+        // preferred order so downstream Lanczos arithmetic does not
+        // normalize.
+        arnet_tensor::Dense::new(flat, vec![self.dim], self.backend.preferred_order())
     }
 }
 

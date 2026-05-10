@@ -238,12 +238,20 @@ fn batched_contract<T: Scalar>(
         // Slice data is in RowMajor layout; contract() expects data in
         // preferred_order, so reorder each slice before contracting.
         let lhs_slice_preferred = reorder(
-            &Dense::new(lhs_slice_data.to_vec(), lhs_slice_shape.clone()),
+            &Dense::new(
+                lhs_slice_data.to_vec(),
+                lhs_slice_shape.clone(),
+                MemoryOrder::RowMajor,
+            ),
             MemoryOrder::RowMajor,
             order,
         );
         let rhs_slice_preferred = reorder(
-            &Dense::new(rhs_slice_data.to_vec(), rhs_slice_shape.clone()),
+            &Dense::new(
+                rhs_slice_data.to_vec(),
+                rhs_slice_shape.clone(),
+                MemoryOrder::RowMajor,
+            ),
             MemoryOrder::RowMajor,
             order,
         );
@@ -278,7 +286,7 @@ fn batched_contract<T: Scalar>(
 
     // Stacked data is in RowMajor; construct Dense in RowMajor, then
     // reorder to preferred_order for the final result.
-    let stacked_rm = Dense::new(stacked_data, output_shape);
+    let stacked_rm = Dense::new(stacked_data, output_shape, MemoryOrder::RowMajor);
     let stacked = reorder(&stacked_rm, MemoryOrder::RowMajor, order);
 
     // Reorder to requested output index order

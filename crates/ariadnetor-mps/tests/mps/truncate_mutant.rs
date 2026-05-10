@@ -8,7 +8,7 @@ use approx::assert_abs_diff_eq;
 use arnet_mps::{
     self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
@@ -300,7 +300,11 @@ fn test_truncation_error_sqrt_of_sum_of_squares() {
 
 #[test]
 fn test_truncate_single_site_returns_zero_error() {
-    let storages = vec![Dense::new(vec![3.0, 4.0], vec![1, 2, 1])];
+    let storages = vec![Dense::new(
+        vec![3.0, 4.0],
+        vec![1, 2, 1],
+        MemoryOrder::ColumnMajor,
+    )];
     let mut mps = Mps::from_storages(storages);
     mps::canonicalize(&mut mps, 0);
 

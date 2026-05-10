@@ -18,7 +18,7 @@ use arnet_tensor::{Dense, MemoryOrder, reorder};
 
 /// Create Dense from conceptual row-major data, converted to CM for NativeBackend.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
-    let rm = Dense::new(data, shape);
+    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -139,6 +139,7 @@ fn expm_output_feeds_into_contract() {
     let neg_a = Dense::new(
         a.data().iter().map(|&x: &f64| -x).collect(),
         a.shape().to_vec(),
+        MemoryOrder::ColumnMajor,
     );
 
     let exp_a = expm(&backend, &a, 1).unwrap();

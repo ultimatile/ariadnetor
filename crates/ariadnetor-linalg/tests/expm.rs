@@ -4,7 +4,7 @@ use arnet_tensor::{Dense, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
 fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
-    let rm = Dense::new(data, shape);
+    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -221,7 +221,11 @@ fn test_expm_antihermitian_invalid_nonsquare() {
     use num_traits::Zero;
 
     let backend = NativeBackend::new();
-    let a = Dense::new(vec![Complex::<f64>::zero(); 6], vec![2, 3]);
+    let a = Dense::new(
+        vec![Complex::<f64>::zero(); 6],
+        vec![2, 3],
+        MemoryOrder::ColumnMajor,
+    );
     assert!(expm_antihermitian(&backend, &a, 1).is_err());
 }
 

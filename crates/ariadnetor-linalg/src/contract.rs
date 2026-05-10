@@ -5,7 +5,7 @@ use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 use crate::error::LinalgError;
 use crate::transpose::transpose;
-use arnet_tensor::reorder;
+use arnet_tensor::{normalize_to, reorder};
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
 ///
@@ -190,9 +190,13 @@ pub fn contract_with_policy<T: Scalar>(
         backend.make_tensor(c_data, output_shape)
     } else {
         // 2D preferred_order -> RowMajor 2D -> reshape to multi-dim -> preferred_order
-        let result_2d = Dense::new(c_data, vec![m, n]);
+        let result_2d = Dense::new(c_data, vec![m, n], order);
         let result_rm = reorder(&result_2d, order, MemoryOrder::RowMajor);
-        let multi_dim = Dense::new(result_rm.data().to_vec(), output_shape);
+        let multi_dim = Dense::new(
+            result_rm.data().to_vec(),
+            output_shape,
+            MemoryOrder::RowMajor,
+        );
         reorder(&multi_dim, MemoryOrder::RowMajor, order)
     };
 
@@ -203,7 +207,8 @@ pub fn contract_with_policy<T: Scalar>(
 
 /// Reshape a permuted operand to 2D and convert to the target memory order.
 ///
-/// For rank <= 2, no axis merge is needed — data is already in preferred_order.
+/// For rank <= 2, no axis merge is needed — normalize the input to the
+/// target order and return.
 /// For rank > 2, reorder to RowMajor, reshape (correct axis merge), then back.
 fn prepare_for_gemm<T: Scalar>(
     tensor: &Dense<T>,
@@ -212,11 +217,11 @@ fn prepare_for_gemm<T: Scalar>(
     order: MemoryOrder,
 ) -> Dense<T> {
     if tensor.rank() <= 2 {
-        // No axis merge needed; data is already in preferred_order
-        tensor.clone()
+        // No axis merge needed; ensure data is in the target order before GEMM.
+        normalize_to(tensor, order).into_owned()
     } else {
         // Axis merge requires RowMajor reshape, then convert to preferred_order
-        let rm = reorder(tensor, order, MemoryOrder::RowMajor);
+        let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
         let reshaped = rm.reshape(vec![rows, cols]);
         reorder(&reshaped, MemoryOrder::RowMajor, order)
     }
