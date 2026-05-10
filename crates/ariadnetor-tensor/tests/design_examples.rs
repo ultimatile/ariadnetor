@@ -58,7 +58,7 @@ fn test_design_doc_row_major_layout() {
     let tensor = Dense::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
 
     // Verify row-major ordering
