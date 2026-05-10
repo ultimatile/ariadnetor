@@ -5,11 +5,10 @@ use arnet_tensor::{Dense, MemoryOrder};
 
 #[test]
 fn test_scale_f64() {
-    let tensor = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
+    // Data is laid out row-major (`[[1, 2], [3, 4]]` → flat
+    // `[1, 2, 3, 4]`); assertions read via `Dense::get` which uses
+    // row-major flat-index semantics, so the tag must match.
+    let tensor = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
     let scaled = scale(&tensor, 2.5);
     assert_eq!(scaled.get(&[0, 0]), 2.5);
     assert_eq!(scaled.get(&[0, 1]), 5.0);

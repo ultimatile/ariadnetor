@@ -33,11 +33,14 @@ fn test_design_doc_arc_cow() {
 
 #[test]
 fn test_design_doc_dense_storage() {
-    // Dense basic usage
+    // Dense basic usage. Data laid out row-major
+    // (`[[1, 2, 3], [4, 5, 6]]` → flat `[1, 2, 3, 4, 5, 6]`); the
+    // `Dense::get` assertions below use row-major flat-index
+    // semantics, so the tag must match.
     let tensor = Dense::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
 
     assert_eq!(tensor.shape(), &[2, 3]);
