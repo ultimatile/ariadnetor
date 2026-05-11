@@ -6,7 +6,7 @@
 //! as the equivalent `ColumnMajor` Dense, demonstrating that op-entry
 //! normalization is wired up).
 
-use arnet_linalg::{contract, linear_combine};
+use arnet_linalg::{TruncSvdParams, contract, linear_combine, svd, trunc_svd};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackend, ComputeBackendTensorExt, Dense, MemoryOrder, reorder};
 
@@ -132,4 +132,32 @@ fn backend_eye_uses_preferred_order() {
     let backend = NativeBackend::new();
     let t = backend.eye::<f64>(3);
     assert_eq!(t.order(), backend.preferred_order());
+}
+
+#[test]
+fn svd_s_tensor_uses_preferred_order() {
+    let backend = NativeBackend::new();
+    let a = Dense::<f64>::new(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::ColumnMajor,
+    );
+    let (_u, s, _vt) = svd(&backend, &a, 1).expect("svd must succeed");
+    assert_eq!(s.order(), backend.preferred_order());
+}
+
+#[test]
+fn trunc_svd_s_tensor_uses_preferred_order() {
+    let backend = NativeBackend::new();
+    let a = Dense::<f64>::new(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::ColumnMajor,
+    );
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    };
+    let (_u, s, _vt, _err) = trunc_svd(&backend, &a, 1, &params).expect("trunc_svd must succeed");
+    assert_eq!(s.order(), backend.preferred_order());
 }
