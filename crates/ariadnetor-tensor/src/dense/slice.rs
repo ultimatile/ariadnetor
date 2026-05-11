@@ -48,7 +48,7 @@ where
         let rank = shape.len();
 
         if new_total == 0 {
-            return Self::new(Vec::new(), new_shape);
+            return Self::new(Vec::new(), new_shape, order);
         }
 
         let inner_axis = match order {
@@ -90,7 +90,7 @@ where
             }
         }
 
-        Self::new(data, new_shape)
+        Self::new(data, new_shape, order)
     }
 
     /// Expand tensor by adding zero-padding at the boundaries.
@@ -124,7 +124,7 @@ where
             if src_total == 1 {
                 data[0] = self.data()[0].clone();
             }
-            return Self::new(data, new_shape);
+            return Self::new(data, new_shape, order);
         }
 
         let inner_axis = match order {
@@ -167,7 +167,7 @@ where
                 }
             }
 
-            return Self::new(data, new_shape);
+            return Self::new(data, new_shape, order);
         }
 
         // General case: element-wise copy with dual index tracking
@@ -197,7 +197,7 @@ where
             }
         }
 
-        Self::new(data, new_shape)
+        Self::new(data, new_shape, order)
     }
 
     /// Write a sub-tensor into this tensor starting at the given position.

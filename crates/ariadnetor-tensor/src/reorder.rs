@@ -1,9 +1,11 @@
 use crate::Dense;
 use arnet_core::backend::MemoryOrder;
+use std::borrow::Cow;
 
 /// Reorder flat data between memory layouts.
 ///
-/// If `from == to`, returns a clone (zero-copy via Arc).
+/// If `from == to`, returns a clone (zero-copy via Arc). Otherwise
+/// produces a new Dense whose `order()` matches the requested `to`.
 pub fn reorder<T: Clone>(tensor: &Dense<T>, from: MemoryOrder, to: MemoryOrder) -> Dense<T> {
     if from == to {
         return tensor.clone();
@@ -12,7 +14,7 @@ pub fn reorder<T: Clone>(tensor: &Dense<T>, from: MemoryOrder, to: MemoryOrder) 
     let rank = shape.len();
     let total = tensor.len();
     if total == 0 {
-        return Dense::new(Vec::new(), shape.to_vec());
+        return Dense::new(Vec::new(), shape.to_vec(), to);
     }
     let raw = tensor.data();
     let mut new_data = Vec::with_capacity(total);
@@ -39,7 +41,22 @@ pub fn reorder<T: Clone>(tensor: &Dense<T>, from: MemoryOrder, to: MemoryOrder) 
         }
     }
 
-    Dense::new(new_data, shape.to_vec())
+    Dense::new(new_data, shape.to_vec(), to)
+}
+
+/// Normalize a tensor's memory order to `target`, returning a borrow when
+/// the tensor is already in the target order.
+///
+/// Use at the entry of any operation that requires a specific input
+/// layout (typically backend kernels expecting `backend.preferred_order()`).
+/// The returned `Cow` is `Borrowed` when no conversion is needed and
+/// `Owned` when a `reorder` was performed.
+pub fn normalize_to<T: Clone>(tensor: &Dense<T>, target: MemoryOrder) -> Cow<'_, Dense<T>> {
+    if tensor.order() == target {
+        Cow::Borrowed(tensor)
+    } else {
+        Cow::Owned(reorder(tensor, tensor.order(), target))
+    }
 }
 
 /// Compute flat index for given coordinates in the specified memory order.

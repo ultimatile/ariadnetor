@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, normalize_to};
 
 use crate::contract::contract;
 use crate::error::LinalgError;
@@ -146,12 +146,19 @@ fn hadamard<T: Scalar>(
         rhs.clone()
     };
 
-    let lhs_data = lhs_ordered.data();
-    let rhs_data = rhs_ordered.data();
+    // Both operands must share a common layout before element-wise zip:
+    // when no permutation was applied, `*_ordered` carries the caller's
+    // original `order()`, which may differ from the backend's preferred
+    // order; normalize to `backend.preferred_order()` so the result we
+    // tag below matches its data.
+    let order = backend.preferred_order();
+    let lhs_normalized = normalize_to(&lhs_ordered, order);
+    let rhs_normalized = normalize_to(&rhs_ordered, order);
 
-    let c_data: Vec<T> = lhs_data
+    let c_data: Vec<T> = lhs_normalized
+        .data()
         .iter()
-        .zip(rhs_data.iter())
+        .zip(rhs_normalized.data().iter())
         .map(|(&a, &b)| a * b)
         .collect();
 
@@ -238,12 +245,20 @@ fn batched_contract<T: Scalar>(
         // Slice data is in RowMajor layout; contract() expects data in
         // preferred_order, so reorder each slice before contracting.
         let lhs_slice_preferred = reorder(
-            &Dense::new(lhs_slice_data.to_vec(), lhs_slice_shape.clone()),
+            &Dense::new(
+                lhs_slice_data.to_vec(),
+                lhs_slice_shape.clone(),
+                MemoryOrder::RowMajor,
+            ),
             MemoryOrder::RowMajor,
             order,
         );
         let rhs_slice_preferred = reorder(
-            &Dense::new(rhs_slice_data.to_vec(), rhs_slice_shape.clone()),
+            &Dense::new(
+                rhs_slice_data.to_vec(),
+                rhs_slice_shape.clone(),
+                MemoryOrder::RowMajor,
+            ),
             MemoryOrder::RowMajor,
             order,
         );
@@ -278,7 +293,7 @@ fn batched_contract<T: Scalar>(
 
     // Stacked data is in RowMajor; construct Dense in RowMajor, then
     // reorder to preferred_order for the final result.
-    let stacked_rm = Dense::new(stacked_data, output_shape);
+    let stacked_rm = Dense::new(stacked_data, output_shape, MemoryOrder::RowMajor);
     let stacked = reorder(&stacked_rm, MemoryOrder::RowMajor, order);
 
     // Reorder to requested output index order
@@ -483,14 +498,15 @@ fn einsum_single<T: Scalar>(
     }
 
     // Step 1: trace if needed.
-    // trace() uses RowMajor indexing, so convert from preferred_order first,
-    // then convert the result back to preferred_order for downstream transpose.
+    // `trace` normalizes its input to RowMajor internally and tags the
+    // result RowMajor; convert the result to `backend.preferred_order()`
+    // so downstream `transpose` operates on the layout the backend
+    // kernels expect.
     let order = backend.preferred_order();
     let traced = if trace_pairs.is_empty() {
         tensor.clone()
     } else {
-        let tensor_rm = reorder(tensor, order, MemoryOrder::RowMajor);
-        let result_rm = trace(&tensor_rm, &trace_pairs)?;
+        let result_rm = trace(tensor, &trace_pairs)?;
         reorder(&result_rm, MemoryOrder::RowMajor, order)
     };
 

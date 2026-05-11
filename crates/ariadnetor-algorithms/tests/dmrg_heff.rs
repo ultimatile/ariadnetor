@@ -21,7 +21,7 @@ use arnet_core::Scalar;
 use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh};
 use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, MemoryOrder};
 use num_complex::Complex;
 use rand::Rng;
 use rand::SeedableRng;
@@ -165,14 +165,14 @@ where
     for k in 0..dim {
         let mut e = vec![T::zero(); dim];
         e[k] = T::one();
-        let e_dense = Dense::new(e, vec![dim]);
+        let e_dense = Dense::new(e, vec![dim], MemoryOrder::ColumnMajor);
         let col = heff.apply(&e_dense);
         let col_data = col.data();
         for i in 0..dim {
             data[i + dim * k] = col_data[i];
         }
     }
-    Dense::new(data, vec![dim, dim])
+    Dense::new(data, vec![dim, dim], MemoryOrder::ColumnMajor)
 }
 
 /// Construct an `EffectiveHamiltonian2Site` from a freshly built
@@ -277,7 +277,7 @@ fn heff_matvec_matches_dense_apply() {
     // Apply on a random vector via the operator and compare to `H_dense @ v`.
     let mut rng = StdRng::seed_from_u64(0xABCD_1234);
     let v_data: Vec<f64> = (0..dim).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-    let v = Dense::new(v_data.clone(), vec![dim]);
+    let v = Dense::new(v_data.clone(), vec![dim], MemoryOrder::ColumnMajor);
 
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data();
@@ -746,7 +746,7 @@ fn heff_matvec_matches_dense_apply_complex() {
             Complex::new(re, im)
         })
         .collect();
-    let v = Dense::new(v_data.clone(), vec![dim]);
+    let v = Dense::new(v_data.clone(), vec![dim], MemoryOrder::ColumnMajor);
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data();
     let mut dense_out = vec![Complex::new(0.0, 0.0); dim];

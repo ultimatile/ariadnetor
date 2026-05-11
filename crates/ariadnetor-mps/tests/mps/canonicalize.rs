@@ -1,7 +1,7 @@
 //! Canonicalization tests.
 
 use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
@@ -93,7 +93,11 @@ fn test_canonicalize_center_last() {
 
 #[test]
 fn test_canonicalize_single_site() {
-    let storages = vec![Dense::new(vec![1.0, 2.0], vec![1, 2, 1])];
+    let storages = vec![Dense::new(
+        vec![1.0, 2.0],
+        vec![1, 2, 1],
+        MemoryOrder::ColumnMajor,
+    )];
     let mut mps = Mps::from_storages(storages);
 
     mps::canonicalize(&mut mps, 0);

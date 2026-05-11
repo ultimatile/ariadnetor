@@ -18,8 +18,10 @@ where
     /// Reshape the tensor to a new shape (zero-copy).
     ///
     /// The flat data is not rearranged — only the shape changes.
-    /// The caller must ensure the data layout (determined by the backend)
-    /// is compatible with the new shape.
+    /// The output preserves `self.order()`. Reshape semantics depend on
+    /// the order: adjacent-axis fusion is zero-copy under both row-major
+    /// and column-major for contiguous tensors, but non-adjacent fusion
+    /// produces a different logical mapping under each order.
     ///
     /// # Panics
     ///
@@ -36,6 +38,7 @@ where
         Self {
             data: Arc::clone(&self.data),
             shape: new_shape,
+            order: self.order,
         }
     }
 
@@ -45,14 +48,14 @@ where
 
     /// Apply a function to each element.
     ///
-    /// Iterates flat data directly — order-independent.
+    /// Iterates flat data directly. The result preserves `self.order()`.
     pub fn map<U, F>(&self, f: F) -> Dense<U>
     where
         F: Fn(&T) -> U,
         U: Clone + 'static,
     {
         let result: Vec<U> = self.data().iter().map(f).collect();
-        Dense::new(result, self.shape().to_vec())
+        Dense::new(result, self.shape().to_vec(), self.order())
     }
 
     /// Apply a function to each element in place (triggers CoW if shared).
@@ -68,13 +71,30 @@ where
 
     /// Apply a function with multi-dimensional coordinates to each element.
     ///
-    /// Iterates coordinates in the given `order`. The input data must be
-    /// laid out in the same order for correct coordinate→element mapping.
+    /// Iterates coordinates in the given `order` while reading the storage
+    /// linearly, so the coordinate-to-value mapping is correct only when
+    /// the storage's own layout matches `order`. The caller must therefore
+    /// pass `order == self.order()`; the resulting Dense's `order()` is set
+    /// to the same `order` so its bytes are laid out in the iteration order.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if `order != self.order()`. (The release-build
+    /// behavior is to silently return a Dense whose metadata claims `order`
+    /// but whose bytes are laid out in `self.order()`.)
     pub fn map_with_index<U, F>(&self, order: MemoryOrder, f: F) -> Dense<U>
     where
         F: Fn(&[usize], &T) -> U,
         U: Clone + 'static,
     {
+        debug_assert_eq!(
+            order,
+            self.order(),
+            "map_with_index: `order` argument ({:?}) must match `self.order()` ({:?}); \
+             the linear walk over `self.data()` is only meaningful in the storage's own layout",
+            order,
+            self.order(),
+        );
         let shape = self.shape();
         let rank = shape.len();
         let total = self.len();
@@ -99,7 +119,7 @@ where
             }
         }
 
-        Dense::new(result, shape.to_vec())
+        Dense::new(result, shape.to_vec(), order)
     }
 
     // ========================================================================
@@ -140,10 +160,16 @@ where
 
     /// Linear combination: Σ coefs\[i\] * tensors\[i\].
     ///
+    /// All input tensors must share the same `order()`; the result
+    /// preserves that order. Mixing tensors with different memory
+    /// orders is rejected — convert via `reorder` upstream so
+    /// element-wise summation aligns logical positions correctly.
+    ///
     /// # Errors
     ///
-    /// Returns an error if tensors have different shapes, the list is empty,
-    /// or tensors and coefficients have different lengths.
+    /// Returns an error if tensors have different shapes, different
+    /// orders, the list is empty, or tensors and coefficients have
+    /// different lengths.
     pub fn linear_combine(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, String>
     where
         T: Zero + Add<Output = T> + Mul<Output = T>,
@@ -159,9 +185,17 @@ where
             ));
         }
         let shape = tensors[0].shape();
+        let order = tensors[0].order();
         for t in &tensors[1..] {
             if t.shape() != shape {
                 return Err("All tensors must have the same shape".to_string());
+            }
+            if t.order() != order {
+                return Err(format!(
+                    "All tensors must have the same memory order; got {:?} and {:?}",
+                    order,
+                    t.order()
+                ));
             }
         }
         let len = tensors[0].len();
@@ -171,6 +205,6 @@ where
                 *r = r.clone() + coef.clone() * val.clone();
             }
         }
-        Ok(Dense::new(result, shape.to_vec()))
+        Ok(Dense::new(result, shape.to_vec(), order))
     }
 }

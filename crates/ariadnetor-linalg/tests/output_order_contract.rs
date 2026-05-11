@@ -7,10 +7,13 @@
 //! wrong order, the downstream operation would produce numerically wrong
 //! results.
 //!
-//! Motivation: Dense no longer stores a memory order field. Without it,
-//! the only guarantee that data is in the correct order is that each operation
-//! produces preferred_order output. A violation is silent (no compile error,
-//! no panic) and only manifests as wrong numerical results.
+//! Motivation: `Dense::order()` records each tensor's flat-data layout,
+//! but downstream backend kernels still expect the active backend's
+//! preferred order. These tests pin the metadata-vs-data consistency
+//! at the linalg output boundary so a regression where an op tags its
+//! output with the wrong order — or produces bytes in a different
+//! order than its `Dense::order()` claims — surfaces as a numerical
+//! mismatch rather than silently propagating downstream.
 
 use arnet_linalg::{contract, diagonal_scale, expm, inverse, solve, svd, transpose};
 use arnet_native::NativeBackend;
@@ -18,7 +21,7 @@ use arnet_tensor::{Dense, MemoryOrder, reorder};
 
 /// Create Dense from conceptual row-major data, converted to CM for NativeBackend.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
-    let rm = Dense::new(data, shape);
+    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -139,6 +142,7 @@ fn expm_output_feeds_into_contract() {
     let neg_a = Dense::new(
         a.data().iter().map(|&x: &f64| -x).collect(),
         a.shape().to_vec(),
+        MemoryOrder::ColumnMajor,
     );
 
     let exp_a = expm(&backend, &a, 1).unwrap();

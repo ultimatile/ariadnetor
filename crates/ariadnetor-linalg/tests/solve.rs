@@ -4,7 +4,7 @@ use arnet_tensor::{Dense, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
 fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
-    let rm = Dense::new(data, shape);
+    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -93,6 +93,7 @@ fn test_solve_c64() {
     let b = Dense::new(
         vec![Complex::new(1.0, 0.0), Complex::new(1.0, 0.0)],
         vec![2, 1],
+        MemoryOrder::ColumnMajor,
     );
 
     let x = solve(&backend, &a, &b, 1).unwrap();

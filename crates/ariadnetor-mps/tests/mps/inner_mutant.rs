@@ -5,7 +5,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::make_4site_mps;
 
@@ -116,8 +116,16 @@ fn test_norm_plus_state_exact() {
     // for 2 sites: norm = sqrt(sum of all products) = 2.0
     let inv_sqrt2 = std::f64::consts::FRAC_1_SQRT_2;
     let storages = vec![
-        Dense::new(vec![inv_sqrt2, inv_sqrt2], vec![1, 2, 1]),
-        Dense::new(vec![inv_sqrt2, inv_sqrt2], vec![1, 2, 1]),
+        Dense::new(
+            vec![inv_sqrt2, inv_sqrt2],
+            vec![1, 2, 1],
+            MemoryOrder::ColumnMajor,
+        ),
+        Dense::new(
+            vec![inv_sqrt2, inv_sqrt2],
+            vec![1, 2, 1],
+            MemoryOrder::ColumnMajor,
+        ),
     ];
     let psi = Mps::from_storages(storages);
     let n = mps::norm(&psi);

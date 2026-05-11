@@ -5,6 +5,7 @@
 //! the flat layout is `[a, c, b, d]`.
 
 use arnet_core::Scalar;
+use arnet_core::backend::MemoryOrder;
 use arnet_tensor::Dense;
 use num_traits::{NumCast, Zero};
 
@@ -38,7 +39,11 @@ impl SpinHalf {
         let neg_half = real::<T>(-0.5);
         let z = T::zero();
         // CM layout of [[0.5, 0], [0, -0.5]]: col0=[0.5, 0], col1=[0, -0.5]
-        Dense::new(vec![half, z, z, neg_half], vec![2, 2])
+        Dense::new(
+            vec![half, z, z, neg_half],
+            vec![2, 2],
+            MemoryOrder::ColumnMajor,
+        )
     }
 
     /// S+ (raising operator) = [[0, 1], [0, 0]]
@@ -46,7 +51,7 @@ impl SpinHalf {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 1], [0, 0]]: col0=[0, 0], col1=[1, 0]
-        Dense::new(vec![z, z, o, z], vec![2, 2])
+        Dense::new(vec![z, z, o, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// S- (lowering operator) = [[0, 0], [1, 0]]
@@ -54,7 +59,7 @@ impl SpinHalf {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 0], [1, 0]]: col0=[0, 1], col1=[0, 0]
-        Dense::new(vec![z, o, z, z], vec![2, 2])
+        Dense::new(vec![z, o, z, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Identity operator = [[1, 0], [0, 1]]
@@ -62,7 +67,7 @@ impl SpinHalf {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[1, 0], [0, 1]]: col0=[1, 0], col1=[0, 1]
-        Dense::new(vec![o, z, z, o], vec![2, 2])
+        Dense::new(vec![o, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 }
 
@@ -88,7 +93,7 @@ impl Qubit {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 1], [1, 0]]: col0=[0, 1], col1=[1, 0]
-        Dense::new(vec![z, o, o, z], vec![2, 2])
+        Dense::new(vec![z, o, o, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Pauli Y = [[0, -i], [i, 0]]
@@ -99,7 +104,11 @@ impl Qubit {
         let neg_i = T::from_real_imag(zi, real_val::<T::Real>(-1.0));
         let pos_i = T::from_real_imag(zi, one);
         // CM layout of [[0, -i], [i, 0]]: col0=[0, i], col1=[-i, 0]
-        Dense::new(vec![z, pos_i, neg_i, z], vec![2, 2])
+        Dense::new(
+            vec![z, pos_i, neg_i, z],
+            vec![2, 2],
+            MemoryOrder::ColumnMajor,
+        )
     }
 
     /// Pauli Z = [[1, 0], [0, -1]]
@@ -108,7 +117,7 @@ impl Qubit {
         let o = T::one();
         let neg = real::<T>(-1.0);
         // CM layout of [[1, 0], [0, -1]]: col0=[1, 0], col1=[0, -1]
-        Dense::new(vec![o, z, z, neg], vec![2, 2])
+        Dense::new(vec![o, z, z, neg], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Hadamard = [[1, 1], [1, -1]] / sqrt(2)
@@ -119,6 +128,7 @@ impl Qubit {
         Dense::new(
             vec![inv_sqrt2, inv_sqrt2, inv_sqrt2, neg_inv_sqrt2],
             vec![2, 2],
+            MemoryOrder::ColumnMajor,
         )
     }
 
@@ -128,7 +138,7 @@ impl Qubit {
         let o = T::one();
         let i = T::from_real_imag(T::Real::zero(), real_val::<T::Real>(1.0));
         // CM layout of [[1, 0], [0, i]]: col0=[1, 0], col1=[0, i]
-        Dense::new(vec![o, z, z, i], vec![2, 2])
+        Dense::new(vec![o, z, z, i], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// T gate = [[1, 0], [0, exp(iπ/4)]]
@@ -141,7 +151,7 @@ impl Qubit {
             real_val::<T::Real>(angle.sin()),
         );
         // CM layout of [[1, 0], [0, t]]: col0=[1, 0], col1=[0, t]
-        Dense::new(vec![o, z, z, t_val], vec![2, 2])
+        Dense::new(vec![o, z, z, t_val], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Identity = [[1, 0], [0, 1]]
@@ -149,7 +159,7 @@ impl Qubit {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[1, 0], [0, 1]]: col0=[1, 0], col1=[0, 1]
-        Dense::new(vec![o, z, z, o], vec![2, 2])
+        Dense::new(vec![o, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// |0⟩⟨0| = [[1, 0], [0, 0]]
@@ -157,7 +167,7 @@ impl Qubit {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[1, 0], [0, 0]]: col0=[1, 0], col1=[0, 0]
-        Dense::new(vec![o, z, z, z], vec![2, 2])
+        Dense::new(vec![o, z, z, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// |1⟩⟨1| = [[0, 0], [0, 1]]
@@ -165,7 +175,7 @@ impl Qubit {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 0], [0, 1]]: col0=[0, 0], col1=[0, 1]
-        Dense::new(vec![z, z, z, o], vec![2, 2])
+        Dense::new(vec![z, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 }
 

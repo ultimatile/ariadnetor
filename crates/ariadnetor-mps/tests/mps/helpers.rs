@@ -9,7 +9,7 @@ use arnet_tensor::{Dense, MemoryOrder};
 
 /// Build a Dense from row-major data and convert to column-major (NativeBackend order).
 fn rm_dense(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
-    let rm = Dense::new(data, shape);
+    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -24,7 +24,7 @@ pub fn dense_basis_site(phys_c: usize) -> Dense<f64> {
     data[phys_c] = 1.0;
     // Shape (1, 2, 1) has only one non-trivial axis, so RowMajor and
     // ColumnMajor flatten to the same byte order — no rm_dense needed.
-    Dense::new(data, vec![1, 2, 1])
+    Dense::new(data, vec![1, 2, 1], MemoryOrder::ColumnMajor)
 }
 
 /// Dense total-particle-number MPO `N = Σ_j n_j` over `n` sites.

@@ -12,7 +12,7 @@ use arnet_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_s
 use arnet_core::Scalar;
 use arnet_linalg::{eigh, norm};
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, MemoryOrder};
 use num_complex::Complex;
 use num_traits::{Float, NumCast, One, Zero};
 use rand::SeedableRng;
@@ -33,7 +33,7 @@ fn matvec_cm<T: Scalar>(h: &Dense<T>, n: usize, v: &Dense<T>) -> Dense<T> {
             *out_i = *out_i + h_data[i + n * j] * vj;
         }
     }
-    Dense::new(out, vec![n])
+    Dense::new(out, vec![n], MemoryOrder::ColumnMajor)
 }
 
 fn random_hermitian_f64(n: usize, seed: u64) -> Dense<f64> {
@@ -48,7 +48,7 @@ fn random_hermitian_f64(n: usize, seed: u64) -> Dense<f64> {
             data[i + n * j] = 0.5 * (aij + aji);
         }
     }
-    Dense::new(data, vec![n, n])
+    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
 }
 
 fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
@@ -65,7 +65,7 @@ fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
             data[i + n * j] = (aij + aji.conj()) * 0.5;
         }
     }
-    Dense::new(data, vec![n, n])
+    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
 }
 
 fn eigh_smallest<T: Scalar>(h: &Dense<T>) -> T::Real {
@@ -90,7 +90,7 @@ where
         let v: T::Real = NumCast::from(diag_re[i]).unwrap();
         data[i + n * i] = T::from_real_imag(v, real_zero);
     }
-    let h = Dense::new(data, vec![n, n]);
+    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
 
     let result = arpack_smallest::<T, _>(
         &|v: &Dense<T>| matvec_cm(&h, n, v),
@@ -187,7 +187,7 @@ fn arpack_diagonal_f64_returns_smallest() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = Dense::new(data, vec![n, n]);
+    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
 
     let result = arpack_smallest::<f64, _>(
         &|v: &Dense<f64>| matvec_cm(&h, n, v),
@@ -453,7 +453,7 @@ fn arpack_max_iter_too_small_surfaces_max_iter_reached() {
             data[i + n * (i + 1)] = -1.0;
         }
     }
-    let h = Dense::new(data, vec![n, n]);
+    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
 
     let result = arpack_smallest::<f64, _>(
         &|v: &Dense<f64>| matvec_cm(&h, n, v),

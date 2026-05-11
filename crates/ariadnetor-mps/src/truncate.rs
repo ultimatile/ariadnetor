@@ -266,8 +266,10 @@ fn absorb_from_left<T: Scalar>(
 ) -> Dense<T> {
     let order = backend.preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
-    // Reorder to RM for correct axis-merge semantics in reshape.
-    let next_rm = reorder(next, order, rm);
+    // Reorder to RM for correct axis-merge semantics in reshape. Use
+    // `next.order()` as the source — site tensors on the chain may
+    // carry an order different from the backend's preferred one.
+    let next_rm = reorder(next, next.order(), rm);
     let next_shape = next_rm.shape().to_vec();
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
@@ -294,8 +296,10 @@ fn absorb_from_right<T: Scalar>(
 ) -> Dense<T> {
     let order = backend.preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
-    // Reorder to RM for correct axis-merge semantics in reshape.
-    let prev_rm = reorder(prev, order, rm);
+    // Reorder to RM for correct axis-merge semantics in reshape. Use
+    // `prev.order()` as the source — site tensors on the chain may
+    // carry an order different from the backend's preferred one.
+    let prev_rm = reorder(prev, prev.order(), rm);
     let prev_shape = prev_rm.shape().to_vec();
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();

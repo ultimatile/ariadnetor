@@ -52,7 +52,11 @@ fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
 /// Create a uniquely-owned copy (Arc refcount = 1) so mutating ops
 /// don't trigger copy-on-write during the timed section.
 fn unique_copy(t: &Dense<f64>) -> Dense<f64> {
-    Dense::new(t.data().to_vec(), t.shape().to_vec())
+    Dense::new(
+        t.data().to_vec(),
+        t.shape().to_vec(),
+        MemoryOrder::ColumnMajor,
+    )
 }
 
 // ==========================================================================

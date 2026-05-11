@@ -136,8 +136,11 @@ fn absorb_from_left<T: Scalar>(
     backend: &impl ComputeBackend,
 ) -> Dense<T> {
     let order = backend.preferred_order();
-    // Reorder to RM for correct axis-merge semantics in reshape.
-    let next_rm = reorder(next, order, arnet_core::MemoryOrder::RowMajor);
+    // Reorder to RM for correct axis-merge semantics in reshape. Use
+    // `next.order()` as the source — site tensors stored on an MPS
+    // are not guaranteed to be in `backend.preferred_order()` once
+    // callers can construct Dense with explicit `source_order`.
+    let next_rm = reorder(next, next.order(), arnet_core::MemoryOrder::RowMajor);
     let next_shape = next_rm.shape().to_vec();
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
@@ -165,8 +168,11 @@ fn absorb_from_right<T: Scalar>(
     backend: &impl ComputeBackend,
 ) -> Dense<T> {
     let order = backend.preferred_order();
-    // Reorder to RM for correct axis-merge semantics in reshape.
-    let prev_rm = reorder(prev, order, arnet_core::MemoryOrder::RowMajor);
+    // Reorder to RM for correct axis-merge semantics in reshape. Use
+    // `prev.order()` as the source — site tensors stored on an MPS
+    // are not guaranteed to be in `backend.preferred_order()` once
+    // callers can construct Dense with explicit `source_order`.
+    let prev_rm = reorder(prev, prev.order(), arnet_core::MemoryOrder::RowMajor);
     let prev_shape = prev_rm.shape().to_vec();
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();

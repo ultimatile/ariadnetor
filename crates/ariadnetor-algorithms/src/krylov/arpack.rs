@@ -16,8 +16,9 @@
 //! slice-in-place variant.
 
 use arnet_core::Scalar;
+use arnet_core::backend::MemoryOrder;
 use arnet_linalg::{linear_combine, norm, normalize};
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, reorder};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 
@@ -283,7 +284,7 @@ where
     let solution = T::solve(
         dim,
         &mut |x_slice, y_slice| {
-            let x_dense = Dense::new(x_slice.to_vec(), vec![dim]);
+            let x_dense = Dense::new(x_slice.to_vec(), vec![dim], MemoryOrder::ColumnMajor);
             let y_dense = op.apply(&x_dense);
             assert_eq!(
                 y_dense.shape(),
@@ -296,18 +297,27 @@ where
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let eigenvector = Dense::new(solution.eigenvector, vec![dim]);
+    let eigenvector = Dense::new(solution.eigenvector, vec![dim], MemoryOrder::ColumnMajor);
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
     let (eigenvector, _) = normalize(&eigenvector);
 
     // True residual ||H psi - lambda psi||_2.
-    let h_psi = op.apply(&eigenvector);
+    let h_psi_raw = op.apply(&eigenvector);
     assert_eq!(
-        h_psi.shape(),
+        h_psi_raw.shape(),
         &[dim],
         "LinearOp::apply must return a rank-1 tensor of shape [dim]",
     );
+    // The user operator is not required to declare an output `order()`
+    // matching ARPACK's eigenvector. Normalize against
+    // `eigenvector.order()` so `linear_combine` does not reject mixed-
+    // order inputs; for 1D data this is metadata-only.
+    let h_psi = if h_psi_raw.order() == eigenvector.order() {
+        h_psi_raw
+    } else {
+        reorder(&h_psi_raw, h_psi_raw.order(), eigenvector.order())
+    };
     let lambda_t = T::from_real_imag(eigenvalue, T::Real::zero());
     let neg_lambda = lambda_t.scale_real(-T::Real::one());
     let residual_vec = linear_combine(&[&h_psi, &eigenvector], &[T::one(), neg_lambda])

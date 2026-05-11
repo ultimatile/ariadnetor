@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::Dense;
+use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract;
@@ -86,7 +86,7 @@ pub fn expm_antihermitian<T: Scalar>(
     let order = backend.preferred_order();
 
     // Reorder to RowMajor for element-wise iA computation
-    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
     let data = rm.data();
     let shape = tensor.shape();
 
@@ -97,7 +97,7 @@ pub fn expm_antihermitian<T: Scalar>(
         .map(|&x| T::from_real_imag(-x.im(), x.re()))
         .collect();
     // ia data is in RowMajor; reorder to preferred_order for backend consumption
-    let ia_rm = Dense::new(ia_data, shape.to_vec());
+    let ia_rm = Dense::new(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
     let ia = reorder(&ia_rm, MemoryOrder::RowMajor, order);
 
     // eigh(iA) -> real eigenvalues lambda, eigenvectors V
@@ -211,7 +211,7 @@ fn scale_real<T: Scalar>(tensor: &Dense<T>, factor: T::Real) -> Dense<T> {
         .iter()
         .map(|&x| x.scale_real(factor))
         .collect();
-    Dense::new(data, tensor.shape().to_vec())
+    Dense::new(data, tensor.shape().to_vec(), tensor.order())
 }
 
 /// Pade approximant coefficients b_0..b_m for [m/m] approximant.
@@ -240,7 +240,11 @@ fn pade_uv_small<T: Scalar>(
     m: usize,
 ) -> Result<(Dense<T>, Dense<T>), LinalgError> {
     let b = pade_coefficients(m);
-    let id = Dense::<T>::eye(n);
+    // `id.order()` must match `a.order()` for the `linear_combine`
+    // calls below; `backend.eye` produces an identity in
+    // `backend.preferred_order()`, which is the order `a` is in by
+    // construction in `expm`.
+    let id = backend.eye::<T>(n);
 
     // Compute needed powers of A
     let a2 = matmul(backend, a, a)?;
@@ -337,7 +341,8 @@ fn pade_uv_13<T: Scalar>(
     n: usize,
 ) -> Result<(Dense<T>, Dense<T>), LinalgError> {
     let b = pade_coefficients(13);
-    let id = Dense::<T>::eye(n);
+    // See `pade_uv_small` for the order-matching rationale.
+    let id = backend.eye::<T>(n);
 
     let a2 = matmul(backend, a, a)?;
     let a4 = matmul(backend, &a2, &a2)?;
@@ -435,7 +440,7 @@ pub fn expm<T: Scalar>(
     let rm = reorder(tensor, order, MemoryOrder::RowMajor);
     // Construct the working matrix in preferred_order for backend operations
     let a = reorder(
-        &Dense::new(rm.data().to_vec(), vec![n, n]),
+        &Dense::new(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor),
         MemoryOrder::RowMajor,
         order,
     );
@@ -460,7 +465,11 @@ pub fn expm<T: Scalar>(
             let result = solve_pade(backend, &u, &v)?;
             // RM intermediate for correct axis-split, then back to preferred order
             let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-            let reshaped = Dense::new(result_rm.data().to_vec(), shape.to_vec());
+            let reshaped = Dense::new(
+                result_rm.data().to_vec(),
+                shape.to_vec(),
+                MemoryOrder::RowMajor,
+            );
             return Ok(reorder(&reshaped, MemoryOrder::RowMajor, order));
         }
     }
@@ -479,7 +488,11 @@ pub fn expm<T: Scalar>(
 
     // RM intermediate for correct axis-split, then back to preferred order
     let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-    let reshaped = Dense::new(result_rm.data().to_vec(), shape.to_vec());
+    let reshaped = Dense::new(
+        result_rm.data().to_vec(),
+        shape.to_vec(),
+        MemoryOrder::RowMajor,
+    );
     Ok(reorder(&reshaped, MemoryOrder::RowMajor, order))
 }
 
@@ -503,6 +516,7 @@ fn solve_pade<T: Scalar>(
 #[cfg(test)]
 mod tests {
     use super::{compute_scaling_decision, validate_expm_nrow};
+    use arnet_core::backend::MemoryOrder;
     use arnet_tensor::Dense;
 
     #[test]
@@ -535,7 +549,11 @@ mod tests {
     fn compute_scaling_decision_above_shift_threshold() {
         let theta = 1.0_f64;
         let norm = (1u64 << 62) as f64 * 1.5;
-        let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let a = Dense::<f64>::new(
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2, 2],
+            MemoryOrder::ColumnMajor,
+        );
         let (b, s) = compute_scaling_decision::<f64>(a, norm, theta);
         assert_eq!(s, 63);
         let expected_factor = 1.0_f64 / 2.0_f64.powi(63);
@@ -556,7 +574,11 @@ mod tests {
     /// the input but whose storage pointer differs.
     #[test]
     fn compute_scaling_decision_zero_steps_returns_input_unchanged() {
-        let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let a = Dense::<f64>::new(
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2, 2],
+            MemoryOrder::ColumnMajor,
+        );
         let a_ptr = a.data().as_ptr();
         let (b, s) = compute_scaling_decision::<f64>(a, 0.5, 1.0);
         assert_eq!(s, 0);

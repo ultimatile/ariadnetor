@@ -70,7 +70,7 @@ fn densify_bsp_generic<T: arnet_core::Scalar>(bsp: &BlockSparse<T, U1Sector>, ze
             }
         }
     }
-    let rm = Dense::new(out, global_dims);
+    let rm = Dense::new(out, global_dims, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -220,6 +220,6 @@ pub fn build_dense_psi_from_flat(
             }
         }
     }
-    let rm = Dense::new(rm_data, global_dims);
+    let rm = Dense::new(rm_data, global_dims, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }

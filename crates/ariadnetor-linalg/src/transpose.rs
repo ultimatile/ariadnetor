@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, normalize_to};
 
 use crate::error::LinalgError;
 
@@ -81,13 +81,18 @@ fn transpose_inner<T: Scalar>(
     let total = tensor.len();
 
     if total == 0 {
-        return Ok(Dense::new(vec![], new_shape));
+        return Ok(Dense::new(vec![], new_shape, order));
     }
+
+    // The backend kernel reads `input` under `order` semantics. If the
+    // caller's tensor is laid out in a different order, normalize at
+    // the boundary so the kernel sees the layout it expects.
+    let input = normalize_to(tensor, order);
 
     let mut output = vec![T::zero(); total];
 
     let desc = TransposeDescriptor {
-        input: tensor.data(),
+        input: input.data(),
         output: &mut output,
         shape: tensor.shape(),
         perm,
@@ -98,5 +103,5 @@ fn transpose_inner<T: Scalar>(
 
     backend.transpose(desc)?;
 
-    Ok(Dense::new(output, new_shape))
+    Ok(Dense::new(output, new_shape, order))
 }

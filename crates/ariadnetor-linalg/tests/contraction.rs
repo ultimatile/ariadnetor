@@ -9,7 +9,7 @@ use arnet_tensor::{Dense, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
-    let rm = Dense::new(data, shape);
+    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 

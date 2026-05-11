@@ -1,9 +1,12 @@
 //! Dense tensor storage with flat contiguous data
 //!
 //! Provides a dense tensor with Arc-based shared ownership.
-//! Dense is pure storage — it holds `data` and `shape` only.
-//! Memory layout interpretation (row-major vs column-major) is
-//! delegated to the compute backend at operation time.
+//! `Dense<T>` carries a flat data buffer, its shape, and the memory
+//! order the data is laid out in. The layout authority is the storage
+//! itself: a downstream consumer that needs a specific layout should
+//! reorder against `dense.order()` (typically via
+//! [`normalize_to`](crate::normalize_to)) rather than assuming the data
+//! matches a backend's preferred order.
 
 mod access;
 mod constructors;
@@ -13,6 +16,7 @@ mod scalar_ops;
 mod slice;
 
 use aligned_vec::{AVec, ConstAlign};
+use arnet_core::backend::MemoryOrder;
 use std::fmt;
 use std::sync::Arc;
 
@@ -21,10 +25,13 @@ type Align64 = ConstAlign<64>;
 
 /// Dense tensor with shared ownership (Arc + Copy-on-Write)
 ///
-/// Dense is pure contiguous storage: a flat data buffer plus its shape.
-/// It carries no layout information (no strides, no offset, no memory order).
-/// Layout interpretation is the responsibility of the compute backend,
-/// mediated through `Tensor<Dense, B>` or explicit `MemoryOrder` parameters.
+/// Dense holds a flat contiguous data buffer, its shape, and the
+/// memory order the data is laid out in. The `order` field is the
+/// storage authority for layout interpretation: a consumer that
+/// needs a specific layout (e.g. a backend kernel) should normalize
+/// against `dense.order()` at its entry point, rather than assuming
+/// the data matches the backend's preferred order. Migration of
+/// every linalg/mps/algorithms op to this discipline is in progress.
 ///
 /// # Type Parameters
 ///
@@ -34,6 +41,8 @@ pub struct Dense<T = f64> {
     data: Arc<AVec<T, Align64>>,
     /// Tensor shape
     shape: Vec<usize>,
+    /// Memory order the flat data is laid out in
+    order: MemoryOrder,
 }
 
 // Manual Clone impl: all fields are Clone regardless of T
@@ -44,6 +53,7 @@ impl<T> Clone for Dense<T> {
         Self {
             data: Arc::clone(&self.data),
             shape: self.shape.clone(),
+            order: self.order,
         }
     }
 }
@@ -71,6 +81,14 @@ impl<T> Dense<T> {
     /// Check if tensor is empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Memory order this tensor's flat data is laid out in.
+    ///
+    /// Operations and linalg kernels consult this to decide whether
+    /// the data matches their expected layout.
+    pub fn order(&self) -> MemoryOrder {
+        self.order
     }
 }
 
