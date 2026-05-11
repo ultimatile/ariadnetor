@@ -143,7 +143,7 @@ pub fn svd_with_policy<T: Scalar>(
     backend.svd(desc)?;
 
     let u_tensor = backend.make_tensor(u_data, vec![m, k]);
-    let s_tensor = Dense::new(s_data, vec![k], MemoryOrder::ColumnMajor);
+    let s_tensor = Dense::new(s_data, vec![k], order);
     let vt_tensor = backend.make_tensor(vt_data, vec![k, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor))
@@ -296,7 +296,7 @@ pub fn trunc_svd_with_policy<T: Scalar>(
     };
 
     let u_tensor = backend.make_tensor(u_trunc, vec![m, chi]);
-    let s_tensor = Dense::new(s_trunc, vec![chi], MemoryOrder::ColumnMajor);
+    let s_tensor = Dense::new(s_trunc, vec![chi], order);
     let vt_tensor = backend.make_tensor(vt_trunc, vec![chi, n]);
 
     Ok((u_tensor, s_tensor, vt_tensor, trunc_err))
