@@ -77,15 +77,15 @@ fn reshape_preserves_order_column_major() {
 
 #[test]
 fn map_with_index_outputs_iteration_order() {
-    // `map_with_index` requires `order == self.order()`; build one
-    // tensor per order to verify the output order tag matches the
-    // requested iteration order in each case.
+    // `map_with_index` iterates in `self.order()`; build one tensor
+    // per order to verify the output `order()` matches the input's
+    // storage order in each case.
     let t_rm = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
     );
-    let row_major_out = t_rm.map_with_index(MemoryOrder::RowMajor, |_idx, &x| x);
+    let row_major_out = t_rm.map_with_index(|_idx, &x| x);
     assert_eq!(row_major_out.order(), MemoryOrder::RowMajor);
 
     let t_cm = Dense::<f64>::new(
@@ -93,7 +93,7 @@ fn map_with_index_outputs_iteration_order() {
         vec![2, 3],
         MemoryOrder::ColumnMajor,
     );
-    let col_major_out = t_cm.map_with_index(MemoryOrder::ColumnMajor, |_idx, &x| x);
+    let col_major_out = t_cm.map_with_index(|_idx, &x| x);
     assert_eq!(col_major_out.order(), MemoryOrder::ColumnMajor);
 }
 
@@ -222,6 +222,67 @@ fn dense_set_panics_on_oob_column_major() {
         MemoryOrder::ColumnMajor,
     );
     t.set(&[2, 0], 0.0);
+}
+
+#[test]
+#[should_panic(expected = "order")]
+fn concatenate_panics_on_mixed_order() {
+    // Mixed-order inputs walk the strip-copy in incompatible directions;
+    // the explicit assert_eq! on `t.order()` must reject this regardless
+    // of shape compatibility.
+    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let b = Dense::<f64>::new(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let _c = Dense::concatenate(&[&a, &b], 0);
+}
+
+#[test]
+#[should_panic(expected = "order")]
+fn stack_panics_on_mixed_order() {
+    // Stack reshapes each input and forwards to concatenate; the order
+    // mismatch must propagate through reshape (which preserves order).
+    let a = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
+    let b = Dense::<f64>::new(vec![3.0, 4.0], vec![2], MemoryOrder::ColumnMajor);
+    let _s = Dense::stack(&[&a, &b], 0);
+}
+
+#[test]
+#[should_panic(expected = "order")]
+fn replace_slice_panics_on_mixed_order_rank2() {
+    // At rank >= 2 the strip-copy direction depends on the destination's
+    // order; a different-order sub would land bytes at the wrong logical
+    // positions, so the call must panic. (Rank-0 / rank-1 / empty sub
+    // are layout-insensitive and remain valid under mixed orders.)
+    let mut dst = Dense::<f64>::new(vec![0.0; 9], vec![3, 3], MemoryOrder::RowMajor);
+    let sub = Dense::<f64>::new(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    dst.replace_slice(&sub, &[0, 0]);
+}
+
+#[test]
+fn concatenate_propagates_input_order_column_major() {
+    // The output of concatenate must adopt the shared input order. RM
+    // propagation is implicit in `tests/dense.rs::test_concatenate_axis0`
+    // (asserts the RM-laid output buffer); this test pins the CM case
+    // explicitly so the contract holds for both orders.
+    let a = Dense::<f64>::new(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let b = Dense::<f64>::new(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let c = Dense::concatenate(&[&a, &b], 0);
+    assert_eq!(c.order(), MemoryOrder::ColumnMajor);
 }
 
 #[test]

@@ -20,13 +20,14 @@ where
 {
     /// Extract a sub-tensor by specifying a range for each axis.
     ///
-    /// Each range is `(start, end)` with exclusive end.
-    /// The `order` parameter determines how flat data maps to axes.
+    /// Each range is `(start, end)` with exclusive end. The flat-data
+    /// interpretation follows `self.order()`, and the output preserves
+    /// the same order.
     ///
     /// # Panics
     ///
     /// Panics if `ranges` length doesn't match rank, or any range is out of bounds.
-    pub fn slice(&self, ranges: &[(usize, usize)], order: MemoryOrder) -> Self {
+    pub fn slice(&self, ranges: &[(usize, usize)]) -> Self {
         let shape = self.shape();
         assert_eq!(
             ranges.len(),
@@ -43,6 +44,7 @@ where
             );
         }
 
+        let order = self.order();
         let new_shape: Vec<usize> = ranges.iter().map(|&(s, e)| e - s).collect();
         let new_total: usize = new_shape.iter().product();
         let rank = shape.len();
@@ -95,8 +97,9 @@ where
 
     /// Expand tensor by adding zero-padding at the boundaries.
     ///
-    /// The `order` parameter determines how flat data maps to axes.
-    pub fn expand(&self, padding: &[(usize, usize)], order: MemoryOrder) -> Self
+    /// The flat-data interpretation follows `self.order()`, and the
+    /// output preserves the same order.
+    pub fn expand(&self, padding: &[(usize, usize)]) -> Self
     where
         T: Zero,
     {
@@ -109,6 +112,7 @@ where
             shape.len()
         );
 
+        let order = self.order();
         let new_shape: Vec<usize> = shape
             .iter()
             .zip(padding)
@@ -202,8 +206,21 @@ where
 
     /// Write a sub-tensor into this tensor starting at the given position.
     ///
-    /// The `order` parameter determines how flat data maps to axes.
-    pub fn replace_slice(&mut self, sub: &Self, begin: &[usize], order: MemoryOrder) {
+    /// The flat-data interpretation follows `self.order()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `sub.rank()` or `begin.len()` does not match `self.rank()`,
+    /// or any sub-tensor extent exceeds the destination's bounds.
+    ///
+    /// Panics if `sub.order()` differs from `self.order()` when the
+    /// strip-copy path actually depends on the order — that is, when
+    /// `sub` is non-empty and `self.rank() >= 2`. Empty `sub` (any rank),
+    /// rank-0 scalars, and rank-1 inputs are layout-insensitive in this
+    /// implementation: the empty case short-circuits before any walk,
+    /// rank-0 is a single direct write, and rank-1 collapses to a single
+    /// linear strip-copy whose direction is the same under either order.
+    pub fn replace_slice(&mut self, sub: &Self, begin: &[usize]) {
         let shape = self.shape().to_vec();
         let sub_shape = sub.shape();
         assert_eq!(
@@ -238,6 +255,21 @@ where
         if rank == 0 {
             Arc::make_mut(&mut self.data)[0] = sub.data()[0].clone();
             return;
+        }
+
+        let order = self.order();
+
+        // At rank ≥ 2 the strip-copy depends on the order tag matching
+        // between destination and source; at rank 1 both order branches
+        // collapse to the same linear copy, so mixed orders are valid.
+        if rank >= 2 {
+            assert_eq!(
+                sub.order(),
+                order,
+                "replace_slice: sub.order() ({:?}) must equal self.order() ({:?}) at rank >= 2",
+                sub.order(),
+                order,
+            );
         }
 
         let inner_axis = match order {

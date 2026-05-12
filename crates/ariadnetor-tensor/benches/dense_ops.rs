@@ -217,14 +217,14 @@ fn bench_slice(c: &mut Criterion) {
             BenchmarkId::new("half", s.label),
             &(&tensor, half),
             |b, (t, ranges)| {
-                b.iter_with_large_drop(|| t.slice(ranges, MemoryOrder::RowMajor));
+                b.iter_with_large_drop(|| t.slice(ranges));
             },
         );
     }
 
     let tensor = random_tensor(vec![64, 4, 64]);
     group.bench_with_input(BenchmarkId::new("half", "64x4x64"), &tensor, |b, t| {
-        b.iter_with_large_drop(|| t.slice(&[(0, 32), (0, 4), (0, 64)], MemoryOrder::RowMajor));
+        b.iter_with_large_drop(|| t.slice(&[(0, 32), (0, 4), (0, 64)]));
     });
 
     group.finish();
@@ -251,7 +251,7 @@ fn bench_concatenate(c: &mut Criterion) {
         let b = random_tensor(s.shape.clone());
         let tensors = [&a, &b];
         group.bench_with_input(BenchmarkId::new("axis0", s.label), &s.label, |bench, _| {
-            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0, MemoryOrder::RowMajor));
+            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
         });
     }
 
@@ -262,7 +262,7 @@ fn bench_concatenate(c: &mut Criterion) {
         BenchmarkId::new("axis0", "64x4x64"),
         &"64x4x64",
         |bench, _| {
-            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0, MemoryOrder::RowMajor));
+            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
         },
     );
 
@@ -292,14 +292,14 @@ fn bench_expand(c: &mut Criterion) {
             BenchmarkId::new("pad16", s.label),
             &(&tensor, &padding),
             |b, (t, p)| {
-                b.iter_with_large_drop(|| t.expand(p, MemoryOrder::RowMajor));
+                b.iter_with_large_drop(|| t.expand(p));
             },
         );
     }
 
     let tensor = random_tensor(vec![64, 4, 64]);
     group.bench_with_input(BenchmarkId::new("pad16", "64x4x64"), &tensor, |b, t| {
-        b.iter_with_large_drop(|| t.expand(&[(16, 16), (0, 0), (16, 16)], MemoryOrder::RowMajor));
+        b.iter_with_large_drop(|| t.expand(&[(16, 16), (0, 0), (16, 16)]));
     });
 
     group.finish();
@@ -317,7 +317,7 @@ fn bench_replace_slice(c: &mut Criterion) {
     group.bench_function("128x128_into_256x256", |b| {
         b.iter_batched_ref(
             || unique_copy(&dst),
-            |d| d.replace_slice(&sub, &[64, 64], MemoryOrder::RowMajor),
+            |d| d.replace_slice(&sub, &[64, 64]),
             criterion::BatchSize::LargeInput,
         );
     });
@@ -327,7 +327,7 @@ fn bench_replace_slice(c: &mut Criterion) {
     group.bench_function("512x512_into_1024x1024", |b| {
         b.iter_batched_ref(
             || unique_copy(&dst),
-            |d| d.replace_slice(&sub, &[256, 256], MemoryOrder::RowMajor),
+            |d| d.replace_slice(&sub, &[256, 256]),
             criterion::BatchSize::LargeInput,
         );
     });
@@ -337,7 +337,7 @@ fn bench_replace_slice(c: &mut Criterion) {
     group.bench_function("32x4x64_into_64x4x64", |b| {
         b.iter_batched_ref(
             || unique_copy(&dst),
-            |d| d.replace_slice(&sub, &[16, 0, 0], MemoryOrder::RowMajor),
+            |d| d.replace_slice(&sub, &[16, 0, 0]),
             criterion::BatchSize::LargeInput,
         );
     });

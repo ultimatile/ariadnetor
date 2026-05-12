@@ -11,7 +11,7 @@ fn test_expand_column_major() {
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     );
-    let e = t.expand(&[(1, 1), (1, 1)], MemoryOrder::ColumnMajor);
+    let e = t.expand(&[(1, 1), (1, 1)]);
     assert_eq!(e.shape(), &[4, 4]);
     // Expected CM flat: col0=[0,0,0,0], col1=[0,1,3,0], col2=[0,2,4,0], col3=[0,0,0,0]
     assert_eq!(
@@ -25,8 +25,8 @@ fn test_expand_column_major() {
 #[test]
 fn test_expand_3d_rm() {
     let data: Vec<f64> = (1..=24).map(|i| i as f64).collect();
-    let t = Dense::new(data, vec![2, 3, 4], MemoryOrder::ColumnMajor);
-    let e = t.expand(&[(1, 0), (0, 1), (2, 2)], MemoryOrder::RowMajor);
+    let t = Dense::new(data, vec![2, 3, 4], MemoryOrder::RowMajor);
+    let e = t.expand(&[(1, 0), (0, 1), (2, 2)]);
     assert_eq!(e.shape(), &[3, 4, 8]);
     // First row of padding: data[0] should be 0
     assert_eq!(e.data()[0], 0.0);
@@ -38,8 +38,8 @@ fn test_expand_3d_rm() {
 fn test_expand_no_inner_pad_rm() {
     // No padding on innermost axis -> strip-copy path
     let data: Vec<f64> = (1..=12).map(|i| i as f64).collect();
-    let t = Dense::new(data, vec![3, 4], MemoryOrder::ColumnMajor);
-    let e = t.expand(&[(2, 1), (0, 0)], MemoryOrder::RowMajor);
+    let t = Dense::new(data, vec![3, 4], MemoryOrder::RowMajor);
+    let e = t.expand(&[(2, 1), (0, 0)]);
     assert_eq!(e.shape(), &[6, 4]);
     // Rows 0-1 are zeros (8 elements), row 2 starts at index 8
     assert_eq!(e.data()[0], 0.0);
