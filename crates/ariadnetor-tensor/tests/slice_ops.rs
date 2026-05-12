@@ -39,3 +39,25 @@ fn test_slice_empty() {
     assert_eq!(s.shape(), &[0, 2]);
     assert_eq!(s.len(), 0);
 }
+
+// Rank-0 (scalar) slice must return an identity clone rather than
+// underflow on `rank - 1` (RowMajor) or index an empty Vec
+// (ColumnMajor). Two tests pin both pre-fix failure paths.
+
+#[test]
+fn test_slice_scalar_row_major_returns_clone() {
+    let t = Dense::<f64>::new(vec![42.0], vec![], MemoryOrder::RowMajor);
+    let s = t.slice(&[]);
+    assert_eq!(s.shape(), &[] as &[usize]);
+    assert_eq!(s.data(), &[42.0]);
+    assert_eq!(s.order(), MemoryOrder::RowMajor);
+}
+
+#[test]
+fn test_slice_scalar_column_major_returns_clone() {
+    let t = Dense::<f64>::new(vec![42.0], vec![], MemoryOrder::ColumnMajor);
+    let s = t.slice(&[]);
+    assert_eq!(s.shape(), &[] as &[usize]);
+    assert_eq!(s.data(), &[42.0]);
+    assert_eq!(s.order(), MemoryOrder::ColumnMajor);
+}
