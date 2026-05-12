@@ -53,6 +53,10 @@ where
             return Self::new(Vec::new(), new_shape, order);
         }
 
+        if rank == 0 {
+            return self.clone();
+        }
+
         let inner_axis = match order {
             MemoryOrder::RowMajor => rank - 1,
             MemoryOrder::ColumnMajor => 0,
