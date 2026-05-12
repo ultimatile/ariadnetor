@@ -2,26 +2,9 @@
 
 use std::sync::Arc;
 
-use super::Dense;
+use crate::reorder::flat_index;
 
-/// Compute row-major flat index from multi-dimensional indices.
-fn rm_flat_index(indices: &[usize], shape: &[usize]) -> usize {
-    debug_assert_eq!(indices.len(), shape.len());
-    let mut idx = 0;
-    let mut stride = 1;
-    for i in (0..shape.len()).rev() {
-        debug_assert!(
-            indices[i] < shape[i],
-            "index {} out of bounds for axis {} with size {}",
-            indices[i],
-            i,
-            shape[i]
-        );
-        idx += indices[i] * stride;
-        stride *= shape[i];
-    }
-    idx
-}
+use super::Dense;
 
 impl<T> Dense<T>
 where
@@ -56,30 +39,53 @@ where
         self.data[..].iter()
     }
 
-    /// Get element at multi-dimensional indices using row-major indexing.
+    /// Get element at multi-dimensional indices.
     ///
-    /// This is a convenience accessor for tests and simple use cases.
-    /// The flat index is computed assuming the data is in row-major order.
-    /// For backend-aware indexing, use `Tensor::get()` instead.
+    /// The flat index is computed using `self.order()`, so a
+    /// `RowMajor`-tagged and a `ColumnMajor`-tagged Dense holding
+    /// the same logical matrix in their respective layouts return
+    /// the same value at the same `[i, j, ...]`. This matches
+    /// [`Tensor::get`](../../arnet/struct.Tensor.html#method.get)
+    /// on the same storage; prefer `Tensor::get` only when
+    /// backend-level concerns (Arc dereferencing, generic backend
+    /// dispatch) are relevant — not for different indexing
+    /// semantics.
     ///
     /// # Panics
     ///
     /// Panics if indices are out of bounds.
     pub fn get(&self, indices: &[usize]) -> T {
-        let idx = rm_flat_index(indices, self.shape());
+        let shape = self.shape();
+        assert_eq!(indices.len(), shape.len());
+        for (axis, (&idx, &dim)) in indices.iter().zip(shape).enumerate() {
+            assert!(
+                idx < dim,
+                "index {idx} out of bounds for axis {axis} with size {dim}"
+            );
+        }
+        let idx = flat_index(indices, shape, self.order());
         self.data[idx].clone()
     }
 
-    /// Set element at multi-dimensional indices using row-major indexing.
+    /// Set element at multi-dimensional indices.
     ///
-    /// This is a convenience accessor for tests and simple use cases.
-    /// See [`get`](Dense::get) for the indexing convention.
+    /// The flat index is computed using `self.order()`. See
+    /// [`get`](Dense::get) for the indexing convention.
     ///
     /// # Panics
     ///
     /// Panics if indices are out of bounds.
     pub fn set(&mut self, indices: &[usize], value: T) {
-        let idx = rm_flat_index(indices, self.shape());
+        let shape = self.shape();
+        assert_eq!(indices.len(), shape.len());
+        for (axis, (&idx, &dim)) in indices.iter().zip(shape).enumerate() {
+            assert!(
+                idx < dim,
+                "index {idx} out of bounds for axis {axis} with size {dim}"
+            );
+        }
+        let order = self.order();
+        let idx = flat_index(indices, shape, order);
         Arc::make_mut(&mut self.data)[idx] = value;
     }
 
