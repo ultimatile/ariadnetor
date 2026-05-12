@@ -194,6 +194,37 @@ fn dense_get_honors_storage_order() {
 }
 
 #[test]
+#[should_panic(expected = "out of bounds for axis")]
+fn dense_get_panics_on_oob_column_major() {
+    // CM-tagged shape=[2, 3]: get(&[2, 0]) computes CM flat index
+    // 2 + 0 * 2 = 2, which is within the 6-element data buffer.
+    // Without explicit bounds checking the call would silently
+    // return `data[2]` instead of panicking. Pins the contract
+    // that out-of-bounds indices panic regardless of whether the
+    // computed flat position happens to land in range.
+    let t = Dense::<f64>::new(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::ColumnMajor,
+    );
+    let _ = t.get(&[2, 0]);
+}
+
+#[test]
+#[should_panic(expected = "out of bounds for axis")]
+fn dense_set_panics_on_oob_column_major() {
+    // Mirror of `dense_get_panics_on_oob_column_major` for `set`.
+    // Without explicit bounds checking the write would silently
+    // overwrite `data[2]` instead of panicking.
+    let mut t = Dense::<f64>::new(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![2, 3],
+        MemoryOrder::ColumnMajor,
+    );
+    t.set(&[2, 0], 0.0);
+}
+
+#[test]
 fn dense_set_honors_storage_order() {
     // `set` on two zero-initialized Dense with different orders must
     // write the value at the flat position dictated by each Dense's
