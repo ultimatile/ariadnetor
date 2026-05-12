@@ -10,7 +10,7 @@ fn test_slice_column_major() {
         vec![3, 3],
         MemoryOrder::ColumnMajor,
     );
-    let s = t.slice(&[(0, 2), (1, 3)], MemoryOrder::ColumnMajor);
+    let s = t.slice(&[(0, 2), (1, 3)]);
     assert_eq!(s.shape(), &[2, 2]);
     // CM output: col0=[2,5], col1=[3,6] -> flat [2,5,3,6]
     assert_eq!(s.data(), &[2.0, 5.0, 3.0, 6.0]);
@@ -23,7 +23,7 @@ fn test_slice_1d() {
         vec![5],
         MemoryOrder::ColumnMajor,
     );
-    let s = t.slice(&[(1, 4)], MemoryOrder::RowMajor);
+    let s = t.slice(&[(1, 4)]);
     assert_eq!(s.shape(), &[3]);
     assert_eq!(s.data(), &[20.0, 30.0, 40.0]);
 }
@@ -35,7 +35,7 @@ fn test_slice_empty() {
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     );
-    let s = t.slice(&[(1, 1), (0, 2)], MemoryOrder::RowMajor);
+    let s = t.slice(&[(1, 1), (0, 2)]);
     assert_eq!(s.shape(), &[0, 2]);
     assert_eq!(s.len(), 0);
 }

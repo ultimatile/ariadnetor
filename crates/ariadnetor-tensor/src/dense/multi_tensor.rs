@@ -9,10 +9,16 @@ where
 {
     /// Concatenate tensors along an existing axis.
     ///
-    /// All tensors must have the same rank and matching sizes on all axes
-    /// except `axis`. The `order` parameter determines how flat data maps
-    /// to multi-dimensional indices (provided by the compute backend).
-    pub fn concatenate(tensors: &[&Dense<T>], axis: usize, order: MemoryOrder) -> Self {
+    /// All tensors must have the same rank, the same `order()`, and matching
+    /// sizes on all axes except `axis`. The output preserves the shared
+    /// `order()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the input list is empty, `axis` is out of range, any rank
+    /// or non-`axis` size mismatches, or any tensor's `order()` differs from
+    /// the first tensor's `order()`.
+    pub fn concatenate(tensors: &[&Dense<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "concatenate: empty tensor list");
         let rank = tensors[0].rank();
         assert!(
@@ -20,6 +26,7 @@ where
             "concatenate: axis {axis} out of range for rank {rank}"
         );
 
+        let order = tensors[0].order();
         let base_shape = tensors[0].shape();
         for (i, t) in tensors.iter().enumerate().skip(1) {
             assert_eq!(
@@ -27,6 +34,13 @@ where
                 rank,
                 "concatenate: tensor {i} has rank {} but expected {rank}",
                 t.rank()
+            );
+            assert_eq!(
+                t.order(),
+                order,
+                "concatenate: tensor {i} has order {:?} but expected {:?}",
+                t.order(),
+                order,
             );
             for (d, (&ts, &bs)) in t.shape().iter().zip(base_shape).enumerate() {
                 if d != axis {
@@ -87,8 +101,16 @@ where
 
     /// Stack tensors along a new axis.
     ///
-    /// The `order` parameter determines memory layout interpretation.
-    pub fn stack(tensors: &[&Dense<T>], axis: usize, order: MemoryOrder) -> Self {
+    /// All tensors must have the same shape and the same `order()`. The
+    /// output preserves the shared `order()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the input list is empty, `axis` is out of range, any
+    /// shape mismatches, or any tensor's `order()` differs from the first
+    /// tensor's `order()` (enforced by the inner `concatenate` call after
+    /// `reshape`, which preserves order).
+    pub fn stack(tensors: &[&Dense<T>], axis: usize) -> Self {
         assert!(!tensors.is_empty(), "stack: empty tensor list");
         let base_shape = tensors[0].shape();
         let rank = tensors[0].rank();
@@ -118,6 +140,6 @@ where
             .collect();
         let reshaped_refs: Vec<&Dense<T>> = reshaped.iter().collect();
 
-        Self::concatenate(&reshaped_refs, axis, order)
+        Self::concatenate(&reshaped_refs, axis)
     }
 }

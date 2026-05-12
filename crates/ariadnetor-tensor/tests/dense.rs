@@ -318,9 +318,7 @@ fn test_map_with_index_sum_of_indices() {
     // reading the storage linearly, so the storage must already be in
     // that same order.
     let t = Dense::<f64>::new(vec![0.0; 6], vec![2, 3], MemoryOrder::RowMajor);
-    let r = t.map_with_index(MemoryOrder::RowMajor, |coords, _| {
-        (coords[0] + coords[1]) as f64
-    });
+    let r = t.map_with_index(|coords, _| (coords[0] + coords[1]) as f64);
     assert_eq!(r.shape(), &[2, 3]);
     // RM: [0+0, 0+1, 0+2, 1+0, 1+1, 1+2] = [0, 1, 2, 1, 2, 3]
     assert_eq!(r.data(), &[0.0, 1.0, 2.0, 1.0, 2.0, 3.0]);
@@ -336,7 +334,7 @@ fn test_slice_2x2_from_3x3() {
         vec![3, 3],
         MemoryOrder::RowMajor,
     );
-    let s = t.slice(&[(0, 2), (1, 3)], MemoryOrder::RowMajor);
+    let s = t.slice(&[(0, 2), (1, 3)]);
     assert_eq!(s.shape(), &[2, 2]);
     assert_eq!(s.data(), &[2.0, 3.0, 5.0, 6.0]);
 }
@@ -346,9 +344,9 @@ fn test_slice_row() {
     let t = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
-    let s = t.slice(&[(1, 2), (0, 3)], MemoryOrder::RowMajor);
+    let s = t.slice(&[(1, 2), (0, 3)]);
     assert_eq!(s.shape(), &[1, 3]);
     assert_eq!(s.data(), &[4.0, 5.0, 6.0]);
 }
@@ -356,8 +354,8 @@ fn test_slice_row() {
 #[test]
 fn test_slice_3d() {
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
-    let t = Dense::new(data, vec![2, 3, 4], MemoryOrder::ColumnMajor);
-    let s = t.slice(&[(0, 1), (1, 3), (2, 4)], MemoryOrder::RowMajor);
+    let t = Dense::new(data, vec![2, 3, 4], MemoryOrder::RowMajor);
+    let s = t.slice(&[(0, 1), (1, 3), (2, 4)]);
     assert_eq!(s.shape(), &[1, 2, 2]);
     // RM elements: t[0,1,2]=6, t[0,1,3]=7, t[0,2,2]=10, t[0,2,3]=11
     assert_eq!(s.data(), &[6.0, 7.0, 10.0, 11.0]);
@@ -366,19 +364,15 @@ fn test_slice_3d() {
 #[test]
 #[should_panic(expected = "out of bounds")]
 fn test_slice_out_of_bounds() {
-    let t = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
-    let _s = t.slice(&[(0, 3), (0, 2)], MemoryOrder::RowMajor);
+    let t = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let _s = t.slice(&[(0, 3), (0, 2)]);
 }
 
 #[test]
 fn test_expand_symmetric() {
     // RM [[1,2],[3,4]] with padding (1,1) on each axis → 4x4
     let t = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let e = t.expand(&[(1, 1), (1, 1)], MemoryOrder::RowMajor);
+    let e = t.expand(&[(1, 1), (1, 1)]);
     assert_eq!(e.shape(), &[4, 4]);
     // Expected RM flat: row0=[0,0,0,0], row1=[0,1,2,0], row2=[0,3,4,0], row3=[0,0,0,0]
     assert_eq!(
@@ -391,8 +385,8 @@ fn test_expand_symmetric() {
 
 #[test]
 fn test_expand_asymmetric() {
-    let t = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::ColumnMajor);
-    let e = t.expand(&[(2, 1)], MemoryOrder::RowMajor);
+    let t = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
+    let e = t.expand(&[(2, 1)]);
     assert_eq!(e.shape(), &[5]);
     assert_eq!(e.data(), &[0.0, 0.0, 1.0, 2.0, 0.0]);
 }
@@ -402,7 +396,7 @@ fn test_replace_slice_center() {
     // 3x3 zeros, write [[5,6],[7,8]] at position (0,1) in RM
     let mut t = Dense::<f64>::new(vec![0.0; 9], vec![3, 3], MemoryOrder::RowMajor);
     let sub = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
-    t.replace_slice(&sub, &[0, 1], MemoryOrder::RowMajor);
+    t.replace_slice(&sub, &[0, 1]);
     // RM: row0=[0,5,6], row1=[0,7,8], row2=[0,0,0]
     assert_eq!(t.data(), &[0.0, 5.0, 6.0, 0.0, 7.0, 8.0, 0.0, 0.0, 0.0]);
 }
@@ -410,24 +404,16 @@ fn test_replace_slice_center() {
 #[test]
 #[should_panic(expected = "exceeds boundary")]
 fn test_replace_slice_out_of_bounds() {
-    let mut t = Dense::<f64>::new(vec![0.0; 4], vec![2, 2], MemoryOrder::ColumnMajor);
-    let sub = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
-    t.replace_slice(&sub, &[1, 1], MemoryOrder::RowMajor);
+    let mut t = Dense::<f64>::new(vec![0.0; 4], vec![2, 2], MemoryOrder::RowMajor);
+    let sub = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    t.replace_slice(&sub, &[1, 1]);
 }
 
 #[test]
 fn test_slice_expand_round_trip() {
-    let t = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
-    let expanded = t.expand(&[(1, 1), (1, 1)], MemoryOrder::RowMajor);
-    let recovered = expanded.slice(&[(1, 3), (1, 3)], MemoryOrder::RowMajor);
+    let t = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let expanded = t.expand(&[(1, 1), (1, 1)]);
+    let recovered = expanded.slice(&[(1, 3), (1, 3)]);
     assert_eq!(recovered.data(), t.data());
 }
 
@@ -438,14 +424,14 @@ fn test_concatenate_axis0() {
     let a = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
     let b = Dense::<f64>::new(
         vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
-    let c = Dense::concatenate(&[&a, &b], 0, MemoryOrder::RowMajor);
+    let c = Dense::concatenate(&[&a, &b], 0);
     assert_eq!(c.shape(), &[4, 3]);
     assert_eq!(
         c.data(),
@@ -457,42 +443,30 @@ fn test_concatenate_axis0() {
 
 #[test]
 fn test_concatenate_axis1() {
-    let a = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
-    let b = Dense::<f64>::new(
-        vec![5.0, 6.0, 7.0, 8.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
-    let c = Dense::concatenate(&[&a, &b], 1, MemoryOrder::RowMajor);
+    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let b = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
+    let c = Dense::concatenate(&[&a, &b], 1);
     assert_eq!(c.shape(), &[2, 4]);
     assert_eq!(c.data(), &[1.0, 2.0, 5.0, 6.0, 3.0, 4.0, 7.0, 8.0]);
 }
 
 #[test]
 fn test_concatenate_single() {
-    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::ColumnMajor);
-    let c = Dense::concatenate(&[&a], 0, MemoryOrder::RowMajor);
+    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::RowMajor);
+    let c = Dense::concatenate(&[&a], 0);
     assert_eq!(c.data(), a.data());
 }
 
 #[test]
 #[should_panic(expected = "concatenate")]
 fn test_concatenate_shape_mismatch() {
-    let a = Dense::<f64>::new(
-        vec![1.0, 2.0, 3.0, 4.0],
-        vec![2, 2],
-        MemoryOrder::ColumnMajor,
-    );
+    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
     let b = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
-    let _c = Dense::concatenate(&[&a, &b], 0, MemoryOrder::RowMajor);
+    let _c = Dense::concatenate(&[&a, &b], 0);
 }
 
 #[test]
@@ -500,14 +474,14 @@ fn test_stack_axis0() {
     let a = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
     let b = Dense::<f64>::new(
         vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
-    let s = Dense::stack(&[&a, &b], 0, MemoryOrder::RowMajor);
+    let s = Dense::stack(&[&a, &b], 0);
     assert_eq!(s.shape(), &[2, 2, 3]);
     assert_eq!(
         s.data(),
@@ -522,14 +496,14 @@ fn test_stack_axis2() {
     let a = Dense::<f64>::new(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
     let b = Dense::<f64>::new(
         vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
+        MemoryOrder::RowMajor,
     );
-    let s = Dense::stack(&[&a, &b], 2, MemoryOrder::RowMajor);
+    let s = Dense::stack(&[&a, &b], 2);
     assert_eq!(s.shape(), &[2, 3, 2]);
     assert_eq!(
         s.data(),
@@ -541,8 +515,8 @@ fn test_stack_axis2() {
 
 #[test]
 fn test_stack_single() {
-    let a = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::ColumnMajor);
-    let s = Dense::stack(&[&a], 0, MemoryOrder::RowMajor);
+    let a = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
+    let s = Dense::stack(&[&a], 0);
     assert_eq!(s.shape(), &[1, 2]);
     assert_eq!(s.data(), &[1.0, 2.0]);
 }
@@ -550,9 +524,9 @@ fn test_stack_single() {
 #[test]
 #[should_panic(expected = "stack")]
 fn test_stack_shape_mismatch() {
-    let a = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::ColumnMajor);
-    let b = Dense::<f64>::new(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::ColumnMajor);
-    let _s = Dense::stack(&[&a, &b], 0, MemoryOrder::RowMajor);
+    let a = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
+    let b = Dense::<f64>::new(vec![1.0, 2.0, 3.0], vec![3], MemoryOrder::RowMajor);
+    let _s = Dense::stack(&[&a, &b], 0);
 }
 
 // --- iter tests ---
