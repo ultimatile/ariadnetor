@@ -56,9 +56,9 @@ where
     /// Panics if indices are out of bounds.
     pub fn get(&self, indices: &[usize]) -> T {
         let shape = self.shape();
-        debug_assert_eq!(indices.len(), shape.len());
+        assert_eq!(indices.len(), shape.len());
         for (axis, (&idx, &dim)) in indices.iter().zip(shape).enumerate() {
-            debug_assert!(
+            assert!(
                 idx < dim,
                 "index {idx} out of bounds for axis {axis} with size {dim}"
             );
@@ -77,9 +77,9 @@ where
     /// Panics if indices are out of bounds.
     pub fn set(&mut self, indices: &[usize], value: T) {
         let shape = self.shape();
-        debug_assert_eq!(indices.len(), shape.len());
+        assert_eq!(indices.len(), shape.len());
         for (axis, (&idx, &dim)) in indices.iter().zip(shape).enumerate() {
-            debug_assert!(
+            assert!(
                 idx < dim,
                 "index {idx} out of bounds for axis {axis} with size {dim}"
             );
