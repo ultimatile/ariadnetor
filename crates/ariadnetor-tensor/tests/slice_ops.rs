@@ -45,7 +45,7 @@ fn test_slice_empty() {
 // (ColumnMajor). Two tests pin both pre-fix failure paths.
 
 #[test]
-fn slice_scalar_row_major_returns_clone() {
+fn test_slice_scalar_row_major_returns_clone() {
     let t = Dense::<f64>::new(vec![42.0], vec![], MemoryOrder::RowMajor);
     let s = t.slice(&[]);
     assert_eq!(s.shape(), &[] as &[usize]);
@@ -54,7 +54,7 @@ fn slice_scalar_row_major_returns_clone() {
 }
 
 #[test]
-fn slice_scalar_column_major_returns_clone() {
+fn test_slice_scalar_column_major_returns_clone() {
     let t = Dense::<f64>::new(vec![42.0], vec![], MemoryOrder::ColumnMajor);
     let s = t.slice(&[]);
     assert_eq!(s.shape(), &[] as &[usize]);
