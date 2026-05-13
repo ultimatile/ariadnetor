@@ -8,6 +8,7 @@
 //! motivated the original boundary-contract bug.
 
 use arnet_tensor::{Dense, MemoryOrder, normalize_to, reorder};
+use num_complex::Complex;
 use std::borrow::Cow;
 
 #[test]
@@ -319,4 +320,50 @@ fn dense_set_honors_storage_order() {
     assert_eq!(m_cm3.data()[14], 7.5);
     assert_eq!(m_rm3.data()[14], 0.0);
     assert_eq!(m_cm3.data()[6], 0.0);
+}
+
+// Row-major flat data of `σ^x ⊗ σ^y`, a 4×4 complex Hermitian
+// matrix with non-real off-diagonal entries. Used as a boundary-
+// contract fixture: real-symmetric fixtures hide row-major-vs-
+// column-major mistagging because their transpose equals
+// themselves, whereas a complex Hermitian H reinterpreted under
+// the wrong layout becomes conj(H) and the swap is visible.
+fn pauli_sigma_x_kron_sigma_y_row_major() -> Vec<Complex<f64>> {
+    let z = Complex::new(0.0, 0.0);
+    let i = Complex::new(0.0, 1.0);
+    let ni = Complex::new(0.0, -1.0);
+    vec![
+        z, z, z, ni, // row 0: H[0,3] = -i
+        z, z, i, z, //  row 1: H[1,2] =  i
+        z, ni, z, z, // row 2: H[2,1] = -i
+        i, z, z, z, //  row 3: H[3,0] =  i
+    ]
+}
+
+#[test]
+fn complex_hermitian_correct_source_order_matches_analytical_entries() {
+    let data = pauli_sigma_x_kron_sigma_y_row_major();
+    let t = Dense::<Complex<f64>>::new(data, vec![4, 4], MemoryOrder::RowMajor);
+    let i = Complex::new(0.0, 1.0);
+    let ni = Complex::new(0.0, -1.0);
+    assert_eq!(t.get(&[0, 3]), ni);
+    assert_eq!(t.get(&[3, 0]), i);
+    assert_eq!(t.get(&[1, 2]), i);
+    assert_eq!(t.get(&[2, 1]), ni);
+}
+
+#[test]
+fn complex_hermitian_wrong_source_order_returns_conjugated_entries() {
+    // The same row-major flat data tagged column-major is interpreted
+    // as H^T. For Hermitian H this equals conj(H), so each non-real
+    // off-diagonal entry flips sign on its imaginary part. A real-
+    // symmetric fixture would silently pass under this mis-tag.
+    let data = pauli_sigma_x_kron_sigma_y_row_major();
+    let t = Dense::<Complex<f64>>::new(data, vec![4, 4], MemoryOrder::ColumnMajor);
+    let i = Complex::new(0.0, 1.0);
+    let ni = Complex::new(0.0, -1.0);
+    assert_eq!(t.get(&[0, 3]), i);
+    assert_eq!(t.get(&[3, 0]), ni);
+    assert_eq!(t.get(&[1, 2]), ni);
+    assert_eq!(t.get(&[2, 1]), i);
 }
