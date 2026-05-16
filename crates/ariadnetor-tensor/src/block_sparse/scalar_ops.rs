@@ -46,6 +46,7 @@ where
             indices: flipped_indices,
             flux: self.flux.dual(),
             shape: self.shape.clone(),
+            order: self.order,
         }
     }
 
@@ -60,6 +61,7 @@ where
             indices: self.indices.clone(),
             flux: self.flux.clone(),
             shape: self.shape.clone(),
+            order: self.order,
         }
     }
 
