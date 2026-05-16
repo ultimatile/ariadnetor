@@ -94,6 +94,18 @@ impl Default for NativeBackend {
     }
 }
 
+/// faer-backed decomposition / solve kernels accept column-major slices only.
+/// Reject any other order at the dispatcher boundary so per-type kernels
+/// never see a layout they cannot interpret.
+fn require_column_major(op: &str, order: MemoryOrder) -> Result<(), BackendError> {
+    if order != MemoryOrder::ColumnMajor {
+        return Err(BackendError::InvalidArgument(format!(
+            "NativeBackend::{op} supports ColumnMajor only, got {order:?}"
+        )));
+    }
+    Ok(())
+}
+
 impl ComputeBackend for NativeBackend {
     fn name(&self) -> &'static str {
         "cpu"
@@ -149,8 +161,12 @@ impl ComputeBackend for NativeBackend {
     ///
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     /// For complex types, Vt stores V^H (conjugate transpose).
+    /// faer's SVD is column-major only; descriptors with any other
+    /// order are rejected with `BackendError::InvalidArgument`.
     fn svd<T: Scalar>(&self, desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
+
+        require_column_major("svd", desc.order)?;
 
         let tid = TypeId::of::<T>();
 
@@ -178,8 +194,12 @@ impl ComputeBackend for NativeBackend {
     /// Thin QR via faer: A = Q * R
     ///
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
+    /// faer's QR is column-major only; descriptors with any other
+    /// order are rejected with `BackendError::InvalidArgument`.
     fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
+
+        require_column_major("qr", desc.order)?;
 
         let tid = TypeId::of::<T>();
 
@@ -208,8 +228,12 @@ impl ComputeBackend for NativeBackend {
     ///
     /// Internally computes QR of A^H (adjoint), then takes conjugate transposes.
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
+    /// faer's QR (and hence this LQ) is column-major only; descriptors
+    /// with any other order are rejected with `BackendError::InvalidArgument`.
     fn lq<T: Scalar>(&self, desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
+
+        require_column_major("lq", desc.order)?;
 
         let tid = TypeId::of::<T>();
 
@@ -237,8 +261,12 @@ impl ComputeBackend for NativeBackend {
     /// Self-adjoint eigenvalue decomposition via faer
     ///
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
+    /// faer's eigendecomposition is column-major only; descriptors with
+    /// any other order are rejected with `BackendError::InvalidArgument`.
     fn eigh<T: Scalar>(&self, desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
+
+        require_column_major("eigh", desc.order)?;
 
         let tid = TypeId::of::<T>();
 
@@ -264,8 +292,12 @@ impl ComputeBackend for NativeBackend {
     /// General eigenvalue decomposition via faer
     ///
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
+    /// faer's eigendecomposition is column-major only; descriptors with
+    /// any other order are rejected with `BackendError::InvalidArgument`.
     fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
+
+        require_column_major("eig", desc.order)?;
 
         let tid = TypeId::of::<T>();
 
@@ -291,8 +323,12 @@ impl ComputeBackend for NativeBackend {
     /// Linear solve via faer LU decomposition with partial pivoting
     ///
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
+    /// faer's LU is column-major only; descriptors with any other
+    /// order are rejected with `BackendError::InvalidArgument`.
     fn solve<T: Scalar>(&self, desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
         use std::any::TypeId;
+
+        require_column_major("solve", desc.order)?;
 
         let tid = TypeId::of::<T>();
 
@@ -357,13 +393,18 @@ impl ComputeBackend for NativeBackend {
 
 // ---------------------------------------------------------------------------
 // Generic -> concrete type reinterpretation
+//
+// The `reinterpret_*_desc` helpers below cast a `XxxDescriptor<T>` to
+// `XxxDescriptor<U>` so the per-type kernels can be invoked from the
+// generic trait method. Each helper's safety contract is the same:
+//
+// # Safety (applies to every helper in this section)
+// Caller must guarantee `T` and `U` have identical size and alignment
+// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
+// For descriptors carrying `T::Real` (Svd, Eigh) or `T::Complex` (Eig),
+// the same constraint applies to the associated type.
 // ---------------------------------------------------------------------------
 
-/// Reinterpret `GemmDescriptor<T>` as `GemmDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDescriptor<'a, U> {
     let GemmDescriptor {
         m,
@@ -397,12 +438,6 @@ unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDe
     }
 }
 
-/// Reinterpret `SvdDescriptor<T>` as `SvdDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment,
-/// and `T::Real` and `U::Real` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
     desc: SvdDescriptor<'a, T>,
 ) -> SvdDescriptor<'a, U> {
@@ -413,6 +448,7 @@ unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
         u,
         s,
         vt,
+        order,
         policy,
     } = desc;
     unsafe {
@@ -423,16 +459,12 @@ unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
             u: std::slice::from_raw_parts_mut(u.as_mut_ptr() as *mut U, u.len()),
             s: std::slice::from_raw_parts_mut(s.as_mut_ptr() as *mut U::Real, s.len()),
             vt: std::slice::from_raw_parts_mut(vt.as_mut_ptr() as *mut U, vt.len()),
+            order,
             policy,
         }
     }
 }
 
-/// Reinterpret `QrDescriptor<T>` as `QrDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescriptor<'a, U> {
     let QrDescriptor {
         m,
@@ -440,6 +472,7 @@ unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescript
         a,
         q,
         r,
+        order,
         policy,
     } = desc;
     unsafe {
@@ -449,16 +482,12 @@ unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescript
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
             r: std::slice::from_raw_parts_mut(r.as_mut_ptr() as *mut U, r.len()),
+            order,
             policy,
         }
     }
 }
 
-/// Reinterpret `LqDescriptor<T>` as `LqDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescriptor<'a, U> {
     let LqDescriptor {
         m,
@@ -466,6 +495,7 @@ unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescript
         a,
         l,
         q,
+        order,
         policy,
     } = desc;
     unsafe {
@@ -475,58 +505,58 @@ unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescript
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             l: std::slice::from_raw_parts_mut(l.as_mut_ptr() as *mut U, l.len()),
             q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
+            order,
             policy,
         }
     }
 }
 
-/// Reinterpret `EighDescriptor<T>` as `EighDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment,
-/// and `T::Real` and `U::Real` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_eigh_desc<'a, T: Scalar, U: Scalar>(
     desc: EighDescriptor<'a, T>,
 ) -> EighDescriptor<'a, U> {
-    let EighDescriptor { n, a, w, v, policy } = desc;
+    let EighDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order,
+        policy,
+    } = desc;
     unsafe {
         EighDescriptor {
             n,
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Real, w.len()),
             v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U, v.len()),
+            order,
             policy,
         }
     }
 }
 
-/// Reinterpret `EigDescriptor<T>` as `EigDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment,
-/// and `T::Complex` and `U::Complex` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_eig_desc<'a, T: Scalar, U: Scalar>(
     desc: EigDescriptor<'a, T>,
 ) -> EigDescriptor<'a, U> {
-    let EigDescriptor { n, a, w, v, policy } = desc;
+    let EigDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order,
+        policy,
+    } = desc;
     unsafe {
         EigDescriptor {
             n,
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Complex, w.len()),
             v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U::Complex, v.len()),
+            order,
             policy,
         }
     }
 }
 
-/// Reinterpret `SolveDescriptor<T>` as `SolveDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
 unsafe fn reinterpret_solve_desc<'a, T, U>(desc: SolveDescriptor<'a, T>) -> SolveDescriptor<'a, U> {
     let SolveDescriptor {
         n,
@@ -534,6 +564,7 @@ unsafe fn reinterpret_solve_desc<'a, T, U>(desc: SolveDescriptor<'a, T>) -> Solv
         a,
         b,
         x,
+        order,
         policy,
     } = desc;
     unsafe {
@@ -543,6 +574,7 @@ unsafe fn reinterpret_solve_desc<'a, T, U>(desc: SolveDescriptor<'a, T>) -> Solv
             a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
             b: std::slice::from_raw_parts(b.as_ptr() as *const U, b.len()),
             x: std::slice::from_raw_parts_mut(x.as_mut_ptr() as *mut U, x.len()),
+            order,
             policy,
         }
     }

@@ -15,7 +15,14 @@ use crate::to_faer_par;
 ///
 /// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, policy } = desc;
+    let EighDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<SelfAdjointEvdParams, f64> = Default::default();
 
@@ -58,7 +65,14 @@ pub(crate) fn eigh_f64(desc: EighDescriptor<'_, f64>) -> Result<(), BackendError
 ///
 /// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, policy } = desc;
+    let EighDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<SelfAdjointEvdParams, f32> = Default::default();
 
@@ -101,7 +115,14 @@ pub(crate) fn eigh_f32(desc: EighDescriptor<'_, f32>) -> Result<(), BackendError
 ///
 /// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, policy } = desc;
+    let EighDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<SelfAdjointEvdParams, Complex<f64>> = Default::default();
 
@@ -145,7 +166,14 @@ pub(crate) fn eigh_c64(desc: EighDescriptor<'_, Complex<f64>>) -> Result<(), Bac
 ///
 /// Only the lower triangle of `A` is read.
 pub(crate) fn eigh_c32(desc: EighDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
-    let EighDescriptor { n, a, w, v, policy } = desc;
+    let EighDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<SelfAdjointEvdParams, Complex<f32>> = Default::default();
 

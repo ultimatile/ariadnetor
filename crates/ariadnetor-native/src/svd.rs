@@ -18,6 +18,7 @@ pub(crate) fn svd_f64(desc: SvdDescriptor<'_, f64>) -> Result<(), BackendError> 
         u,
         s,
         vt,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -81,6 +82,7 @@ pub(crate) fn svd_f32(desc: SvdDescriptor<'_, f32>) -> Result<(), BackendError> 
         u,
         s,
         vt,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -141,6 +143,7 @@ pub(crate) fn svd_c64(desc: SvdDescriptor<'_, Complex<f64>>) -> Result<(), Backe
         u,
         s,
         vt,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -203,6 +206,7 @@ pub(crate) fn svd_c32(desc: SvdDescriptor<'_, Complex<f32>>) -> Result<(), Backe
         u,
         s,
         vt,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);

@@ -19,6 +19,7 @@ pub(crate) fn solve_f64(desc: SolveDescriptor<'_, f64>) -> Result<(), BackendErr
         a,
         b,
         x,
+        order: _,
         policy,
     } = desc;
     let par = to_faer_par(policy);
@@ -72,6 +73,7 @@ pub(crate) fn solve_f32(desc: SolveDescriptor<'_, f32>) -> Result<(), BackendErr
         a,
         b,
         x,
+        order: _,
         policy,
     } = desc;
     let par = to_faer_par(policy);
@@ -124,6 +126,7 @@ pub(crate) fn solve_c64(desc: SolveDescriptor<'_, Complex<f64>>) -> Result<(), B
         a,
         b,
         x,
+        order: _,
         policy,
     } = desc;
     let par = to_faer_par(policy);
@@ -176,6 +179,7 @@ pub(crate) fn solve_c32(desc: SolveDescriptor<'_, Complex<f32>>) -> Result<(), B
         a,
         b,
         x,
+        order: _,
         policy,
     } = desc;
     let par = to_faer_par(policy);

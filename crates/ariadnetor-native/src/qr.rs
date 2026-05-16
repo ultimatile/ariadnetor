@@ -22,6 +22,7 @@ pub(crate) fn qr_f64(desc: QrDescriptor<'_, f64>) -> Result<(), BackendError> {
         a,
         q,
         r,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -75,6 +76,7 @@ pub(crate) fn qr_f32(desc: QrDescriptor<'_, f32>) -> Result<(), BackendError> {
         a,
         q,
         r,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -125,6 +127,7 @@ pub(crate) fn qr_c64(desc: QrDescriptor<'_, Complex<f64>>) -> Result<(), Backend
         a,
         q,
         r,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -182,6 +185,7 @@ pub(crate) fn qr_c32(desc: QrDescriptor<'_, Complex<f32>>) -> Result<(), Backend
         a,
         q,
         r,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);

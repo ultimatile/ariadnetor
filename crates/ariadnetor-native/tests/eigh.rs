@@ -1,7 +1,7 @@
 //! Self-adjoint eigenvalue decomposition tests for all scalar types
 
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, EighDescriptor, ExecPolicy};
+use arnet_core::backend::{BackendError, ComputeBackend, EighDescriptor, ExecPolicy, MemoryOrder};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 use num_traits::One;
@@ -26,6 +26,7 @@ fn assert_eigh_laws<T: Scalar>(
             a: a_colmaj,
             w: &mut w,
             v: &mut v,
+            order: MemoryOrder::ColumnMajor,
             policy: ExecPolicy::Sequential,
         })
         .unwrap();
@@ -100,5 +101,28 @@ fn test_eigh_c32() {
         1e-3,
         |x| Complex::new(x.re as f64, x.im as f64),
         |x| x as f64,
+    );
+}
+
+#[test]
+fn test_eigh_rejects_row_major_order() {
+    let backend = NativeBackend::new();
+    let n = 2usize;
+    let a = [0.0f64; 4];
+    let mut w = [0.0f64; 2];
+    let mut v = [0.0f64; 4];
+
+    let desc = EighDescriptor {
+        n,
+        a: &a,
+        w: &mut w,
+        v: &mut v,
+        order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
+    };
+    let result = backend.eigh(desc);
+    assert!(
+        matches!(result, Err(BackendError::InvalidArgument(_))),
+        "expected InvalidArgument for RowMajor eigh, got {result:?}"
     );
 }

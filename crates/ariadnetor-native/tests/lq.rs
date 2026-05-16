@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, ExecPolicy, LqDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, ExecPolicy, LqDescriptor, MemoryOrder};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -31,6 +31,7 @@ fn test_lq_f64_square() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
@@ -70,6 +71,7 @@ fn test_lq_f64_rectangular() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
@@ -105,6 +107,7 @@ fn test_lq_f32_basic() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
@@ -147,6 +150,7 @@ fn test_lq_c64_square() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
@@ -208,6 +212,7 @@ fn test_lq_c64_rectangular() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
@@ -246,6 +251,7 @@ fn test_lq_c32_basic() {
         a: &a,
         l: &mut l,
         q: &mut q,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.lq(desc).unwrap();
@@ -261,4 +267,28 @@ fn test_lq_c32_basic() {
             assert!(diff < 1e-4, "LQ reconstruction mismatch at ({i},{j})");
         }
     }
+}
+
+#[test]
+fn test_lq_rejects_row_major_order() {
+    let backend = NativeBackend::new();
+    let (m, n) = (2usize, 2usize);
+    let a = [0.0f64; 4];
+    let mut l = [0.0f64; 4];
+    let mut q = [0.0f64; 4];
+
+    let desc = LqDescriptor {
+        m,
+        n,
+        a: &a,
+        l: &mut l,
+        q: &mut q,
+        order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
+    };
+    let result = backend.lq(desc);
+    assert!(
+        matches!(result, Err(BackendError::InvalidArgument(_))),
+        "expected InvalidArgument for RowMajor LQ, got {result:?}"
+    );
 }

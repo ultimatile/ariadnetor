@@ -16,7 +16,14 @@ use crate::to_faer_par;
 /// adjacent columns), then expands to complex values using the same
 /// `real_to_cplx` recipe as faer's `Eigen::new_from_real`.
 pub(crate) fn eig_f64(desc: EigDescriptor<'_, f64>) -> Result<(), BackendError> {
-    let EigDescriptor { n, a, w, v, policy } = desc;
+    let EigDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<EvdParams, f64> = Default::default();
 
@@ -53,7 +60,14 @@ pub(crate) fn eig_f64(desc: EigDescriptor<'_, f64>) -> Result<(), BackendError> 
 
 /// General eigenvalue decomposition for f32 via faer (real -> complex output).
 pub(crate) fn eig_f32(desc: EigDescriptor<'_, f32>) -> Result<(), BackendError> {
-    let EigDescriptor { n, a, w, v, policy } = desc;
+    let EigDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<EvdParams, f32> = Default::default();
 
@@ -90,7 +104,14 @@ pub(crate) fn eig_f32(desc: EigDescriptor<'_, f32>) -> Result<(), BackendError> 
 
 /// General eigenvalue decomposition for Complex<f64> via faer.
 pub(crate) fn eig_c64(desc: EigDescriptor<'_, Complex<f64>>) -> Result<(), BackendError> {
-    let EigDescriptor { n, a, w, v, policy } = desc;
+    let EigDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<EvdParams, Complex<f64>> = Default::default();
 
@@ -133,7 +154,14 @@ pub(crate) fn eig_c64(desc: EigDescriptor<'_, Complex<f64>>) -> Result<(), Backe
 
 /// General eigenvalue decomposition for Complex<f32> via faer.
 pub(crate) fn eig_c32(desc: EigDescriptor<'_, Complex<f32>>) -> Result<(), BackendError> {
-    let EigDescriptor { n, a, w, v, policy } = desc;
+    let EigDescriptor {
+        n,
+        a,
+        w,
+        v,
+        order: _,
+        policy,
+    } = desc;
     let par = to_faer_par(policy);
     let params: Spec<EvdParams, Complex<f32>> = Default::default();
 

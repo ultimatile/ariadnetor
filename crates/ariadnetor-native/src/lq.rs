@@ -22,6 +22,7 @@ pub(crate) fn lq_f64(desc: LqDescriptor<'_, f64>) -> Result<(), BackendError> {
         a,
         l,
         q,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -79,6 +80,7 @@ pub(crate) fn lq_f32(desc: LqDescriptor<'_, f32>) -> Result<(), BackendError> {
         a,
         l,
         q,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -130,6 +132,7 @@ pub(crate) fn lq_c64(desc: LqDescriptor<'_, Complex<f64>>) -> Result<(), Backend
         a,
         l,
         q,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
@@ -192,6 +195,7 @@ pub(crate) fn lq_c32(desc: LqDescriptor<'_, Complex<f32>>) -> Result<(), Backend
         a,
         l,
         q,
+        order: _,
         policy,
     } = desc;
     let k = m.min(n);
