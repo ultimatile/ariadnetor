@@ -137,6 +137,7 @@ pub fn svd_with_policy<T: Scalar>(
         u: &mut u_data,
         s: &mut s_data,
         vt: &mut vt_data,
+        order,
         policy,
     };
 
@@ -385,6 +386,7 @@ pub fn qr_with_policy<T: Scalar>(
         a: mat_2d.data(),
         q: &mut q_data,
         r: &mut r_data,
+        order,
         policy,
     };
 
@@ -467,6 +469,7 @@ pub fn lq_with_policy<T: Scalar>(
         a: mat_2d.data(),
         l: &mut l_data,
         q: &mut q_data,
+        order,
         policy,
     };
 

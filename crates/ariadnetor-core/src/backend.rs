@@ -82,7 +82,9 @@ pub struct TransposeDescriptor<'a, T> {
 /// Thin SVD operation descriptor: A = U * diag(S) * Vt
 ///
 /// Computes the thin SVD of an m×n matrix A.
-/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Data layout (A, U, Vt slices) is specified by the `order` field;
+/// a backend that does not support a given order returns
+/// [`BackendError::InvalidArgument`].
 /// Outputs: U (m×k), S (k singular values), Vt (k×n)
 /// where k = min(m, n).
 pub struct SvdDescriptor<'a, T: Scalar> {
@@ -92,13 +94,16 @@ pub struct SvdDescriptor<'a, T: Scalar> {
     pub u: &'a mut [T],
     pub s: &'a mut [T::Real],
     pub vt: &'a mut [T],
+    pub order: MemoryOrder,
     pub policy: ExecPolicy,
 }
 
 /// Thin QR decomposition descriptor: A = Q * R
 ///
 /// Computes the thin QR of an m×n matrix A.
-/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Data layout (A, Q, R slices) is specified by the `order` field;
+/// a backend that does not support a given order returns
+/// [`BackendError::InvalidArgument`].
 /// Outputs: Q (m×k), R (k×n)
 /// where k = min(m, n).
 pub struct QrDescriptor<'a, T> {
@@ -107,13 +112,16 @@ pub struct QrDescriptor<'a, T> {
     pub a: &'a [T],
     pub q: &'a mut [T],
     pub r: &'a mut [T],
+    pub order: MemoryOrder,
     pub policy: ExecPolicy,
 }
 
 /// Thin LQ decomposition descriptor: A = L * Q
 ///
 /// Computes the thin LQ of an m×n matrix A.
-/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Data layout (A, L, Q slices) is specified by the `order` field;
+/// a backend that does not support a given order returns
+/// [`BackendError::InvalidArgument`].
 /// Outputs: L (m×k), Q (k×n)
 /// where k = min(m, n).
 pub struct LqDescriptor<'a, T> {
@@ -122,39 +130,48 @@ pub struct LqDescriptor<'a, T> {
     pub a: &'a [T],
     pub l: &'a mut [T],
     pub q: &'a mut [T],
+    pub order: MemoryOrder,
     pub policy: ExecPolicy,
 }
 
 /// Self-adjoint eigenvalue decomposition descriptor: A = V * diag(W) * V^H
 ///
 /// Computes eigenvalues and eigenvectors of an n×n self-adjoint matrix A.
-/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Data layout (A, V slices) is specified by the `order` field;
+/// a backend that does not support a given order returns
+/// [`BackendError::InvalidArgument`].
 /// Outputs: W (n real eigenvalues, ascending), V (n×n eigenvectors)
 pub struct EighDescriptor<'a, T: Scalar> {
     pub n: usize,
     pub a: &'a [T],
     pub w: &'a mut [T::Real],
     pub v: &'a mut [T],
+    pub order: MemoryOrder,
     pub policy: ExecPolicy,
 }
 
 /// General eigenvalue decomposition descriptor
 ///
 /// Computes eigenvalues and right eigenvectors of an n×n matrix A.
-/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Data layout (A, V slices) is specified by the `order` field;
+/// a backend that does not support a given order returns
+/// [`BackendError::InvalidArgument`].
 /// Outputs are always complex: W (n complex eigenvalues), V (n×n eigenvectors)
 pub struct EigDescriptor<'a, T: Scalar> {
     pub n: usize,
     pub a: &'a [T],
     pub w: &'a mut [T::Complex],
     pub v: &'a mut [T::Complex],
+    pub order: MemoryOrder,
     pub policy: ExecPolicy,
 }
 
 /// Linear solve descriptor: AX = B via LU decomposition
 ///
 /// Solves the system AX = B where A is an n×n matrix and B is n×nrhs.
-/// Data layout follows `ComputeBackend::preferred_order()`.
+/// Data layout (A, B, X slices) is specified by the `order` field;
+/// a backend that does not support a given order returns
+/// [`BackendError::InvalidArgument`].
 /// Output X is written to `x` (n×nrhs).
 pub struct SolveDescriptor<'a, T> {
     pub n: usize,
@@ -162,6 +179,7 @@ pub struct SolveDescriptor<'a, T> {
     pub a: &'a [T],
     pub b: &'a [T],
     pub x: &'a mut [T],
+    pub order: MemoryOrder,
     pub policy: ExecPolicy,
 }
 

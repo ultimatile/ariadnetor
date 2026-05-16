@@ -1,4 +1,4 @@
-use arnet_core::backend::{ComputeBackend, ExecPolicy, SvdDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, ExecPolicy, MemoryOrder, SvdDescriptor};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -34,6 +34,7 @@ fn test_svd_f64_square() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
@@ -80,6 +81,7 @@ fn test_svd_f64_rectangular() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
@@ -120,6 +122,7 @@ fn test_svd_f32_basic() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
@@ -167,6 +170,7 @@ fn test_svd_c64_hermitian() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
@@ -218,6 +222,7 @@ fn test_svd_c64_rectangular() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
@@ -261,6 +266,7 @@ fn test_svd_c64_unitary_check() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();
@@ -281,6 +287,32 @@ fn test_svd_c64_unitary_check() {
             );
         }
     }
+}
+
+#[test]
+fn test_svd_rejects_row_major_order() {
+    let backend = NativeBackend::new();
+    let (m, n) = (2usize, 2usize);
+    let a = [0.0f64; 4];
+    let mut u = [0.0f64; 4];
+    let mut s = [0.0f64; 2];
+    let mut vt = [0.0f64; 4];
+
+    let desc = SvdDescriptor {
+        m,
+        n,
+        a: &a,
+        u: &mut u,
+        s: &mut s,
+        vt: &mut vt,
+        order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
+    };
+    let result = backend.svd(desc);
+    assert!(
+        matches!(result, Err(BackendError::InvalidArgument(_))),
+        "expected InvalidArgument for RowMajor SVD, got {result:?}"
+    );
 }
 
 #[test]
@@ -306,6 +338,7 @@ fn test_svd_c32_basic() {
         u: &mut u,
         s: &mut s,
         vt: &mut vt,
+        order: MemoryOrder::ColumnMajor,
         policy: ExecPolicy::Sequential,
     };
     backend.svd(desc).unwrap();

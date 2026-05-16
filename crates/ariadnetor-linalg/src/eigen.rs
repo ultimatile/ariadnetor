@@ -89,6 +89,7 @@ pub fn eigh_with_policy<T: Scalar>(
         a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
+        order,
         policy,
     };
 
@@ -209,6 +210,7 @@ pub fn eig_with_policy<T: Scalar>(
         a: contiguous.data(),
         w: &mut w_data,
         v: &mut v_data,
+        order,
         policy,
     };
 

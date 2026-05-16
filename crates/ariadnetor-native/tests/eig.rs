@@ -1,7 +1,7 @@
 //! General eigenvalue decomposition tests for all scalar types
 
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, EigDescriptor, ExecPolicy};
+use arnet_core::backend::{BackendError, ComputeBackend, EigDescriptor, ExecPolicy, MemoryOrder};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 use num_traits::One;
@@ -26,6 +26,7 @@ fn assert_eig_laws<T: Scalar>(
             a: a_colmaj,
             w: &mut w,
             v: &mut v,
+            order: MemoryOrder::ColumnMajor,
             policy: ExecPolicy::Sequential,
         })
         .unwrap();
@@ -108,4 +109,27 @@ fn test_eig_c32() {
         Complex::new(6.0, 1.0),
     ];
     assert_eig_laws(&a, 3, 1e-3, c32_to_c64, c32_to_c64);
+}
+
+#[test]
+fn test_eig_rejects_row_major_order() {
+    let backend = NativeBackend::new();
+    let n = 2usize;
+    let a = [0.0f64; 4];
+    let mut w = [Complex::<f64>::new(0.0, 0.0); 2];
+    let mut v = [Complex::<f64>::new(0.0, 0.0); 4];
+
+    let desc = EigDescriptor {
+        n,
+        a: &a,
+        w: &mut w,
+        v: &mut v,
+        order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
+    };
+    let result = backend.eig(desc);
+    assert!(
+        matches!(result, Err(BackendError::InvalidArgument(_))),
+        "expected InvalidArgument for RowMajor eig, got {result:?}"
+    );
 }

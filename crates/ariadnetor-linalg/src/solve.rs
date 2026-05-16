@@ -105,6 +105,7 @@ pub fn solve_with_policy<T: Scalar>(
         a: a_contiguous.data(),
         b: b_contiguous.data(),
         x: &mut x_data,
+        order,
         policy,
     };
 

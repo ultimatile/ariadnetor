@@ -129,12 +129,15 @@ impl ComputeBackend for RecordingBackend {
 /// exercised. The production `NativeBackend` is column-major, leaving the
 /// RM branch otherwise unreachable from tests.
 ///
-/// All kernels still delegate to the inner `NativeBackend`, whose GEMM /
-/// transpose / decomposition implementations honor each descriptor's
-/// `order` field for both `RowMajor` and `ColumnMajor`. Callers must pass
-/// descriptors and buffers consistent with the memory order they expect —
-/// this backend only forces RM-branch selection in layout-aware code that
-/// dispatches on `preferred_order()`.
+/// All kernels delegate to the inner `NativeBackend`. Among the inner
+/// backend's ops, only GEMM and transpose honor the descriptor's `order`
+/// field for both `RowMajor` and `ColumnMajor`; the decomposition family
+/// (SVD, QR, LQ, eigh, eig, solve) is column-major only, so a descriptor
+/// constructed with `order: MemoryOrder::RowMajor` and dispatched through
+/// this wrapper returns `BackendError::InvalidArgument`. Callers must
+/// pass descriptors and buffers consistent with the memory order they
+/// expect — this backend only forces RM-branch selection in layout-aware
+/// code that dispatches on `preferred_order()`.
 pub(crate) struct RowMajorBackend {
     inner: NativeBackend,
 }

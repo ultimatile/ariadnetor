@@ -1,7 +1,7 @@
 //! Linear solve tests for all scalar types
 
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, SolveDescriptor};
+use arnet_core::backend::{BackendError, ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
 
@@ -24,6 +24,7 @@ fn assert_solve_laws<T: Scalar>(
             a,
             b,
             x: &mut x,
+            order: MemoryOrder::ColumnMajor,
             policy: ExecPolicy::Sequential,
         })
         .unwrap();
@@ -113,4 +114,28 @@ fn test_solve_c32() {
     assert_solve_laws(&a, &b, 3, 2, 1e-3, |x| {
         Complex::new(x.re as f64, x.im as f64)
     });
+}
+
+#[test]
+fn test_solve_rejects_row_major_order() {
+    let backend = NativeBackend::new();
+    let (n, nrhs) = (2usize, 1usize);
+    let a = [0.0f64; 4];
+    let b = [0.0f64; 2];
+    let mut x = [0.0f64; 2];
+
+    let desc = SolveDescriptor {
+        n,
+        nrhs,
+        a: &a,
+        b: &b,
+        x: &mut x,
+        order: MemoryOrder::RowMajor,
+        policy: ExecPolicy::Sequential,
+    };
+    let result = backend.solve(desc);
+    assert!(
+        matches!(result, Err(BackendError::InvalidArgument(_))),
+        "expected InvalidArgument for RowMajor solve, got {result:?}"
+    );
 }
