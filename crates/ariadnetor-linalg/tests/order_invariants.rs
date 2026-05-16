@@ -6,9 +6,60 @@
 //! as the equivalent `ColumnMajor` Dense, demonstrating that op-entry
 //! normalization is wired up).
 
-use arnet_linalg::{TruncSvdParams, contract, linear_combine, svd, trunc_svd};
+use arnet_core::Scalar;
+use arnet_linalg::{
+    TruncSvdParams, contract, einsum, expm, inverse, linear_combine, solve, svd, trunc_svd,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackend, ComputeBackendTensorExt, Dense, MemoryOrder, reorder};
+use num_complex::Complex;
+
+/// Construct a `Dense<T>` representing the same logical tensor as
+/// `data_rm` (interpreted in RowMajor flat order) but tagged with the
+/// requested `order`. For `order == RowMajor` the data is used directly;
+/// for `ColumnMajor` it is reordered so the byte layout matches the tag.
+/// This is the foundation of `assert_op_layout_invariance` — without it,
+/// the same raw bytes under different tags would describe different
+/// logical matrices, defeating the layout-invariance check.
+fn build_tagged<T: Scalar>(data_rm: &[T], shape: &[usize], order: MemoryOrder) -> Dense<T> {
+    let rm = Dense::<T>::new(data_rm.to_vec(), shape.to_vec(), MemoryOrder::RowMajor);
+    if order == MemoryOrder::RowMajor {
+        rm
+    } else {
+        reorder(&rm, MemoryOrder::RowMajor, order)
+    }
+}
+
+/// Run `op_with_order` for `RowMajor` and `ColumnMajor` taggings of the
+/// same logical input, then assert the two outputs agree after both are
+/// normalized to `RowMajor` for byte comparison. Failure indicates a
+/// silent transpose somewhere in the op — typically a `reorder` call
+/// that passes `preferred_order` as the `from` argument when the input's
+/// actual `.order()` differs. The closure must use `build_tagged` (or an
+/// equivalent) so its inputs describe the same logical tensor under both
+/// orders.
+fn assert_op_layout_invariance<T, F>(op_label: &str, op_with_order: F)
+where
+    T: Scalar + PartialEq + std::fmt::Debug,
+    F: Fn(MemoryOrder) -> Dense<T>,
+{
+    let out_rm = op_with_order(MemoryOrder::RowMajor);
+    let out_cm = op_with_order(MemoryOrder::ColumnMajor);
+
+    let rm_norm = reorder(&out_rm, out_rm.order(), MemoryOrder::RowMajor);
+    let cm_norm = reorder(&out_cm, out_cm.order(), MemoryOrder::RowMajor);
+
+    assert_eq!(
+        rm_norm.shape(),
+        cm_norm.shape(),
+        "{op_label}: shape mismatch"
+    );
+    assert_eq!(
+        rm_norm.data(),
+        cm_norm.data(),
+        "{op_label}: RM and CM inputs produced different data (silent transpose)"
+    );
+}
 
 #[test]
 fn linear_combine_rejects_mixed_orders() {
@@ -160,4 +211,69 @@ fn trunc_svd_s_tensor_uses_preferred_order() {
     };
     let (_u, s, _vt, _err) = trunc_svd(&backend, &a, 1, &params).expect("trunc_svd must succeed");
     assert_eq!(s.order(), backend.preferred_order());
+}
+
+#[test]
+fn solve_normalizes_row_major_input() {
+    let backend = NativeBackend::new();
+    // Asymmetric 2x2 system A = [[2, 1], [5, 3]] (det = 1, invertible).
+    // Asymmetry is the property the test relies on: a symmetric matrix
+    // would be invariant under transpose and mask the silent-transpose bug.
+    let a_data = [2.0f64, 1.0, 5.0, 3.0];
+    let b_data = [4.0f64, 7.0];
+    assert_ne!(a_data[1], a_data[2], "fixture must be asymmetric");
+    assert_op_layout_invariance("solve", |order| {
+        let a = build_tagged(&a_data, &[2, 2], order);
+        let b = build_tagged(&b_data, &[2, 1], order);
+        solve(&backend, &a, &b, 1).expect("solve must succeed")
+    });
+}
+
+#[test]
+fn inverse_normalizes_row_major_input() {
+    let backend = NativeBackend::new();
+    // Same asymmetric 2x2 A as `solve_normalizes_row_major_input`.
+    let a_data = [2.0f64, 1.0, 5.0, 3.0];
+    assert_ne!(a_data[1], a_data[2], "fixture must be asymmetric");
+    assert_op_layout_invariance("inverse", |order| {
+        let a = build_tagged(&a_data, &[2, 2], order);
+        inverse(&backend, &a, 1).expect("inverse must succeed")
+    });
+}
+
+#[test]
+fn expm_normalizes_row_major_input() {
+    let backend = NativeBackend::new();
+    // Asymmetric complex 2x2 M = [[0.1+0.2i, 0.3], [0.05, -0.2+0.1i]].
+    // Non-Hermitian and asymmetric: forces the general `expm` Pade path
+    // (rather than `expm_hermitian` / `expm_antihermitian`) and ensures
+    // off-diagonal entries differ so a silent transpose is observable.
+    let data = [
+        Complex::new(0.1, 0.2),
+        Complex::new(0.3_f64, 0.0),
+        Complex::new(0.05, 0.0),
+        Complex::new(-0.2, 0.1),
+    ];
+    assert_ne!(data[1], data[2], "fixture must be asymmetric");
+    assert_op_layout_invariance("expm", |order| {
+        let m = build_tagged(&data, &[2, 2], order);
+        expm(&backend, &m, 1).expect("expm must succeed")
+    });
+}
+
+#[test]
+fn batched_einsum_normalizes_row_major_input() {
+    let backend = NativeBackend::new();
+    // Asymmetric rank-3 fixtures for batched notation "bik,bkj->bij":
+    // batch=2, LHS and RHS are each 2x2x2. The notation has indices
+    // already in canonical [batch, free, contracted] order, so
+    // `batched_contract` takes the no-permutation branch — exactly the
+    // branch where the latent reorder-source bug lives.
+    let lhs_data: Vec<f64> = (1..=8).map(|x| x as f64).collect();
+    let rhs_data: Vec<f64> = (9..=16).map(|x| x as f64).collect();
+    assert_op_layout_invariance("batched_einsum", |order| {
+        let a = build_tagged(&lhs_data, &[2, 2, 2], order);
+        let b = build_tagged(&rhs_data, &[2, 2, 2], order);
+        einsum(&backend, &[&a, &b], "bik,bkj->bij").expect("einsum must succeed")
+    });
 }

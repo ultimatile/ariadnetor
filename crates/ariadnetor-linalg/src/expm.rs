@@ -437,7 +437,7 @@ pub fn expm<T: Scalar>(
     let order = backend.preferred_order();
 
     // Flatten to n x n row-major for internal computation (norm_1 expects row-major)
-    let rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
     // Construct the working matrix in preferred_order for backend operations
     let a = reorder(
         &Dense::new(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor),
