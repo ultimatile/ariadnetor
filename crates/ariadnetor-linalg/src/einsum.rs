@@ -208,6 +208,13 @@ fn batched_contract<T: Scalar>(
         rhs.clone()
     };
 
+    // The no-permutation branch carries the caller's order tag, which
+    // may differ from `order`. Normalize so the subsequent
+    // `reorder(.., order, RowMajor)` reads the bytes under the
+    // declared layout.
+    let lhs_permuted = normalize_to(&lhs_permuted, order).into_owned();
+    let rhs_permuted = normalize_to(&rhs_permuted, order).into_owned();
+
     // Reorder to RowMajor so batch slices are contiguous memory ranges
     let lhs_rm = reorder(&lhs_permuted, order, MemoryOrder::RowMajor);
     let rhs_rm = reorder(&rhs_permuted, order, MemoryOrder::RowMajor);

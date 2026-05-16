@@ -79,11 +79,11 @@ pub fn solve_with_policy<T: Scalar>(
     let order = backend.preferred_order();
 
     // Ensure row-major reshape semantics, then convert to backend order
-    let a_rm = reorder(a, order, MemoryOrder::RowMajor);
+    let a_rm = reorder(a, a.order(), MemoryOrder::RowMajor);
     let a_2d = Dense::new(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let a_contiguous = reorder(&a_2d, MemoryOrder::RowMajor, order);
 
-    let b_rm = reorder(b, order, MemoryOrder::RowMajor);
+    let b_rm = reorder(b, b.order(), MemoryOrder::RowMajor);
     let b_total = b_rm.len();
 
     if !b_total.is_multiple_of(n) {
@@ -174,8 +174,7 @@ pub fn inverse<T: Scalar>(
     let identity = backend.eye::<T>(n);
 
     // Flatten tensor to n x n using RM reshape semantics, then convert to preferred_order.
-    // solve() expects inputs in preferred_order.
-    let a_rm = reorder(tensor, order, MemoryOrder::RowMajor);
+    let a_rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
     let a_flat_rm = Dense::new(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let a_flat = reorder(&a_flat_rm, MemoryOrder::RowMajor, order);
 
