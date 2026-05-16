@@ -336,33 +336,34 @@ fn from_block_fn_structure_matches_zeros() {
 }
 
 #[test]
-fn from_block_fn_honors_source_order() {
+fn from_block_fn_stores_column_major() {
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
 
-    let bs_rm = BlockSparse::<f64, U1Sector>::from_block_fn(
-        vec![row.clone(), col.clone()],
-        U1Sector(0),
-        MemoryOrder::RowMajor,
-        |_, _| vec![1.0, 2.0, 3.0, 4.0],
-    );
-    assert_eq!(bs_rm.order(), MemoryOrder::RowMajor);
-    assert_eq!(
-        bs_rm.block_data(&BlockCoord(vec![0, 0])).unwrap(),
-        &[1.0, 2.0, 3.0, 4.0]
-    );
-
-    let bs_cm = BlockSparse::<f64, U1Sector>::from_block_fn(
+    let bs = BlockSparse::<f64, U1Sector>::from_block_fn(
         vec![row, col],
         U1Sector(0),
         MemoryOrder::ColumnMajor,
         |_, _| vec![1.0, 2.0, 3.0, 4.0],
     );
-    assert_eq!(bs_cm.order(), MemoryOrder::ColumnMajor);
-    // Bytes are stored verbatim under either tag — no internal reorder.
+    assert_eq!(bs.order(), MemoryOrder::ColumnMajor);
+    // Bytes are stored verbatim — no internal reorder.
     assert_eq!(
-        bs_cm.block_data(&BlockCoord(vec![0, 0])).unwrap(),
+        bs.block_data(&BlockCoord(vec![0, 0])).unwrap(),
         &[1.0, 2.0, 3.0, 4.0]
+    );
+}
+
+#[test]
+#[should_panic(expected = "only MemoryOrder::ColumnMajor is currently supported")]
+fn from_block_fn_rejects_row_major() {
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+    let _bs = BlockSparse::<f64, U1Sector>::from_block_fn(
+        vec![row, col],
+        U1Sector(0),
+        MemoryOrder::RowMajor,
+        |_, _| vec![1.0, 2.0, 3.0, 4.0],
     );
 }
 
@@ -499,11 +500,11 @@ fn from_block_fn_preserves_order_through_clone() {
     let bs = BlockSparse::<f64, U1Sector>::from_block_fn(
         vec![row, col],
         U1Sector(0),
-        MemoryOrder::RowMajor,
+        MemoryOrder::ColumnMajor,
         |_, _| vec![1.0, 2.0, 3.0, 4.0],
     );
     let bs_clone = bs.clone();
-    assert_eq!(bs_clone.order(), MemoryOrder::RowMajor);
+    assert_eq!(bs_clone.order(), MemoryOrder::ColumnMajor);
 }
 
 #[test]

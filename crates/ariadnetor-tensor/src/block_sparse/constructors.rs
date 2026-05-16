@@ -278,19 +278,21 @@ impl<T, S: Sector> BlockSparse<T, S> {
     /// The closure's returned bytes are appended to the buffer verbatim — no
     /// internal reorder is performed.
     ///
-    /// # Current consumer-side limitation
+    /// # Currently restricted to `ColumnMajor`
     ///
     /// Existing block-sparse linalg paths (permute, contract, decomp) read raw
     /// block data under `backend.preferred_order()` rather than consulting
-    /// `tensor.order()`, so a tensor built with `source_order = RowMajor` is
-    /// not yet honored by those consumers. Pass `MemoryOrder::ColumnMajor` to
-    /// match the current convention; the field is exposed in preparation for
-    /// the consumer-side fix cascade (analogous to the `Dense` evolution).
+    /// `tensor.order()`, so a tensor built with `source_order = RowMajor` would
+    /// be silently misinterpreted downstream. To eliminate that foot-gun the
+    /// constructor currently panics on any non-`ColumnMajor` input. The
+    /// parameter stays in the signature so the restriction can be lifted in a
+    /// future PR (once consumers honor `tensor.order()`) without an API break.
     ///
     /// # Panics
     ///
-    /// Panics if the closure returns a `Vec<T>` whose length differs from the
-    /// block's product-of-dimensions.
+    /// - If `source_order != MemoryOrder::ColumnMajor`.
+    /// - If the closure returns a `Vec<T>` whose length differs from the
+    ///   block's product-of-dimensions.
     pub fn from_block_fn<F>(
         indices: Vec<QNIndex<S>>,
         flux: S,
@@ -300,6 +302,13 @@ impl<T, S: Sector> BlockSparse<T, S> {
     where
         F: FnMut(&BlockCoord, &[usize]) -> Vec<T>,
     {
+        assert_eq!(
+            source_order,
+            MemoryOrder::ColumnMajor,
+            "BlockSparse::from_block_fn: only MemoryOrder::ColumnMajor is currently supported; \
+             block-sparse linalg consumers do not yet honor tensor.order()"
+        );
+
         let (blocks, block_index, shape, total_size) =
             BlockSparse::<(), S>::build_structure(&indices, &flux);
 
