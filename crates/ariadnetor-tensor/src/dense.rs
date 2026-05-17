@@ -10,10 +10,17 @@
 
 mod access;
 mod constructors;
+mod layout;
 mod multi_tensor;
 mod operations;
 mod scalar_ops;
 mod slice;
+mod storage;
+mod tensor_data;
+
+pub use layout::DenseLayout;
+pub use storage::DenseStorage;
+pub use tensor_data::DenseTensorData;
 
 use aligned_vec::{AVec, ConstAlign};
 use arnet_core::backend::MemoryOrder;

@@ -18,7 +18,14 @@ use aligned_vec::{AVec, ConstAlign};
 
 use crate::sector::Sector;
 
+mod layout;
 mod scalar_ops;
+mod storage;
+mod tensor_data;
+
+pub use layout::BlockSparseLayout;
+pub use storage::BlockSparseStorage;
+pub use tensor_data::BlockSparseTensorData;
 
 // ---------------------------------------------------------------------------
 // Direction
