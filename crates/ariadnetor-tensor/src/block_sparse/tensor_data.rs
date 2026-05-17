@@ -1,5 +1,6 @@
 //! Convenience constructors and joined accessors for `BlockSparseTensorData<T, S>`.
 
+#[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -7,7 +8,9 @@ use aligned_vec::{AVec, ConstAlign};
 use arnet_core::backend::MemoryOrder;
 use num_traits::Zero;
 
-use super::{BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, QNIndex};
+#[cfg(test)]
+use super::BlockMeta;
+use super::{BlockCoord, BlockSparseLayout, BlockSparseStorage, QNIndex};
 use crate::{Sector, TensorData};
 
 /// Backend-less BlockSparse tensor bundle =
@@ -25,6 +28,51 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
         let extent = <BlockSparseLayout<S> as crate::TensorLayout>::storage_extent(&layout);
         let mut data: AVec<T, ConstAlign<64>> = AVec::with_capacity(64, extent);
         data.resize(extent, T::zero());
+        let storage = BlockSparseStorage::from_aligned(data);
+        Self::new(storage, layout)
+    }
+
+    /// Construct by populating each flux-allowed block from a closure.
+    ///
+    /// The closure receives the block coordinate and its dense block
+    /// shape (one entry per leg) and must return the block's flat data
+    /// in the layout's memory `order`. Forbidden blocks are not
+    /// queried. Block coordinates are visited in the layout's
+    /// lexicographic enumeration order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the closure returns a `Vec<T>` whose length differs
+    /// from `product(block_shape)` (the per-block element count).
+    pub fn from_block_fn<F>(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder, mut f: F) -> Self
+    where
+        T: Clone + Zero,
+        F: FnMut(&BlockCoord, &[usize]) -> Vec<T>,
+    {
+        let layout = BlockSparseLayout::new(indices, flux, order);
+        let extent = <BlockSparseLayout<S> as crate::TensorLayout>::storage_extent(&layout);
+        let mut data: AVec<T, ConstAlign<64>> = AVec::with_capacity(64, extent);
+        data.resize(extent, T::zero());
+        for meta in layout.block_metas() {
+            let block_shape = layout
+                .block_shape(&meta.coord)
+                .expect("BlockSparseLayout enumerated coord must resolve to a block shape");
+            let block = f(&meta.coord, &block_shape);
+            assert_eq!(
+                block.len(),
+                meta.size,
+                "from_block_fn: closure returned {} elements for block {:?}, expected {}",
+                block.len(),
+                meta.coord,
+                meta.size,
+            );
+            for (dst, src) in data[meta.offset..meta.offset + meta.size]
+                .iter_mut()
+                .zip(block)
+            {
+                *dst = src;
+            }
+        }
         let storage = BlockSparseStorage::from_aligned(data);
         Self::new(storage, layout)
     }
@@ -57,7 +105,12 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// coord uniqueness, packed offsets without gap or overlap,
     /// blocks sorted by coordinate. The `TensorData::new` assertion
     /// will additionally check `data.len() == sum(blocks.size)`.
-    pub fn from_raw_parts(
+    ///
+    /// Test-only: no in-workspace consumer needs to bypass the
+    /// enumerating constructors at runtime; publicize when a real
+    /// deserialization or migration path materializes.
+    #[cfg(test)]
+    pub(crate) fn from_raw_parts(
         data: Vec<T>,
         blocks: Vec<BlockMeta>,
         block_index: HashMap<BlockCoord, usize>,
@@ -97,5 +150,35 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
         let arc = self.storage_mut().arc_mut();
         let data = Arc::make_mut(arc);
         Some(&mut data[offset..offset + size])
+    }
+}
+
+impl<T, S: Sector> BlockSparseTensorData<T, S>
+where
+    T: arnet_core::Scalar,
+{
+    /// Hermitian adjoint: element-wise conjugation of the data, flip
+    /// of every QNIndex direction (Out↔In), and dualization of the
+    /// flux.
+    ///
+    /// Block coordinates and packed offsets are preserved
+    /// ([`BlockSparseLayout::dagger_layout`] reuses them). Involution:
+    /// `x.dagger().dagger() == x`.
+    pub fn dagger(&self) -> Self {
+        let new_layout = self.layout().dagger_layout();
+        let new_data: AVec<T, ConstAlign<64>> =
+            AVec::from_iter(64, self.storage().data().iter().copied().map(|x| x.conj()));
+        let storage = BlockSparseStorage::from_aligned(new_data);
+        Self::new(storage, new_layout)
+    }
+
+    /// Element-wise complex conjugate. Layout (including directions
+    /// and flux) is preserved; use [`dagger`](Self::dagger) when the
+    /// adjoint structure is required for inner products.
+    pub fn conj(&self) -> Self {
+        let new_data: AVec<T, ConstAlign<64>> =
+            AVec::from_iter(64, self.storage().data().iter().copied().map(|x| x.conj()));
+        let storage = BlockSparseStorage::from_aligned(new_data);
+        Self::new(storage, self.layout().clone())
     }
 }

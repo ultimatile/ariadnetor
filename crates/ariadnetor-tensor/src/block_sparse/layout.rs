@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use arnet_core::backend::MemoryOrder;
 
-use super::{BlockCoord, BlockMeta, QNIndex};
+use super::{BlockCoord, BlockMeta, Direction, QNIndex};
 use crate::{Sector, TensorLayout};
 
 /// Interpretation half of the block-sparse tensor split.
@@ -67,6 +67,7 @@ impl<S: Sector> BlockSparseLayout<S> {
     /// Used by joined-level constructors that already have the
     /// structure on hand; caller is responsible for the same
     /// invariants enforced by [`new`](Self::new).
+    #[cfg(test)]
     pub(crate) fn from_parts(
         blocks: Vec<BlockMeta>,
         block_index: HashMap<BlockCoord, usize>,
@@ -140,6 +141,38 @@ impl<S: Sector> BlockSparseLayout<S> {
             shape.push(self.indices[axis].block_dim(block_idx));
         }
         Some(shape)
+    }
+
+    /// Hermitian-adjoint layout: flip every QNIndex direction (Out↔In)
+    /// and dual the flux.
+    ///
+    /// The allowed-block set is preserved: each block's flux
+    /// contribution becomes `dual(direction.apply(sector))`, whose sum
+    /// equals the dualed flux exactly when the original sum equalled
+    /// the original flux (abelian dual is a group homomorphism).
+    /// `blocks`, `block_index`, `shape`, `order`, and `storage_extent`
+    /// are reused as-is.
+    pub(crate) fn dagger_layout(&self) -> Self {
+        let flipped_indices: Vec<QNIndex<S>> = self
+            .indices
+            .iter()
+            .map(|idx| {
+                let new_dir = match idx.direction() {
+                    Direction::Out => Direction::In,
+                    Direction::In => Direction::Out,
+                };
+                QNIndex::new(idx.blocks().to_vec(), new_dir)
+            })
+            .collect();
+        Self {
+            blocks: self.blocks.clone(),
+            block_index: self.block_index.clone(),
+            indices: flipped_indices,
+            flux: self.flux.dual(),
+            shape: self.shape.clone(),
+            order: self.order,
+            storage_extent: self.storage_extent,
+        }
     }
 
     /// Check whether a block coordinate satisfies the flux conservation law.
