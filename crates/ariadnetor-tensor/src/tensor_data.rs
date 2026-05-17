@@ -86,3 +86,31 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use arnet_core::backend::MemoryOrder;
+
+    use crate::{DenseLayout, DenseStorage, TensorData};
+
+    #[test]
+    #[should_panic(expected = "storage.flat_len() = 5 but layout.storage_extent() = 6")]
+    fn new_panics_on_storage_layout_length_mismatch() {
+        // 2 x 3 dense layout expects storage_extent = 6, but the
+        // storage carries only 5 elements. `TensorData::new` must
+        // reject the pair so downstream kernels never see a buffer
+        // that can index out of range under the layout's strides.
+        let storage = DenseStorage::<f64>::new(vec![0.0; 5]);
+        let layout = DenseLayout::new(vec![2, 3], MemoryOrder::RowMajor);
+        let _ = TensorData::new(storage, layout);
+    }
+
+    #[test]
+    fn new_accepts_matching_lengths() {
+        let storage = DenseStorage::<f64>::new(vec![0.0; 6]);
+        let layout = DenseLayout::new(vec![2, 3], MemoryOrder::RowMajor);
+        let td = TensorData::new(storage, layout);
+        assert_eq!(td.storage().data().len(), 6);
+        assert_eq!(td.layout().shape(), &[2, 3]);
+    }
+}
