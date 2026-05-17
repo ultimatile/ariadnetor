@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
-use arnet_tensor::{Dense, normalize_to};
+use arnet_tensor::{Dense, DenseTensorData, normalize_to};
 
 use crate::error::LinalgError;
 
@@ -17,11 +17,12 @@ use crate::error::LinalgError;
 /// Returns `LinalgError` if the backend fails to execute the transpose.
 pub fn transpose<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     perm: &[usize],
-) -> Result<Dense<T>, LinalgError> {
-    let policy = backend.par_for_transpose(tensor.shape());
-    transpose_with_policy(backend, tensor, perm, policy)
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let r = transpose_dense(backend, &d, perm)?;
+    Ok(r.into_tensor_data())
 }
 
 /// Conjugate transpose (permute axes + element-wise conjugation).
@@ -35,11 +36,12 @@ pub fn transpose<T: Scalar>(
 /// Returns `LinalgError` if the backend fails to execute the transpose.
 pub fn conjugate_transpose<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     perm: &[usize],
-) -> Result<Dense<T>, LinalgError> {
-    let policy = backend.par_for_transpose(tensor.shape());
-    conjugate_transpose_with_policy(backend, tensor, perm, policy)
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let r = conjugate_transpose_dense(backend, &d, perm)?;
+    Ok(r.into_tensor_data())
 }
 
 /// Transpose with caller-specified execution policy.
@@ -49,6 +51,54 @@ pub fn conjugate_transpose<T: Scalar>(
 /// directly.
 pub fn transpose_with_policy<T: Scalar>(
     backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    perm: &[usize],
+    policy: ExecPolicy,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let r = transpose_inner(backend, &d, perm, false, policy)?;
+    Ok(r.into_tensor_data())
+}
+
+/// Conjugate transpose with caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`conjugate_transpose`].
+pub fn conjugate_transpose_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    perm: &[usize],
+    policy: ExecPolicy,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let r = transpose_inner(backend, &d, perm, true, policy)?;
+    Ok(r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`transpose`]; used by other linalg modules that
+/// already hold a `Dense<T>` value, to avoid round-tripping through
+/// [`DenseTensorData`] at every internal call site.
+pub fn transpose_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    perm: &[usize],
+) -> Result<Dense<T>, LinalgError> {
+    let policy = backend.par_for_transpose(tensor.shape());
+    transpose_inner(backend, tensor, perm, false, policy)
+}
+
+/// Dense-typed sister of [`conjugate_transpose`].
+pub fn conjugate_transpose_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    perm: &[usize],
+) -> Result<Dense<T>, LinalgError> {
+    let policy = backend.par_for_transpose(tensor.shape());
+    transpose_inner(backend, tensor, perm, true, policy)
+}
+
+/// Dense-typed sister of [`transpose_with_policy`].
+pub fn transpose_with_policy_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     perm: &[usize],
     policy: ExecPolicy,
@@ -56,10 +106,8 @@ pub fn transpose_with_policy<T: Scalar>(
     transpose_inner(backend, tensor, perm, false, policy)
 }
 
-/// Conjugate transpose with caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`conjugate_transpose`].
-pub fn conjugate_transpose_with_policy<T: Scalar>(
+/// Dense-typed sister of [`conjugate_transpose_with_policy`].
+pub fn conjugate_transpose_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     perm: &[usize],

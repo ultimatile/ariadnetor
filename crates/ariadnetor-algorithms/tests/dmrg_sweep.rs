@@ -12,7 +12,7 @@ use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_linalg::{TruncSvdParams, eigh_dense as eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};

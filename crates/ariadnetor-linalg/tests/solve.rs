@@ -1,4 +1,4 @@
-use arnet_linalg::{contract, inverse, solve};
+use arnet_linalg::{contract_dense as contract, inverse_dense as inverse, solve_dense as solve};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 

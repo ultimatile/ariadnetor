@@ -1,4 +1,8 @@
-use arnet_linalg::{EighResult, contract, eigh, expm, expm_antihermitian, expm_hermitian};
+use arnet_linalg::{
+    EighResultDense as EighResult, contract_dense as contract, eigh_dense as eigh,
+    expm_antihermitian_dense as expm_antihermitian, expm_dense as expm,
+    expm_hermitian_dense as expm_hermitian,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 

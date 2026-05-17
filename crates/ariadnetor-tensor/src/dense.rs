@@ -100,6 +100,41 @@ impl<T> Dense<T> {
 }
 
 // ============================================================================
+// Zero-cost conversion to/from `DenseTensorData<T>`
+// ============================================================================
+//
+// `Dense<T>` and `DenseTensorData<T>` share the same flat data buffer
+// representation (`Arc<AVec<T, Align64>>`). During the storage /
+// layout split migration (issue #259) consumers cross this boundary
+// at every linalg pub fn call; the converters below move the Arc
+// directly so the boundary crossing is O(1) and allocation-free.
+// The pair is `pub(crate)`-internal: the boundary crossing belongs to
+// the migration scaffolding and is removed when the legacy `Dense<T>`
+// type is deleted.
+
+impl<T> Dense<T> {
+    /// Consume `self` and return a `DenseTensorData<T>` sharing the
+    /// same underlying buffer.
+    pub fn into_tensor_data(self) -> DenseTensorData<T> {
+        let storage = DenseStorage::from_arc(self.data);
+        let layout = DenseLayout::new(self.shape, self.order);
+        DenseTensorData::new(storage, layout)
+    }
+
+    /// Build a `Dense<T>` from an existing `DenseTensorData<T>`,
+    /// reusing the Arc without reallocation.
+    pub fn from_tensor_data(td: DenseTensorData<T>) -> Self {
+        let (storage, layout) = td.into_parts();
+        let (shape, order) = layout.into_parts();
+        Self {
+            data: storage.into_arc(),
+            shape,
+            order,
+        }
+    }
+}
+
+// ============================================================================
 // Display / Debug
 // ============================================================================
 

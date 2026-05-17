@@ -67,18 +67,33 @@ pub use block_sparse_decomp::{
 pub use block_sparse_fuse::fuse_legs_block_sparse;
 pub use block_sparse_permute::permute_block_sparse;
 pub use block_sparse_scale::diagonal_scale_block_sparse;
-pub use contract::{contract, contract_with_policy};
+pub use contract::{contract, contract_dense, contract_with_policy, contract_with_policy_dense};
 pub use decomposition::{
-    LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq, lq_with_policy, qr,
-    qr_with_policy, svd, svd_with_policy, trunc_svd, trunc_svd_with_policy,
+    LqResult, LqResultDense, QrResult, QrResultDense, SvdResult, SvdResultDense, TruncSvdParams,
+    TruncSvdResult, TruncSvdResultDense, lq, lq_dense, lq_with_policy, lq_with_policy_dense, qr,
+    qr_dense, qr_with_policy, qr_with_policy_dense, svd, svd_dense, svd_with_policy,
+    svd_with_policy_dense, trunc_svd, trunc_svd_dense, trunc_svd_with_policy,
+    trunc_svd_with_policy_dense,
 };
 pub use eigen::{
-    EigResult, EighResult, eig, eig_with_policy, eigh, eigh_with_policy, eigvals, eigvalsh,
+    EigResult, EigResultDense, EighResult, EighResultDense, eig, eig_dense, eig_with_policy,
+    eig_with_policy_dense, eigh, eigh_dense, eigh_with_policy, eigh_with_policy_dense, eigvals,
+    eigvals_dense, eigvalsh, eigvalsh_dense,
 };
-pub use einsum::einsum;
-pub use expm::{expm, expm_antihermitian, expm_hermitian};
-pub use scalar_ops::{diag, diagonal_scale, linear_combine, norm, normalize, scale, trace};
-pub use solve::{inverse, solve, solve_with_policy};
+pub use einsum::{einsum, einsum_dense};
+pub use expm::{
+    expm, expm_antihermitian, expm_antihermitian_dense, expm_dense, expm_hermitian,
+    expm_hermitian_dense,
+};
+pub use scalar_ops::{
+    diag, diag_dense, diagonal_scale, diagonal_scale_dense, linear_combine, linear_combine_dense,
+    norm, norm_dense, normalize, normalize_dense, scale, scale_dense, trace, trace_dense,
+};
+pub use solve::{
+    inverse, inverse_dense, solve, solve_dense, solve_with_policy, solve_with_policy_dense,
+};
 pub use transpose::{
-    conjugate_transpose, conjugate_transpose_with_policy, transpose, transpose_with_policy,
+    conjugate_transpose, conjugate_transpose_dense, conjugate_transpose_with_policy,
+    conjugate_transpose_with_policy_dense, transpose, transpose_dense, transpose_with_policy,
+    transpose_with_policy_dense,
 };

@@ -2,7 +2,7 @@ use arnet_core::Scalar;
 use arnet_core::backend::{
     ComputeBackend, ExecPolicy, LqDescriptor, MemoryOrder, QrDescriptor, SvdDescriptor,
 };
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensorData};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
@@ -13,7 +13,11 @@ use arnet_tensor::reorder;
 /// - `U`: Left singular vectors
 /// - `S`: Singular values (real-valued, descending)
 /// - `Vt`: Right singular vectors transposed
-pub type SvdResult<T> = (Dense<T>, Dense<<T as Scalar>::Real>, Dense<T>);
+pub type SvdResult<T> = (
+    DenseTensorData<T>,
+    DenseTensorData<<T as Scalar>::Real>,
+    DenseTensorData<T>,
+);
 
 /// Result of a truncated SVD decomposition: `(U, S, Vt, trunc_err)`.
 ///
@@ -22,6 +26,17 @@ pub type SvdResult<T> = (Dense<T>, Dense<<T as Scalar>::Real>, Dense<T>);
 /// - `Vt`: Right singular vectors transposed (truncated)
 /// - `trunc_err`: Truncation error -- Frobenius norm of discarded singular values
 pub type TruncSvdResult<T> = (
+    DenseTensorData<T>,
+    DenseTensorData<<T as Scalar>::Real>,
+    DenseTensorData<T>,
+    <T as Scalar>::Real,
+);
+
+/// Dense-typed internal counterpart of [`SvdResult`].
+pub type SvdResultDense<T> = (Dense<T>, Dense<<T as Scalar>::Real>, Dense<T>);
+
+/// Dense-typed internal counterpart of [`TruncSvdResult`].
+pub type TruncSvdResultDense<T> = (
     Dense<T>,
     Dense<<T as Scalar>::Real>,
     Dense<T>,
@@ -84,9 +99,24 @@ fn reshape_for_backend<T: Scalar>(
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn svd<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<SvdResult<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (u, s, vt) = svd_dense(backend, &d, nrow)?;
+    Ok((
+        u.into_tensor_data(),
+        s.into_tensor_data(),
+        vt.into_tensor_data(),
+    ))
+}
+
+/// Dense-typed sister of [`svd`].
+pub fn svd_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+) -> Result<SvdResultDense<T>, LinalgError> {
     let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
         (0, 0)
     } else {
@@ -95,7 +125,7 @@ pub fn svd<T: Scalar>(
         (m, n)
     };
     let policy = backend.par_for_svd(m, n);
-    svd_with_policy(backend, tensor, nrow, policy)
+    svd_with_policy_dense(backend, tensor, nrow, policy)
 }
 
 /// Thin SVD with caller-specified execution policy.
@@ -104,10 +134,26 @@ pub fn svd<T: Scalar>(
 /// `backend.par_for_svd`, while this entry point takes `policy` directly.
 pub fn svd_with_policy<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<SvdResult<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (u, s, vt) = svd_with_policy_dense(backend, &d, nrow, policy)?;
+    Ok((
+        u.into_tensor_data(),
+        s.into_tensor_data(),
+        vt.into_tensor_data(),
+    ))
+}
+
+/// Dense-typed sister of [`svd_with_policy`].
+pub fn svd_with_policy_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<SvdResultDense<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -176,10 +222,27 @@ pub fn svd_with_policy<T: Scalar>(
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn trunc_svd<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     params: &TruncSvdParams,
 ) -> Result<TruncSvdResult<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (u, s, vt, err) = trunc_svd_dense(backend, &d, nrow, params)?;
+    Ok((
+        u.into_tensor_data(),
+        s.into_tensor_data(),
+        vt.into_tensor_data(),
+        err,
+    ))
+}
+
+/// Dense-typed sister of [`trunc_svd`].
+pub fn trunc_svd_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    params: &TruncSvdParams,
+) -> Result<TruncSvdResultDense<T>, LinalgError> {
     let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
         (0, 0)
     } else {
@@ -188,7 +251,7 @@ pub fn trunc_svd<T: Scalar>(
         (m, n)
     };
     let policy = backend.par_for_svd(m, n);
-    trunc_svd_with_policy(backend, tensor, nrow, params, policy)
+    trunc_svd_with_policy_dense(backend, tensor, nrow, params, policy)
 }
 
 /// Truncated SVD with caller-specified execution policy.
@@ -197,12 +260,30 @@ pub fn trunc_svd<T: Scalar>(
 /// `backend.par_for_svd`, while this entry point takes `policy` directly.
 pub fn trunc_svd_with_policy<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     params: &TruncSvdParams,
     policy: ExecPolicy,
 ) -> Result<TruncSvdResult<T>, LinalgError> {
-    let (u_full, s_full, vt_full) = svd_with_policy(backend, tensor, nrow, policy)?;
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (u, s, vt, err) = trunc_svd_with_policy_dense(backend, &d, nrow, params, policy)?;
+    Ok((
+        u.into_tensor_data(),
+        s.into_tensor_data(),
+        vt.into_tensor_data(),
+        err,
+    ))
+}
+
+/// Dense-typed sister of [`trunc_svd_with_policy`].
+pub fn trunc_svd_with_policy_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    params: &TruncSvdParams,
+    policy: ExecPolicy,
+) -> Result<TruncSvdResultDense<T>, LinalgError> {
+    let (u_full, s_full, vt_full) = svd_with_policy_dense(backend, tensor, nrow, policy)?;
 
     let shape = tensor.shape();
     let m: usize = shape[..nrow].iter().product();
@@ -268,17 +349,6 @@ pub fn trunc_svd_with_policy<T: Scalar>(
     let vt_raw = vt_full.data();
 
     let (u_trunc, vt_trunc) = match order {
-        // TODO: untested -- no RowMajor backend exists yet
-        //
-        // U row-major [m, k_full] -> [m, chi]: copy first chi elements per row
-        // let mut u_t = vec![T::zero(); m * chi];
-        // for i in 0..m {
-        //     u_t[i * chi..(i + 1) * chi]
-        //         .copy_from_slice(&u_raw[i * k_full..i * k_full + chi]);
-        // }
-        // Vt row-major [k_full, n] -> [chi, n]: take first chi rows
-        // let vt_t: Vec<T> = vt_raw[..chi * n].to_vec();
-        // (u_t, vt_t)
         MemoryOrder::RowMajor => {
             todo!("RowMajor truncation slicing")
         }
@@ -307,13 +377,19 @@ pub fn trunc_svd_with_policy<T: Scalar>(
 ///
 /// - `Q`: Orthogonal/unitary matrix, shape `[m, k]` where `k = min(m, n)`
 /// - `R`: Upper triangular matrix, shape `[k, n]`
-pub type QrResult<T> = (Dense<T>, Dense<T>);
+pub type QrResult<T> = (DenseTensorData<T>, DenseTensorData<T>);
 
 /// Result of a thin LQ decomposition: `(L, Q)`.
 ///
 /// - `L`: Lower triangular matrix, shape `[m, k]` where `k = min(m, n)`
 /// - `Q`: Orthogonal/unitary matrix, shape `[k, n]`
-pub type LqResult<T> = (Dense<T>, Dense<T>);
+pub type LqResult<T> = (DenseTensorData<T>, DenseTensorData<T>);
+
+/// Dense-typed internal counterpart of [`QrResult`].
+pub type QrResultDense<T> = (Dense<T>, Dense<T>);
+
+/// Dense-typed internal counterpart of [`LqResult`].
+pub type LqResultDense<T> = (Dense<T>, Dense<T>);
 
 /// Compute thin QR decomposition of a tensor reshaped as a matrix.
 ///
@@ -321,25 +397,25 @@ pub type LqResult<T> = (Dense<T>, Dense<T>);
 /// forming the row dimension and the remaining axes forming the column dimension.
 /// Returns `(Q, R)` where A = Q * R.
 ///
-/// # Arguments
-///
-/// * `backend` - Compute backend
-/// * `tensor` - Input tensor
-/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
-///
-/// # Returns
-///
-/// * `Q` - Orthogonal matrix, shape `[m, k]` where `m = product(shape[..nrow])`, `k = min(m, n)`
-/// * `R` - Upper triangular matrix, shape `[k, n]` where `n = product(shape[nrow..])`
-///
 /// # Errors
 ///
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn qr<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<QrResult<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (q, r) = qr_dense(backend, &d, nrow)?;
+    Ok((q.into_tensor_data(), r.into_tensor_data()))
+}
+
+/// Dense-typed sister of [`qr`].
+pub fn qr_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+) -> Result<QrResultDense<T>, LinalgError> {
     let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
         (0, 0)
     } else {
@@ -348,7 +424,7 @@ pub fn qr<T: Scalar>(
         (m, n)
     };
     let policy = backend.par_for_qr(m, n);
-    qr_with_policy(backend, tensor, nrow, policy)
+    qr_with_policy_dense(backend, tensor, nrow, policy)
 }
 
 /// Thin QR with caller-specified execution policy.
@@ -357,10 +433,22 @@ pub fn qr<T: Scalar>(
 /// `backend.par_for_qr`, while this entry point takes `policy` directly.
 pub fn qr_with_policy<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<QrResult<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (q, r) = qr_with_policy_dense(backend, &d, nrow, policy)?;
+    Ok((q.into_tensor_data(), r.into_tensor_data()))
+}
+
+/// Dense-typed sister of [`qr_with_policy`].
+pub fn qr_with_policy_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<QrResultDense<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -404,25 +492,25 @@ pub fn qr_with_policy<T: Scalar>(
 /// forming the row dimension and the remaining axes forming the column dimension.
 /// Returns `(L, Q)` where A = L * Q.
 ///
-/// # Arguments
-///
-/// * `backend` - Compute backend
-/// * `tensor` - Input tensor
-/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
-///
-/// # Returns
-///
-/// * `L` - Lower triangular matrix, shape `[m, k]` where `m = product(shape[..nrow])`, `k = min(m, n)`
-/// * `Q` - Orthogonal matrix, shape `[k, n]` where `n = product(shape[nrow..])`
-///
 /// # Errors
 ///
 /// Returns `LinalgError` if `nrow` is out of range or the backend fails.
 pub fn lq<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<LqResult<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (l, q) = lq_dense(backend, &d, nrow)?;
+    Ok((l.into_tensor_data(), q.into_tensor_data()))
+}
+
+/// Dense-typed sister of [`lq`].
+pub fn lq_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+) -> Result<LqResultDense<T>, LinalgError> {
     let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
         (0, 0)
     } else {
@@ -431,7 +519,7 @@ pub fn lq<T: Scalar>(
         (m, n)
     };
     let policy = backend.par_for_lq(m, n);
-    lq_with_policy(backend, tensor, nrow, policy)
+    lq_with_policy_dense(backend, tensor, nrow, policy)
 }
 
 /// Thin LQ with caller-specified execution policy.
@@ -440,10 +528,22 @@ pub fn lq<T: Scalar>(
 /// `backend.par_for_lq`, while this entry point takes `policy` directly.
 pub fn lq_with_policy<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<LqResult<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (l, q) = lq_with_policy_dense(backend, &d, nrow, policy)?;
+    Ok((l.into_tensor_data(), q.into_tensor_data()))
+}
+
+/// Dense-typed sister of [`lq_with_policy`].
+pub fn lq_with_policy_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<LqResultDense<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 

@@ -10,12 +10,12 @@ use std::collections::{HashMap, HashSet};
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, normalize_to};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensorData, normalize_to};
 
-use crate::contract::contract;
+use crate::contract::contract_dense;
 use crate::error::LinalgError;
-use crate::scalar_ops::trace;
-use crate::transpose::transpose;
+use crate::scalar_ops::trace_dense;
+use crate::transpose::transpose_dense;
 use arnet_tensor::reorder;
 
 /// Execute an Einstein summation over N tensors.
@@ -45,6 +45,21 @@ use arnet_tensor::reorder;
 /// Returns `LinalgError` if notation is invalid, tensor count mismatches,
 /// or any sub-operation fails.
 pub fn einsum<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensors: &[&DenseTensorData<T>],
+    notation: &str,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let owned: Vec<Dense<T>> = tensors
+        .iter()
+        .map(|t| Dense::from_tensor_data((*t).clone()))
+        .collect();
+    let refs: Vec<&Dense<T>> = owned.iter().collect();
+    einsum_dense(backend, &refs, notation).map(|d| d.into_tensor_data())
+}
+
+/// Dense-typed sister of [`einsum`]; used internally and by other
+/// linalg modules.
+pub fn einsum_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensors: &[&Dense<T>],
     notation: &str,
@@ -88,7 +103,7 @@ fn einsum_pair<T: Scalar>(
 
     if plan.batch.is_empty() {
         // Pure contraction -- delegate to contract() (GEMM path)
-        return contract(backend, lhs, rhs, notation);
+        return contract_dense(backend, lhs, rhs, notation);
     }
 
     // Compute dimension sizes for each category
@@ -135,13 +150,13 @@ fn hadamard<T: Scalar>(
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_ordered = if let Some(perm) = lhs_perm {
-        transpose(backend, lhs, &perm)?
+        transpose_dense(backend, lhs, &perm)?
     } else {
         lhs.clone()
     };
 
     let rhs_ordered = if let Some(perm) = rhs_perm {
-        transpose(backend, rhs, &perm)?
+        transpose_dense(backend, rhs, &perm)?
     } else {
         rhs.clone()
     };
@@ -197,13 +212,13 @@ fn batched_contract<T: Scalar>(
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
-        transpose(backend, lhs, &perm)?
+        transpose_dense(backend, lhs, &perm)?
     } else {
         lhs.clone()
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
-        transpose(backend, rhs, &perm)?
+        transpose_dense(backend, rhs, &perm)?
     } else {
         rhs.clone()
     };
@@ -270,7 +285,7 @@ fn batched_contract<T: Scalar>(
             order,
         );
 
-        let slice_result = contract(
+        let slice_result = contract_dense(
             backend,
             &lhs_slice_preferred,
             &rhs_slice_preferred,
@@ -363,7 +378,7 @@ fn reorder_batched_output<T: Scalar>(
     actual.extend(free_rhs);
 
     match compute_permutation(&actual, out) {
-        Some(perm) => transpose(backend, &result, &perm),
+        Some(perm) => transpose_dense(backend, &result, &perm),
         None => Ok(result),
     }
 }
@@ -513,7 +528,7 @@ fn einsum_single<T: Scalar>(
     let traced = if trace_pairs.is_empty() {
         tensor.clone()
     } else {
-        let result_rm = trace(tensor, &trace_pairs)?;
+        let result_rm = trace_dense(tensor, &trace_pairs)?;
         reorder(&result_rm, MemoryOrder::RowMajor, order)
     };
 
@@ -543,6 +558,6 @@ fn einsum_single<T: Scalar>(
     if is_identity {
         Ok(traced)
     } else {
-        transpose(backend, &traced, &perm)
+        transpose_dense(backend, &traced, &perm)
     }
 }

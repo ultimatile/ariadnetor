@@ -7,7 +7,7 @@ use arnet_algorithms::dmrg::{
     LocalEigensolverParams, dmrg_2site_step_block_sparse,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
-use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_linalg::{TruncSvdParams, eigh_dense as eigh};
 use arnet_mps::TensorChain;
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder, Sector, U1Sector, reorder};

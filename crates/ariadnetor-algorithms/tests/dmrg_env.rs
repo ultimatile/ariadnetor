@@ -6,7 +6,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use arnet_linalg::contract;
+use arnet_linalg::contract_dense as contract;
 use arnet_mps::{Mpo, Mps, TensorChain, braket};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};

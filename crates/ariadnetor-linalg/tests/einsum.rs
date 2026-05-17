@@ -1,6 +1,6 @@
 //! Tests for einsum: single-tensor, 2-tensor, and N-tensor operations
 
-use arnet_linalg::einsum;
+use arnet_linalg::{contract_dense as contract, einsum_dense as einsum};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 
@@ -175,7 +175,7 @@ fn test_einsum_3_tensor_chain() {
     assert_eq!(d.shape(), &[2, 2]);
 
     // Verify against manual 2-step contraction (both in CM, compare data directly)
-    use arnet_linalg::contract;
+    // inner-test contract import (renamed at the top)
     let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
     let expected = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
     for i in 0..d.len() {
@@ -213,7 +213,7 @@ fn test_einsum_4_tensor_chain() {
     assert_eq!(result.shape(), &[2, 2]);
 
     // Verify against sequential contraction (both in CM, compare data directly)
-    use arnet_linalg::contract;
+    // inner-test contract import (renamed at the top)
     let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
     let abc = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
     let expected = contract(&backend, &abc, &d, "il,lm->im").unwrap();

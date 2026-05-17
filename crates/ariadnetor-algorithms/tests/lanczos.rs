@@ -7,7 +7,7 @@
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::krylov::{LanczosParams, lanczos_smallest};
 use arnet_core::Scalar;
-use arnet_linalg::eigh;
+use arnet_linalg::eigh_dense as eigh;
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 use num_complex::Complex;

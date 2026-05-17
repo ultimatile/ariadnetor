@@ -23,7 +23,10 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::{lq_with_policy, qr_with_policy, svd_with_policy};
+use arnet_linalg::{
+    lq_with_policy_dense as lq_with_policy, qr_with_policy_dense as qr_with_policy,
+    svd_with_policy_dense as svd_with_policy,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
 

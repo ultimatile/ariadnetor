@@ -51,6 +51,22 @@ impl<T> DenseStorage<T> {
         }
     }
 
+    /// Wrap an existing `Arc<AVec<T, Align64>>` without reallocation.
+    ///
+    /// Used by the zero-cost conversion path between
+    /// [`DenseTensorData`](crate::DenseTensorData) and the legacy
+    /// [`Dense`](crate::Dense) struct during the storage / layout
+    /// split migration.
+    pub(crate) fn from_arc(data: Arc<AVec<T, ConstAlign<64>>>) -> Self {
+        Self { data }
+    }
+
+    /// Consume and return the underlying `Arc<AVec<T, Align64>>`
+    /// without reallocation.
+    pub(crate) fn into_arc(self) -> Arc<AVec<T, ConstAlign<64>>> {
+        self.data
+    }
+
     /// Get a reference to the underlying contiguous data.
     pub fn data(&self) -> &[T] {
         &self.data[..]

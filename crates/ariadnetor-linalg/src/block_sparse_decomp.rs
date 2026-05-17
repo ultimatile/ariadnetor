@@ -115,7 +115,7 @@ pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector>(
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
         let dense = Dense::new(matrix, vec![group.m, group.n], order);
-        let (u, s, vt) = crate::decomposition::svd_with_policy(backend, &dense, 1, policy)?;
+        let (u, s, vt) = crate::decomposition::svd_with_policy_dense(backend, &dense, 1, policy)?;
         k_per_sector.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
         s_values.push((group.sector.clone(), s.data().to_vec()));
@@ -189,7 +189,7 @@ pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector>(
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
         let dense = Dense::new(matrix, vec![group.m, group.n], order);
-        let (u, s, vt) = crate::decomposition::svd_with_policy(backend, &dense, 1, policy)?;
+        let (u, s, vt) = crate::decomposition::svd_with_policy_dense(backend, &dense, 1, policy)?;
         k_full.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
         all_s.push(s.data().to_vec());
@@ -290,7 +290,7 @@ pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector>(
     let groups = compute_fused_sector_groups(tensor, nrow);
     let (q_mats, r_mats, k_per) =
         decompose_per_sector(&groups, tensor, nrow, backend, order, |b, d| {
-            crate::decomposition::qr_with_policy(b, d, 1, policy)
+            crate::decomposition::qr_with_policy_dense(b, d, 1, policy)
                 .map(|(q, r)| (to_vec_in_order(&q, order), to_vec_in_order(&r, order)))
         })?;
     let q = build_left_tensor(&groups, &q_mats, &k_per, tensor.indices(), nrow, order);
@@ -335,7 +335,7 @@ pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector>(
     let groups = compute_fused_sector_groups(tensor, nrow);
     let (l_mats, q_mats, k_per) =
         decompose_per_sector(&groups, tensor, nrow, backend, order, |b, d| {
-            crate::decomposition::lq_with_policy(b, d, 1, policy)
+            crate::decomposition::lq_with_policy_dense(b, d, 1, policy)
                 .map(|(l, q)| (to_vec_in_order(&l, order), to_vec_in_order(&q, order)))
         })?;
     let l = build_left_tensor(&groups, &l_mats, &k_per, tensor.indices(), nrow, order);

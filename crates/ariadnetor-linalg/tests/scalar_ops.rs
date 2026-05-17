@@ -1,4 +1,7 @@
-use arnet_linalg::{diag, linear_combine, norm, normalize, scale, trace};
+use arnet_linalg::{
+    diag_dense as diag, linear_combine_dense as linear_combine, norm_dense as norm,
+    normalize_dense as normalize, scale_dense as scale, trace_dense as trace,
+};
 use arnet_tensor::{Dense, MemoryOrder};
 
 // --- Scale tests ---

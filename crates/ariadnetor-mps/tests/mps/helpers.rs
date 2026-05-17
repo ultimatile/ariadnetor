@@ -113,7 +113,7 @@ pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let mat = reorder(&rm2d, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
 
     let backend = arnet_native::NativeBackend::new();
-    let qtq = arnet_linalg::contract(&backend, &mat, &mat, "ab,ac->bc").unwrap();
+    let qtq = arnet_linalg::contract_dense(&backend, &mat, &mat, "ab,ac->bc").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -140,7 +140,7 @@ pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let mat = reorder(&rm2d, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
 
     let backend = arnet_native::NativeBackend::new();
-    let qqt = arnet_linalg::contract(&backend, &mat, &mat, "ab,cb->ac").unwrap();
+    let qqt = arnet_linalg::contract_dense(&backend, &mat, &mat, "ab,cb->ac").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -182,7 +182,7 @@ pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
         let site_2d = reorder(&site_2d_rm, rm, order);
 
         let contracted =
-            arnet_linalg::contract(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
+            arnet_linalg::contract_dense(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
 
         // Reorder to RM for axis-split reshape, then back to CM.
         let contracted_rm = reorder(&contracted, order, rm);

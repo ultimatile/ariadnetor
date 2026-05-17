@@ -8,7 +8,9 @@
 
 use arnet_core::Scalar;
 use arnet_linalg::{
-    TruncSvdParams, contract, einsum, expm, inverse, linear_combine, solve, svd, trunc_svd,
+    TruncSvdParams, contract_dense as contract, einsum_dense as einsum, expm_dense as expm,
+    inverse_dense as inverse, linear_combine_dense as linear_combine, solve_dense as solve,
+    svd_dense as svd, trunc_svd_dense as trunc_svd,
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackend, ComputeBackendTensorExt, Dense, MemoryOrder, reorder};

@@ -28,7 +28,7 @@ pub use block_sparse::{
 };
 pub use dense::{Dense, DenseLayout, DenseStorage, DenseTensorData};
 pub use layout::{StorageFor, TensorLayout};
-pub use reorder::{flat_index, normalize_to, reorder};
+pub use reorder::{DenseView, flat_index, normalize_to, reorder};
 pub use repr::TensorRepr;
 pub use sector::{Sector, U1Sector, Z2Sector};
 pub use storage::Storage;

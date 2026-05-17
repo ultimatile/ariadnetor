@@ -1,10 +1,10 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensorData};
 
 use crate::error::LinalgError;
-use crate::transpose::transpose;
+use crate::transpose::transpose_dense;
 use arnet_tensor::{normalize_to, reorder};
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
@@ -29,6 +29,20 @@ use arnet_tensor::{normalize_to, reorder};
 /// Returns `LinalgError` if notation is invalid, dimensions mismatch,
 /// batch indices are present, or the backend fails to execute transpose/GEMM.
 pub fn contract<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
+    notation: &str,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let lhs = Dense::from_tensor_data(lhs.clone());
+    let rhs = Dense::from_tensor_data(rhs.clone());
+    let r = contract_dense(backend, &lhs, &rhs, notation)?;
+    Ok(r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`contract`]; used by other linalg modules
+/// that already hold a `Dense<T>` value.
+pub fn contract_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &Dense<T>,
     rhs: &Dense<T>,
@@ -70,7 +84,7 @@ pub fn contract<T: Scalar>(
     };
 
     let policy = backend.par_for_gemm(m, n, k);
-    contract_with_policy(backend, lhs, rhs, notation, policy)
+    contract_with_policy_dense(backend, lhs, rhs, notation, policy)
 }
 
 /// Pure tensor contraction with caller-specified execution policy for the
@@ -83,6 +97,20 @@ pub fn contract<T: Scalar>(
 ///
 /// Expert-layer counterpart of [`contract`].
 pub fn contract_with_policy<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
+    notation: &str,
+    policy: ExecPolicy,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let lhs = Dense::from_tensor_data(lhs.clone());
+    let rhs = Dense::from_tensor_data(rhs.clone());
+    let r = contract_with_policy_dense(backend, &lhs, &rhs, notation, policy)?;
+    Ok(r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`contract_with_policy`].
+pub fn contract_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &Dense<T>,
     rhs: &Dense<T>,
@@ -125,13 +153,13 @@ pub fn contract_with_policy<T: Scalar>(
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
-        transpose(backend, lhs, &perm)?
+        transpose_dense(backend, lhs, &perm)?
     } else {
         lhs.clone()
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
-        transpose(backend, rhs, &perm)?
+        transpose_dense(backend, rhs, &perm)?
     } else {
         rhs.clone()
     };
@@ -258,7 +286,7 @@ fn reorder_output<T: Scalar>(
     actual.extend(&plan.free_rhs);
 
     match compute_permutation(&actual, out) {
-        Some(perm) => transpose(backend, &result, &perm),
+        Some(perm) => transpose_dense(backend, &result, &perm),
         None => Ok(result),
     }
 }

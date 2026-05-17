@@ -3,8 +3,8 @@
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{
-    BlockSparseContractResult, contract, contract_block_sparse, lq, lq_block_sparse, qr,
-    qr_block_sparse,
+    BlockSparseContractResult, contract_block_sparse, contract_dense as contract, lq_block_sparse,
+    lq_dense as lq, qr_block_sparse, qr_dense as qr,
 };
 use arnet_tensor::BlockSparse;
 use arnet_tensor::Sector;

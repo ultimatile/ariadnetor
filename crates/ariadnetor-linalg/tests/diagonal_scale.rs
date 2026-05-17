@@ -1,6 +1,6 @@
 //! Tests for diagonal_scale.
 
-use arnet_linalg::diagonal_scale;
+use arnet_linalg::diagonal_scale_dense as diagonal_scale;
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 

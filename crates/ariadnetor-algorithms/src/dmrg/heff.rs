@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::{MemoryOrder, Scalar};
-use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
+use arnet_linalg::{TruncSvdParams, contract_dense as contract, trunc_svd_dense as trunc_svd};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, reorder};

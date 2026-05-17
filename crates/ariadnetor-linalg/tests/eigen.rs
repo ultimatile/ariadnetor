@@ -1,4 +1,6 @@
-use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
+use arnet_linalg::{
+    eig_dense as eig, eigh_dense as eigh, eigvals_dense as eigvals, eigvalsh_dense as eigvalsh,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 

@@ -33,7 +33,10 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{LinalgError, TruncSvdParams, diagonal_scale, diagonal_scale_block_sparse};
+use arnet_linalg::{
+    LinalgError, TruncSvdParams, diagonal_scale_block_sparse,
+    diagonal_scale_dense as diagonal_scale,
+};
 use arnet_mps::{Mpo, Mps, MpsOps};
 use arnet_tensor::{BlockSparse, Dense, Sector, TensorRepr};
 

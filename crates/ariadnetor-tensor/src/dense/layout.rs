@@ -41,6 +41,16 @@ impl DenseLayout {
     pub fn order(&self) -> MemoryOrder {
         self.order
     }
+
+    /// Consume and return the underlying `(shape, order)` pair.
+    ///
+    /// Used by the zero-cost conversion path between
+    /// [`DenseTensorData`](crate::DenseTensorData) and the legacy
+    /// [`Dense`](crate::Dense) struct during the storage / layout
+    /// split migration.
+    pub(crate) fn into_parts(self) -> (Vec<usize>, MemoryOrder) {
+        (self.shape, self.order)
+    }
 }
 
 impl TensorLayout for DenseLayout {

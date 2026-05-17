@@ -10,7 +10,7 @@
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
 use arnet_core::Scalar;
-use arnet_linalg::{eigh, norm};
+use arnet_linalg::{eigh_dense as eigh, norm_dense as norm};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 use num_complex::Complex;

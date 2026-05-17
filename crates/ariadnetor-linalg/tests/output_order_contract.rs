@@ -15,7 +15,10 @@
 //! order than its `Dense::order()` claims — surfaces as a numerical
 //! mismatch rather than silently propagating downstream.
 
-use arnet_linalg::{contract, diagonal_scale, expm, inverse, solve, svd, transpose};
+use arnet_linalg::{
+    contract_dense as contract, diagonal_scale_dense as diagonal_scale, expm_dense as expm,
+    inverse_dense as inverse, solve_dense as solve, svd_dense as svd, transpose_dense as transpose,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder, reorder};
 

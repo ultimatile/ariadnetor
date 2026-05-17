@@ -108,7 +108,7 @@ fn test_qubit_y_squared_is_identity_complex() {
     use arnet_tensor::Complex;
     let backend = arnet_native::NativeBackend::new();
     let y = Qubit.y::<Complex<f64>>();
-    let y2 = arnet_linalg::contract(&backend, &y, &y, "ij,jk->ik").unwrap();
+    let y2 = arnet_linalg::contract_dense(&backend, &y, &y, "ij,jk->ik").unwrap();
     let id = Qubit.id::<Complex<f64>>();
     for i in 0..2 {
         for j in 0..2 {
@@ -141,7 +141,7 @@ fn test_qubit_z_squared_is_identity() {
     // Z^2 = I — catches sign flip on (1,1)
     let backend = arnet_native::NativeBackend::new();
     let z = Qubit.z::<f64>();
-    let z2 = arnet_linalg::contract(&backend, &z, &z, "ij,jk->ik").unwrap();
+    let z2 = arnet_linalg::contract_dense(&backend, &z, &z, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {
@@ -176,7 +176,7 @@ fn test_qubit_h_is_unitary() {
     // H^T H = I for real Hadamard — catches any wrong sign
     let backend = arnet_native::NativeBackend::new();
     let h = Qubit.h::<f64>();
-    let hth = arnet_linalg::contract(&backend, &h, &h, "ab,ac->bc").unwrap();
+    let hth = arnet_linalg::contract_dense(&backend, &h, &h, "ab,ac->bc").unwrap();
     for i in 0..2 {
         for j in 0..2 {
             let expected = if i == j { 1.0 } else { 0.0 };

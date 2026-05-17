@@ -1,4 +1,4 @@
-use arnet_linalg::transpose;
+use arnet_linalg::transpose_dense as transpose;
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 

@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::transpose_with_policy;
+use arnet_linalg::transpose_with_policy_dense as transpose_with_policy;
 use arnet_native::NativeBackend;
 use arnet_tensor::Dense;
 

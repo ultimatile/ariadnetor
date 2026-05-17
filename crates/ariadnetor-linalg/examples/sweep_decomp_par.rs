@@ -17,7 +17,9 @@ use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
 use arnet_linalg::{
-    eig_with_policy, eigh_with_policy, lq_with_policy, qr_with_policy, svd_with_policy,
+    eig_with_policy_dense as eig_with_policy, eigh_with_policy_dense as eigh_with_policy,
+    lq_with_policy_dense as lq_with_policy, qr_with_policy_dense as qr_with_policy,
+    svd_with_policy_dense as svd_with_policy,
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};

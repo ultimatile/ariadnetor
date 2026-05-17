@@ -18,7 +18,10 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh};
+use arnet_linalg::{
+    TruncSvdParams, contract_dense as contract, diagonal_scale_dense as diagonal_scale,
+    eigh_dense as eigh,
+};
 use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense, MemoryOrder};

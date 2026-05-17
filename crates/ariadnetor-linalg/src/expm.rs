@@ -2,15 +2,15 @@ use std::any::TypeId;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensorData};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
-use crate::contract::contract;
-use crate::eigen::eigh;
+use crate::contract::contract_dense;
+use crate::eigen::eigh_dense;
 use crate::error::LinalgError;
-use crate::scalar_ops::{diagonal_scale, linear_combine};
-use crate::solve::solve;
-use crate::transpose::conjugate_transpose;
+use crate::scalar_ops::{diagonal_scale_dense, linear_combine_dense};
+use crate::solve::solve_dense;
+use crate::transpose::conjugate_transpose_dense;
 use arnet_tensor::reorder;
 
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
@@ -34,19 +34,29 @@ use arnet_tensor::reorder;
 /// or the backend fails.
 pub fn expm_hermitian<T: Scalar>(
     backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    nrow: usize,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    expm_hermitian_dense(backend, &d, nrow).map(|r| r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`expm_hermitian`].
+pub fn expm_hermitian_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
 ) -> Result<Dense<T>, LinalgError> {
-    let (w, v) = eigh(backend, tensor, nrow)?;
+    let (w, v) = eigh_dense(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(lambda_j)
     let exp_w: Vec<T::Real> = w.data().iter().map(|&lam| lam.exp()).collect();
-    let v_scaled = diagonal_scale(backend, &v, &exp_w, 1)?;
+    let v_scaled = diagonal_scale_dense(backend, &v, &exp_w, 1)?;
 
     // V dagger = conjugate transpose of V
-    let v_dagger = conjugate_transpose(backend, &v, &[1, 0])?;
+    let v_dagger = conjugate_transpose_dense(backend, &v, &[1, 0])?;
 
-    contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
+    contract_dense(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }
 
 /// Matrix exponential for anti-Hermitian (skew-adjoint) matrices via eigendecomposition.
@@ -71,6 +81,16 @@ pub fn expm_hermitian<T: Scalar>(
 /// Returns `LinalgError` if the input is a real type (f32/f64), `nrow` is out of range,
 /// the matrix is non-square, or the backend fails.
 pub fn expm_antihermitian<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    nrow: usize,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    expm_antihermitian_dense(backend, &d, nrow).map(|r| r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`expm_antihermitian`].
+pub fn expm_antihermitian_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
@@ -101,7 +121,7 @@ pub fn expm_antihermitian<T: Scalar>(
     let ia = reorder(&ia_rm, MemoryOrder::RowMajor, order);
 
     // eigh(iA) -> real eigenvalues lambda, eigenvectors V
-    let (w, v_orig) = eigh(backend, &ia, nrow)?;
+    let (w, v_orig) = eigh_dense(backend, &ia, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(-i*lambda_j)
     // exp(-i*lambda) = cos(lambda) - i*sin(lambda)
@@ -111,12 +131,12 @@ pub fn expm_antihermitian<T: Scalar>(
         .map(|&lam| T::from_real_imag(lam.cos(), -lam.sin()))
         .collect();
 
-    let v_scaled = diagonal_scale(backend, &v_orig, &exp_neg_i_w, 1)?;
+    let v_scaled = diagonal_scale_dense(backend, &v_orig, &exp_neg_i_w, 1)?;
 
     // V dagger = conjugate transpose of V
-    let v_dagger = conjugate_transpose(backend, &v_orig, &[1, 0])?;
+    let v_dagger = conjugate_transpose_dense(backend, &v_orig, &[1, 0])?;
 
-    contract(backend, &v_scaled, &v_dagger, "ij,jk->ik")
+    contract_dense(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +164,7 @@ fn matmul<T: Scalar>(
     a: &Dense<T>,
     b: &Dense<T>,
 ) -> Result<Dense<T>, LinalgError> {
-    contract(backend, a, b, "ij,jk->ik")
+    contract_dense(backend, a, b, "ij,jk->ik")
 }
 
 /// Validate the `nrow` argument for [`expm`]: must satisfy `1 <= nrow < rank`.
@@ -157,23 +177,11 @@ fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
     Ok(())
 }
 
-/// Decide the scaling parameter `s` for [13/13] Pade scaling-and-squaring
-/// and produce `B = A / 2^s` such that `||B||_1 <= theta`.
-///
-/// Implements Higham (2005) Algorithm 5.1 steps 2-3 as one cohesive step:
-/// pick the smallest `s >= 0` with `norm / 2^s <= theta`, then form
-/// `B = A / 2^s`. When `s == 0` the input is returned unchanged (no copy).
-/// For `s > 62` the `2^s` factor is built via a doubling loop so the
-/// `1u64 << s` fast path stays a safe distance from the `u64` shift limit.
-///
-/// Equivalent-mutant claims that anchor under this function name:
-/// - `norm > theta` boundary: at `norm == theta`, `s = 0` either way.
-/// - `norm / theta` ratio: any non-divisor op produces a different `s`,
-///   but the final `exp(A) = (exp(B))^(2^s)` reconstructs identically
-///   because each squaring inverts one halving (modulo numerical noise
-///   absorbed by Pade's tolerance).
-/// - `s <= 62` boundary: at `s == 62` both the shift and the doubling
-///   loop produce `2^62`.
+/// Higham (2005) Algorithm 5.1 steps 2-3: pick the smallest `s >= 0`
+/// with `norm / 2^s <= theta` and return `B = A / 2^s` along with `s`.
+/// `s == 0` returns the input without copying. For `s > 62` the `2^s`
+/// factor is built via a doubling loop to stay clear of the `u64` shift
+/// limit.
 fn compute_scaling_decision<T: Scalar>(
     a: Dense<T>,
     norm: T::Real,
@@ -256,18 +264,18 @@ fn pade_uv_small<T: Scalar>(
         3 => {
             // V = b_0 I + b_2 A^2
             // U = A(b_1 I + b_3 A^2)
-            let v = linear_combine(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])?;
-            let u_inner = linear_combine(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])?;
+            let v = linear_combine_dense(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])?;
+            let u_inner = linear_combine_dense(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
         5 => {
             let a4 = matmul(backend, &a2, &a2)?;
-            let v = linear_combine(
+            let v = linear_combine_dense(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[0]), coeff::<T>(b[2]), coeff::<T>(b[4])],
             )?;
-            let u_inner = linear_combine(
+            let u_inner = linear_combine_dense(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[1]), coeff::<T>(b[3]), coeff::<T>(b[5])],
             )?;
@@ -277,7 +285,7 @@ fn pade_uv_small<T: Scalar>(
         7 => {
             let a4 = matmul(backend, &a2, &a2)?;
             let a6 = matmul(backend, &a4, &a2)?;
-            let v = linear_combine(
+            let v = linear_combine_dense(
                 &[&id, &a2, &a4, &a6],
                 &[
                     coeff::<T>(b[0]),
@@ -286,7 +294,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[6]),
                 ],
             )?;
-            let u_inner = linear_combine(
+            let u_inner = linear_combine_dense(
                 &[&id, &a2, &a4, &a6],
                 &[
                     coeff::<T>(b[1]),
@@ -302,7 +310,7 @@ fn pade_uv_small<T: Scalar>(
             let a4 = matmul(backend, &a2, &a2)?;
             let a6 = matmul(backend, &a4, &a2)?;
             let a8 = matmul(backend, &a6, &a2)?;
-            let v = linear_combine(
+            let v = linear_combine_dense(
                 &[&id, &a2, &a4, &a6, &a8],
                 &[
                     coeff::<T>(b[0]),
@@ -312,7 +320,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[8]),
                 ],
             )?;
-            let u_inner = linear_combine(
+            let u_inner = linear_combine_dense(
                 &[&id, &a2, &a4, &a6, &a8],
                 &[
                     coeff::<T>(b[1]),
@@ -349,13 +357,13 @@ fn pade_uv_13<T: Scalar>(
     let a6 = matmul(backend, &a4, &a2)?;
 
     // W1 = b13 A^6 + b11 A^4 + b9 A^2
-    let w1 = linear_combine(
+    let w1 = linear_combine_dense(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[13]), coeff::<T>(b[11]), coeff::<T>(b[9])],
     )?;
 
     // W2 = b7 A^6 + b5 A^4 + b3 A^2 + b1 I
-    let w2 = linear_combine(
+    let w2 = linear_combine_dense(
         &[&a6, &a4, &a2, &id],
         &[
             coeff::<T>(b[7]),
@@ -367,17 +375,17 @@ fn pade_uv_13<T: Scalar>(
 
     // U = A (A^6 W1 + W2)
     let a6w1 = matmul(backend, &a6, &w1)?;
-    let u_inner = linear_combine(&[&a6w1, &w2], &[T::one(), T::one()])?;
+    let u_inner = linear_combine_dense(&[&a6w1, &w2], &[T::one(), T::one()])?;
     let u = matmul(backend, a, &u_inner)?;
 
     // W3 = b12 A^6 + b10 A^4 + b8 A^2
-    let w3 = linear_combine(
+    let w3 = linear_combine_dense(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[12]), coeff::<T>(b[10]), coeff::<T>(b[8])],
     )?;
 
     // W4 = b6 A^6 + b4 A^4 + b2 A^2 + b0 I
-    let w4 = linear_combine(
+    let w4 = linear_combine_dense(
         &[&a6, &a4, &a2, &id],
         &[
             coeff::<T>(b[6]),
@@ -389,32 +397,30 @@ fn pade_uv_13<T: Scalar>(
 
     // V = A^6 W3 + W4
     let a6w3 = matmul(backend, &a6, &w3)?;
-    let v = linear_combine(&[&a6w3, &w4], &[T::one(), T::one()])?;
+    let v = linear_combine_dense(&[&a6w3, &w4], &[T::one(), T::one()])?;
 
     Ok((u, v))
 }
 
 /// Matrix exponential for general square matrices via scaling and squaring
-/// with Pade approximation (Higham 2005).
-///
-/// Automatically selects the optimal Pade order based on the 1-norm of the
-/// input matrix, then applies scaling and squaring for numerical stability.
-///
-/// # Arguments
-///
-/// * `backend` - Compute backend
-/// * `tensor` - Input tensor (must reshape to a square matrix)
-/// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
-///
-/// # Returns
-///
-/// Matrix exponential with the same shape as the input (n x n).
+/// with Pade approximation (Higham 2005). Auto-selects the Pade order from
+/// the 1-norm of the input.
 ///
 /// # Errors
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
 pub fn expm<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    nrow: usize,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    expm_dense(backend, &d, nrow).map(|r| r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`expm`].
+pub fn expm_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
@@ -504,13 +510,13 @@ fn solve_pade<T: Scalar>(
 ) -> Result<Dense<T>, LinalgError> {
     // V - U
     let neg_one: T = coeff::<T>(-1.0);
-    let lhs = linear_combine(&[v, u], &[T::one(), neg_one])?;
+    let lhs = linear_combine_dense(&[v, u], &[T::one(), neg_one])?;
 
     // V + U
-    let rhs = linear_combine(&[v, u], &[T::one(), T::one()])?;
+    let rhs = linear_combine_dense(&[v, u], &[T::one(), T::one()])?;
 
     // Reshape rhs to n x n for solve (nrow_a=1 since shape is [n, n])
-    solve(backend, &lhs, &rhs, 1)
+    solve_dense(backend, &lhs, &rhs, 1)
 }
 
 #[cfg(test)]
@@ -540,11 +546,8 @@ mod tests {
         assert!(validate_expm_nrow(2, 3).is_ok());
     }
 
-    /// `norm = 1.5 * 2^62` with `theta = 1` forces `s = ceil(log2(1.5 * 2^62)) = 63`,
-    /// which selects the doubling-loop branch (`s > 62`). Verifies both the
-    /// returned `s` and that the matrix is scaled by `1 / 2^63`. Kills the
-    /// `v + v -> v - v` (yields 0) and `v + v -> v * v` (yields 1) mutations
-    /// on the doubling accumulator.
+    /// Doubling-loop branch (`s > 62`): kills `v + v -> v - v` (yields 0)
+    /// and `v + v -> v * v` (yields 1) mutations on the accumulator.
     #[test]
     fn compute_scaling_decision_above_shift_threshold() {
         let theta = 1.0_f64;
@@ -566,12 +569,9 @@ mod tests {
         }
     }
 
-    /// `s == 0` early-return path: when `norm <= theta`, the helper returns
-    /// the input matrix without copying. Asserting pointer identity (rather
-    /// than just data equality) is what kills the `== with !=` mutation:
-    /// under that mutation the early return is skipped and the scaling path
-    /// runs with `s = 0`, producing a fresh allocation whose elements equal
-    /// the input but whose storage pointer differs.
+    /// `s == 0` early return: asserts pointer identity to kill the
+    /// `== with !=` mutation (which would skip the early return and
+    /// allocate a copy whose data matches but whose pointer differs).
     #[test]
     fn compute_scaling_decision_zero_steps_returns_input_unchanged() {
         let a = Dense::<f64>::new(

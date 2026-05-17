@@ -1,4 +1,6 @@
-use arnet_linalg::{TruncSvdParams, lq, qr, svd, trunc_svd};
+use arnet_linalg::{
+    TruncSvdParams, lq_dense as lq, qr_dense as qr, svd_dense as svd, trunc_svd_dense as trunc_svd,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 

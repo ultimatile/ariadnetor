@@ -12,8 +12,9 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 
 use arnet_linalg::{
-    TruncSvdParams, contract, contract_block_sparse, lq, lq_block_sparse, qr, qr_block_sparse, svd,
-    svd_block_sparse, trunc_svd, trunc_svd_block_sparse,
+    TruncSvdParams, contract_block_sparse, contract_dense as contract, lq_block_sparse,
+    lq_dense as lq, qr_block_sparse, qr_dense as qr, svd_block_sparse, svd_dense as svd,
+    trunc_svd_block_sparse, trunc_svd_dense as trunc_svd,
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparse, Dense, Direction, QNIndex, U1Sector};

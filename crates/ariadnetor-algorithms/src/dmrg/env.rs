@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{LinalgError, contract};
+use arnet_linalg::{LinalgError, contract_dense as contract};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense, TensorRepr};

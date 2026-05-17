@@ -3,7 +3,10 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
-use arnet_linalg::{eigh, linear_combine, norm, normalize};
+use arnet_linalg::{
+    eigh_dense as eigh, linear_combine_dense as linear_combine, norm_dense as norm,
+    normalize_dense as normalize,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, reorder};
 use num_traits::{Float, One, Zero};

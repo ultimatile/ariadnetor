@@ -2,7 +2,7 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{BlockSparseContractResult, contract, contract_block_sparse};
+use arnet_linalg::{BlockSparseContractResult, contract_block_sparse, contract_dense as contract};
 use arnet_tensor::Sector;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::{ComputeBackendTensorExt, Dense};

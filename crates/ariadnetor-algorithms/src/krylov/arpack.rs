@@ -17,7 +17,9 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
-use arnet_linalg::{linear_combine, norm, normalize};
+use arnet_linalg::{
+    linear_combine_dense as linear_combine, norm_dense as norm, normalize_dense as normalize,
+};
 use arnet_tensor::{Dense, reorder};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};

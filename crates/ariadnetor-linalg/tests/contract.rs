@@ -1,4 +1,4 @@
-use arnet_linalg::contract;
+use arnet_linalg::contract_dense as contract;
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, MemoryOrder};
 

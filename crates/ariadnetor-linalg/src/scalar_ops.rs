@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, DenseTensorData};
 use num_traits::{Float, One, Zero};
 use std::ops::{Add, Mul};
 
@@ -20,7 +20,16 @@ use arnet_tensor::{flat_index, normalize_to};
 /// let tensor = Dense::<f64>::ones(vec![2, 3]);
 /// let scaled = scale(&tensor, 2.5);
 /// ```
-pub fn scale<T>(tensor: &Dense<T>, factor: T) -> Dense<T>
+pub fn scale<T>(tensor: &DenseTensorData<T>, factor: T) -> DenseTensorData<T>
+where
+    T: Clone + Mul<Output = T>,
+{
+    let d = Dense::from_tensor_data(tensor.clone());
+    scale_dense(&d, factor).into_tensor_data()
+}
+
+/// Dense-typed sister of [`scale`].
+pub fn scale_dense<T>(tensor: &Dense<T>, factor: T) -> Dense<T>
 where
     T: Clone + Mul<Output = T>,
 {
@@ -46,7 +55,13 @@ where
 /// let n = norm(&tensor);
 /// assert!((n - 2.0).abs() < 1e-10);
 /// ```
-pub fn norm<T: Scalar>(tensor: &Dense<T>) -> T::Real {
+pub fn norm<T: Scalar>(tensor: &DenseTensorData<T>) -> T::Real {
+    let d = Dense::from_tensor_data(tensor.clone());
+    norm_dense(&d)
+}
+
+/// Dense-typed sister of [`norm`].
+pub fn norm_dense<T: Scalar>(tensor: &Dense<T>) -> T::Real {
     let sum_sq = tensor
         .iter()
         .map(|&x| {
@@ -72,8 +87,15 @@ pub fn norm<T: Scalar>(tensor: &Dense<T>) -> T::Real {
 /// let (normalized, n) = normalize(&tensor);
 /// assert!((n - 2.0).abs() < 1e-10);
 /// ```
-pub fn normalize<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
-    let n = norm(tensor);
+pub fn normalize<T: Scalar>(tensor: &DenseTensorData<T>) -> (DenseTensorData<T>, T::Real) {
+    let d = Dense::from_tensor_data(tensor.clone());
+    let (out, n) = normalize_dense(&d);
+    (out.into_tensor_data(), n)
+}
+
+/// Dense-typed sister of [`normalize`].
+pub fn normalize_dense<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
+    let n = norm_dense(tensor);
     assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
     let inv_norm = T::Real::one() / n;
     let data: Vec<T> = tensor
@@ -105,7 +127,23 @@ pub fn normalize<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
 /// // 2*a + 3*b = 2*1 + 3*2 = 8
 /// let result = linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
 /// ```
-pub fn linear_combine<T>(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, LinalgError>
+pub fn linear_combine<T>(
+    tensors: &[&DenseTensorData<T>],
+    coefs: &[T],
+) -> Result<DenseTensorData<T>, LinalgError>
+where
+    T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
+{
+    let owned: Vec<Dense<T>> = tensors
+        .iter()
+        .map(|t| Dense::from_tensor_data((*t).clone()))
+        .collect();
+    let refs: Vec<&Dense<T>> = owned.iter().collect();
+    linear_combine_dense(&refs, coefs).map(|d| d.into_tensor_data())
+}
+
+/// Dense-typed sister of [`linear_combine`].
+pub fn linear_combine_dense<T>(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, LinalgError>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
@@ -183,6 +221,15 @@ where
 /// assert_eq!(result.data()[0], 5.0);
 /// ```
 pub fn trace<T: Scalar>(
+    tensor: &DenseTensorData<T>,
+    pairs: &[(usize, usize)],
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    trace_dense(&d, pairs).map(|r| r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`trace`].
+pub fn trace_dense<T: Scalar>(
     tensor: &Dense<T>,
     pairs: &[(usize, usize)],
 ) -> Result<Dense<T>, LinalgError> {
@@ -314,7 +361,13 @@ pub(crate) fn decode_coords(mut flat: usize, shape: &[usize], coords: &mut [usiz
 ///
 /// Returns an error if the input is a non-square matrix (rank 2 with mismatched dimensions)
 /// or has rank > 2.
-pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
+pub fn diag<T: Scalar>(tensor: &DenseTensorData<T>) -> Result<DenseTensorData<T>, LinalgError> {
+    let d = Dense::from_tensor_data(tensor.clone());
+    diag_dense(&d).map(|r| r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`diag`].
+pub fn diag_dense<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
     let shape = tensor.shape();
     match shape.len() {
         1 => {
@@ -379,6 +432,21 @@ pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
 /// let scaled = diagonal_scale(&backend, &m, &[1.0, 2.0, 3.0], 1).unwrap();
 /// ```
 pub fn diagonal_scale<T, S>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    weights: &[S],
+    axis: usize,
+) -> Result<DenseTensorData<T>, LinalgError>
+where
+    T: Clone + Mul<S, Output = T> + 'static,
+    S: Clone,
+{
+    let d = Dense::from_tensor_data(tensor.clone());
+    diagonal_scale_dense(backend, &d, weights, axis).map(|r| r.into_tensor_data())
+}
+
+/// Dense-typed sister of [`diagonal_scale`].
+pub fn diagonal_scale_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     weights: &[S],
