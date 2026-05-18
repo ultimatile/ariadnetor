@@ -15,16 +15,13 @@
 //! order than its `Dense::order()` claims — surfaces as a numerical
 //! mismatch rather than silently propagating downstream.
 
-use arnet_linalg::{
-    contract_dense as contract, diagonal_scale_dense as diagonal_scale, expm_dense as expm,
-    inverse_dense as inverse, solve_dense as solve, svd_dense as svd, transpose_dense as transpose,
-};
+use arnet_linalg::{contract, diagonal_scale, expm, inverse, solve, svd, transpose};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder, reorder};
+use arnet_tensor::{DenseTensorData, MemoryOrder, reorder};
 
 /// Create Dense from conceptual row-major data, converted to CM for NativeBackend.
-fn cm(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
+fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensorData<f64> {
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -142,7 +139,7 @@ fn expm_output_feeds_into_contract() {
     let backend = NativeBackend::new();
     // Small Hermitian matrix so expm converges well
     let a = cm(vec![0.1, 0.2, 0.2, 0.3], vec![2, 2]);
-    let neg_a = Dense::new(
+    let neg_a = DenseTensorData::from_raw_parts(
         a.data().iter().map(|&x: &f64| -x).collect(),
         a.shape().to_vec(),
         MemoryOrder::ColumnMajor,

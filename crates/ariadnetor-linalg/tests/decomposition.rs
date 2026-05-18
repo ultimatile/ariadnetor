@@ -1,17 +1,15 @@
-use arnet_linalg::{
-    TruncSvdParams, lq_dense as lq, qr_dense as qr, svd_dense as svd, trunc_svd_dense as trunc_svd,
-};
+use arnet_linalg::{TruncSvdParams, lq, qr, svd, trunc_svd};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensorData<T> {
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
 /// Convert column-major Dense back to row-major so `.get()` returns correct values.
-fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
+fn to_rm<T: Clone>(tensor: &DenseTensorData<T>) -> DenseTensorData<T> {
     arnet_tensor::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
 }
 

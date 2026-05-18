@@ -19,13 +19,13 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::contract_with_policy_dense as contract_with_policy;
+use arnet_linalg::contract_with_policy;
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::DenseTensorData;
 
-fn random_dense(n: usize, seed: u64) -> Dense<f64> {
+fn random_dense(n: usize, seed: u64) -> DenseTensorData<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-    Dense::random(vec![n, n], &mut rng)
+    DenseTensorData::random(vec![n, n], &mut rng)
 }
 
 fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {

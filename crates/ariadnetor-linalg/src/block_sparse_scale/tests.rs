@@ -1,28 +1,26 @@
 use arnet_native::NativeBackend;
 use arnet_tensor::U1Sector;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, MemoryOrder, QNIndex};
 
-use crate::block_sparse_contract::{
-    BlockSparseContractResultRepr as BlockSparseContractResult,
-    contract_block_sparse_repr as contract_block_sparse,
-};
+use crate::block_sparse_contract::{BlockSparseContractResult, contract_block_sparse};
 use crate::block_sparse_decomp::BlockSingularValues;
-use crate::{
-    TruncSvdParams, svd_block_sparse_repr as svd_block_sparse,
-    trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
-};
+use crate::{TruncSvdParams, svd_block_sparse, trunc_svd_block_sparse};
 
-use super::diagonal_scale_block_sparse_repr as diagonal_scale_block_sparse;
+use super::diagonal_scale_block_sparse;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
 }
 
 /// Rank-2 U1, flux=0, blocks (0,0):2×2 and (1,1):3×3.
-fn sample_u1_rank2() -> BlockSparse<f64, U1Sector> {
+fn sample_u1_rank2() -> BlockSparseTensorData<f64, U1Sector> {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     let d = bs.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
     d.copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
     let d = bs.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
@@ -33,9 +31,9 @@ fn sample_u1_rank2() -> BlockSparse<f64, U1Sector> {
 /// Contract U (rank-2) and Vt/S·Vt (rank-2) to reconstruct a rank-2 tensor.
 /// U has bond as last axis (In), Vt has bond as first axis (Out).
 fn contract_uv(
-    u: &BlockSparse<f64, U1Sector>,
-    vt: &BlockSparse<f64, U1Sector>,
-) -> BlockSparse<f64, U1Sector> {
+    u: &BlockSparseTensorData<f64, U1Sector>,
+    vt: &BlockSparseTensorData<f64, U1Sector>,
+) -> BlockSparseTensorData<f64, U1Sector> {
     // Contract over bond axis: U's last axis with Vt's first axis.
     let result = contract_block_sparse(&backend(), u, vt, &[u.rank() - 1], &[0]).unwrap();
     match result {
@@ -45,7 +43,11 @@ fn contract_uv(
 }
 
 /// Assert two BlockSparse tensors are approximately equal.
-fn assert_bs_approx(a: &BlockSparse<f64, U1Sector>, b: &BlockSparse<f64, U1Sector>, tol: f64) {
+fn assert_bs_approx(
+    a: &BlockSparseTensorData<f64, U1Sector>,
+    b: &BlockSparseTensorData<f64, U1Sector>,
+    tol: f64,
+) {
     assert_eq!(a.shape(), b.shape());
     assert_eq!(a.num_blocks(), b.num_blocks());
     for meta in a.block_metas() {
@@ -211,7 +213,11 @@ fn scale_rank3_middle_axis_element_values() {
     let idx0 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let idx1 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let idx2 = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![idx0, idx1, idx2], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![idx0, idx1, idx2],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     let data = bs.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap();
     // Fill with 1..=24 so every element is distinct.
     for (i, d) in data.iter_mut().enumerate() {
@@ -284,7 +290,11 @@ fn rowmajor_branch_distinguishes_inner_stride_at_non_trailing_axis() {
     let idx_a = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let idx_b = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let idx_c = QNIndex::new(vec![(U1Sector(0), 4)], Direction::Out);
-    let mut tensor = BlockSparse::<f64, U1Sector>::zeros(vec![idx_a, idx_b, idx_c], U1Sector(0));
+    let mut tensor = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![idx_a, idx_b, idx_c],
+        U1Sector(0),
+        MemoryOrder::RowMajor,
+    );
     let coord = BlockCoord(vec![0, 0, 0]);
     tensor
         .block_data_mut(&coord)

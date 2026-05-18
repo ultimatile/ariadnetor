@@ -24,6 +24,7 @@
 //! is observable and `&&` → `||` flips the result.
 
 use super::*;
+use arnet_tensor::MemoryOrder;
 
 fn lhs_rank3_data() -> Vec<f64> {
     // Conceptual RM-flat values for shape [2, 2, 2]: data[i,j,k] = 1.0 + i*4 + j*2 + k.
@@ -42,12 +43,19 @@ fn at3(data: &[f64], i: usize, j: usize, k: usize) -> f64 {
 
 /// Build a rank-3 BlockSparse over a single U(1) charge-0 sector with all
 /// dims equal to 2 and the given conceptual RM-flat block data.
-fn rank3_single_sector(directions: [Direction; 3], rm_data: &[f64]) -> BlockSparse<f64, U1Sector> {
+fn rank3_single_sector(
+    directions: [Direction; 3],
+    rm_data: &[f64],
+) -> BlockSparseTensorData<f64, U1Sector> {
     let indices: Vec<QNIndex<U1Sector>> = directions
         .iter()
         .map(|&d| QNIndex::new(vec![(U1Sector(0), 2)], d))
         .collect();
-    let mut t = BlockSparse::<f64, U1Sector>::zeros(indices, U1Sector(0));
+    let mut t = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        indices,
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     t.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(rm_data, &[2, 2, 2]));

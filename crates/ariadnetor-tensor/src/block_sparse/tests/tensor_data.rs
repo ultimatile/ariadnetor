@@ -308,3 +308,17 @@ fn from_block_fn_panics_on_wrong_block_length() {
         |_, _| vec![0.0; 99],
     );
 }
+
+#[test]
+fn is_allowed_block_matches_flux_for_u1_rank2() {
+    // Flux 0 over Out(0:2, 1:3) × In(0:2, 1:3): a block (i, j) is
+    // allowed iff the directed sectors fuse to 0, i.e. row charge
+    // equals column charge. (0, 0) and (1, 1) are allowed; (0, 1)
+    // and (1, 0) are forbidden.
+    let td = sample_u1_rank2_data();
+
+    assert!(td.is_allowed_block(&BlockCoord(vec![0, 0])));
+    assert!(td.is_allowed_block(&BlockCoord(vec![1, 1])));
+    assert!(!td.is_allowed_block(&BlockCoord(vec![0, 1])));
+    assert!(!td.is_allowed_block(&BlockCoord(vec![1, 0])));
+}

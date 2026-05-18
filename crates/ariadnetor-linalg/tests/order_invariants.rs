@@ -8,23 +8,31 @@
 
 use arnet_core::Scalar;
 use arnet_linalg::{
-    TruncSvdParams, contract_dense as contract, einsum_dense as einsum, expm_dense as expm,
-    inverse_dense as inverse, linear_combine_dense as linear_combine, solve_dense as solve,
-    svd_dense as svd, trunc_svd_dense as trunc_svd,
+    TruncSvdParams, contract, einsum, expm, inverse, linear_combine, solve, svd, trunc_svd,
 };
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackend, ComputeBackendTensorExt, Dense, MemoryOrder, reorder};
+use arnet_tensor::{
+    ComputeBackend, ComputeBackendTensorExt, DenseTensorData, MemoryOrder, reorder,
+};
 use num_complex::Complex;
 
-/// Construct a `Dense<T>` representing the same logical tensor as
+/// Construct a `DenseTensorData<T>` representing the same logical tensor as
 /// `data_rm` (interpreted in RowMajor flat order) but tagged with the
 /// requested `order`. For `order == RowMajor` the data is used directly;
 /// for `ColumnMajor` it is reordered so the byte layout matches the tag.
 /// This is the foundation of `assert_op_layout_invariance` — without it,
 /// the same raw bytes under different tags would describe different
 /// logical matrices, defeating the layout-invariance check.
-fn build_tagged<T: Scalar>(data_rm: &[T], shape: &[usize], order: MemoryOrder) -> Dense<T> {
-    let rm = Dense::<T>::new(data_rm.to_vec(), shape.to_vec(), MemoryOrder::RowMajor);
+fn build_tagged<T: Scalar>(
+    data_rm: &[T],
+    shape: &[usize],
+    order: MemoryOrder,
+) -> DenseTensorData<T> {
+    let rm = DenseTensorData::<T>::from_raw_parts(
+        data_rm.to_vec(),
+        shape.to_vec(),
+        MemoryOrder::RowMajor,
+    );
     if order == MemoryOrder::RowMajor {
         rm
     } else {
@@ -43,7 +51,7 @@ fn build_tagged<T: Scalar>(data_rm: &[T], shape: &[usize], order: MemoryOrder) -
 fn assert_op_layout_invariance<T, F>(op_label: &str, op_with_order: F)
 where
     T: Scalar + PartialEq + std::fmt::Debug,
-    F: Fn(MemoryOrder) -> Dense<T>,
+    F: Fn(MemoryOrder) -> DenseTensorData<T>,
 {
     let out_rm = op_with_order(MemoryOrder::RowMajor);
     let out_cm = op_with_order(MemoryOrder::ColumnMajor);
@@ -65,8 +73,12 @@ where
 
 #[test]
 fn linear_combine_rejects_mixed_orders() {
-    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -80,8 +92,16 @@ fn linear_combine_rejects_mixed_orders() {
 
 #[test]
 fn linear_combine_accepts_matched_orders() {
-    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
+    let a = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensorData::<f64>::from_raw_parts(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let result = linear_combine(&[&a, &b], &[1.0, 1.0]).expect("matched orders must combine");
     assert_eq!(result.order(), MemoryOrder::RowMajor);
 }
@@ -98,8 +118,16 @@ fn contract_normalizes_row_major_input_against_column_major_backend() {
     // Build the same logical 2x2 matrix product A * B for two layouts.
     // Logical A = [[1, 2], [3, 4]], Logical B = [[5, 6], [7, 8]].
     // Expected A*B = [[19, 22], [43, 50]].
-    let a_rm = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b_rm = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
+    let a_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let a_cm = reorder(&a_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
     let b_cm = reorder(&b_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
@@ -133,8 +161,16 @@ fn contract_with_permutation_normalizes_row_major_input_against_column_major_bac
     // (RHS axis 0). Effectively (A^T) * B.
     // (A^T) * B with A = [[1,2],[3,4]], B = [[5,6],[7,8]] gives
     // [[1,3],[2,4]] * [[5,6],[7,8]] = [[26, 30], [38, 44]].
-    let a_rm = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b_rm = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
+    let a_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
     let a_cm = reorder(&a_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
     let b_cm = reorder(&b_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
@@ -190,7 +226,7 @@ fn backend_eye_uses_preferred_order() {
 #[test]
 fn svd_s_tensor_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let a = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -202,7 +238,7 @@ fn svd_s_tensor_uses_preferred_order() {
 #[test]
 fn trunc_svd_s_tensor_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let a = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,

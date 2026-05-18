@@ -1,18 +1,16 @@
-use arnet_linalg::{
-    eig_dense as eig, eigh_dense as eigh, eigvals_dense as eigvals, eigvalsh_dense as eigvalsh,
-};
+use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensorData<T> {
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
 /// Convert a column-major Dense to row-major so `Dense::get` (which is
 /// row-major-fixed by design) returns the logical `[i, j]` element.
-fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
+fn to_rm<T: Clone>(tensor: &DenseTensorData<T>) -> DenseTensorData<T> {
     arnet_tensor::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
 }
 
@@ -35,7 +33,7 @@ fn test_eigh_f64_2x2_symmetric() {
 
     // Eigenvectors should be orthogonal. `eigh` outputs `v` in
     // column-major (backend preferred order); convert to row-major so
-    // `Dense::get([i, j])` returns the logical `v[i, j]` element.
+    // `DenseTensorData::get([i, j])` returns the logical `v[i, j]` element.
     let v_rm = to_rm(&v);
     let v00 = v_rm.get(&[0, 0]);
     let v10 = v_rm.get(&[1, 0]);

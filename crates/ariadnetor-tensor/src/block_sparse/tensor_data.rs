@@ -163,6 +163,13 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
         self.layout().block_shape(coord)
     }
 
+    /// Whether the given block coordinate is allowed by the flux
+    /// conservation law: the per-axis directed sectors fuse to
+    /// `flux` under the sector's group operation.
+    pub fn is_allowed_block(&self, coord: &BlockCoord) -> bool {
+        self.layout().is_allowed_block(coord)
+    }
+
     /// Memory order of the per-block stored data.
     pub fn order(&self) -> MemoryOrder {
         self.layout().order()

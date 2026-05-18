@@ -1,19 +1,15 @@
-use arnet_linalg::{
-    EighResultDense as EighResult, contract_dense as contract, eigh_dense as eigh,
-    expm_antihermitian_dense as expm_antihermitian, expm_dense as expm,
-    expm_hermitian_dense as expm_hermitian,
-};
+use arnet_linalg::{EighResult, contract, eigh, expm, expm_antihermitian, expm_hermitian};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensorData<T> {
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
 /// Convert column-major Dense back to row-major so `.get()` returns correct values.
-fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
+fn to_rm<T: Clone>(tensor: &DenseTensorData<T>) -> DenseTensorData<T> {
     arnet_tensor::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
 }
 
@@ -225,7 +221,7 @@ fn test_expm_antihermitian_invalid_nonsquare() {
     use num_traits::Zero;
 
     let backend = NativeBackend::new();
-    let a = Dense::new(
+    let a = DenseTensorData::from_raw_parts(
         vec![Complex::<f64>::zero(); 6],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -397,7 +393,7 @@ fn test_expm_invalid_nrow() {
 // --- Mutation testing: norm_1, Pade orders, scaling/squaring ---
 
 /// Helper to build a Dense matrix from a row-major flat vector.
-fn mat(data: Vec<f64>, n: usize) -> Dense<f64> {
+fn mat(data: Vec<f64>, n: usize) -> DenseTensorData<f64> {
     cm(data, vec![n, n])
 }
 

@@ -23,16 +23,13 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::{
-    lq_with_policy_dense as lq_with_policy, qr_with_policy_dense as qr_with_policy,
-    svd_with_policy_dense as svd_with_policy,
-};
+use arnet_linalg::{lq_with_policy, qr_with_policy, svd_with_policy};
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::DenseTensorData;
 
-fn random_rect(m: usize, n: usize, seed: u64) -> Dense<f64> {
+fn random_rect(m: usize, n: usize, seed: u64) -> DenseTensorData<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-    Dense::random(vec![m, n], &mut rng)
+    DenseTensorData::random(vec![m, n], &mut rng)
 }
 
 fn cbrt_work(m: usize, n: usize) -> usize {
@@ -57,7 +54,7 @@ fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
 
 fn run_sweep_rect<OF>(label: &str, grid: &[(usize, usize)], op: OF)
 where
-    OF: Fn(&Dense<f64>, ExecPolicy),
+    OF: Fn(&DenseTensorData<f64>, ExecPolicy),
 {
     eprintln!("\n=== {label} ===");
     eprintln!(

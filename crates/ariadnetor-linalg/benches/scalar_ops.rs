@@ -1,9 +1,6 @@
-use arnet_linalg::{
-    diagonal_scale_dense as diagonal_scale, linear_combine_dense as linear_combine,
-    norm_dense as norm, normalize_dense as normalize, scale_dense as scale, trace_dense as trace,
-};
+use arnet_linalg::{diagonal_scale, linear_combine, norm, normalize, scale, trace};
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::DenseTensorData;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 
@@ -54,8 +51,8 @@ fn shapes_square() -> Vec<TensorShape> {
     ]
 }
 
-fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
-    Dense::random(shape, &mut rng())
+fn random_tensor(shape: Vec<usize>) -> DenseTensorData<f64> {
+    DenseTensorData::random(shape, &mut rng())
 }
 
 // ==========================================================================

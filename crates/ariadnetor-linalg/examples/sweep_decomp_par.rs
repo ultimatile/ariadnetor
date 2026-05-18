@@ -17,19 +17,17 @@ use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
 use arnet_linalg::{
-    eig_with_policy_dense as eig_with_policy, eigh_with_policy_dense as eigh_with_policy,
-    lq_with_policy_dense as lq_with_policy, qr_with_policy_dense as qr_with_policy,
-    svd_with_policy_dense as svd_with_policy,
+    eig_with_policy, eigh_with_policy, lq_with_policy, qr_with_policy, svd_with_policy,
 };
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 
-fn random_dense(n: usize) -> Dense<f64> {
+fn random_dense(n: usize) -> DenseTensorData<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    Dense::random(vec![n, n], &mut rng)
+    DenseTensorData::random(vec![n, n], &mut rng)
 }
 
-fn random_symmetric(n: usize) -> Dense<f64> {
+fn random_symmetric(n: usize) -> DenseTensorData<f64> {
     // A + A^T yields a real symmetric matrix suitable for eigh.
     let a = random_dense(n);
     let src = a.data();
@@ -39,7 +37,7 @@ fn random_symmetric(n: usize) -> Dense<f64> {
             out[i * n + j] = src[i * n + j] + src[j * n + i];
         }
     }
-    Dense::new(out, vec![n, n], MemoryOrder::ColumnMajor)
+    DenseTensorData::from_raw_parts(out, vec![n, n], MemoryOrder::ColumnMajor)
 }
 
 fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
@@ -59,8 +57,8 @@ fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
 
 fn run_sweep<MF, OF>(label: &str, sizes: &[usize], make: MF, op: OF)
 where
-    MF: Fn(usize) -> Dense<f64>,
-    OF: Fn(&Dense<f64>, ExecPolicy),
+    MF: Fn(usize) -> DenseTensorData<f64>,
+    OF: Fn(&DenseTensorData<f64>, ExecPolicy),
 {
     eprintln!("\n=== {label} ===");
     eprintln!(
