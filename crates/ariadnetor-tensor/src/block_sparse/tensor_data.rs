@@ -261,9 +261,8 @@ where
     /// of every QNIndex direction (Out↔In), and dualization of the
     /// flux.
     ///
-    /// Block coordinates and packed offsets are preserved
-    /// ([`BlockSparseLayout::dagger_layout`] reuses them). Involution:
-    /// `x.dagger().dagger() == x`.
+    /// Block coordinates and packed offsets are preserved by the
+    /// per-layout transform. Involution: `x.dagger().dagger() == x`.
     pub fn dagger(&self) -> Self {
         let new_layout = self.layout().dagger_layout();
         let new_data: AVec<T, ConstAlign<64>> =

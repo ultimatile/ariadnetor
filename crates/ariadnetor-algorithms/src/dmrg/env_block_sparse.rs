@@ -190,7 +190,13 @@ where
         site: &TensorData<Self, BlockSparseLayout<S>>,
         mpo_site: &TensorData<Self, BlockSparseLayout<S>>,
     ) -> Result<TensorData<Self, BlockSparseLayout<S>>, LinalgError> {
-        let bra = site.dagger();
+        // `contract_block_sparse` rejects mixed memory orders. Pick the
+        // env's order as the common pivot and repack the operands once,
+        // so each per-step contraction sees equal-order inputs.
+        let target = env.layout().order();
+        let site_aligned = site.to_order(target);
+        let mpo_aligned = mpo_site.to_order(target);
+        let bra = site_aligned.dagger();
 
         // env(a,b,c) × bra(a,d,e) → t1(b,c,d,e)
         let t1 = match contract_block_sparse(backend, env, &bra, &[0], &[0])? {
@@ -201,7 +207,7 @@ where
         };
 
         // t1(b,c,d,e) × W(b,f,d,g) → t2(c,e,f,g)
-        let t2 = match contract_block_sparse(backend, &t1, mpo_site, &[0, 2], &[0, 2])? {
+        let t2 = match contract_block_sparse(backend, &t1, &mpo_aligned, &[0, 2], &[0, 2])? {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {
                 unreachable!("partial contraction (rank 4 + rank 4 over 2 axes) keeps rank 4")
@@ -209,7 +215,7 @@ where
         };
 
         // t2(c,e,f,g) × site(c,f,h) → env'(e,g,h)
-        let env_new = match contract_block_sparse(backend, &t2, site, &[0, 2], &[0, 1])? {
+        let env_new = match contract_block_sparse(backend, &t2, &site_aligned, &[0, 2], &[0, 1])? {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {
                 unreachable!("partial contraction (rank 4 + rank 3 over 2 axes) keeps rank 3")
@@ -227,10 +233,15 @@ where
         site: &TensorData<Self, BlockSparseLayout<S>>,
         mpo_site: &TensorData<Self, BlockSparseLayout<S>>,
     ) -> Result<TensorData<Self, BlockSparseLayout<S>>, LinalgError> {
-        let bra = site.dagger();
+        // Align operands to the env's order before every contraction;
+        // `contract_block_sparse` rejects mixed orders.
+        let target = env.layout().order();
+        let site_aligned = site.to_order(target);
+        let mpo_aligned = mpo_site.to_order(target);
+        let bra = site_aligned.dagger();
 
         // env(e,g,h) × site(c,f,h) → t1(e,g,c,f)
-        let t1 = match contract_block_sparse(backend, env, site, &[2], &[2])? {
+        let t1 = match contract_block_sparse(backend, env, &site_aligned, &[2], &[2])? {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {
                 unreachable!("partial contraction (rank 3 + rank 3 over 1 axis) keeps rank 4")
@@ -238,7 +249,7 @@ where
         };
 
         // t1(e,g,c,f) × W(b,f,d,g) → t2(e,c,b,d)
-        let t2 = match contract_block_sparse(backend, &t1, mpo_site, &[1, 3], &[3, 1])? {
+        let t2 = match contract_block_sparse(backend, &t1, &mpo_aligned, &[1, 3], &[3, 1])? {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {
                 unreachable!("partial contraction (rank 4 + rank 4 over 2 axes) keeps rank 4")

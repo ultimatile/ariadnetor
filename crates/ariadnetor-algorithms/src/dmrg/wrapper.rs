@@ -20,17 +20,16 @@
 //! # Generic surface
 //!
 //! `dmrg_2site` is generic over `St: super::DmrgOps<L>`, `L:
-//! TensorLayout`, and `B: ComputeBackend + Clone`, so the same entry
-//! point covers both the dense (`St = DenseStorage<T>, L =
-//! DenseLayout`) and BlockSparse / U(1) (`St = BlockSparseStorage<T>,
-//! L = BlockSparseLayout<S>`) storage paths. The `Clone` bounds on
-//! `St` and `L` are required because `Mps<St, L, B>` is `Clone` only
-//! when its storage and layout halves are (the manual `impl Clone`
-//! delegates per-site `TensorData::clone`). The `B: Clone` bound is
-//! demanded by this wrapper's own `psi0.clone()` of the input MPS.
-//! Both storage flavors, both layout types, and `NativeBackend`
-//! satisfy `Clone`, so the bounds are met for every concrete storage
-//! / layout / backend in the workspace.
+//! TensorLayout`, and `B: ComputeBackend`, so the same entry point
+//! covers both the dense (`St = DenseStorage<T>, L = DenseLayout`)
+//! and BlockSparse / U(1) (`St = BlockSparseStorage<T>, L =
+//! BlockSparseLayout<S>`) storage paths. The `Clone` bounds on `St`
+//! and `L` are required because `Mps<St, L, B>` is `Clone` only when
+//! its storage and layout halves are (the manual `impl Clone`
+//! delegates per-site `TensorData::clone` and shares the backend via
+//! `Arc::clone`, so no `B: Clone` bound is needed). Both storage
+//! flavors and both layout types satisfy `Clone`, so the bounds are
+//! met for every concrete storage / layout in the workspace.
 //!
 //! # Errors
 //!
@@ -142,7 +141,7 @@ where
     St: DmrgOps<L> + Clone,
     L: TensorLayout + Clone,
     <St::Elem as Scalar>::Real: Scalar<Real = <St::Elem as Scalar>::Real>,
-    B: ComputeBackend + Clone,
+    B: ComputeBackend,
 {
     if psi0.len() == 0 {
         return Err(DmrgError::EmptyMps);
