@@ -17,7 +17,7 @@ use arnet_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site
 use arnet_algorithms::krylov::ArpackParams;
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};

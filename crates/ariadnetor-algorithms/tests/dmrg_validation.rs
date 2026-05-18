@@ -7,7 +7,10 @@
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_dense as eigh};
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_mps::{
+    CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
+    canonicalize_repr as canonicalize,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use rand::Rng;

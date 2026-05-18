@@ -36,7 +36,10 @@ use std::sync::Arc;
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::LinalgError;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, norm};
+use arnet_mps::{
+    CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
+    braket_repr as braket, norm_repr as norm,
+};
 
 use crate::numeric::try_real_from_f64;
 

@@ -36,7 +36,7 @@
 //! by the wrapper itself before the lower layers can panic or repeat
 //! the check:
 //!
-//! - [`DmrgError::EmptyMps`] — `arnet_mps::canonicalize` asserts
+//! - [`DmrgError::EmptyMps`] — `arnet_mps::canonicalize_repr` asserts
 //!   `center < n` and would panic on an empty chain.
 //! - [`DmrgError::LengthMismatch`] — surfaced eagerly so callers see
 //!   one failure mode for the same bug regardless of whether the
@@ -52,7 +52,10 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_mps::{Mpo, Mps, TensorChain, canonicalize};
+use arnet_mps::{
+    MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
+    canonicalize_repr as canonicalize,
+};
 
 use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvs};

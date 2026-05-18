@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
 use arnet_tensor::{BlockSparse, QNIndex, Sector};
 
 use super::super::env::DmrgEnvs;

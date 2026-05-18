@@ -1,4 +1,17 @@
-//! Canonicalize: move the orthogonality center of a tensor chain via QR/LQ sweeps
+//! Canonicalize: move the orthogonality center of a tensor chain via QR / LQ sweeps.
+//!
+//! - `canonicalize_dense_repr` / `canonicalize_bsp_repr` operate on
+//!   [`MpsRepr`] / [`MpoRepr`] chains over [`Dense<T>`] /
+//!   [`BlockSparse<T, S>`].
+//! - [`canonicalize_dense`] / [`canonicalize_bsp`] operate on
+//!   [`Mps`] / [`Mpo`] chains whose sites are
+//!   [`TensorData<St, L>`](arnet_tensor::TensorData). Their bodies
+//!   build a temporary `*Repr` chain by bumping each site's storage
+//!   `Arc` (and cloning the per-site layout), delegate to the
+//!   corresponding `_repr` body, and write the canonicalized sites
+//!   back into the caller's chain.
+
+use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
@@ -8,12 +21,17 @@ use arnet_linalg::{
     lq_block_sparse_repr as lq_block_sparse, lq_dense as lq,
     qr_block_sparse_repr as qr_block_sparse, qr_dense as qr,
 };
-use arnet_tensor::BlockSparse;
-use arnet_tensor::Sector;
-use arnet_tensor::{Dense, reorder};
+use arnet_tensor::{
+    BlockSparse, BlockSparseLayout, BlockSparseStorage, Dense, DenseLayout, DenseStorage, Sector,
+    reorder,
+};
 
-use super::chain::TensorChain;
-use super::types::CanonicalForm;
+use super::chain::{TensorChain, TensorChainRepr};
+use super::types::{CanonicalForm, MpsRepr};
+
+// ============================================================================
+// `*_repr` bodies — operate on `Dense<T>` / `BlockSparse<T, S>` sites
+// ============================================================================
 
 /// Move the orthogonality center of a tensor chain to the specified site.
 ///
@@ -26,11 +44,11 @@ use super::types::CanonicalForm;
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
-pub(super) fn canonicalize_dense<T, B, C>(chain: &mut C, center: usize)
+pub(super) fn canonicalize_dense_repr<T, B, C>(chain: &mut C, center: usize)
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<Dense<T>, B>,
+    C: TensorChainRepr<Dense<T>, B>,
 {
     let n = chain.len();
     assert!(
@@ -56,7 +74,7 @@ fn left_qr_step<T, B, C>(chain: &mut C, j: usize)
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<Dense<T>, B>,
+    C: TensorChainRepr<Dense<T>, B>,
 {
     // QR decomposition: group all modes except the last as "rows"
     let (q_storage, r) = {
@@ -96,7 +114,7 @@ fn right_lq_step<T, B, C>(chain: &mut C, j: usize)
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<Dense<T>, B>,
+    C: TensorChainRepr<Dense<T>, B>,
 {
     // LQ decomposition: group only the first mode as "rows"
     let (q_storage, l) = {
@@ -195,14 +213,15 @@ fn absorb_from_right<T: Scalar>(
 }
 
 // ============================================================================
-// BlockSparse canonicalize — parallel path for Mps<BlockSparse<T, S>, B>
+// BlockSparse `_repr` body — parallel to the Dense path above
 // ============================================================================
 
 /// Move the orthogonality center of a block-sparse tensor chain.
 ///
-/// BlockSparse analogue of [`canonicalize`]. Performs left-to-right QR sweeps
-/// and right-to-left LQ sweeps using [`qr_block_sparse`] / [`lq_block_sparse`]
-/// and [`contract_block_sparse`]. After completion, the canonical form is
+/// BlockSparse analogue of [`canonicalize_dense_repr`]. Performs
+/// left-to-right QR sweeps and right-to-left LQ sweeps using
+/// [`qr_block_sparse`] / [`lq_block_sparse`] and
+/// [`contract_block_sparse`]. After completion, the canonical form is
 /// `Mixed { center }`.
 ///
 /// Works for both MPS (rank-3) and MPO (rank-4) tensor chains whose sites are
@@ -240,12 +259,12 @@ fn absorb_from_right<T: Scalar>(
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
-pub(super) fn canonicalize_bsp<T, S, B, C>(chain: &mut C, center: usize)
+pub(super) fn canonicalize_bsp_repr<T, S, B, C>(chain: &mut C, center: usize)
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChain<BlockSparse<T, S>, B>,
+    C: TensorChainRepr<BlockSparse<T, S>, B>,
 {
     let n = chain.len();
     assert!(
@@ -272,7 +291,7 @@ where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChain<BlockSparse<T, S>, B>,
+    C: TensorChainRepr<BlockSparse<T, S>, B>,
 {
     // QR decomposition: group all modes except the last as "rows".
     // For nrow = rank - 1, Q inherits legs [original[..rank-1], new_bond(In)]
@@ -304,7 +323,7 @@ where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChain<BlockSparse<T, S>, B>,
+    C: TensorChainRepr<BlockSparse<T, S>, B>,
 {
     // LQ decomposition: group only the first mode as "rows".
     // For nrow = 1, L has legs [original[0], new_bond(In)] and Q has legs
@@ -376,4 +395,69 @@ where
             unreachable!("right absorption contraction always produces a tensor")
         }
     }
+}
+
+// ============================================================================
+// `TensorData`-typed shims — delegate to the `*_repr` bodies above
+// ============================================================================
+
+/// `TensorChain<DenseStorage<T>, DenseLayout, B>` canonicalize shim.
+///
+/// Bumps each site's `Arc<AVec<T, Align64>>` into a temporary
+/// [`MpsRepr<Dense<T>, B>`], runs [`canonicalize_dense_repr`], and
+/// writes the resulting site buffers back into `chain` via the same
+/// Arc bump. Per-site `DenseLayout` is cloned (shape `Vec` only),
+/// not freshly allocated.
+pub(super) fn canonicalize_dense<T, B, C>(chain: &mut C, center: usize)
+where
+    T: Scalar,
+    B: ComputeBackend,
+    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
+{
+    let n = chain.len();
+    let backend_arc = Arc::clone(chain.backend_arc());
+    let prior_form = chain.canonical_form().clone();
+    let dense_storages: Vec<Dense<T>> = (0..n)
+        .map(|j| Dense::from_tensor_data(chain.site(j).clone()))
+        .collect();
+    let mut repr = MpsRepr::with_backend(dense_storages, backend_arc);
+    repr.0.canonical_form = prior_form;
+    canonicalize_dense_repr(&mut repr, center);
+
+    for (j, dense) in repr.0.storages.into_iter().enumerate() {
+        *chain.site_mut(j) = dense.into_tensor_data();
+    }
+    chain.set_canonical_form(repr.0.canonical_form);
+}
+
+/// `TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>`
+/// canonicalize shim.
+///
+/// Bumps each site's storage `Arc` and reuses the block tables in a
+/// temporary [`MpsRepr<BlockSparse<T, S>, B>`]. [`BlockSparse<T, S>`]
+/// carries no `order` field; output sites are retagged at
+/// `backend.preferred_order()`, matching the
+/// `arnet_linalg::*_block_sparse_repr` decomposition convention.
+pub(super) fn canonicalize_bsp<T, S, B, C>(chain: &mut C, center: usize)
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+{
+    let n = chain.len();
+    let backend_arc = Arc::clone(chain.backend_arc());
+    let prior_form = chain.canonical_form().clone();
+    let bsp_storages: Vec<BlockSparse<T, S>> = (0..n)
+        .map(|j| BlockSparse::from_tensor_data(chain.site(j).clone()))
+        .collect();
+    let mut repr = MpsRepr::with_backend(bsp_storages, backend_arc);
+    repr.0.canonical_form = prior_form;
+    canonicalize_bsp_repr(&mut repr, center);
+
+    let preferred = chain.backend().preferred_order();
+    for (j, bsp) in repr.0.storages.into_iter().enumerate() {
+        *chain.site_mut(j) = bsp.into_tensor_data(preferred);
+    }
+    chain.set_canonical_form(repr.0.canonical_form);
 }

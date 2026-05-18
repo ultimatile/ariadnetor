@@ -4,7 +4,7 @@
 //! Mixed{center} returning the center tensor's Frobenius norm.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
+use arnet_mps::{self as mps, CanonicalForm, MpsRepr as Mps, TensorChainRepr as TensorChain};
 use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::make_4site_mps;
@@ -16,10 +16,10 @@ use super::helpers::make_4site_mps;
 #[test]
 fn test_norm_left_returns_one_not_computed() {
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize_repr(&mut mps, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
-    let n = mps::norm(&mps);
+    let n = mps::norm_repr(&mps);
     assert_abs_diff_eq!(n, 1.0, epsilon = 1e-15);
 }
 
@@ -30,10 +30,10 @@ fn test_norm_left_returns_one_not_computed() {
 #[test]
 fn test_norm_right_returns_one_not_computed() {
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize_repr(&mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
-    let n = mps::norm(&mps);
+    let n = mps::norm_repr(&mps);
     assert_abs_diff_eq!(n, 1.0, epsilon = 1e-15);
 }
 
@@ -44,10 +44,10 @@ fn test_norm_right_returns_one_not_computed() {
 #[test]
 fn test_norm_mixed_center_0() {
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize_repr(&mut mps, 0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
-    let n = mps::norm(&mps);
+    let n = mps::norm_repr(&mps);
     let expected = mps.storage(0).norm();
     assert_abs_diff_eq!(n, expected, epsilon = 1e-12);
     // Must be positive
@@ -61,10 +61,10 @@ fn test_norm_mixed_center_0() {
 #[test]
 fn test_norm_mixed_center_last() {
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize_repr(&mut mps, 3);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
-    let n = mps::norm(&mps);
+    let n = mps::norm_repr(&mps);
     let expected = mps.storage(3).norm();
     assert_abs_diff_eq!(n, expected, epsilon = 1e-12);
 }
@@ -76,16 +76,16 @@ fn test_norm_mixed_center_last() {
 #[test]
 fn test_norm_mixed_center_1() {
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize_repr(&mut mps, 1);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
-    let n_mixed = mps::norm(&mps);
+    let n_mixed = mps::norm_repr(&mps);
     let center_norm = mps.storage(1).norm();
     assert_abs_diff_eq!(n_mixed, center_norm, epsilon = 1e-12);
 
     // Also verify consistency with full contraction
     mps.set_canonical_form(CanonicalForm::Unknown);
-    let n_full = mps::norm(&mps);
+    let n_full = mps::norm_repr(&mps);
     assert_abs_diff_eq!(n_mixed, n_full, epsilon = 1e-10);
 }
 
@@ -98,11 +98,11 @@ fn test_norm_unknown_uses_full_contraction() {
     let mps = make_4site_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
-    let n = mps::norm(&mps);
+    let n = mps::norm_repr(&mps);
     // Should be nonzero and positive
     assert!(n > 0.0);
     // Verify it equals sqrt(inner(psi,psi))
-    let overlap = mps::inner(&mps, &mps);
+    let overlap = mps::inner_repr(&mps, &mps);
     assert_abs_diff_eq!(n, overlap.sqrt(), epsilon = 1e-12);
 }
 
@@ -128,7 +128,7 @@ fn test_norm_plus_state_exact() {
         ),
     ];
     let psi = Mps::from_storages(storages);
-    let n = mps::norm(&psi);
+    let n = mps::norm_repr(&psi);
     // |+⟩|+⟩ is normalized: ⟨++|++⟩ = 1
     assert_abs_diff_eq!(n, 1.0, epsilon = 1e-12);
 }

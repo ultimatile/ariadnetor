@@ -7,14 +7,14 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, TensorChain};
+use arnet_mps::{MpoRepr as Mpo, TensorChainRepr as TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
     BlockCoord, BlockSparse, Dense, Direction, MemoryOrder, QNIndex, Sector, U1Sector,
 };
 use num_complex::Complex;
 
-use arnet_mps::Mps;
+use arnet_mps::MpsRepr as Mps;
 
 use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_c64, make_n2_mpo_f64, make_n2_mps_c64, make_n2_mps_f64,
@@ -161,7 +161,7 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
         U1Sector(2),
     );
 
-    let mps = arnet_mps::Mps::from_storages(vec![mps0, mps1]);
+    let mps = arnet_mps::MpsRepr::from_storages(vec![mps0, mps1]);
 
     // Minimal MPO with dim-1 / single-sector edge bonds satisfying
     // the Phase 6.1 boundary contract. Identity propagator on the
@@ -186,7 +186,7 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
         U1Sector::identity(),
     );
     w1.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
-    let mpo = arnet_mps::Mpo::from_storages(vec![w0, w1]);
+    let mpo = arnet_mps::MpoRepr::from_storages(vec![w0, w1]);
 
     let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
 

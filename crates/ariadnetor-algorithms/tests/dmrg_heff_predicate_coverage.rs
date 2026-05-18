@@ -8,7 +8,7 @@
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 

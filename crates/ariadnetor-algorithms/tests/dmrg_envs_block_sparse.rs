@@ -8,7 +8,7 @@
 //! mismatch, empty chain).
 
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
 use arnet_tensor::{
     BlockCoord, BlockSparse, Dense, Direction, MemoryOrder, QNIndex, Sector, U1Sector, reorder,
 };

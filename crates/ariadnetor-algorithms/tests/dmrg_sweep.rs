@@ -13,7 +13,8 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_dense as eigh};
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+#[rustfmt::skip]
+use arnet_mps::{CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain, canonicalize_repr as canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use num_complex::Complex;

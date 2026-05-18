@@ -2,7 +2,7 @@
 //!
 //! Each env slot carries a rank-3 tensor of shape `(top-bra-bond,
 //! W-bond, bot-ket-bond)` matching the axis convention used by the
-//! `arnet_mps::inner` braket family (`braket_dense` for [`Dense<T>`],
+//! `arnet_mps::inner_repr` braket family (`braket_dense` for [`Dense<T>`],
 //! `braket_bsp` for `BlockSparse<T, S>`). Boundary slots (`left[0]`
 //! and `right[N]`) hold the trivial 1×1×1 identity tensor; for the
 //! BlockSparse variant they additionally carry QNIndex / direction /
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{LinalgError, contract_dense as contract};
-use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense, TensorRepr};
 
@@ -191,7 +191,7 @@ impl<T: Scalar> DmrgEnvOps for Dense<T> {
     }
 
     /// Per-site left extension for `Dense<T>`. Mirrors the loop body of
-    /// `arnet_mps::inner::braket_dense`: bra = `site.conj()`, then a
+    /// `arnet_mps::inner_repr::braket_dense`: bra = `site.conj()`, then a
     /// 3-step contraction `(env, bra) → (·, mpo) → (·, site)`.
     fn extend_left_step<B: ComputeBackend>(
         backend: &B,

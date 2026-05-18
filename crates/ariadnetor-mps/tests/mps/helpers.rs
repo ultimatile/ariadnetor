@@ -4,7 +4,7 @@ use arnet_linalg::{
     BlockSparseContractResultRepr as BlockSparseContractResult,
     contract_block_sparse_repr as contract_block_sparse,
 };
-use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
 use arnet_tensor::U1Sector;
 use arnet_tensor::reorder;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};

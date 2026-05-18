@@ -2,12 +2,14 @@
 //!
 //! Strategy: hand-chosen analytical inputs (small dim, identity MPO,
 //! product-state MPS or random-but-seeded). The env contract is
-//! pinned via cross-check against `arnet_mps::braket` ground truth.
+//! pinned via cross-check against `arnet_mps::braket_repr` ground truth.
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_linalg::contract_dense as contract;
-use arnet_mps::{Mpo, Mps, TensorChain, braket};
+use arnet_mps::{
+    MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain, braket_repr as braket,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 

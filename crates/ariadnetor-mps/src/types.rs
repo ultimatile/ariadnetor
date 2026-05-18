@@ -1,4 +1,14 @@
-//! Core MPS/MPO data types
+//! Core MPS / MPO data types.
+//!
+//! Two parameterizations coexist:
+//!
+//! - [`Mps<St, L, B>`] / [`Mpo<St, L, B>`] hold sites as
+//!   [`TensorData<St, L>`](arnet_tensor::TensorData) over a
+//!   [`Storage`](arnet_tensor::Storage) +
+//!   [`TensorLayout`](arnet_tensor::TensorLayout) pair.
+//! - [`MpsRepr<R, B>`] / [`MpoRepr<R, B>`] hold sites as
+//!   `R: TensorRepr` (i.e. [`Dense<T>`](arnet_tensor::Dense) or
+//!   [`BlockSparse<T, S>`](arnet_tensor::BlockSparse)).
 
 use std::sync::Arc;
 
@@ -6,7 +16,7 @@ use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::TruncSvdParams;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, TensorRepr};
+use arnet_tensor::{Dense, Storage, StorageFor, TensorData, TensorLayout, TensorRepr};
 
 /// Canonical form of a tensor chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,51 +112,45 @@ pub struct TruncResult<T: Scalar> {
     pub error: T::Real,
 }
 
-/// Internal data container for MPS/MPO tensor chains.
+// ============================================================================
+// `R: TensorRepr` form — `MpsRepr` / `MpoRepr`
+// ============================================================================
+
+/// Internal data container for `R: TensorRepr` MPS / MPO tensor chains.
 ///
-/// Holds raw tensor storages, a shared backend, and canonical form state.
-/// This type is `pub(crate)` — users interact through `Mps` / `Mpo` newtypes.
+/// Backs [`MpsRepr`] / [`MpoRepr`].
 #[derive(Debug, Clone)]
-pub(crate) struct TensorChainData<R, B: ComputeBackend = NativeBackend> {
+pub(crate) struct TensorChainDataRepr<R, B: ComputeBackend = NativeBackend> {
     pub(crate) storages: Vec<R>,
     pub(crate) backend: Arc<B>,
     pub(crate) canonical_form: CanonicalForm,
 }
 
-/// Matrix Product State — rank-3 tensor chain.
+/// Matrix Product State whose sites are `R: TensorRepr`.
 ///
-/// Each site tensor has shape `(χ_L, d, χ_R)`:
-/// - mode 0: left bond dimension
-/// - mode 1: physical dimension
-/// - mode 2: right bond dimension
-///
-/// Edge tensors use dummy bonds (dim 1) to maintain rank 3.
+/// Counterpart of [`Mps`](crate::Mps), which holds sites as
+/// [`TensorData`](arnet_tensor::TensorData).
 #[derive(Debug, Clone)]
-pub struct Mps<R = Dense<f64>, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<R, B>);
+pub struct MpsRepr<R = Dense<f64>, B: ComputeBackend = NativeBackend>(
+    pub(crate) TensorChainDataRepr<R, B>,
+);
 
-/// Matrix Product Operator — rank-4 tensor chain.
+/// Matrix Product Operator whose sites are `R: TensorRepr`.
 ///
-/// Each site tensor has shape `(χ_L, d_ket, d_bra, χ_R)`:
-/// - mode 0: left bond dimension
-/// - mode 1: ket physical dimension
-/// - mode 2: bra physical dimension
-/// - mode 3: right bond dimension
-///
-/// Edge tensors use dummy bonds (dim 1) to maintain rank 4.
+/// Counterpart of [`Mpo`](crate::Mpo), which holds sites as
+/// [`TensorData`](arnet_tensor::TensorData).
 #[derive(Debug, Clone)]
-pub struct Mpo<R = Dense<f64>, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<R, B>);
+pub struct MpoRepr<R = Dense<f64>, B: ComputeBackend = NativeBackend>(
+    pub(crate) TensorChainDataRepr<R, B>,
+);
 
-// ============================================================================
-// Constructors (storage-agnostic, any backend)
-// ============================================================================
-
-impl<R: TensorRepr, B: ComputeBackend> Mps<R, B> {
+impl<R: TensorRepr, B: ComputeBackend> MpsRepr<R, B> {
     /// Create an MPS from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 3 with shape `(χ_L, d, χ_R)`.
     /// The canonical form is initially `Unknown`.
     pub fn with_backend(storages: Vec<R>, backend: Arc<B>) -> Self {
-        Self(TensorChainData {
+        Self(TensorChainDataRepr {
             storages,
             backend,
             canonical_form: CanonicalForm::Unknown,
@@ -154,13 +158,13 @@ impl<R: TensorRepr, B: ComputeBackend> Mps<R, B> {
     }
 }
 
-impl<R: TensorRepr, B: ComputeBackend> Mpo<R, B> {
+impl<R: TensorRepr, B: ComputeBackend> MpoRepr<R, B> {
     /// Create an MPO from raw site storages and an explicit backend.
     ///
     /// Each storage should have rank 4 with shape `(χ_L, d_ket, d_bra, χ_R)`.
     /// The canonical form is initially `Unknown`.
     pub fn with_backend(storages: Vec<R>, backend: Arc<B>) -> Self {
-        Self(TensorChainData {
+        Self(TensorChainDataRepr {
             storages,
             backend,
             canonical_form: CanonicalForm::Unknown,
@@ -168,20 +172,165 @@ impl<R: TensorRepr, B: ComputeBackend> Mpo<R, B> {
     }
 }
 
-// ============================================================================
-// Constructors (storage-agnostic, default NativeBackend)
-// ============================================================================
-
-impl<R: TensorRepr> Mps<R, NativeBackend> {
+impl<R: TensorRepr> MpsRepr<R, NativeBackend> {
     /// Create an MPS from raw site storages using the default NativeBackend.
     pub fn from_storages(storages: Vec<R>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
     }
 }
 
-impl<R: TensorRepr> Mpo<R, NativeBackend> {
+impl<R: TensorRepr> MpoRepr<R, NativeBackend> {
     /// Create an MPO from raw site storages using the default NativeBackend.
     pub fn from_storages(storages: Vec<R>) -> Self {
         Self::with_backend(storages, NativeBackend::shared())
+    }
+}
+
+// ============================================================================
+// `TensorData<St, L>` form — `Mps` / `Mpo`
+// ============================================================================
+
+/// Internal data container for tensor chains whose sites are
+/// [`TensorData<St, L>`](arnet_tensor::TensorData) over
+/// `St: Storage + StorageFor<L>` and `L: TensorLayout`. The backend
+/// is held once at the chain level (not per site).
+pub(crate) struct TensorChainData<St, L, B: ComputeBackend = NativeBackend>
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+{
+    pub(crate) sites: Vec<TensorData<St, L>>,
+    pub(crate) backend: Arc<B>,
+    pub(crate) canonical_form: CanonicalForm,
+}
+
+impl<St, L, B: ComputeBackend> Clone for TensorChainData<St, L, B>
+where
+    St: Storage + StorageFor<L> + Clone,
+    L: TensorLayout + Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            sites: self.sites.clone(),
+            backend: Arc::clone(&self.backend),
+            canonical_form: self.canonical_form.clone(),
+        }
+    }
+}
+
+/// Matrix Product State — rank-3 tensor chain.
+///
+/// Each site is a [`TensorData<St, L>`] with shape `(χ_L, d, χ_R)`:
+/// - mode 0: left bond dimension
+/// - mode 1: physical dimension
+/// - mode 2: right bond dimension
+///
+/// Edge tensors use dummy bonds (dim 1) to maintain rank 3.
+pub struct Mps<St, L, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<St, L, B>)
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout;
+
+impl<St, L, B: ComputeBackend> Clone for Mps<St, L, B>
+where
+    St: Storage + StorageFor<L> + Clone,
+    L: TensorLayout + Clone,
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+/// Matrix Product Operator — rank-4 tensor chain.
+///
+/// Each site is a [`TensorData<St, L>`] with shape
+/// `(χ_L, d_ket, d_bra, χ_R)`:
+/// - mode 0: left bond dimension
+/// - mode 1: ket physical dimension
+/// - mode 2: bra physical dimension
+/// - mode 3: right bond dimension
+///
+/// Edge tensors use dummy bonds (dim 1) to maintain rank 4.
+pub struct Mpo<St, L, B: ComputeBackend = NativeBackend>(pub(crate) TensorChainData<St, L, B>)
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout;
+
+impl<St, L, B: ComputeBackend> Clone for Mpo<St, L, B>
+where
+    St: Storage + StorageFor<L> + Clone,
+    L: TensorLayout + Clone,
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Constructors (storage-agnostic, any backend)
+// ----------------------------------------------------------------------------
+
+impl<St, L, B: ComputeBackend> Mps<St, L, B>
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+{
+    /// Create an MPS from raw site `TensorData` and an explicit backend.
+    ///
+    /// Each site should have rank 3 with shape `(χ_L, d, χ_R)`. The
+    /// canonical form is initially [`CanonicalForm::Unknown`].
+    pub fn with_backend(sites: Vec<TensorData<St, L>>, backend: Arc<B>) -> Self {
+        Self(TensorChainData {
+            sites,
+            backend,
+            canonical_form: CanonicalForm::Unknown,
+        })
+    }
+}
+
+impl<St, L, B: ComputeBackend> Mpo<St, L, B>
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+{
+    /// Create an MPO from raw site `TensorData` and an explicit backend.
+    ///
+    /// Each site should have rank 4 with shape
+    /// `(χ_L, d_ket, d_bra, χ_R)`. The canonical form is initially
+    /// [`CanonicalForm::Unknown`].
+    pub fn with_backend(sites: Vec<TensorData<St, L>>, backend: Arc<B>) -> Self {
+        Self(TensorChainData {
+            sites,
+            backend,
+            canonical_form: CanonicalForm::Unknown,
+        })
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Constructors (default NativeBackend)
+// ----------------------------------------------------------------------------
+
+impl<St, L> Mps<St, L, NativeBackend>
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+{
+    /// Create an MPS from raw site `TensorData` using the default
+    /// [`NativeBackend`].
+    pub fn from_sites(sites: Vec<TensorData<St, L>>) -> Self {
+        Self::with_backend(sites, NativeBackend::shared())
+    }
+}
+
+impl<St, L> Mpo<St, L, NativeBackend>
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+{
+    /// Create an MPO from raw site `TensorData` using the default
+    /// [`NativeBackend`].
+    pub fn from_sites(sites: Vec<TensorData<St, L>>) -> Self {
+        Self::with_backend(sites, NativeBackend::shared())
     }
 }

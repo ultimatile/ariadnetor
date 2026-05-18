@@ -6,7 +6,10 @@
 //! (multi-element sector blocks), which is essential for catching mutants in
 //! the per-sector sweep logic.
 
-use arnet_mps::{CanonicalForm, Mps, TensorChain, canonicalize};
+use arnet_mps::{
+    CanonicalForm, MpsRepr as Mps, TensorChainRepr as TensorChain,
+    canonicalize_repr as canonicalize,
+};
 use arnet_tensor::BlockSparse;
 use arnet_tensor::U1Sector;
 

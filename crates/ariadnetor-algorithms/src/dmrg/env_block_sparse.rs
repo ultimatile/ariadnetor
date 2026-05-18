@@ -1,6 +1,6 @@
 //! BlockSparse implementation of [`super::env::DmrgEnvOps`].
 //!
-//! Mirrors the boundary convention used by `arnet_mps::inner::braket_bsp`
+//! Mirrors the boundary convention used by `arnet_mps::inner_repr::braket_bsp`
 //! (the canonical BlockSparse braket reference): the env tensor's
 //! axis 0 (top-bra-bond) carries the same `Direction` as the MPS edge
 //! bond, axis 1 (W-bond) is flipped relative to the MPO edge, axis 2
@@ -166,7 +166,7 @@ where
     }
 
     /// Per-site left extension. Mirror of the
-    /// `arnet_mps::inner::braket_bsp` loop body, with `bra =
+    /// `arnet_mps::inner_repr::braket_bsp` loop body, with `bra =
     /// site.dagger()` (flips QN directions and duals the flux so the
     /// resulting env's flux returns to `S::identity()` after step 3).
     fn extend_left_step<B: ComputeBackend>(

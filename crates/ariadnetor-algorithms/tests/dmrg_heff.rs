@@ -22,7 +22,7 @@ use arnet_linalg::{
     TruncSvdParams, contract_dense as contract, diagonal_scale_dense as diagonal_scale,
     eigh_dense as eigh,
 };
-use arnet_mps::{Mpo, Mps};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense, MemoryOrder};
 use num_complex::Complex;
@@ -191,7 +191,7 @@ where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
 {
-    use arnet_mps::TensorChain;
+    use arnet_mps::TensorChainRepr as TensorChain;
     let left = envs.left(site).expect("left(site)");
     let right = envs.right(site + 2).expect("right(site+2)");
     let w_i = mpo.storage(site);

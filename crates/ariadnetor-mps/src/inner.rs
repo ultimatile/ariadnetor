@@ -1,4 +1,18 @@
-//! Inner product, norm, and expectation value for MPS
+//! Inner product, norm, and expectation value for MPS.
+//!
+//! - `inner_dense_repr` / `norm_dense_repr` / `braket_dense_repr`
+//!   and the BSp counterparts operate on [`MpsRepr`] / [`MpoRepr`]
+//!   chains.
+//! - [`inner_dense`] / [`norm_dense`] / [`braket_dense`] (and BSp
+//!   counterparts) operate on [`Mps`] / [`Mpo`] chains whose sites
+//!   are [`TensorData<St, L>`](arnet_tensor::TensorData). Their
+//!   bodies build a temporary `*Repr` chain by bumping each site's
+//!   storage `Arc` and delegate to the corresponding `_repr` body;
+//!   [`norm_dense`] and [`norm_bsp`] additionally short-circuit on
+//!   canonical chains and read the Frobenius norm of the orthogonality
+//!   center directly from the new chain's storage without converting.
+
+use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
@@ -6,13 +20,14 @@ use arnet_linalg::{
     BlockSparseContractResultRepr as BlockSparseContractResult,
     contract_block_sparse_repr as contract_block_sparse, contract_dense as contract,
 };
-use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
-use num_traits::{Float, One};
+use arnet_tensor::{
+    BlockCoord, BlockSparse, BlockSparseLayout, BlockSparseStorage, ComputeBackendTensorExt, Dense,
+    DenseLayout, DenseStorage, Direction, QNIndex, Sector, TensorData,
+};
+use num_traits::{Float, One, Zero};
 
-use super::chain::TensorChain;
-use super::types::{CanonicalForm, Mpo, Mps};
+use super::chain::TensorChainRepr;
+use super::types::{CanonicalForm, Mpo, MpoRepr, Mps, MpsRepr};
 
 /// Compute the inner product ⟨ψ|φ⟩ of two MPS via the transfer matrix method.
 ///
@@ -21,7 +36,7 @@ use super::types::{CanonicalForm, Mpo, Mps};
 /// # Panics
 ///
 /// Panics if the MPS lengths differ or either is empty.
-pub(super) fn inner_dense<T, B>(psi: &Mps<Dense<T>, B>, phi: &Mps<Dense<T>, B>) -> T
+pub(super) fn inner_dense_repr<T, B>(psi: &MpsRepr<Dense<T>, B>, phi: &MpsRepr<Dense<T>, B>) -> T
 where
     T: Scalar,
     B: ComputeBackend,
@@ -59,7 +74,7 @@ where
 /// - `Mixed`: returns Frobenius norm of the orthogonality center tensor.
 ///
 /// Otherwise computes the full inner product.
-pub(super) fn norm_dense<T, B>(psi: &Mps<Dense<T>, B>) -> T::Real
+pub(super) fn norm_dense_repr<T, B>(psi: &MpsRepr<Dense<T>, B>) -> T::Real
 where
     T: Scalar,
     B: ComputeBackend,
@@ -68,7 +83,7 @@ where
         CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
         CanonicalForm::Mixed { center } => psi.storage(*center).norm(),
         _ => {
-            let overlap = inner_dense(psi, psi);
+            let overlap = inner_dense_repr(psi, psi);
             overlap.re().sqrt()
         }
     }
@@ -82,10 +97,10 @@ where
 /// # Panics
 ///
 /// Panics if the MPS/MPO lengths differ or any is empty.
-pub(super) fn braket_dense<T, B>(
-    psi: &Mps<Dense<T>, B>,
-    op: &Mpo<Dense<T>, B>,
-    phi: &Mps<Dense<T>, B>,
+pub(super) fn braket_dense_repr<T, B>(
+    psi: &MpsRepr<Dense<T>, B>,
+    op: &MpoRepr<Dense<T>, B>,
+    phi: &MpsRepr<Dense<T>, B>,
 ) -> T
 where
     T: Scalar,
@@ -143,9 +158,9 @@ where
 /// # Panics
 ///
 /// Panics if the MPS lengths differ or either is empty.
-pub(super) fn inner_bsp<T, S, B>(
-    psi: &Mps<BlockSparse<T, S>, B>,
-    phi: &Mps<BlockSparse<T, S>, B>,
+pub(super) fn inner_bsp_repr<T, S, B>(
+    psi: &MpsRepr<BlockSparse<T, S>, B>,
+    phi: &MpsRepr<BlockSparse<T, S>, B>,
 ) -> T
 where
     T: Scalar,
@@ -236,10 +251,10 @@ where
 /// # Panics
 ///
 /// Panics if the MPS/MPO lengths differ or any is empty.
-pub(super) fn braket_bsp<T, S, B>(
-    psi: &Mps<BlockSparse<T, S>, B>,
-    op: &Mpo<BlockSparse<T, S>, B>,
-    phi: &Mps<BlockSparse<T, S>, B>,
+pub(super) fn braket_bsp_repr<T, S, B>(
+    psi: &MpsRepr<BlockSparse<T, S>, B>,
+    op: &MpoRepr<BlockSparse<T, S>, B>,
+    phi: &MpsRepr<BlockSparse<T, S>, B>,
 ) -> T
 where
     T: Scalar,
@@ -332,8 +347,8 @@ where
 /// Exploits canonical form when available:
 /// - `Left` / `Right`: normalized by construction → 1.0.
 /// - `Mixed { center }`: Frobenius norm of the center tensor.
-/// - Otherwise: full inner product via [`inner`].
-pub(super) fn norm_bsp<T, S, B>(psi: &Mps<BlockSparse<T, S>, B>) -> T::Real
+/// - Otherwise: full inner product via [`inner_bsp_repr`].
+pub(super) fn norm_bsp_repr<T, S, B>(psi: &MpsRepr<BlockSparse<T, S>, B>) -> T::Real
 where
     T: Scalar,
     S: Sector,
@@ -343,8 +358,190 @@ where
         CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
         CanonicalForm::Mixed { center } => psi.storage(*center).norm(),
         _ => {
-            let overlap = inner_bsp(psi, psi);
+            let overlap = inner_bsp_repr(psi, psi);
             overlap.re().sqrt()
         }
     }
+}
+
+// ============================================================================
+// `TensorData`-typed shims — delegate to the `*_repr` bodies above
+// ============================================================================
+
+fn dense_sites_to_repr<T: Scalar>(
+    sites: &[TensorData<DenseStorage<T>, DenseLayout>],
+) -> Vec<Dense<T>> {
+    sites
+        .iter()
+        .map(|td| Dense::from_tensor_data(td.clone()))
+        .collect()
+}
+
+fn bsp_sites_to_repr<T: Scalar, S: Sector>(
+    sites: &[TensorData<BlockSparseStorage<T>, BlockSparseLayout<S>>],
+) -> Vec<BlockSparse<T, S>> {
+    sites
+        .iter()
+        .map(|td| BlockSparse::from_tensor_data(td.clone()))
+        .collect()
+}
+
+fn dense_chain_to_repr<T, B>(chain: &Mps<DenseStorage<T>, DenseLayout, B>) -> MpsRepr<Dense<T>, B>
+where
+    T: Scalar,
+    B: ComputeBackend,
+{
+    let mut repr = MpsRepr::with_backend(
+        dense_sites_to_repr(&chain.0.sites),
+        Arc::clone(&chain.0.backend),
+    );
+    repr.0.canonical_form = chain.0.canonical_form.clone();
+    repr
+}
+
+fn dense_mpo_to_repr<T, B>(op: &Mpo<DenseStorage<T>, DenseLayout, B>) -> MpoRepr<Dense<T>, B>
+where
+    T: Scalar,
+    B: ComputeBackend,
+{
+    MpoRepr::with_backend(dense_sites_to_repr(&op.0.sites), Arc::clone(&op.0.backend))
+}
+
+fn bsp_chain_to_repr<T, S, B>(
+    chain: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+) -> MpsRepr<BlockSparse<T, S>, B>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let mut repr = MpsRepr::with_backend(
+        bsp_sites_to_repr(&chain.0.sites),
+        Arc::clone(&chain.0.backend),
+    );
+    repr.0.canonical_form = chain.0.canonical_form.clone();
+    repr
+}
+
+fn bsp_mpo_to_repr<T, S, B>(
+    op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+) -> MpoRepr<BlockSparse<T, S>, B>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    MpoRepr::with_backend(bsp_sites_to_repr(&op.0.sites), Arc::clone(&op.0.backend))
+}
+
+/// `Mps<DenseStorage<T>, DenseLayout, B>` inner-product shim.
+pub(super) fn inner_dense<T, B>(
+    psi: &Mps<DenseStorage<T>, DenseLayout, B>,
+    phi: &Mps<DenseStorage<T>, DenseLayout, B>,
+) -> T
+where
+    T: Scalar,
+    B: ComputeBackend,
+{
+    inner_dense_repr(&dense_chain_to_repr(psi), &dense_chain_to_repr(phi))
+}
+
+/// `Mps<DenseStorage<T>, DenseLayout, B>` norm shim. Honors the
+/// caller's canonical-form flag without per-site conversion when the
+/// chain is canonical.
+pub(super) fn norm_dense<T, B>(psi: &Mps<DenseStorage<T>, DenseLayout, B>) -> T::Real
+where
+    T: Scalar,
+    B: ComputeBackend,
+{
+    match &psi.0.canonical_form {
+        CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
+        CanonicalForm::Mixed { center } => {
+            // Compute Frobenius norm of the center site without round-trip.
+            let td = &psi.0.sites[*center];
+            let data = td.storage().data();
+            let mut acc = T::Real::zero();
+            for v in data {
+                let r = v.re();
+                let i = v.im();
+                acc = acc + r * r + i * i;
+            }
+            acc.sqrt()
+        }
+        _ => norm_dense_repr(&dense_chain_to_repr(psi)),
+    }
+}
+
+/// `Mps<DenseStorage<T>, DenseLayout, B>` braket shim.
+pub(super) fn braket_dense<T, B>(
+    psi: &Mps<DenseStorage<T>, DenseLayout, B>,
+    op: &Mpo<DenseStorage<T>, DenseLayout, B>,
+    phi: &Mps<DenseStorage<T>, DenseLayout, B>,
+) -> T
+where
+    T: Scalar,
+    B: ComputeBackend,
+{
+    braket_dense_repr(
+        &dense_chain_to_repr(psi),
+        &dense_mpo_to_repr(op),
+        &dense_chain_to_repr(phi),
+    )
+}
+
+/// `Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>` inner-product
+/// shim.
+pub(super) fn inner_bsp<T, S, B>(
+    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    phi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+) -> T
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    inner_bsp_repr(&bsp_chain_to_repr(psi), &bsp_chain_to_repr(phi))
+}
+
+/// `Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>` norm shim.
+pub(super) fn norm_bsp<T, S, B>(
+    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+) -> T::Real
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    match &psi.0.canonical_form {
+        CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
+        CanonicalForm::Mixed { center } => {
+            let data = psi.0.sites[*center].storage().data();
+            let mut acc = T::Real::zero();
+            for v in data {
+                let r = v.re();
+                let i = v.im();
+                acc = acc + r * r + i * i;
+            }
+            acc.sqrt()
+        }
+        _ => norm_bsp_repr(&bsp_chain_to_repr(psi)),
+    }
+}
+
+/// `Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>` braket shim.
+pub(super) fn braket_bsp<T, S, B>(
+    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    phi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+) -> T
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    braket_bsp_repr(
+        &bsp_chain_to_repr(psi),
+        &bsp_mpo_to_repr(op),
+        &bsp_chain_to_repr(phi),
+    )
 }

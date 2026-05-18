@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use arnet_algorithms::dmrg::DmrgEnvs;
-use arnet_mps::{Mpo, Mps};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, Sector, U1Sector};
 use num_complex::Complex;
 

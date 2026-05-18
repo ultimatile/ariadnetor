@@ -1,4 +1,14 @@
-//! MPO-MPS application: apply an MPO to an MPS
+//! MPO-MPS application: apply an MPO to an MPS.
+//!
+//! - `apply_dense_repr` / `apply_zipup_dense_repr` /
+//!   `apply_bsp_repr` / `apply_zipup_bsp_repr` operate on
+//!   [`MpsRepr`] / [`MpoRepr`] chains.
+//! - [`apply_dense`] / [`apply_zipup_dense`] / [`apply_bsp`] /
+//!   [`apply_zipup_bsp`] operate on [`Mps`] / [`Mpo`] chains whose
+//!   sites are [`TensorData<St, L>`](arnet_tensor::TensorData). Their
+//!   bodies build a temporary `*Repr` chain by bumping each site's
+//!   storage `Arc`, delegate to the corresponding `_repr` body, and
+//!   wrap the result back.
 
 use std::sync::Arc;
 
@@ -15,8 +25,8 @@ use arnet_linalg::{
 };
 use arnet_tensor::{BlockSparse, Dense, Direction, Sector, reorder};
 
-use super::chain::TensorChain;
-use super::types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncateParams};
+use super::chain::TensorChainRepr;
+use super::types::{CanonicalForm, MpoRepr, MpsRepr, SvdAbsorb, TruncateParams};
 
 // Forward pass switches from QR (lossless, fast) to truncated SVD when the
 // natural rank exceeds this multiple of the user-supplied chi_max. The
@@ -42,11 +52,11 @@ const ZIPUP_SVD_RATIO: usize = 4;
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub(super) fn apply_dense<T, B>(
-    op: &Mpo<Dense<T>, B>,
-    psi: &Mps<Dense<T>, B>,
+pub(super) fn apply_dense_repr<T, B>(
+    op: &MpoRepr<Dense<T>, B>,
+    psi: &MpsRepr<Dense<T>, B>,
     params: Option<&TruncateParams>,
-) -> Mps<Dense<T>, B>
+) -> MpsRepr<Dense<T>, B>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -86,12 +96,12 @@ where
         storages.push(fused);
     }
 
-    let mut result_mps = Mps::with_backend(storages, Arc::clone(psi.backend_arc()));
+    let mut result_mps = MpsRepr::with_backend(storages, Arc::clone(psi.backend_arc()));
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_dense(&mut result_mps, center);
-        super::truncate::truncate_dense(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_dense_repr(&mut result_mps, center);
+        super::truncate::truncate_dense_repr(&mut result_mps, trunc_params);
     }
 
     result_mps
@@ -116,7 +126,7 @@ where
 /// already has left-isometric tensors at sites `0..N-1` and the
 /// orthogonality center at site `N-1` (`Mixed { center: N-1 }`).
 ///
-/// Unlike [`apply_dense`], zip-up never materializes the inflated bond
+/// Unlike [`apply_dense_repr`], zip-up never materializes the inflated bond
 /// dimension `w * χ` simultaneously across all sites; each per-site
 /// reduction is local. The cost is that per-cut SVDs are taken before the
 /// right environment is fully resolved, so for the same `chi_max` the
@@ -136,18 +146,19 @@ where
 /// `Some(0)`; the naive path canonicalizes the result to an arbitrary
 /// center, but zip-up always finishes with the orthogonality center at
 /// site `0`. Other values are rejected up front; callers can shift the
-/// center afterwards via [`canonicalize`](super::canonicalize).
+/// center afterwards via
+/// [`canonicalize_dense_repr`](super::canonicalize::canonicalize_dense_repr).
 ///
 /// # Panics
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// `params.absorb` is not [`SvdAbsorb::Right`], or `params.center` is
 /// `Some(c)` with `c != 0`.
-pub(super) fn apply_zipup_dense<T, B>(
-    op: &Mpo<Dense<T>, B>,
-    psi: &Mps<Dense<T>, B>,
+pub(super) fn apply_zipup_dense_repr<T, B>(
+    op: &MpoRepr<Dense<T>, B>,
+    psi: &MpsRepr<Dense<T>, B>,
     params: Option<&TruncateParams>,
-) -> Mps<Dense<T>, B>
+) -> MpsRepr<Dense<T>, B>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -246,7 +257,7 @@ where
     }
 
     let Some(trunc_params) = params else {
-        let mut result_mps = Mps::with_backend(tensors, Arc::clone(psi.backend_arc()));
+        let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
         result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
         return result_mps;
     };
@@ -272,7 +283,7 @@ where
         tensors[j - 1] = new_prev;
     }
 
-    let mut result_mps = Mps::with_backend(tensors, Arc::clone(psi.backend_arc()));
+    let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
     result_mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
     result_mps
 }
@@ -297,11 +308,11 @@ where
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub(super) fn apply_bsp<T, S, B>(
-    op: &Mpo<BlockSparse<T, S>, B>,
-    psi: &Mps<BlockSparse<T, S>, B>,
+pub(super) fn apply_bsp_repr<T, S, B>(
+    op: &MpoRepr<BlockSparse<T, S>, B>,
+    psi: &MpsRepr<BlockSparse<T, S>, B>,
     params: Option<&TruncateParams>,
-) -> Mps<BlockSparse<T, S>, B>
+) -> MpsRepr<BlockSparse<T, S>, B>
 where
     T: Scalar,
     S: Sector,
@@ -318,12 +329,12 @@ where
         storages.push(local_product_bsp(backend, op.storage(j), psi.storage(j)));
     }
 
-    let mut result_mps = Mps::with_backend(storages, Arc::clone(psi.backend_arc()));
+    let mut result_mps = MpsRepr::with_backend(storages, Arc::clone(psi.backend_arc()));
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_bsp(&mut result_mps, center);
-        super::truncate::truncate_bsp(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_bsp_repr(&mut result_mps, center);
+        super::truncate::truncate_bsp_repr(&mut result_mps, trunc_params);
     }
 
     result_mps
@@ -387,11 +398,11 @@ where
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// `params.absorb` is not [`SvdAbsorb::Right`], or `params.center` is
 /// `Some(c)` with `c != 0`.
-pub(super) fn apply_zipup_bsp<T, S, B>(
-    op: &Mpo<BlockSparse<T, S>, B>,
-    psi: &Mps<BlockSparse<T, S>, B>,
+pub(super) fn apply_zipup_bsp_repr<T, S, B>(
+    op: &MpoRepr<BlockSparse<T, S>, B>,
+    psi: &MpsRepr<BlockSparse<T, S>, B>,
     params: Option<&TruncateParams>,
-) -> Mps<BlockSparse<T, S>, B>
+) -> MpsRepr<BlockSparse<T, S>, B>
 where
     T: Scalar,
     S: Sector,
@@ -479,7 +490,7 @@ where
     }
 
     let Some(trunc_params) = params else {
-        let mut result_mps = Mps::with_backend(tensors, Arc::clone(psi.backend_arc()));
+        let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
         result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
         return result_mps;
     };
@@ -508,7 +519,7 @@ where
         tensors[j - 1] = new_prev;
     }
 
-    let mut result_mps = Mps::with_backend(tensors, Arc::clone(psi.backend_arc()));
+    let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
     result_mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
     result_mps
 }

@@ -37,7 +37,7 @@ use arnet_linalg::{
     LinalgError, TruncSvdParams, diagonal_scale_block_sparse_repr as diagonal_scale_block_sparse,
     diagonal_scale_dense as diagonal_scale,
 };
-use arnet_mps::{Mpo, Mps, MpsOps};
+use arnet_mps::{MpoRepr as Mpo, MpsOpsRepr as MpsOps, MpsRepr as Mps};
 use arnet_tensor::{BlockSparse, Dense, Sector, TensorRepr};
 
 use super::env::{DmrgEnvOps, DmrgEnvs};

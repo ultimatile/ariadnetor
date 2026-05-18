@@ -1,4 +1,14 @@
-//! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps
+//! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps.
+//!
+//! - `truncate_dense_repr` / `truncate_bsp_repr` operate on
+//!   [`MpsRepr`] / [`MpoRepr`] chains over [`Dense<T>`] /
+//!   [`BlockSparse<T, S>`].
+//! - [`truncate_dense`] / [`truncate_bsp`] operate on [`Mps`] /
+//!   [`Mpo`] chains whose sites are
+//!   [`TensorData<St, L>`](arnet_tensor::TensorData). Their bodies
+//!   build a temporary `*Repr` chain by bumping each site's storage
+//!   `Arc`, delegate to the corresponding `_repr` body, and write
+//!   the truncated sites back.
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
@@ -9,13 +19,11 @@ use arnet_linalg::{
     diagonal_scale_dense as diagonal_scale, trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
     trunc_svd_dense as trunc_svd,
 };
-use arnet_tensor::BlockSparse;
-use arnet_tensor::Sector;
-use arnet_tensor::{Dense, reorder};
+use arnet_tensor::{BlockSparse, Dense, Sector, reorder};
 use num_traits::{Float, Zero};
 
-use super::canonicalize::{canonicalize_bsp, canonicalize_dense};
-use super::chain::TensorChain;
+use super::canonicalize::{canonicalize_bsp_repr, canonicalize_dense_repr};
+use super::chain::TensorChainRepr;
 use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
 /// Truncate bond dimensions of a tensor chain via SVD sweeps.
@@ -34,11 +42,11 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 ///
 /// Panics if the chain is empty, or if `params.center` is `Some(c)` with
 /// `c >= chain.len()`.
-pub(super) fn truncate_dense<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub(super) fn truncate_dense_repr<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<Dense<T>, B>,
+    C: TensorChainRepr<Dense<T>, B>,
 {
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
@@ -49,7 +57,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize_dense(chain, c);
+            canonicalize_dense_repr(chain, c);
             c
         }
     };
@@ -108,7 +116,7 @@ fn restore_center_sweep_dense<T, B, C>(
 ) where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<Dense<T>, B>,
+    C: TensorChainRepr<Dense<T>, B>,
 {
     for j in 0..center {
         *total_err_sq = *total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
@@ -126,7 +134,7 @@ fn right_trunc_step<T, B, C>(
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<Dense<T>, B>,
+    C: TensorChainRepr<Dense<T>, B>,
 {
     let order = chain.backend().preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
@@ -199,7 +207,7 @@ fn left_trunc_step<T, B, C>(
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChain<Dense<T>, B>,
+    C: TensorChainRepr<Dense<T>, B>,
 {
     let order = chain.backend().preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
@@ -327,12 +335,14 @@ fn absorb_from_right<T: Scalar>(
 
 /// Truncate bond dimensions of a block-sparse tensor chain via SVD sweeps.
 ///
-/// BlockSparse analogue of [`truncate`]. Uses [`trunc_svd_block_sparse`],
-/// [`diagonal_scale_block_sparse`], and [`contract_block_sparse`] instead of
-/// their Dense counterparts. No reshape or memory-order conversion is needed
-/// because block-sparse SVD preserves the leg structure.
+/// BlockSparse analogue of [`truncate_dense_repr`]. Uses
+/// [`trunc_svd_block_sparse`], [`diagonal_scale_block_sparse`], and
+/// [`contract_block_sparse`] instead of their Dense counterparts. No
+/// reshape or memory-order conversion is needed because block-sparse
+/// SVD preserves the leg structure.
 ///
-/// See [`truncate`] for the sweep structure and canonical-form semantics.
+/// See [`truncate_dense_repr`] for the sweep structure and
+/// canonical-form semantics.
 ///
 /// # Panics
 ///
@@ -340,12 +350,15 @@ fn absorb_from_right<T: Scalar>(
 /// `c >= chain.len()` and the chain is not already in `Mixed`, `Left`, or
 /// `Right` canonical form (since those forms determine the center
 /// internally and ignore `params.center`).
-pub(super) fn truncate_bsp<T, S, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub(super) fn truncate_bsp_repr<T, S, B, C>(
+    chain: &mut C,
+    params: &TruncateParams,
+) -> TruncResult<T>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChain<BlockSparse<T, S>, B>,
+    C: TensorChainRepr<BlockSparse<T, S>, B>,
 {
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
@@ -356,7 +369,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize_bsp(chain, c);
+            canonicalize_bsp_repr(chain, c);
             c
         }
     };
@@ -409,7 +422,7 @@ where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChain<BlockSparse<T, S>, B>,
+    C: TensorChainRepr<BlockSparse<T, S>, B>,
 {
     let (left_storage, right_factor, err) = {
         let site = chain.storage(j);
@@ -468,7 +481,7 @@ where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChain<BlockSparse<T, S>, B>,
+    C: TensorChainRepr<BlockSparse<T, S>, B>,
 {
     let (right_storage, left_factor, err) = {
         let site = chain.storage(j);

@@ -17,7 +17,10 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_mps::{
+    CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
+    canonicalize_repr as canonicalize,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use rand::Rng;

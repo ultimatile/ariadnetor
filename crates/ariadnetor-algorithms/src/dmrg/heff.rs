@@ -6,7 +6,7 @@
 //! right-canonical pair via truncated SVD.
 //!
 //! Axis convention (consistent with [`super::env`] and the
-//! `arnet_mps::inner` braket family — `braket_dense` for [`Dense<T>`],
+//! `arnet_mps::inner_repr` braket family — `braket_dense` for [`Dense<T>`],
 //! `braket_bsp` for `BlockSparse<T, S>`):
 //!
 //! - Env tensor `(top-bra-bond, W-bond, bot-ket-bond)` with bra = ket
@@ -31,7 +31,7 @@ use std::sync::Arc;
 use arnet_core::backend::ComputeBackend;
 use arnet_core::{MemoryOrder, Scalar};
 use arnet_linalg::{TruncSvdParams, contract_dense as contract, trunc_svd_dense as trunc_svd};
-use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, reorder};
 
@@ -477,7 +477,7 @@ where
     let rm = MemoryOrder::RowMajor;
     let reshape_to_3d = |t_2d: Dense<T>, new_shape: Vec<usize>| -> Dense<T> {
         // 2D backend-order → RM → multi-dim split → backend-order.
-        // Mirrors the pattern in `arnet_mps::truncate::truncate_dense`.
+        // Mirrors the pattern in `arnet_mps::truncate_repr::truncate_dense`.
         let rm_view = reorder(&t_2d, order, rm);
         let multi = rm_view.reshape(new_shape);
         reorder(&multi, rm, order)

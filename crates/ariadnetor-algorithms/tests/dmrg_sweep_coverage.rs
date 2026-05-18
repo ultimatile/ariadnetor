@@ -21,7 +21,10 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_core::Scalar;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps, braket, canonicalize, norm};
+use arnet_mps::{
+    MpoRepr as Mpo, MpsRepr as Mps, braket_repr as braket, canonicalize_repr as canonicalize,
+    norm_repr as norm,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use rand::Rng;

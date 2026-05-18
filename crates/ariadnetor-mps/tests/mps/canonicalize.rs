@@ -1,6 +1,6 @@
 //! Canonicalization tests.
 
-use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
+use arnet_mps::{self as mps, CanonicalForm, MpsRepr as Mps, TensorChainRepr as TensorChain};
 use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
@@ -10,7 +10,7 @@ fn test_canonicalize_center_0() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize_repr(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
@@ -47,7 +47,7 @@ fn test_canonicalize_center_middle() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::canonicalize(&mut mps, 2);
+    mps::canonicalize_repr(&mut mps, 2);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 
@@ -78,7 +78,7 @@ fn test_canonicalize_center_middle() {
 fn test_canonicalize_center_last() {
     let mut mps = make_4site_mps();
 
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize_repr(&mut mps, 3);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
@@ -100,7 +100,7 @@ fn test_canonicalize_single_site() {
     )];
     let mut mps = Mps::from_storages(storages);
 
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize_repr(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
@@ -111,7 +111,7 @@ fn test_canonicalize_preserves_physical_dims() {
 
     let phys_dims: Vec<usize> = (0..4).map(|j| mps.storage(j).shape()[1]).collect();
 
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize_repr(&mut mps, 1);
 
     for (j, &expected) in phys_dims.iter().enumerate() {
         assert_eq!(

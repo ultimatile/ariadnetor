@@ -6,8 +6,8 @@
 //! state comparison).
 
 use arnet_mps::{
-    CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams, canonicalize,
-    truncate,
+    CanonicalForm, MpsRepr as Mps, SvdAbsorb, TensorChainRepr as TensorChain, TruncSvdParams,
+    TruncateParams, canonicalize_repr as canonicalize, truncate_repr as truncate,
 };
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
 

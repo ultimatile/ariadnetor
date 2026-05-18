@@ -17,7 +17,7 @@
 //!    derived from the MPS sites at `(site, site+1)`.
 //! 2. **Contract** through the env / W tensors using
 //!    [`arnet_linalg::contract_block_sparse`] in four steps. The
-//!    axis convention mirrors `arnet_mps::inner::braket_bsp` and
+//!    axis convention mirrors `arnet_mps::inner_repr::braket_bsp` and
 //!    the Phase 6.1 `extend_*_step` kernels; the natural output
 //!    order `lhs_free | rhs_free` ends in
 //!    `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
@@ -45,7 +45,7 @@ use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{
     BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
 };
-use arnet_mps::{Mpo, Mps};
+use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
 use arnet_tensor::{BlockSparse, Sector};
 
 #[cfg(feature = "arpack")]

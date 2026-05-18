@@ -2,8 +2,9 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{
-    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
-    TruncateParams, apply, inner, norm,
+    self as mps, ApplyMethod, CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, SvdAbsorb,
+    TensorChainRepr as TensorChain, TruncSvdParams, TruncateParams, apply_repr as apply,
+    inner_repr as inner, norm_repr as norm,
 };
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
 
@@ -161,7 +162,7 @@ fn zipup_lossless_matches_naive_no_params() {
     let identity = make_identity_u1_mpo(4);
 
     let phi_naive = apply(&identity, &psi, None);
-    let phi_zipup = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -179,7 +180,8 @@ fn zipup_lossless_matches_naive_large_chi() {
     });
 
     let phi_naive = apply(&identity, &psi, Some(&lossless));
-    let phi_zipup = mps::apply_with_method(&identity, &psi, Some(&lossless), ApplyMethod::ZipUp);
+    let phi_zipup =
+        mps::apply_with_method_repr(&identity, &psi, Some(&lossless), ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -191,7 +193,7 @@ fn zipup_identity_preserves_state() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
 
     let v_before = bsp_mps_contract_full(&psi);
     let v_after = bsp_mps_contract_full(&phi);
@@ -203,7 +205,7 @@ fn zipup_canonical_form() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi_none = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi_none = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
     assert_eq!(
         *phi_none.canonical_form(),
         CanonicalForm::Mixed { center: 3 }
@@ -213,7 +215,7 @@ fn zipup_canonical_form() {
         chi_max: Some(8),
         target_trunc_err: None,
     });
-    let phi_some = mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_some = mps::apply_with_method_repr(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
     assert_eq!(
         *phi_some.canonical_form(),
         CanonicalForm::Mixed { center: 0 }
@@ -225,7 +227,7 @@ fn zipup_output_structure_and_flux() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
 
     assert_eq!(phi.len(), psi.len());
     for j in 0..phi.len() {
@@ -364,7 +366,7 @@ fn zipup_lossless_matches_naive_nontrivial_mpo_no_params() {
     let op = make_total_n_u1_mpo(4);
 
     let phi_naive = apply(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method_repr(&op, &psi, None, ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -381,7 +383,7 @@ fn zipup_lossless_matches_naive_nontrivial_mpo_large_chi() {
     });
 
     let phi_naive = apply(&op, &psi, Some(&lossless));
-    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method_repr(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -397,7 +399,7 @@ fn zipup_truncates_bond_dim() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi = mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method_repr(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
@@ -433,7 +435,7 @@ fn zipup_truncated_matches_naive_truncated_chi1() {
     });
 
     let phi_naive = apply(&op, &psi, Some(&params));
-    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method_repr(&op, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi_zipup.bond_dims() {
         assert!(d <= 1, "zipup bond {d} exceeds chi_max=1");
@@ -466,7 +468,7 @@ fn zipup_no_params_reduces_bond_dims_vs_naive_at_early_sites() {
     let op = make_total_n_u1_mpo(4);
 
     let phi_naive = apply(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method_repr(&op, &psi, None, ApplyMethod::ZipUp);
 
     let bd_naive = phi_naive.bond_dims();
     let bd_zipup = phi_zipup.bond_dims();
@@ -530,7 +532,7 @@ fn zipup_rejects_all_unsupported_truncate_params() {
 
     for (name, params) in unsupported {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp)
+            mps::apply_with_method_repr(&identity, &psi, Some(&params), ApplyMethod::ZipUp)
         }));
         assert!(
             result.is_err(),
