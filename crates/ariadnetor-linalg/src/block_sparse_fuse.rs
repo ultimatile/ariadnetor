@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensorData, Direction, QNIndex, Sector};
 
 use crate::block_sparse_decomp::fused_sector::enumerate_fused_tuples;
 use crate::error::LinalgError;
@@ -26,12 +26,37 @@ use crate::error::LinalgError;
 /// Within each sector, tuples are ordered lexicographically (matching the
 /// canonical order from [`enumerate_fused_tuples`]).
 ///
+/// The output is laid out at `tensor.layout().order()`; this operation
+/// does not consult `backend.preferred_order()`.
+///
 /// # Errors
 ///
 /// Returns `LinalgError::InvalidArgument` if:
 /// - `count < 2`
 /// - `start + count > tensor.rank()`
 pub fn fuse_legs_block_sparse<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensorData<T, S>,
+    start: usize,
+    count: usize,
+    fused_direction: Direction,
+) -> Result<BlockSparseTensorData<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let order = tensor.layout().order();
+    let bs = BlockSparse::from_tensor_data(tensor.clone());
+    let r = fuse_legs_block_sparse_inner(backend, &bs, start, count, fused_direction, order)?;
+    Ok(r.into_tensor_data(order))
+}
+
+/// Legacy `&BlockSparse<T, S>`-typed sister of
+/// [`fuse_legs_block_sparse`]; output tagged at
+/// `backend.preferred_order()` (historical convention). Collapses with
+/// the canonical fn in Unit 5.
+pub fn fuse_legs_block_sparse_repr<T, S, B>(
     backend: &B,
     tensor: &BlockSparse<T, S>,
     start: usize,
@@ -43,6 +68,30 @@ where
     S: Sector,
     B: ComputeBackend,
 {
+    fuse_legs_block_sparse_inner(
+        backend,
+        tensor,
+        start,
+        count,
+        fused_direction,
+        backend.preferred_order(),
+    )
+}
+
+fn fuse_legs_block_sparse_inner<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparse<T, S>,
+    start: usize,
+    count: usize,
+    fused_direction: Direction,
+    order: MemoryOrder,
+) -> Result<BlockSparse<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let _ = backend;
     let rank = tensor.rank();
 
     if count < 2 {
@@ -58,7 +107,6 @@ where
     }
 
     let indices = tensor.indices();
-    let order = backend.preferred_order();
 
     // Enumerate ALL fused tuples from the Kronecker product of the fused legs.
     let all_fused_groups = enumerate_fused_tuples(&indices[start..start + count]);

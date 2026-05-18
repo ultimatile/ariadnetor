@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::BlockSparse;
 use arnet_tensor::Sector;
+use arnet_tensor::{BlockSparse, BlockSparseTensorData};
 
 use crate::block_sparse_decomp::BlockSingularValues;
 use crate::error::LinalgError;
@@ -20,7 +20,8 @@ use crate::error::LinalgError;
 /// applies. Element `i` along the scaled axis is multiplied by `weights[i]`
 /// for that sector.
 ///
-/// Memory layout is determined by the backend's `preferred_order()`.
+/// The output is laid out at `tensor.layout().order()`; this operation
+/// does not consult `backend.preferred_order()`.
 ///
 /// # Errors
 ///
@@ -28,6 +29,25 @@ use crate::error::LinalgError;
 /// from `weights`, or the weight vector length doesn't match the block
 /// dimension at `axis`.
 pub fn diagonal_scale_block_sparse<T, S>(
+    backend: &impl ComputeBackend,
+    tensor: &BlockSparseTensorData<T, S>,
+    weights: &BlockSingularValues<T::Real, S>,
+    axis: usize,
+) -> Result<BlockSparseTensorData<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+{
+    let order = tensor.layout().order();
+    let bs = BlockSparse::from_tensor_data(tensor.clone());
+    let r = diagonal_scale_block_sparse_inner(backend, &bs, weights, axis, order)?;
+    Ok(r.into_tensor_data(order))
+}
+
+/// Legacy `&BlockSparse<T, S>`-typed sister of
+/// [`diagonal_scale_block_sparse`]; output tagged at
+/// `backend.preferred_order()` (historical convention).
+pub fn diagonal_scale_block_sparse_repr<T, S>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparse<T, S>,
     weights: &BlockSingularValues<T::Real, S>,
@@ -37,6 +57,21 @@ where
     T: Scalar,
     S: Sector,
 {
+    diagonal_scale_block_sparse_inner(backend, tensor, weights, axis, backend.preferred_order())
+}
+
+fn diagonal_scale_block_sparse_inner<T, S>(
+    backend: &impl ComputeBackend,
+    tensor: &BlockSparse<T, S>,
+    weights: &BlockSingularValues<T::Real, S>,
+    axis: usize,
+    order: MemoryOrder,
+) -> Result<BlockSparse<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+{
+    let _ = backend;
     if axis >= tensor.rank() {
         return Err(LinalgError::InvalidArgument(format!(
             "axis {axis} out of range for rank {}",
@@ -79,7 +114,7 @@ where
 
         // Stride for the scaled axis: product of trailing dims (RowMajor)
         // or product of preceding dims (ColumnMajor).
-        let inner_stride: usize = match backend.preferred_order() {
+        let inner_stride: usize = match order {
             MemoryOrder::RowMajor => block_shape[axis + 1..].iter().product(),
             MemoryOrder::ColumnMajor => block_shape[..axis].iter().product(),
         };

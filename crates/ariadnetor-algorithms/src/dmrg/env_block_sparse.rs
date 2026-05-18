@@ -18,7 +18,10 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{BlockSparseContractResult, LinalgError, contract_block_sparse};
+use arnet_linalg::{
+    BlockSparseContractResultRepr as BlockSparseContractResult, LinalgError,
+    contract_block_sparse_repr as contract_block_sparse,
+};
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, MemoryOrder, QNIndex, Sector, flat_index};
 
 use super::env::{DmrgEnvError, DmrgEnvOps};

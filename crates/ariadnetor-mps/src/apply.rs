@@ -5,9 +5,12 @@ use std::sync::Arc;
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{
-    BlockSparseContractResult, TruncSvdParams, contract_block_sparse, contract_dense as contract,
-    diagonal_scale_block_sparse, diagonal_scale_dense as diagonal_scale, fuse_legs_block_sparse,
-    permute_block_sparse, qr_block_sparse, qr_dense as qr, trunc_svd_block_sparse,
+    BlockSparseContractResultRepr as BlockSparseContractResult, TruncSvdParams,
+    contract_block_sparse_repr as contract_block_sparse, contract_dense as contract,
+    diagonal_scale_block_sparse_repr as diagonal_scale_block_sparse,
+    diagonal_scale_dense as diagonal_scale, fuse_legs_block_sparse_repr as fuse_legs_block_sparse,
+    permute_block_sparse_repr as permute_block_sparse, qr_block_sparse_repr as qr_block_sparse,
+    qr_dense as qr, trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
     trunc_svd_dense as trunc_svd,
 };
 use arnet_tensor::{BlockSparse, Dense, Direction, Sector, reorder};

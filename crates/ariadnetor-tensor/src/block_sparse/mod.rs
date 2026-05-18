@@ -19,6 +19,7 @@ use aligned_vec::{AVec, ConstAlign};
 use crate::sector::Sector;
 
 mod layout;
+mod migration;
 mod scalar_ops;
 mod storage;
 mod tensor_data;
@@ -287,6 +288,11 @@ impl<T, S: Sector> Clone for BlockSparse<T, S> {
         }
     }
 }
+
+// Migration scaffolding (BlockSparse ↔ BlockSparseTensorData
+// Arc-move converters) lives in `migration.rs` so this module stays
+// under the 600-line per-file budget; the impl block is folded back
+// into `BlockSparse<T, S>` via the child-module visibility rule.
 
 // ---------------------------------------------------------------------------
 // Construction API

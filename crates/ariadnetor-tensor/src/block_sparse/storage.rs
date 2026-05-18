@@ -63,6 +63,23 @@ impl<T> BlockSparseStorage<T> {
         }
     }
 
+    /// Construct from an existing Arc, reusing it without reallocation.
+    ///
+    /// Migration scaffolding for the storage/layout split: the
+    /// `BlockSparse<T, S>` → `BlockSparseTensorData<T, S>` converter
+    /// moves the buffer Arc across the boundary in O(1). Removed in
+    /// Unit 5 along with the legacy `BlockSparse<T, S>` type.
+    pub(crate) fn from_arc(data: Arc<AVec<T, ConstAlign<64>>>) -> Self {
+        Self { data }
+    }
+
+    /// Consume `self` and return the underlying Arc, transferring
+    /// ownership without reallocation. Companion to
+    /// [`from_arc`](Self::from_arc).
+    pub(crate) fn into_arc(self) -> Arc<AVec<T, ConstAlign<64>>> {
+        self.data
+    }
+
     /// Reference to the packed flat buffer.
     pub fn data(&self) -> &[T] {
         &self.data[..]

@@ -1,6 +1,9 @@
 //! Shared test helpers for MPS tests.
 
-use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
+use arnet_linalg::{
+    BlockSparseContractResultRepr as BlockSparseContractResult,
+    contract_block_sparse_repr as contract_block_sparse,
+};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::U1Sector;
 use arnet_tensor::reorder;

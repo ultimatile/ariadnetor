@@ -14,7 +14,10 @@ use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
+use arnet_linalg::{
+    BlockSparseContractResultRepr as BlockSparseContractResult,
+    contract_block_sparse_repr as contract_block_sparse,
+};
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparse, Sector};
 

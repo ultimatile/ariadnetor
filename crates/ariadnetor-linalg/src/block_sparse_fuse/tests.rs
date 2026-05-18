@@ -3,9 +3,9 @@ use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector, Z2Sector};
 
 use super::copy_fused_block;
-use crate::contract_block_sparse;
-use crate::fuse_legs_block_sparse;
-use crate::permute_block_sparse;
+use crate::contract_block_sparse_repr as contract_block_sparse;
+use crate::fuse_legs_block_sparse_repr as fuse_legs_block_sparse;
+use crate::permute_block_sparse_repr as permute_block_sparse;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
@@ -313,7 +313,7 @@ fn apply_scenario_multi_sector() {
     // Contract W and A over d_ket: W axis 1, A axis 1
     let contracted = contract_block_sparse(&backend(), &w, &a, &[1], &[1]).unwrap();
     let result = match contracted {
-        crate::BlockSparseContractResult::Tensor(t) => t,
+        crate::BlockSparseContractResultRepr::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
     assert_eq!(result.rank(), 5); // [w_L, d_bra, w_R, chi_L, chi_R]

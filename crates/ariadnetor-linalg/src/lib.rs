@@ -36,7 +36,9 @@
 
 mod block_sparse_contract;
 mod block_sparse_decomp;
+mod block_sparse_decomp_canonical;
 mod block_sparse_fuse;
+mod block_sparse_layout_ops;
 mod block_sparse_permute;
 mod block_sparse_scale;
 mod contract;
@@ -56,17 +58,25 @@ pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
 pub use block_sparse_contract::{
-    BlockSparseContractResult, contract_block_sparse, contract_block_sparse_with_policy,
+    BlockSparseContractResult, BlockSparseContractResultRepr, contract_block_sparse,
+    contract_block_sparse_repr, contract_block_sparse_with_policy,
+    contract_block_sparse_with_policy_repr,
 };
 pub use block_sparse_decomp::{
-    BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
+    BlockSingularValues, BlockSparseQrResult, BlockSparseQrResultRepr, BlockSparseSvdResult,
+    BlockSparseSvdResultRepr, BlockSparseTruncSvdResult, BlockSparseTruncSvdResultRepr,
+    lq_block_sparse_repr, lq_block_sparse_with_policy_repr, qr_block_sparse_repr,
+    qr_block_sparse_with_policy_repr, svd_block_sparse_repr, svd_block_sparse_with_policy_repr,
+    trunc_svd_block_sparse_repr, trunc_svd_block_sparse_with_policy_repr,
+};
+pub use block_sparse_decomp_canonical::{
     lq_block_sparse, lq_block_sparse_with_policy, qr_block_sparse, qr_block_sparse_with_policy,
     svd_block_sparse, svd_block_sparse_with_policy, trunc_svd_block_sparse,
     trunc_svd_block_sparse_with_policy,
 };
-pub use block_sparse_fuse::fuse_legs_block_sparse;
-pub use block_sparse_permute::permute_block_sparse;
-pub use block_sparse_scale::diagonal_scale_block_sparse;
+pub use block_sparse_fuse::{fuse_legs_block_sparse, fuse_legs_block_sparse_repr};
+pub use block_sparse_permute::{permute_block_sparse, permute_block_sparse_repr};
+pub use block_sparse_scale::{diagonal_scale_block_sparse, diagonal_scale_block_sparse_repr};
 pub use contract::{contract, contract_dense, contract_with_policy, contract_with_policy_dense};
 pub use decomposition::{
     LqResult, LqResultDense, QrResult, QrResultDense, SvdResult, SvdResultDense, TruncSvdParams,

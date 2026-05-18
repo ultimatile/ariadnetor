@@ -4,6 +4,16 @@ use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 use arnet_tensor::{U1Sector, Z2Sector};
 
 use super::*;
+use super::{
+    lq_block_sparse_repr as lq_block_sparse,
+    lq_block_sparse_with_policy_repr as lq_block_sparse_with_policy,
+    qr_block_sparse_repr as qr_block_sparse,
+    qr_block_sparse_with_policy_repr as qr_block_sparse_with_policy,
+    svd_block_sparse_repr as svd_block_sparse,
+    svd_block_sparse_with_policy_repr as svd_block_sparse_with_policy,
+    trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
+    trunc_svd_block_sparse_with_policy_repr as trunc_svd_block_sparse_with_policy,
+};
 
 fn backend() -> NativeBackend {
     NativeBackend::new()

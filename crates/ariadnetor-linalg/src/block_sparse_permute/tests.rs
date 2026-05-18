@@ -1,7 +1,7 @@
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector, Z2Sector};
 
-use super::permute_block_sparse;
+use super::permute_block_sparse_repr as permute_block_sparse;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()

@@ -1,4 +1,8 @@
 use super::*;
+use super::{
+    BlockSparseContractResultRepr as BlockSparseContractResult,
+    contract_block_sparse_repr as contract_block_sparse,
+};
 use arnet_core::backend::ComputeBackend;
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};

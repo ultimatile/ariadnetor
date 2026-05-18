@@ -2,11 +2,17 @@ use arnet_native::NativeBackend;
 use arnet_tensor::U1Sector;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 
-use crate::block_sparse_contract::{BlockSparseContractResult, contract_block_sparse};
+use crate::block_sparse_contract::{
+    BlockSparseContractResultRepr as BlockSparseContractResult,
+    contract_block_sparse_repr as contract_block_sparse,
+};
 use crate::block_sparse_decomp::BlockSingularValues;
-use crate::{TruncSvdParams, svd_block_sparse, trunc_svd_block_sparse};
+use crate::{
+    TruncSvdParams, svd_block_sparse_repr as svd_block_sparse,
+    trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
+};
 
-use super::diagonal_scale_block_sparse;
+use super::diagonal_scale_block_sparse_repr as diagonal_scale_block_sparse;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()

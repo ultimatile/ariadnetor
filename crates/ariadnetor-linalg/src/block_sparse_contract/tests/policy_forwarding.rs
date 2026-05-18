@@ -9,7 +9,10 @@
 use arnet_core::backend::ExecPolicy;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
 
-use super::super::{contract_block_sparse, contract_block_sparse_with_policy};
+use super::super::{
+    contract_block_sparse_repr as contract_block_sparse,
+    contract_block_sparse_with_policy_repr as contract_block_sparse_with_policy,
+};
 use super::to_order;
 use crate::test_util::RecordingBackend;
 

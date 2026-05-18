@@ -1,11 +1,11 @@
 //! Block-sparse tensor axis permutation.
 //!
-//! Permutes the leg order of a [`BlockSparse<T, S>`] tensor by reordering
+//! Permutes the leg order of a block-sparse tensor by reordering
 //! indices, block coordinates, and transposing each block's data.
 
 use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockCoord, BlockSparse, Sector};
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
+use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensorData, Sector};
 
 use crate::block_sparse_contract::transpose_block_data;
 use crate::error::LinalgError;
@@ -16,13 +16,36 @@ use crate::error::LinalgError;
 /// `new_axis[i] = old_axis[perm[i]]`.
 ///
 /// The output tensor has the same flux and the same set of blocks, but with
-/// reordered indices, coordinates, and transposed block data.
+/// reordered indices, coordinates, and transposed block data. The output
+/// memory order equals the input memory order (`tensor.layout().order()`);
+/// the operation does not consult `backend.preferred_order()`.
 ///
 /// # Errors
 ///
 /// Returns `LinalgError::InvalidArgument` if `perm` is not a valid
 /// permutation of `0..tensor.rank()`.
 pub fn permute_block_sparse<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensorData<T, S>,
+    perm: &[usize],
+) -> Result<BlockSparseTensorData<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let order = tensor.layout().order();
+    let bs = BlockSparse::from_tensor_data(tensor.clone());
+    let r = permute_block_sparse_inner(backend, &bs, perm, order)?;
+    Ok(r.into_tensor_data(order))
+}
+
+/// Legacy `&BlockSparse<T, S>`-typed sister of [`permute_block_sparse`];
+/// used by downstream crates that still hold raw `BlockSparse` values.
+/// The output is tagged at `backend.preferred_order()` (the historical
+/// convention); collapses with [`permute_block_sparse`] in Unit 5 when
+/// `BlockSparse<T, S>` is removed.
+pub fn permute_block_sparse_repr<T, S, B>(
     backend: &B,
     tensor: &BlockSparse<T, S>,
     perm: &[usize],
@@ -32,6 +55,26 @@ where
     S: Sector,
     B: ComputeBackend,
 {
+    permute_block_sparse_inner(backend, tensor, perm, backend.preferred_order())
+}
+
+/// Shared kernel: permutes `tensor` at the given memory `order`.
+/// Per-block data transpose uses `order` to interpret both source and
+/// destination layout. The output's storage (whether returned as
+/// `BlockSparse` directly here, or tagged via the canonical wrapper) is
+/// laid out at the same `order`.
+fn permute_block_sparse_inner<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparse<T, S>,
+    perm: &[usize],
+    order: MemoryOrder,
+) -> Result<BlockSparse<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let _ = backend;
     let rank = tensor.rank();
 
     // Validate permutation
@@ -61,7 +104,6 @@ where
         return Ok(tensor.clone());
     }
 
-    let order = backend.preferred_order();
     let old_indices = tensor.indices();
 
     // Permuted indices

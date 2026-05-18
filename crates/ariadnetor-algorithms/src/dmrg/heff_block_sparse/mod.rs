@@ -42,7 +42,9 @@ use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse};
+use arnet_linalg::{
+    BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
+};
 use arnet_mps::{Mpo, Mps};
 use arnet_tensor::{BlockSparse, Sector};
 

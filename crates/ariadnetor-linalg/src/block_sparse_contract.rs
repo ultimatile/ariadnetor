@@ -1,23 +1,36 @@
 //! Block-sparse tensor contraction.
 //!
-//! Contracts two [`BlockSparse<T, S>`] tensors over specified axis pairs,
+//! Contracts two block-sparse tensors over specified axis pairs,
 //! performing QN compatibility validation, block pairing, and dense GEMM
-//! per block pair.
+//! per block pair. Canonical surface takes
+//! [`BlockSparseTensorData<T, S>`] and requires operands to share a
+//! memory order (mixed orders return [`LinalgError::InvalidArgument`]);
+//! legacy `*_repr` sisters keep the historical `&BlockSparse<T, S>`
+//! signature for downstream callers pending Unit 5.
 
 use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparse, QNIndex};
+use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensorData, QNIndex};
 
 use crate::error::LinalgError;
 
-/// Result of a block-sparse tensor contraction.
+/// Result of a block-sparse tensor contraction (canonical
+/// `BlockSparseTensorData`-typed form).
 pub enum BlockSparseContractResult<T, S: Sector> {
     /// Partial contraction produced a block-sparse tensor.
-    Tensor(BlockSparse<T, S>),
+    Tensor(BlockSparseTensorData<T, S>),
     /// Full contraction produced a scalar.
+    Scalar(T),
+}
+
+/// Legacy `&BlockSparse<T, S>`-typed sister of
+/// [`BlockSparseContractResult`]; collapses with the canonical form
+/// in Unit 5 when `BlockSparse<T, S>` is removed.
+pub enum BlockSparseContractResultRepr<T, S: Sector> {
+    Tensor(BlockSparse<T, S>),
     Scalar(T),
 }
 
@@ -25,7 +38,8 @@ pub enum BlockSparseContractResult<T, S: Sector> {
 ///
 /// # Partial contraction (free axes remain)
 ///
-/// Returns `BlockSparse` with indices `[lhs_free..., rhs_free...]` and
+/// Returns `BlockSparseTensorData` with indices
+/// `[lhs_free..., rhs_free...]` and
 /// `flux = lhs.flux().fuse(rhs.flux())`.
 ///
 /// # Full contraction (all axes contracted)
@@ -33,15 +47,21 @@ pub enum BlockSparseContractResult<T, S: Sector> {
 /// Returns a scalar. If `lhs.flux().fuse(rhs.flux()) != identity`, the
 /// result is `T::zero()` (symmetry selection rule).
 ///
+/// # Memory order
+///
+/// `lhs` and `rhs` must share the same memory order; the output tensor
+/// inherits that order. Mismatched input orders return
+/// `LinalgError::InvalidArgument`.
+///
 /// # Errors
 ///
 /// Returns `LinalgError::InvalidArgument` if axis pairs are invalid:
 /// length mismatch, out-of-range, duplicates, sector/dimension mismatch,
-/// or non-opposite directions.
+/// non-opposite directions, or operand memory orders differ.
 pub fn contract_block_sparse<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
-    lhs: &BlockSparse<T, S>,
-    rhs: &BlockSparse<T, S>,
+    lhs: &BlockSparseTensorData<T, S>,
+    rhs: &BlockSparseTensorData<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
 ) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
@@ -65,12 +85,83 @@ pub fn contract_block_sparse<T: Scalar, S: Sector>(
 /// to every per-sector GEMM descriptor.
 pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
+    lhs: &BlockSparseTensorData<T, S>,
+    rhs: &BlockSparseTensorData<T, S>,
+    axes_lhs: &[usize],
+    axes_rhs: &[usize],
+    policy: ExecPolicy,
+) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+    let lhs_order = lhs.layout().order();
+    let rhs_order = rhs.layout().order();
+    if lhs_order != rhs_order {
+        return Err(LinalgError::InvalidArgument(format!(
+            "contract_block_sparse: operand memory orders differ ({lhs_order:?} vs {rhs_order:?})"
+        )));
+    }
+    let order = lhs_order;
+    let lhs_bs = BlockSparse::from_tensor_data(lhs.clone());
+    let rhs_bs = BlockSparse::from_tensor_data(rhs.clone());
+    let r =
+        contract_block_sparse_inner(backend, &lhs_bs, &rhs_bs, axes_lhs, axes_rhs, policy, order)?;
+    Ok(match r {
+        BlockSparseContractResultRepr::Tensor(t) => {
+            BlockSparseContractResult::Tensor(t.into_tensor_data(order))
+        }
+        BlockSparseContractResultRepr::Scalar(s) => BlockSparseContractResult::Scalar(s),
+    })
+}
+
+/// Legacy `&BlockSparse<T, S>`-typed sister of
+/// [`contract_block_sparse`]; output tagged at
+/// `backend.preferred_order()` (historical convention).
+pub fn contract_block_sparse_repr<T: Scalar, S: Sector>(
+    backend: &impl ComputeBackend,
+    lhs: &BlockSparse<T, S>,
+    rhs: &BlockSparse<T, S>,
+    axes_lhs: &[usize],
+    axes_rhs: &[usize],
+) -> Result<BlockSparseContractResultRepr<T, S>, LinalgError> {
+    contract_block_sparse_with_policy_repr(
+        backend,
+        lhs,
+        rhs,
+        axes_lhs,
+        axes_rhs,
+        ExecPolicy::Sequential,
+    )
+}
+
+/// Legacy `&BlockSparse<T, S>`-typed sister of
+/// [`contract_block_sparse_with_policy`].
+pub fn contract_block_sparse_with_policy_repr<T: Scalar, S: Sector>(
+    backend: &impl ComputeBackend,
     lhs: &BlockSparse<T, S>,
     rhs: &BlockSparse<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     policy: ExecPolicy,
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+) -> Result<BlockSparseContractResultRepr<T, S>, LinalgError> {
+    contract_block_sparse_inner(
+        backend,
+        lhs,
+        rhs,
+        axes_lhs,
+        axes_rhs,
+        policy,
+        backend.preferred_order(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn contract_block_sparse_inner<T: Scalar, S: Sector>(
+    backend: &impl ComputeBackend,
+    lhs: &BlockSparse<T, S>,
+    rhs: &BlockSparse<T, S>,
+    axes_lhs: &[usize],
+    axes_rhs: &[usize],
+    policy: ExecPolicy,
+    order: MemoryOrder,
+) -> Result<BlockSparseContractResultRepr<T, S>, LinalgError> {
     validate_contraction_axes(lhs, rhs, axes_lhs, axes_rhs)?;
 
     let num_contracted = axes_lhs.len();
@@ -82,7 +173,6 @@ pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector>(
     let rhs_groups = group_by_contracted_key(rhs, axes_rhs);
 
     if output_rank == 0 {
-        let order = backend.preferred_order();
         return contract_to_scalar(lhs, rhs, axes_lhs, axes_rhs, &rhs_groups, order);
     }
 
@@ -96,6 +186,7 @@ pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector>(
         &free_rhs,
         &rhs_groups,
         policy,
+        order,
     )
 }
 
@@ -210,9 +301,9 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
     axes_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     order: MemoryOrder,
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+) -> Result<BlockSparseContractResultRepr<T, S>, LinalgError> {
     if lhs.flux().fuse(rhs.flux()) != S::identity() {
-        return Ok(BlockSparseContractResult::Scalar(T::zero()));
+        return Ok(BlockSparseContractResultRepr::Scalar(T::zero()));
     }
 
     // Permute rhs so its axes align with lhs axis order for dot product
@@ -258,7 +349,7 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
         }
     }
 
-    Ok(BlockSparseContractResult::Scalar(sum))
+    Ok(BlockSparseContractResultRepr::Scalar(sum))
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +367,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     free_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     policy: ExecPolicy,
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+    order: MemoryOrder,
+) -> Result<BlockSparseContractResultRepr<T, S>, LinalgError> {
     let mut output_indices: Vec<QNIndex<S>> = Vec::with_capacity(free_lhs.len() + free_rhs.len());
     for &a in free_lhs {
         output_indices.push(lhs.indices()[a].clone());
@@ -290,7 +382,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     // Determine transpose strategy per operand.
     // GEMM wants lhs as (m, k) and rhs as (k, n). When the permutation
     // is a simple prefix/suffix swap, the reshaped block can be read in
-    // the backend's preferred order via trans_a/trans_b without physical
+    // the given memory order via trans_a/trans_b without physical
     // data movement. Other non-identity permutations require explicit
     // transpose_block_data.
     let lhs_is_id = free_lhs
@@ -311,7 +403,6 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let rhs_trans_flag = compute_rhs_trans_flag(rhs_is_id, axes_rhs, free_rhs, rhs.rank());
     let rhs_needs_physical_t = !rhs_is_id && !rhs_trans_flag;
 
-    let order = backend.preferred_order();
     let rhs_metas = rhs.block_metas();
     let mut key = Vec::with_capacity(axes_lhs.len());
 
@@ -399,80 +490,23 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
         }
     }
 
-    Ok(BlockSparseContractResult::Tensor(output))
+    Ok(BlockSparseContractResultRepr::Tensor(output))
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+//
+// Shared layout primitives (`compute_strides`, `transpose_block_data`,
+// `repack_block_data`) live in `block_sparse_layout_ops` so this file
+// stays under the 600-line per-file budget. They are re-exported here
+// at `pub(crate)` so other block_sparse modules can keep their existing
+// import paths.
 
-/// Transpose block data in the given memory order layout.
-///
-/// Convention: `perm[new_axis] = old_axis`.
-pub(crate) fn transpose_block_data<T: Copy>(
-    data: &[T],
-    shape: &[usize],
-    perm: &[usize],
-    order: MemoryOrder,
-) -> Vec<T> {
-    let rank = shape.len();
-    if rank <= 1 || data.is_empty() {
-        return data.to_vec();
-    }
+pub(crate) use crate::block_sparse_layout_ops::{repack_block_data, transpose_block_data};
 
-    let total = data.len();
-    let old_strides = compute_strides(shape, order);
-    let perm_strides: Vec<usize> = perm.iter().map(|&p| old_strides[p]).collect();
-
-    let new_shape: Vec<usize> = perm.iter().map(|&p| shape[p]).collect();
-    let new_strides = compute_strides(&new_shape, order);
-
-    // Axis iteration order for flat→multi-index decomposition:
-    // RowMajor strides are descending → process 0..rank
-    // ColumnMajor strides are ascending → process (0..rank).rev()
-    let decomp_order: Vec<usize> = match order {
-        MemoryOrder::RowMajor => (0..rank).collect(),
-        MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
-    };
-
-    let mut result = vec![data[0]; total];
-    let mut idx = vec![0usize; rank];
-
-    for (flat, out) in result.iter_mut().enumerate() {
-        let mut rem = flat;
-        for &ax in &decomp_order {
-            idx[ax] = rem / new_strides[ax];
-            rem %= new_strides[ax];
-        }
-        let old_flat: usize = idx
-            .iter()
-            .zip(perm_strides.iter())
-            .map(|(&i, &s)| i * s)
-            .sum();
-        *out = data[old_flat];
-    }
-
-    result
-}
-
-/// Compute strides for the given memory order.
-pub(crate) fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
-    let rank = shape.len();
-    let mut strides = vec![1usize; rank];
-    match order {
-        MemoryOrder::RowMajor => {
-            for i in (0..rank.saturating_sub(1)).rev() {
-                strides[i] = strides[i + 1] * shape[i + 1];
-            }
-        }
-        MemoryOrder::ColumnMajor => {
-            for i in 1..rank {
-                strides[i] = strides[i - 1] * shape[i - 1];
-            }
-        }
-    }
-    strides
-}
+#[cfg(test)]
+pub(crate) use crate::block_sparse_layout_ops::compute_strides;
 
 fn is_identity_perm(perm: &[usize]) -> bool {
     perm.iter().enumerate().all(|(i, &p)| p == i)
