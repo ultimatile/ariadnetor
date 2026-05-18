@@ -12,47 +12,48 @@ use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh_dense as eigh};
-#[rustfmt::skip]
-use arnet_mps::{CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain, canonicalize_repr as canonicalize};
+use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData};
 use num_complex::Complex;
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+
+type F64Mps = Mps<DenseStorage<f64>, DenseLayout>;
+type F64Mpo = Mpo<DenseStorage<f64>, DenseLayout>;
+type F64Envs = DmrgEnvs<DenseStorage<f64>, DenseLayout>;
+type C64Mps = Mps<DenseStorage<Complex<f64>>, DenseLayout>;
+type C64Mpo = Mpo<DenseStorage<Complex<f64>>, DenseLayout>;
+type C64Envs = DmrgEnvs<DenseStorage<Complex<f64>>, DenseLayout>;
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 /// Random-but-seeded MPS in `Mixed { center: 0 }` form (sweep driver's accepted entry state).
-fn random_mps_center_zero_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_center_zero_f64(n: usize, d: usize, chi: usize, seed: u64) -> F64Mps {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            backend.make_tensor(data, vec![l, d, r])
+            backend.make_tensor_data(data, vec![l, d, r])
         })
         .collect();
-    let mut mps = Mps::from_storages(storages);
+    let mut mps = Mps::from_sites(storages);
     canonicalize(&mut mps, 0);
     mps
 }
 
-fn random_mps_center_zero_c64(
-    n: usize,
-    d: usize,
-    chi: usize,
-    seed: u64,
-) -> Mps<Dense<Complex<f64>>> {
+fn random_mps_center_zero_c64(n: usize, d: usize, chi: usize, seed: u64) -> C64Mps {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<Complex<f64>>> = (0..n)
+    let storages: Vec<DenseTensorData<Complex<f64>>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
@@ -64,22 +65,22 @@ fn random_mps_center_zero_c64(
                     Complex::new(re, im)
                 })
                 .collect();
-            backend.make_tensor(data, vec![l, d, r])
+            backend.make_tensor_data(data, vec![l, d, r])
         })
         .collect();
-    let mut mps = Mps::from_storages(storages);
+    let mut mps = Mps::from_sites(storages);
     canonicalize(&mut mps, 0);
     mps
 }
 
 /// Per-site PSD Hermitian `h_i = G^† G + ε I`. `h` and MPO storage are
 /// column-major (`make_tensor` reads `backend.preferred_order()`).
-fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> (Mpo<Dense<f64>>, Vec<Vec<f64>>) {
+fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> (F64Mpo, Vec<Vec<f64>>) {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let eps = 0.5_f64;
     let mut hs: Vec<Vec<f64>> = Vec::with_capacity(n);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             // `g` is internal scratch; only `h`'s layout has to match the backend.
             let g: Vec<f64> = (0..d * d)
@@ -98,13 +99,12 @@ fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> (Mpo<Dense<f64>>, Vec<Vec
                 h[s + d * s] += eps;
             }
             hs.push(h.clone());
-            backend.make_tensor(h, vec![1, d, d, 1])
+            backend.make_tensor_data(h, vec![1, d, d, 1])
         })
         .collect();
-    (Mpo::from_storages(storages), hs)
+    (Mpo::from_sites(storages), hs)
 }
 
-type C64Mpo = Mpo<Dense<Complex<f64>>>;
 type C64SiteMatrix = Vec<Complex<f64>>;
 
 fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatrix>) {
@@ -112,7 +112,7 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
     let mut rng = StdRng::seed_from_u64(seed);
     let eps = Complex::new(0.5_f64, 0.0);
     let mut hs: Vec<Vec<Complex<f64>>> = Vec::with_capacity(n);
-    let storages: Vec<Dense<Complex<f64>>> = (0..n)
+    let storages: Vec<DenseTensorData<Complex<f64>>> = (0..n)
         .map(|_| {
             let g: Vec<Complex<f64>> = (0..d * d)
                 .map(|_| {
@@ -134,18 +134,18 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
                 h[s + d * s] += eps;
             }
             hs.push(h.clone());
-            backend.make_tensor(h, vec![1, d, d, 1])
+            backend.make_tensor_data(h, vec![1, d, d, 1])
         })
         .collect();
-    (Mpo::from_storages(storages), hs)
+    (Mpo::from_sites(storages), hs)
 }
 
 /// Hermitian (real-symmetric, mixed-sign) bond-dim-1 product MPO.
 /// `m` is stored column-major to match NativeBackend.
-fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<Dense<f64>> {
+fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> F64Mpo {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let r: Vec<f64> = (0..d * d)
                 .map(|_| rng.random_range(-1.0_f64..1.0))
@@ -156,16 +156,16 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<Dense<f64>> {
                     m[s + d * t] = 0.5 * (r[s * d + t] + r[t * d + s]);
                 }
             }
-            backend.make_tensor(m, vec![1, d, d, 1])
+            backend.make_tensor_data(m, vec![1, d, d, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 /// Smallest eigenvalue of a real-symmetric `d×d` matrix; `h` is CM.
 fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
     let backend = NativeBackend::new();
-    let m = backend.make_tensor(h.to_vec(), vec![d, d]);
+    let m = backend.make_tensor_data(h.to_vec(), vec![d, d]);
     let (eigvals, _eigvecs) = eigh(&backend, &m, 1).expect("eigh");
     eigvals.data().iter().cloned().fold(f64::INFINITY, f64::min)
 }
@@ -173,7 +173,7 @@ fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
 /// Smallest eigenvalue of a complex Hermitian `d×d` matrix (CM, see above).
 fn min_eig_complex_herm(h: &[Complex<f64>], d: usize) -> f64 {
     let backend = NativeBackend::new();
-    let m = backend.make_tensor(h.to_vec(), vec![d, d]);
+    let m = backend.make_tensor_data(h.to_vec(), vec![d, d]);
     let (eigvals, _eigvecs) = eigh(&backend, &m, 1).expect("eigh");
     eigvals.data().iter().cloned().fold(f64::INFINITY, f64::min)
 }
@@ -204,7 +204,7 @@ fn t1_psd_product_converges_to_product_of_min_eigs_f64() {
     let d = 3;
     let mut mps = random_mps_center_zero_f64(n, d, 4, 0xA1A1);
     let (mpo, hs) = psd_local_mpo_f64(n, d, 0x1234);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = standard_params_f64(0xB00B);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
@@ -230,7 +230,7 @@ fn t2_energy_monotone_nonincreasing_across_sweeps() {
     let d = 2;
     let mut mps = random_mps_center_zero_f64(n, d, 4, 0xC0DE);
     let mpo = hermitian_local_mpo_f64(n, d, 0xF00D);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 10,
         min_sweeps: 10, // force all sweeps to run for a full energy trace.
@@ -270,7 +270,7 @@ fn t3_boundary_sites_covered_each_sweep() {
     let d = 2;
     let mut mps = random_mps_center_zero_f64(n, d, 3, 0x33);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x44);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 3,
         min_sweeps: 3,
@@ -316,7 +316,7 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
     let d = 2;
     let mut mps = random_mps_center_zero_f64(n, d, 3, 0x4444);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x5555);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     // First, run one full cycle.
     let prep_params = DmrgSweepParams {
         max_sweeps: 1,
@@ -340,7 +340,7 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
     let mut mps_a = mps.clone();
     let mut envs_a = envs.clone();
     let mut mps_b = mps.clone();
-    let mut envs_b: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps_b, &mpo).expect("rebuild");
+    let mut envs_b: F64Envs = DmrgEnvs::build(&mps_b, &mpo).expect("rebuild");
 
     let cmp_params = DmrgSweepParams {
         max_sweeps: 1,
@@ -372,9 +372,9 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
     }
     // Final tensors element-wise close.
     for i in 0..n {
-        let a = mps_a.storage(i).data();
-        let b = mps_b.storage(i).data();
-        assert_eq!(mps_a.storage(i).shape(), mps_b.storage(i).shape());
+        let a = mps_a.site(i).data();
+        let b = mps_b.site(i).data();
+        assert_eq!(mps_a.site(i).shape(), mps_b.site(i).shape());
         for (x, y) in a.iter().zip(b.iter()) {
             assert_abs_diff_eq!(*x, *y, epsilon = 1e-9);
         }
@@ -390,7 +390,7 @@ fn t5_n_sites_two_edge_case() {
     let d = 2;
     let mut mps = random_mps_center_zero_f64(n, d, 2, 0x77);
     let (mpo, hs) = psd_local_mpo_f64(n, d, 0x88);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = standard_params_f64(0x99);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
@@ -415,7 +415,7 @@ fn t6_length_mismatch_mps_vs_envs() {
     let d = 2;
     let mut mps_a = random_mps_center_zero_f64(n_a, d, 2, 0x10);
     let (mpo_a, _) = psd_local_mpo_f64(n_a, d, 0x11);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps_a, &mpo_a).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps_a, &mpo_a).expect("build");
     let mut mps_b = random_mps_center_zero_f64(n_b, d, 2, 0x12);
     // We still need an MPO of *some* length; the function checks both
     // mps and mpo against envs.n_sites.
@@ -444,11 +444,13 @@ fn t6_length_mismatch_mps_vs_envs() {
 fn t6_too_few_sites() {
     let d = 2;
     let backend = NativeBackend::shared();
-    let mps = Mps::from_storages(vec![backend.make_tensor(vec![1.0_f64, 0.0], vec![1, d, 1])]);
-    let mpo = Mpo::from_storages(vec![
-        backend.make_tensor(vec![1.0_f64, 0.0, 0.0, 1.0], vec![1, d, d, 1]),
+    let mps = Mps::from_sites(vec![
+        backend.make_tensor_data(vec![1.0_f64, 0.0], vec![1, d, 1]),
     ]);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mpo = Mpo::from_sites(vec![
+        backend.make_tensor_data(vec![1.0_f64, 0.0, 0.0, 1.0], vec![1, d, d, 1]),
+    ]);
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
     let err = sweep_2site(&mut envs, &mut mps2, &mpo, &standard_params_f64(0x20))
         .expect_err("n=1 should fail");
@@ -461,7 +463,7 @@ fn t6_invalid_params_max_sweeps_zero() {
     let d = 2;
     let mps = random_mps_center_zero_f64(n, d, 2, 0x21);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x22);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x23);
     p.max_sweeps = 0;
@@ -475,7 +477,7 @@ fn t6_invalid_params_min_exceeds_max() {
     let d = 2;
     let mps = random_mps_center_zero_f64(n, d, 2, 0x24);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x25);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x26);
     p.min_sweeps = 10;
@@ -490,7 +492,7 @@ fn t6_invalid_params_chi_max_zero() {
     let d = 2;
     let mps = random_mps_center_zero_f64(n, d, 2, 0x27);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x28);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x29);
     p.trunc.chi_max = Some(0);
@@ -504,7 +506,7 @@ fn t6_invalid_params_energy_tol_negative() {
     let d = 2;
     let mps = random_mps_center_zero_f64(n, d, 2, 0x2A);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x2B);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x2C);
     p.energy_tol = -1e-10;
@@ -518,7 +520,7 @@ fn t6_canonical_form_left_rejected() {
     let d = 2;
     let mut mps = random_mps_center_zero_f64(n, d, 2, 0x2D);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x2E);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     // Move center to N-1 (i.e., left-canonical at sites 0..N-1) — not
     // allowed for the sweep entry point.
     canonicalize(&mut mps, n - 1);
@@ -533,10 +535,10 @@ fn t6_canonical_form_unknown_rejected() {
     let d = 2;
     let mps_init = random_mps_center_zero_f64(n, d, 2, 0x30);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x31);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps_init, &mpo).expect("build");
+    let mut envs: F64Envs = DmrgEnvs::build(&mps_init, &mpo).expect("build");
     // Construct a fresh MPS with `from_storages` (which sets
     // `Unknown`), then pass it without canonicalizing.
-    let mut mps_unk = Mps::from_storages(mps_init.storages().to_vec());
+    let mut mps_unk = Mps::from_sites(mps_init.sites().to_vec());
     assert_eq!(*mps_unk.canonical_form(), CanonicalForm::Unknown);
     let err = sweep_2site(&mut envs, &mut mps_unk, &mpo, &standard_params_f64(0x32))
         .expect_err("Unknown rejected");
@@ -555,22 +557,22 @@ fn t6_step_error_propagated() {
     // (single-product state); explicitly write `1` rather than the
     // edge / interior conditional used elsewhere because both branches
     // collapse to 1 here.
-    let mps_storages: Vec<Dense<f64>> = (0..n)
-        .map(|_| backend.make_tensor(vec![1.0_f64, 0.0], vec![1, d_mps, 1]))
+    let mps_storages: Vec<DenseTensorData<f64>> = (0..n)
+        .map(|_| backend.make_tensor_data(vec![1.0_f64, 0.0], vec![1, d_mps, 1]))
         .collect();
-    let mut mps = Mps::from_storages(mps_storages);
+    let mut mps = Mps::from_sites(mps_storages);
     canonicalize(&mut mps, 0);
     // Identity-ish MPO with d_mpo physical (mismatching mps's d=2).
-    let mpo_storages: Vec<Dense<f64>> = (0..n)
+    let mpo_storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let mut m = vec![0.0_f64; d_mpo * d_mpo];
             for k in 0..d_mpo {
                 m[k * d_mpo + k] = 1.0;
             }
-            backend.make_tensor(m, vec![1, d_mpo, d_mpo, 1])
+            backend.make_tensor_data(m, vec![1, d_mpo, d_mpo, 1])
         })
         .collect();
-    let mpo = Mpo::from_storages(mpo_storages);
+    let mpo = Mpo::from_sites(mpo_storages);
     // Build envs from a *separately* matching pair so envs.n_sites == 3.
     let env_mps = random_mps_center_zero_f64(n, d_mpo, 1, 0xB1);
     let mut env_mpo_storages = Vec::new();
@@ -579,10 +581,10 @@ fn t6_step_error_propagated() {
         for k in 0..d_mpo {
             m[k * d_mpo + k] = 1.0;
         }
-        env_mpo_storages.push(backend.make_tensor(m, vec![1, d_mpo, d_mpo, 1]));
+        env_mpo_storages.push(backend.make_tensor_data(m, vec![1, d_mpo, d_mpo, 1]));
     }
-    let env_mpo = Mpo::from_storages(env_mpo_storages);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&env_mps, &env_mpo).expect("build");
+    let env_mpo = Mpo::from_sites(env_mpo_storages);
+    let mut envs: F64Envs = DmrgEnvs::build(&env_mps, &env_mpo).expect("build");
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &standard_params_f64(0xB2))
         .expect_err("step shape mismatch");
     assert!(matches!(
@@ -604,7 +606,7 @@ fn t7_c64_psd_product_converges() {
     let d = 2;
     let mut mps = random_mps_center_zero_c64(n, d, 3, 0xC1);
     let (mpo, hs) = psd_local_mpo_c64(n, d, 0xC2);
-    let mut envs: DmrgEnvs<Dense<Complex<f64>>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: C64Envs = DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 20,
         min_sweeps: 1,
@@ -624,177 +626,4 @@ fn t7_c64_psd_product_converges() {
     let reference: f64 = hs.iter().map(|h| min_eig_complex_herm(h, d)).product();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
     assert!(result.converged);
-}
-
-// ---------------------------------------------------------------------------
-// T8 — eigensolver_converged propagation
-// ---------------------------------------------------------------------------
-#[test]
-fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
-    let n = 4;
-    let d = 2;
-    let mut mps = random_mps_center_zero_f64(n, d, 2, 0xE1);
-    let (mpo, _) = psd_local_mpo_f64(n, d, 0xE2);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
-    // Force Lanczos to fail convergence with max_iter=1 and an
-    // unreasonably tight tolerance.
-    let params = DmrgSweepParams {
-        max_sweeps: 5,
-        min_sweeps: 1,
-        energy_tol: 1.0, // very loose — energy delta will satisfy it.
-        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
-            max_iter: 1,
-            tol: 1e-15,
-            seed: Some(0xE3),
-        }),
-        trunc: TruncSvdParams {
-            chi_max: Some(1),
-            target_trunc_err: None,
-        },
-    };
-
-    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
-    assert!(
-        !result.converged,
-        "DmrgResult.converged must be false when any step has eigensolver_converged=false"
-    );
-    let any_step_failed = result
-        .sweeps
-        .iter()
-        .flat_map(|s| s.steps.iter())
-        .any(|s| !s.eigensolver_converged);
-    assert!(
-        any_step_failed,
-        "test fixture should produce at least one non-converged Lanczos step"
-    );
-}
-
-// T9 — diagnostics-field consistency for the fields T1–T8 do not assert on.
-#[test]
-fn t9_diagnostics_fields_consistent() {
-    let n = 4;
-    let d = 2;
-    let mut mps = random_mps_center_zero_f64(n, d, 3, 0xD0);
-    let (mpo, _) = psd_local_mpo_f64(n, d, 0xD1);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
-    let params = DmrgSweepParams {
-        max_sweeps: 3,
-        min_sweeps: 3,
-        energy_tol: 0.0,
-        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
-            max_iter: 100,
-            tol: 1e-10,
-            seed: Some(0xD2),
-        }),
-        trunc: TruncSvdParams {
-            chi_max: Some(2),
-            target_trunc_err: None,
-        },
-    };
-
-    let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
-
-    for sweep in &result.sweeps {
-        // Per-step contract.
-        for step in &sweep.steps {
-            assert!(
-                step.residual >= 0.0,
-                "step.residual = {} must be non-negative",
-                step.residual
-            );
-            assert!(
-                step.eigensolver_iters >= 1,
-                "step.eigensolver_iters = {} must be >= 1 (Lanczos always runs at least once)",
-                step.eigensolver_iters
-            );
-            assert!(
-                step.bond_dim >= 1,
-                "step.bond_dim = {} must be >= 1",
-                step.bond_dim
-            );
-            if let Some(chi_cap) = params.trunc.chi_max {
-                assert!(
-                    step.bond_dim <= chi_cap,
-                    "step.bond_dim = {} exceeded chi_max = {}",
-                    step.bond_dim,
-                    chi_cap
-                );
-            }
-            assert!(step.trunc_err >= 0.0, "step.trunc_err must be non-negative");
-        }
-
-        // Per-sweep aggregations match per-step values.
-        let expected_min: f64 = sweep
-            .steps
-            .iter()
-            .map(|s| s.eigenvalue)
-            .fold(f64::INFINITY, f64::min);
-        let expected_max_te: f64 = sweep
-            .steps
-            .iter()
-            .map(|s| s.trunc_err)
-            .fold(f64::NEG_INFINITY, f64::max);
-        let expected_all_ok = sweep.steps.iter().all(|s| s.eigensolver_converged);
-
-        assert_abs_diff_eq!(sweep.min_step_eigenvalue, expected_min, epsilon = 0.0);
-        assert_abs_diff_eq!(sweep.max_trunc_err, expected_max_te, epsilon = 0.0);
-        assert_eq!(sweep.all_eigensolver_converged, expected_all_ok);
-    }
-
-    // sweep.max_bond on the *last* sweep matches the actual MPS bond
-    // dimensions after the driver returns.
-    let final_max_bond = mps.max_bond_dim();
-    let last_sweep = result.sweeps.last().expect("at least one sweep");
-    assert_eq!(
-        last_sweep.max_bond, final_max_bond,
-        "last sweep.max_bond {} must equal post-sweep MPS max_bond_dim {}",
-        last_sweep.max_bond, final_max_bond
-    );
-}
-
-// T10 — post-sweep DmrgEnvs staleness contract: every populated slot
-// must match a fresh `DmrgEnvs::build` against the post-sweep MPS,
-// pinning the n=2 boundary case codex flagged.
-#[test]
-fn t10_post_sweep_envs_have_no_stale_some_slots() {
-    fn check(side: &str, j: usize, n: usize, a: Option<&Dense<f64>>, b: Option<&Dense<f64>>) {
-        match (a, b) {
-            (Some(a), Some(b)) => {
-                assert_eq!(a.shape(), b.shape(), "{side}[{j}] shape (n={n})");
-                for (x, y) in a.data().iter().zip(b.data().iter()) {
-                    assert_abs_diff_eq!(*x, *y, epsilon = 1e-10);
-                }
-            }
-            (Some(_), None) => {
-                panic!("post-sweep envs.{side}({j}) Some but fresh build None — stale-Some (n={n})")
-            }
-            _ => {}
-        }
-    }
-    for &n in &[2usize, 4] {
-        let d = 2;
-        let mut mps = random_mps_center_zero_f64(n, d, 2, 0xF0 ^ n as u64);
-        let (mpo, _) = psd_local_mpo_f64(n, d, 0xF1 ^ n as u64);
-        let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
-        let params = DmrgSweepParams {
-            max_sweeps: 1,
-            min_sweeps: 1,
-            energy_tol: 0.0,
-            eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
-                max_iter: 100,
-                tol: 1e-10,
-                seed: Some(0xF2),
-            }),
-            trunc: TruncSvdParams {
-                chi_max: Some(1),
-                target_trunc_err: None,
-            },
-        };
-        sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
-        let fresh: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("rebuild");
-        for j in 0..=n {
-            check("left", j, n, envs.left(j), fresh.left(j));
-            check("right", j, n, envs.right(j), fresh.right(j));
-        }
-    }
 }

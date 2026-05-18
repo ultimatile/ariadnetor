@@ -18,13 +18,12 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_core::Scalar;
-use arnet_linalg::{
-    TruncSvdParams, contract_dense as contract, diagonal_scale_dense as diagonal_scale,
-    eigh_dense as eigh,
-};
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
+use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh};
+use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense, MemoryOrder};
+use arnet_tensor::{
+    ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData, MemoryOrder,
+};
 use num_complex::Complex;
 use rand::Rng;
 use rand::SeedableRng;
@@ -35,53 +34,63 @@ use rand::rngs::StdRng;
 // ---------------------------------------------------------------------------
 
 /// Product state |0...0⟩ with bond dim 1 at every internal bond.
-fn product_state_mps(n: usize, d: usize) -> Mps<Dense<f64>> {
+fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            backend.make_tensor(data, vec![1, d, 1])
+            backend.make_tensor_data(data, vec![1, d, 1])
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 /// Identity MPO at every site, bond dim 1.
-fn identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
+fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            backend.make_tensor(data, vec![1, d, d, 1])
+            backend.make_tensor_data(data, vec![1, d, d, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 /// Random-but-seeded MPS with chi internal, d physical, n sites.
-fn random_mps_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_f64(
+    n: usize,
+    d: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            backend.make_tensor(data, vec![l, d, r])
+            backend.make_tensor_data(data, vec![l, d, r])
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
-fn random_mps_c64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<Complex<f64>>> {
+fn random_mps_c64(
+    n: usize,
+    d: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<Complex<f64>>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<Complex<f64>>> = (0..n)
+    let storages: Vec<DenseTensorData<Complex<f64>>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
@@ -93,20 +102,20 @@ fn random_mps_c64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<Comple
                     Complex::new(re, im)
                 })
                 .collect();
-            backend.make_tensor(data, vec![l, d, r])
+            backend.make_tensor_data(data, vec![l, d, r])
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 /// Hermitian "local-product" MPO: bond dim 1 at every site, each
 /// site stores a random Hermitian `d × d` operator. The global
 /// H = h_0 ⊗ h_1 ⊗ ... ⊗ h_{n-1} is Hermitian for any choice of
 /// per-site Hermitian h_i, so the projected H_eff is also Hermitian.
-fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<Dense<f64>> {
+fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             // d×d Hermitian (real-symmetric) block: M = 0.5 * (R + R^T).
             let mut m = vec![0.0_f64; d * d];
@@ -123,16 +132,20 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<Dense<f64>> {
             // MPO axis order [W_l=1, d_ket=s, d_bra=t, W_r=1]. The
             // local Hermitian operator h satisfies h[s,t] = conj(h[t,s]),
             // and we identify W[0, s, t, 0] = h[s, t].
-            backend.make_tensor(m, vec![1, d, d, 1])
+            backend.make_tensor_data(m, vec![1, d, d, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
-fn hermitian_local_mpo_c64(n: usize, d: usize, seed: u64) -> Mpo<Dense<Complex<f64>>> {
+fn hermitian_local_mpo_c64(
+    n: usize,
+    d: usize,
+    seed: u64,
+) -> Mpo<DenseStorage<Complex<f64>>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<Complex<f64>>> = (0..n)
+    let storages: Vec<DenseTensorData<Complex<f64>>> = (0..n)
         .map(|_| {
             let mut m = vec![Complex::new(0.0, 0.0); d * d];
             let mut r = vec![Complex::new(0.0, 0.0); d * d];
@@ -147,10 +160,10 @@ fn hermitian_local_mpo_c64(n: usize, d: usize, seed: u64) -> Mpo<Dense<Complex<f
                     m[s * d + t] = (r[s * d + t] + r[t * d + s].conj()) * 0.5;
                 }
             }
-            backend.make_tensor(m, vec![1, d, d, 1])
+            backend.make_tensor_data(m, vec![1, d, d, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 /// Build the dense matrix representation of the local effective
@@ -158,7 +171,7 @@ fn hermitian_local_mpo_c64(n: usize, d: usize, seed: u64) -> Mpo<Dense<Complex<f
 /// vector. Storage convention is column-major: entry `(i, k)`
 /// (the `i`-th component of `H_eff @ e_k`) lives at flat index
 /// `i + dim * k`.
-fn build_heff_dense<T, B>(heff: &EffectiveHamiltonian2Site<'_, T, B>) -> Dense<T>
+fn build_heff_dense<T, B>(heff: &EffectiveHamiltonian2Site<'_, T, B>) -> DenseTensorData<T>
 where
     T: Scalar,
     B: arnet_core::backend::ComputeBackend,
@@ -168,36 +181,36 @@ where
     for k in 0..dim {
         let mut e = vec![T::zero(); dim];
         e[k] = T::one();
-        let e_dense = Dense::new(e, vec![dim], MemoryOrder::ColumnMajor);
+        let e_dense = DenseTensorData::from_raw_parts(e, vec![dim], MemoryOrder::ColumnMajor);
         let col = heff.apply(&e_dense);
         let col_data = col.data();
         for i in 0..dim {
             data[i + dim * k] = col_data[i];
         }
     }
-    Dense::new(data, vec![dim, dim], MemoryOrder::ColumnMajor)
+    DenseTensorData::from_raw_parts(data, vec![dim, dim], MemoryOrder::ColumnMajor)
 }
 
 /// Construct an `EffectiveHamiltonian2Site` from a freshly built
 /// envs at the requested two-site index. Returns the operator plus
 /// the envs (kept alive so the borrowed references stay valid).
 fn make_heff<'a, T>(
-    envs: &'a DmrgEnvs<Dense<T>>,
-    mps: &'a Mps<Dense<T>>,
-    mpo: &'a Mpo<Dense<T>>,
+    envs: &'a DmrgEnvs<DenseStorage<T>, DenseLayout>,
+    mps: &'a Mps<DenseStorage<T>, DenseLayout>,
+    mpo: &'a Mpo<DenseStorage<T>, DenseLayout>,
     site: usize,
 ) -> EffectiveHamiltonian2Site<'a, T>
 where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
 {
-    use arnet_mps::TensorChainRepr as TensorChain;
+    use arnet_mps::TensorChain;
     let left = envs.left(site).expect("left(site)");
     let right = envs.right(site + 2).expect("right(site+2)");
-    let w_i = mpo.storage(site);
-    let w_ip1 = mpo.storage(site + 1);
-    let mps_i = mps.storage(site);
-    let mps_ip1 = mps.storage(site + 1);
+    let w_i = mpo.site(site);
+    let w_ip1 = mpo.site(site + 1);
+    let mps_i = mps.site(site);
+    let mps_ip1 = mps.site(site + 1);
     let chi_l = left.shape()[0];
     let chi_r = right.shape()[0];
     let d_i = mps_i.shape()[1];
@@ -280,7 +293,7 @@ fn heff_matvec_matches_dense_apply() {
     // Apply on a random vector via the operator and compare to `H_dense @ v`.
     let mut rng = StdRng::seed_from_u64(0xABCD_1234);
     let v_data: Vec<f64> = (0..dim).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-    let v = Dense::new(v_data.clone(), vec![dim], MemoryOrder::ColumnMajor);
+    let v = DenseTensorData::from_raw_parts(v_data.clone(), vec![dim], MemoryOrder::ColumnMajor);
 
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data();
@@ -749,7 +762,7 @@ fn heff_matvec_matches_dense_apply_complex() {
             Complex::new(re, im)
         })
         .collect();
-    let v = Dense::new(v_data.clone(), vec![dim], MemoryOrder::ColumnMajor);
+    let v = DenseTensorData::from_raw_parts(v_data.clone(), vec![dim], MemoryOrder::ColumnMajor);
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data();
     let mut dense_out = vec![Complex::new(0.0, 0.0); dim];

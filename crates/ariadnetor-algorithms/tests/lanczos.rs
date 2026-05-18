@@ -7,9 +7,9 @@
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::krylov::{LanczosParams, lanczos_smallest};
 use arnet_core::Scalar;
-use arnet_linalg::eigh_dense as eigh;
+use arnet_linalg::eigh;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 use num_complex::Complex;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -21,7 +21,11 @@ use rand::rngs::StdRng;
 /// Hermitian matrix-vector product `H v`. The matrix is stored in
 /// column-major order (matching `NativeBackend::preferred_order()`):
 /// element `(i, j)` lives at flat index `i + n * j`.
-fn matvec_cm<T: Scalar>(h: &Dense<T>, n: usize, v: &Dense<T>) -> Dense<T> {
+fn matvec_cm<T: Scalar>(
+    h: &DenseTensorData<T>,
+    n: usize,
+    v: &DenseTensorData<T>,
+) -> DenseTensorData<T> {
     let h_data = h.data();
     let v_data = v.data();
     let mut out = vec![T::zero(); n];
@@ -31,14 +35,14 @@ fn matvec_cm<T: Scalar>(h: &Dense<T>, n: usize, v: &Dense<T>) -> Dense<T> {
             *out_i = *out_i + h_data[i + n * j] * vj;
         }
     }
-    Dense::new(out, vec![n], MemoryOrder::ColumnMajor)
+    DenseTensorData::from_raw_parts(out, vec![n], MemoryOrder::ColumnMajor)
 }
 
 /// Build a random Hermitian matrix `H = (A + A^H) / 2` of size `n×n`,
 /// stored in column-major.
-fn random_hermitian_f64(n: usize, seed: u64) -> Dense<f64> {
+fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensorData<f64> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let a = Dense::<f64>::random(vec![n, n], &mut rng);
+    let a = DenseTensorData::<f64>::random(vec![n, n], &mut rng);
     // Symmetrize: H[i,j] = (A[i,j] + A[j,i]) / 2.
     let mut data = vec![0.0_f64; n * n];
     let a_data = a.data();
@@ -49,13 +53,13 @@ fn random_hermitian_f64(n: usize, seed: u64) -> Dense<f64> {
             data[i + n * j] = 0.5 * (aij + aji);
         }
     }
-    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
+    DenseTensorData::from_raw_parts(data, vec![n, n], MemoryOrder::ColumnMajor)
 }
 
-fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
+fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensorData<Complex<f64>> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let real = Dense::<f64>::random(vec![n, n], &mut rng);
-    let imag = Dense::<f64>::random(vec![n, n], &mut rng);
+    let real = DenseTensorData::<f64>::random(vec![n, n], &mut rng);
+    let imag = DenseTensorData::<f64>::random(vec![n, n], &mut rng);
     let r = real.data();
     let im = imag.data();
     let mut data = vec![Complex::new(0.0, 0.0); n * n];
@@ -67,11 +71,11 @@ fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
             data[i + n * j] = (aij + aji.conj()) * 0.5;
         }
     }
-    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
+    DenseTensorData::from_raw_parts(data, vec![n, n], MemoryOrder::ColumnMajor)
 }
 
 /// Smallest eigenvalue of a Hermitian matrix via dense `eigh` (ground truth).
-fn eigh_smallest<T: Scalar>(h: &Dense<T>) -> T::Real {
+fn eigh_smallest<T: Scalar>(h: &DenseTensorData<T>) -> T::Real {
     let backend = NativeBackend::shared();
     let (eigvals, _) = eigh(&*backend, h, 1).expect("eigh");
     eigvals.data()[0]
@@ -90,10 +94,10 @@ fn lanczos_diagonal_returns_min_eigenvalue() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
+    let h = DenseTensorData::from_raw_parts(data, vec![n, n], MemoryOrder::ColumnMajor);
 
     let result = lanczos_smallest::<f64, _>(
-        &|v: &Dense<f64>| matvec_cm(&h, n, v),
+        &|v: &DenseTensorData<f64>| matvec_cm(&h, n, v),
         n,
         &LanczosParams {
             max_iter: 50,
@@ -115,7 +119,7 @@ fn lanczos_random_symmetric_matches_eigh() {
         let lambda_ref = eigh_smallest(&h);
 
         let result = lanczos_smallest::<f64, _>(
-            &|v: &Dense<f64>| matvec_cm(&h, n, v),
+            &|v: &DenseTensorData<f64>| matvec_cm(&h, n, v),
             n,
             &LanczosParams {
                 max_iter: 4 * n,
@@ -151,10 +155,10 @@ fn lanczos_near_degenerate_cluster() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
+    let h = DenseTensorData::from_raw_parts(data, vec![n, n], MemoryOrder::ColumnMajor);
 
     let result = lanczos_smallest::<f64, _>(
-        &|v: &Dense<f64>| matvec_cm(&h, n, v),
+        &|v: &DenseTensorData<f64>| matvec_cm(&h, n, v),
         n,
         &LanczosParams {
             max_iter: 60,
@@ -186,7 +190,7 @@ fn lanczos_complex_hermitian_matches_eigh() {
     let lambda_ref = eigh_smallest(&h);
 
     let result = lanczos_smallest::<Complex<f64>, _>(
-        &|v: &Dense<Complex<f64>>| matvec_cm(&h, n, v),
+        &|v: &DenseTensorData<Complex<f64>>| matvec_cm(&h, n, v),
         n,
         &LanczosParams {
             max_iter: 4 * n,
@@ -216,9 +220,9 @@ fn lanczos_n1_returns_iters_one() {
     // w = h*v_0 - alpha*v_0 = 0 exactly, beta = 0 ≤ tol, so the residual check
     // breaks at the end of the iteration with iters = j + 1 = 1. The mutation
     // `iters = j + 1 → j * 1` would set iters = 0 in this scenario.
-    let h = Dense::new(vec![5.0_f64], vec![1, 1], MemoryOrder::ColumnMajor);
+    let h = DenseTensorData::from_raw_parts(vec![5.0_f64], vec![1, 1], MemoryOrder::ColumnMajor);
     let result = lanczos_smallest::<f64, _>(
-        &|v: &Dense<f64>| matvec_cm(&h, 1, v),
+        &|v: &DenseTensorData<f64>| matvec_cm(&h, 1, v),
         1,
         &LanczosParams {
             max_iter: 10,

@@ -6,13 +6,10 @@
 
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh_dense as eigh};
-use arnet_mps::{
-    CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
-    canonicalize_repr as canonicalize,
-};
+use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData};
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -74,7 +71,7 @@ fn build_mpo_site_f64(
     w_l_dim: usize,
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
-) -> Dense<f64> {
+) -> DenseTensorData<f64> {
     let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
@@ -86,7 +83,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    backend.make_tensor(data, vec![w_l_dim, D, D, w_r_dim])
+    backend.make_tensor_data(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +98,7 @@ fn build_mpo_site_f64(
 // Site N-1 = first column of W with shape (3, D, D, 1).
 // ---------------------------------------------------------------------------
 
-fn tfi_mpo_f64(n: usize, j: f64, h: f64) -> Mpo<Dense<f64>> {
+fn tfi_mpo_f64(n: usize, j: f64, h: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 2, "tfi_mpo_f64 requires n >= 2");
     let mut sites = Vec::with_capacity(n);
 
@@ -134,7 +131,7 @@ fn tfi_mpo_f64(n: usize, j: f64, h: f64) -> Mpo<Dense<f64>> {
         &[(0, 0, op_id, 1.0), (1, 0, op_sz, 1.0), (2, 0, op_sx, -h)],
     ));
 
-    Mpo::from_storages(sites)
+    Mpo::from_sites(sites)
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +149,7 @@ fn tfi_mpo_f64(n: usize, j: f64, h: f64) -> Mpo<Dense<f64>> {
 // Site N-1 = first column, shape (5, D, D, 1).
 // ---------------------------------------------------------------------------
 
-fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
+fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 2, "heisenberg_mpo_f64 requires n >= 2");
     let mut sites = Vec::with_capacity(n);
 
@@ -198,7 +195,7 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
         ],
     ));
 
-    Mpo::from_storages(sites)
+    Mpo::from_sites(sites)
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +226,7 @@ fn write_offdiag(h: &mut [f64], dim: usize, b_out: usize, b_in: usize, value: f6
     h[b_out + dim * b_in] += value;
 }
 
-fn tfi_ed_dense_f64(n: usize, j: f64, h_field: f64) -> Dense<f64> {
+fn tfi_ed_dense_f64(n: usize, j: f64, h_field: f64) -> DenseTensorData<f64> {
     let backend = NativeBackend::shared();
     let dim = 1usize << n;
     let mut data = vec![0.0_f64; dim * dim];
@@ -249,10 +246,10 @@ fn tfi_ed_dense_f64(n: usize, j: f64, h_field: f64) -> Dense<f64> {
             write_offdiag(&mut data, dim, b_out, b, -h_field);
         }
     }
-    backend.make_tensor(data, vec![dim, dim])
+    backend.make_tensor_data(data, vec![dim, dim])
 }
 
-fn heisenberg_ed_dense_f64(n: usize, j: f64) -> Dense<f64> {
+fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensorData<f64> {
     let backend = NativeBackend::shared();
     let dim = 1usize << n;
     let mut data = vec![0.0_f64; dim * dim];
@@ -277,10 +274,10 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> Dense<f64> {
             }
         }
     }
-    backend.make_tensor(data, vec![dim, dim])
+    backend.make_tensor_data(data, vec![dim, dim])
 }
 
-fn dense_min_eig_f64(h: &Dense<f64>) -> f64 {
+fn dense_min_eig_f64(h: &DenseTensorData<f64>) -> f64 {
     let backend = NativeBackend::shared();
     let (eigvals, _v) = eigh(&*backend, h, 1).expect("eigh");
     eigvals.data().iter().copied().fold(f64::INFINITY, f64::min)
@@ -291,19 +288,24 @@ fn dense_min_eig_f64(h: &Dense<f64>) -> f64 {
 // because the equivalent helper in `dmrg_sweep.rs` is not exported.
 // ---------------------------------------------------------------------------
 
-fn random_mps_center_zero_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_center_zero_f64(
+    n: usize,
+    d: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            backend.make_tensor(data, vec![l, d, r])
+            backend.make_tensor_data(data, vec![l, d, r])
         })
         .collect();
-    let mut mps = Mps::from_storages(storages);
+    let mut mps = Mps::from_sites(storages);
     canonicalize(&mut mps, 0);
     mps
 }
@@ -335,7 +337,7 @@ fn validation_params(chi_max: usize, lanczos_seed: u64) -> DmrgSweepParams {
 
 fn run_validation(
     name: &str,
-    mpo: Mpo<Dense<f64>>,
+    mpo: Mpo<DenseStorage<f64>, DenseLayout>,
     e_ed: f64,
     chi_max: usize,
     init_seed: u64,
@@ -445,10 +447,10 @@ fn v5_heisenberg_n8_vs_ed() {
 // flattening (LSB = site 0 in basis index).
 // ---------------------------------------------------------------------------
 
-fn contract_2site_mpo_f64(mpo: &Mpo<Dense<f64>>) -> Vec<f64> {
+fn contract_2site_mpo_f64(mpo: &Mpo<DenseStorage<f64>, DenseLayout>) -> Vec<f64> {
     assert_eq!(mpo.len(), 2, "contract_2site_mpo_f64 requires N=2");
-    let s0 = mpo.storage(0);
-    let s1 = mpo.storage(1);
+    let s0 = mpo.site(0);
+    let s1 = mpo.site(1);
     let chi = s0.shape()[3];
     assert_eq!(s1.shape()[0], chi);
 
@@ -481,7 +483,7 @@ fn contract_2site_mpo_f64(mpo: &Mpo<Dense<f64>>) -> Vec<f64> {
     out
 }
 
-fn assert_dense_close(actual: &[f64], expected: &Dense<f64>, name: &str, tol: f64) {
+fn assert_dense_close(actual: &[f64], expected: &DenseTensorData<f64>, name: &str, tol: f64) {
     let exp = expected.data();
     assert_eq!(actual.len(), exp.len(), "{name}: length mismatch");
     for (i, (&a, &e)) in actual.iter().zip(exp.iter()).enumerate() {

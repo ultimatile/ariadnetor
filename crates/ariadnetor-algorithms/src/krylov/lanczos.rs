@@ -3,12 +3,9 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
-use arnet_linalg::{
-    eigh_dense as eigh, linear_combine_dense as linear_combine, norm_dense as norm,
-    normalize_dense as normalize,
-};
+use arnet_linalg::{eigh, linear_combine, norm, normalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, reorder};
+use arnet_tensor::{DenseTensorData, reorder};
 use num_traits::{Float, One, Zero};
 use rand::Rng;
 use rand::SeedableRng;
@@ -18,18 +15,18 @@ use rand::rngs::StdRng;
 ///
 /// The Lanczos solver only ever needs to apply the operator to a
 /// vector — it never inspects matrix elements directly. Closures of
-/// type `Fn(&Dense<T>) -> Dense<T>` automatically implement this
-/// trait via the blanket impl.
+/// type `Fn(&DenseTensorData<T>) -> DenseTensorData<T>` automatically
+/// implement this trait via the blanket impl.
 pub trait LinearOp<T: Scalar> {
-    fn apply(&self, v: &Dense<T>) -> Dense<T>;
+    fn apply(&self, v: &DenseTensorData<T>) -> DenseTensorData<T>;
 }
 
 impl<T, F> LinearOp<T> for F
 where
     T: Scalar,
-    F: Fn(&Dense<T>) -> Dense<T>,
+    F: Fn(&DenseTensorData<T>) -> DenseTensorData<T>,
 {
-    fn apply(&self, v: &Dense<T>) -> Dense<T> {
+    fn apply(&self, v: &DenseTensorData<T>) -> DenseTensorData<T> {
         self(v)
     }
 }
@@ -68,7 +65,7 @@ pub struct LanczosResult<T: Scalar> {
     /// Smallest eigenvalue.
     pub eigenvalue: T::Real,
     /// Corresponding (unit-norm) eigenvector of length `dim`.
-    pub eigenvector: Dense<T>,
+    pub eigenvector: DenseTensorData<T>,
     /// Number of Lanczos iterations actually run.
     pub iters: usize,
     /// True residual `|| H v - lambda v ||_2` of the returned pair.
@@ -142,14 +139,14 @@ where
     };
     let v0 = random_unit_vector::<T>(dim, &mut rng);
 
-    let mut basis: Vec<Dense<T>> = vec![v0];
+    let mut basis: Vec<DenseTensorData<T>> = vec![v0];
     let mut alphas: Vec<T::Real> = Vec::new();
     let mut betas: Vec<T::Real> = Vec::new();
 
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
-    let mut converged_z: Dense<T::Real> =
-        Dense::new(vec![T::Real::one()], vec![1], MemoryOrder::ColumnMajor);
+    let mut converged_z: DenseTensorData<T::Real> =
+        DenseTensorData::from_raw_parts(vec![T::Real::one()], vec![1], MemoryOrder::ColumnMajor);
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -234,13 +231,17 @@ where
         }
         let inv = T::Real::one() / beta;
         let v_next_data: Vec<T> = w.data().iter().map(|&x| x.scale_real(inv)).collect();
-        basis.push(Dense::new(v_next_data, vec![dim], w.order()));
+        basis.push(DenseTensorData::from_raw_parts(
+            v_next_data,
+            vec![dim],
+            w.order(),
+        ));
         betas.push(beta);
     }
 
     // Reconstruct the Ritz vector psi = sum_k z[k] v_k.
     let m = converged_z.len();
-    let basis_refs: Vec<&Dense<T>> = basis.iter().take(m).collect();
+    let basis_refs: Vec<&DenseTensorData<T>> = basis.iter().take(m).collect();
     let coefs: Vec<T> = converged_z
         .data()
         .iter()
@@ -290,7 +291,7 @@ where
 // ============================================================================
 
 /// Hermitian inner product `<a, b> = sum_i conj(a_i) * b_i`.
-fn inner<T: Scalar>(a: &Dense<T>, b: &Dense<T>) -> T {
+fn inner<T: Scalar>(a: &DenseTensorData<T>, b: &DenseTensorData<T>) -> T {
     a.data()
         .iter()
         .zip(b.data().iter())
@@ -298,7 +299,11 @@ fn inner<T: Scalar>(a: &Dense<T>, b: &Dense<T>) -> T {
 }
 
 /// Compute `w - alpha * v` where alpha is real.
-fn sub_real_axpy<T: Scalar>(w: &Dense<T>, alpha: T::Real, v: &Dense<T>) -> Dense<T> {
+fn sub_real_axpy<T: Scalar>(
+    w: &DenseTensorData<T>,
+    alpha: T::Real,
+    v: &DenseTensorData<T>,
+) -> DenseTensorData<T> {
     let neg_alpha = -alpha;
     let data: Vec<T> = w
         .data()
@@ -306,17 +311,17 @@ fn sub_real_axpy<T: Scalar>(w: &Dense<T>, alpha: T::Real, v: &Dense<T>) -> Dense
         .zip(v.data().iter())
         .map(|(&wi, &vi)| wi + vi.scale_real(neg_alpha))
         .collect();
-    Dense::new(data, w.shape().to_vec(), w.order())
+    DenseTensorData::from_raw_parts(data, w.shape().to_vec(), w.order())
 }
 
 /// Compute `w - alpha * v - beta * u` where alpha, beta are real.
 fn sub_two_real_axpy<T: Scalar>(
-    w: &Dense<T>,
+    w: &DenseTensorData<T>,
     alpha: T::Real,
-    v: &Dense<T>,
+    v: &DenseTensorData<T>,
     beta: T::Real,
-    u: &Dense<T>,
-) -> Dense<T> {
+    u: &DenseTensorData<T>,
+) -> DenseTensorData<T> {
     let neg_alpha = -alpha;
     let neg_beta = -beta;
     let data: Vec<T> = w
@@ -326,11 +331,15 @@ fn sub_two_real_axpy<T: Scalar>(
         .zip(u.data().iter())
         .map(|((&wi, &vi), &ui)| wi + vi.scale_real(neg_alpha) + ui.scale_real(neg_beta))
         .collect();
-    Dense::new(data, w.shape().to_vec(), w.order())
+    DenseTensorData::from_raw_parts(data, w.shape().to_vec(), w.order())
 }
 
 /// Compute `w - gamma * v` where gamma is the (possibly complex) scalar T.
-fn sub_complex_axpy<T: Scalar>(w: &Dense<T>, gamma: T, v: &Dense<T>) -> Dense<T> {
+fn sub_complex_axpy<T: Scalar>(
+    w: &DenseTensorData<T>,
+    gamma: T,
+    v: &DenseTensorData<T>,
+) -> DenseTensorData<T> {
     let neg_gamma = gamma.scale_real(-T::Real::one());
     let data: Vec<T> = w
         .data()
@@ -338,14 +347,14 @@ fn sub_complex_axpy<T: Scalar>(w: &Dense<T>, gamma: T, v: &Dense<T>) -> Dense<T>
         .zip(v.data().iter())
         .map(|(&wi, &vi)| wi + neg_gamma * vi)
         .collect();
-    Dense::new(data, w.shape().to_vec(), w.order())
+    DenseTensorData::from_raw_parts(data, w.shape().to_vec(), w.order())
 }
 
 /// Draw a unit-norm random vector by sampling each component independently
 /// from the uniform distribution on (−0.5, 0.5) and normalizing. The same
 /// helper covers real and complex `T`: the imaginary part is dropped for
 /// real scalars (see [`Scalar::from_real_imag`]).
-fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
+fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> DenseTensorData<T> {
     let mut data: Vec<T> = (0..dim)
         .map(|_| {
             let re_f64: f64 = rng.random_range(-0.5..0.5);
@@ -367,7 +376,7 @@ fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
     if data.iter().all(|x| x.abs() == T::Real::zero()) {
         data[0] = T::one();
     }
-    let v = Dense::new(data, vec![dim], MemoryOrder::ColumnMajor);
+    let v = DenseTensorData::from_raw_parts(data, vec![dim], MemoryOrder::ColumnMajor);
     let (normalized, _) = normalize(&v);
     normalized
 }
@@ -381,7 +390,7 @@ fn solve_tridiagonal_smallest<T>(
     alphas: &[T::Real],
     betas: &[T::Real],
     m: usize,
-) -> (T::Real, Dense<T::Real>)
+) -> (T::Real, DenseTensorData<T::Real>)
 where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
@@ -389,7 +398,11 @@ where
     if m == 1 {
         return (
             alphas[0],
-            Dense::new(vec![T::Real::one()], vec![1], MemoryOrder::ColumnMajor),
+            DenseTensorData::from_raw_parts(
+                vec![T::Real::one()],
+                vec![1],
+                MemoryOrder::ColumnMajor,
+            ),
         );
     }
     // Build the m×m matrix in column-major order to match
@@ -403,7 +416,7 @@ where
             data[i + m * (i + 1)] = betas[i];
         }
     }
-    let matrix = Dense::new(data, vec![m, m], MemoryOrder::ColumnMajor);
+    let matrix = DenseTensorData::from_raw_parts(data, vec![m, m], MemoryOrder::ColumnMajor);
     let (eigvals, eigvecs) = eigh(backend, &matrix, 1).expect("tridiagonal eigh");
     let lambda = eigvals.data()[0];
     // First column of eigvecs (column-major) holds the eigenvector for the
@@ -411,7 +424,7 @@ where
     let z_data = eigvecs.data()[0..m].to_vec();
     (
         lambda,
-        Dense::new(z_data, vec![m], MemoryOrder::ColumnMajor),
+        DenseTensorData::from_raw_parts(z_data, vec![m], MemoryOrder::ColumnMajor),
     )
 }
 
@@ -432,15 +445,15 @@ mod tests {
             .expect("test value must be representable in T::Real")
     }
 
-    fn dense_from_real<T: Scalar>(values: &[f64]) -> Dense<T> {
+    fn dense_from_real<T: Scalar>(values: &[f64]) -> DenseTensorData<T> {
         let data: Vec<T> = values
             .iter()
             .map(|&x| T::from_real_imag(real_from_f64::<T>(x), T::Real::zero()))
             .collect();
-        Dense::new(data, vec![values.len()], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(data, vec![values.len()], MemoryOrder::ColumnMajor)
     }
 
-    fn assert_dense_close<T>(got: &Dense<T>, expected: &Dense<T>, tol: T::Real)
+    fn assert_dense_close<T>(got: &DenseTensorData<T>, expected: &DenseTensorData<T>, tol: T::Real)
     where
         T: Scalar + std::fmt::Debug,
         T::Real: std::fmt::Debug,
@@ -541,7 +554,8 @@ mod tests {
         );
         let inv_norm = T::Real::one() / raw_norm;
         let expected_data: Vec<T> = raw.iter().map(|&x| x.scale_real(inv_norm)).collect();
-        let expected = Dense::new(expected_data, vec![dim], MemoryOrder::ColumnMajor);
+        let expected =
+            DenseTensorData::from_raw_parts(expected_data, vec![dim], MemoryOrder::ColumnMajor);
 
         assert_dense_close::<T>(&observed, &expected, real_from_f64::<T>(1e-12));
     }

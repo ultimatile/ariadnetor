@@ -19,16 +19,18 @@
 //!
 //! # Generic surface
 //!
-//! `dmrg_2site` is generic over `R: super::DmrgOps + Clone` and
-//! `B: ComputeBackend + Clone`, so the same entry point covers both
-//! the Dense (`R = Dense<T>`) and BlockSparse / U(1)
-//! (`R = BlockSparse<T, S>`) storage paths. The `Clone` bounds are
-//! required because `Mps<R, B>` is `Clone` only when both type
-//! parameters are (the `#[derive(Clone)]` on `Mps` introduces an
-//! implicit `B: Clone` bound even though the backend is held behind
-//! `Arc`). Both storage types and `NativeBackend` satisfy `Clone`, so
-//! the bound is met for every concrete storage / backend in the
-//! workspace.
+//! `dmrg_2site` is generic over `St: super::DmrgOps<L>`, `L:
+//! TensorLayout`, and `B: ComputeBackend + Clone`, so the same entry
+//! point covers both the dense (`St = DenseStorage<T>, L =
+//! DenseLayout`) and BlockSparse / U(1) (`St = BlockSparseStorage<T>,
+//! L = BlockSparseLayout<S>`) storage paths. The `Clone` bounds on
+//! the storage / layout halves are required because `Mps<St, L, B>`
+//! is `Clone` only when all type parameters are (the
+//! `#[derive(Clone)]` on `Mps` introduces an implicit `B: Clone`
+//! bound even though the backend is held behind `Arc`). Both storage
+//! flavors, both layout types, and `NativeBackend` satisfy `Clone`,
+//! so the bound is met for every concrete storage / layout / backend
+//! in the workspace.
 //!
 //! # Errors
 //!
@@ -36,7 +38,7 @@
 //! by the wrapper itself before the lower layers can panic or repeat
 //! the check:
 //!
-//! - [`DmrgError::EmptyMps`] — `arnet_mps::canonicalize_repr` asserts
+//! - [`DmrgError::EmptyMps`] — `arnet_mps::canonicalize` asserts
 //!   `center < n` and would panic on an empty chain.
 //! - [`DmrgError::LengthMismatch`] — surfaced eagerly so callers see
 //!   one failure mode for the same bug regardless of whether the
@@ -52,10 +54,8 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_mps::{
-    MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
-    canonicalize_repr as canonicalize,
-};
+use arnet_mps::{Mpo, Mps, TensorChain, canonicalize};
+use arnet_tensor::TensorLayout;
 
 use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvs};
@@ -133,14 +133,15 @@ impl From<DmrgSweepError> for DmrgError {
 /// [`DmrgError::Env`] on environment-build failure, and
 /// [`DmrgError::Sweep`] on driver failure.
 #[allow(clippy::type_complexity)]
-pub fn dmrg_2site<R, B>(
-    mpo: &Mpo<R, B>,
-    psi0: &Mps<R, B>,
+pub fn dmrg_2site<St, L, B>(
+    mpo: &Mpo<St, L, B>,
+    psi0: &Mps<St, L, B>,
     params: &DmrgSweepParams,
-) -> Result<(DmrgResult<<R::Elem as Scalar>::Real>, Mps<R, B>), DmrgError>
+) -> Result<(DmrgResult<<St::Elem as Scalar>::Real>, Mps<St, L, B>), DmrgError>
 where
-    R: DmrgOps + Clone,
-    <R::Elem as Scalar>::Real: Scalar<Real = <R::Elem as Scalar>::Real>,
+    St: DmrgOps<L> + Clone,
+    L: TensorLayout + Clone,
+    <St::Elem as Scalar>::Real: Scalar<Real = <St::Elem as Scalar>::Real>,
     B: ComputeBackend + Clone,
 {
     if psi0.len() == 0 {

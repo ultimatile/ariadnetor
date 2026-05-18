@@ -7,14 +7,15 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{MpoRepr as Mpo, TensorChainRepr as TensorChain};
+use arnet_mps::{Mpo, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
-    BlockCoord, BlockSparse, Dense, Direction, MemoryOrder, QNIndex, Sector, U1Sector,
+    BlockCoord, BlockSparseTensorData, DenseTensorData, Direction, MemoryOrder, QNIndex, Sector,
+    U1Sector,
 };
 use num_complex::Complex;
 
-use arnet_mps::MpsRepr as Mps;
+use arnet_mps::Mps;
 
 use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_c64, make_n2_mpo_f64, make_n2_mps_c64, make_n2_mps_f64,
@@ -93,7 +94,7 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_flux() {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
-    let bad_w0 = BlockSparse::<f64, U1Sector>::zeros(
+    let bad_w0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial, Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -101,8 +102,9 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_flux() {
             QNIndex::new(xy_bond, Direction::In),
         ],
         U1Sector(2),
+        MemoryOrder::ColumnMajor,
     );
-    let bad_mpo = Mpo::from_storages(vec![bad_w0, mpo_good.storage(1).clone()]);
+    let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
@@ -141,32 +143,34 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
     let trivial = vec![(U1Sector(0), 1)];
     let charged_right = vec![(U1Sector(2), 1)];
 
-    let mut mps0 = BlockSparse::<f64, U1Sector>::zeros(
+    let mut mps0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::Out),
             QNIndex::new(trivial.clone(), Direction::In),
         ],
         U1Sector::identity(),
+        MemoryOrder::ColumnMajor,
     );
     mps0.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("(0,0,0)")[0] = 1.0;
 
-    let mps1 = BlockSparse::<f64, U1Sector>::zeros(
+    let mps1 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::Out),
             QNIndex::new(charged_right, Direction::In),
         ],
         U1Sector(2),
+        MemoryOrder::ColumnMajor,
     );
 
-    let mps = arnet_mps::MpsRepr::from_storages(vec![mps0, mps1]);
+    let mps = arnet_mps::Mps::from_sites(vec![mps0, mps1]);
 
     // Minimal MPO with dim-1 / single-sector edge bonds satisfying
     // the Phase 6.1 boundary contract. Identity propagator on the
     // single phys sector.
-    let mut w0 = BlockSparse::<f64, U1Sector>::zeros(
+    let mut w0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -174,9 +178,10 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
             QNIndex::new(trivial.clone(), Direction::In),
         ],
         U1Sector::identity(),
+        MemoryOrder::ColumnMajor,
     );
     w0.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
-    let mut w1 = BlockSparse::<f64, U1Sector>::zeros(
+    let mut w1 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -184,9 +189,10 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
             QNIndex::new(trivial, Direction::In),
         ],
         U1Sector::identity(),
+        MemoryOrder::ColumnMajor,
     );
     w1.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
-    let mpo = arnet_mps::MpoRepr::from_storages(vec![w0, w1]);
+    let mpo = arnet_mps::Mpo::from_sites(vec![w0, w1]);
 
     let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
 
@@ -211,7 +217,7 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_bra_ket() {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
-    let bad_w0 = BlockSparse::<f64, U1Sector>::zeros(
+    let bad_w0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial, Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -219,11 +225,12 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_bra_ket() {
             QNIndex::new(xy_bond, Direction::In),
         ],
         U1Sector::identity(),
+        MemoryOrder::ColumnMajor,
     );
     let mps = make_n2_mps_f64();
     let mpo_good = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo_good);
-    let bad_mpo = Mpo::from_storages(vec![bad_w0, mpo_good.storage(1).clone()]);
+    let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
@@ -249,11 +256,11 @@ fn bsp_heff_complex_path() {
     let backend = NativeBackend::shared();
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left"),
-        mpo.storage(0),
-        mpo.storage(1),
+        mpo.site(0),
+        mpo.site(1),
         envs.right(2).expect("right"),
-        mps.storage(0),
-        mps.storage(1),
+        mps.site(0),
+        mps.site(1),
         backend,
     );
 
@@ -262,7 +269,11 @@ fn bsp_heff_complex_path() {
     for j in 0..dim {
         let mut e_j = vec![Complex::new(0.0, 0.0); dim];
         e_j[j] = Complex::new(1.0, 0.0);
-        let out = bsp_heff.apply(&Dense::new(e_j, vec![dim], MemoryOrder::ColumnMajor));
+        let out = bsp_heff.apply(&DenseTensorData::from_raw_parts(
+            e_j,
+            vec![dim],
+            MemoryOrder::ColumnMajor,
+        ));
         for i in 0..dim {
             h_data[i + dim * j] = out.data()[i];
         }
@@ -404,23 +415,25 @@ fn bsp_validate_inputs_qn_mismatch_contracted_axis_sectors() {
     let alt_mid = vec![(U1Sector(2), 1), (U1Sector(3), 1)];
     let trivial = vec![(U1Sector(0), 1)];
 
-    let mps_alt0 = BlockSparse::<f64, U1Sector>::zeros(
+    let mps_alt0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(alt_left, Direction::Out),
             QNIndex::new(phys.clone(), Direction::Out),
             QNIndex::new(alt_mid.clone(), Direction::In),
         ],
         U1Sector::identity(),
+        MemoryOrder::ColumnMajor,
     );
-    let mps_alt1 = BlockSparse::<f64, U1Sector>::zeros(
+    let mps_alt1 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(alt_mid, Direction::Out),
             QNIndex::new(phys, Direction::Out),
             QNIndex::new(trivial, Direction::In),
         ],
         U1Sector(2),
+        MemoryOrder::ColumnMajor,
     );
-    let mps_alt = Mps::from_storages(vec![mps_alt0, mps_alt1]);
+    let mps_alt = Mps::from_sites(vec![mps_alt0, mps_alt1]);
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {

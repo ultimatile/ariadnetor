@@ -6,8 +6,8 @@
 //! right-canonical pair via truncated SVD.
 //!
 //! Axis convention (consistent with [`super::env`] and the
-//! `arnet_mps::inner_repr` braket family — `braket_dense` for [`Dense<T>`],
-//! `braket_bsp` for `BlockSparse<T, S>`):
+//! `arnet_mps::inner` braket family — `braket_dense` for dense, `braket_bsp`
+//! for BlockSparse):
 //!
 //! - Env tensor `(top-bra-bond, W-bond, bot-ket-bond)` with bra = ket
 //!   = psi for ground-state DMRG.
@@ -30,10 +30,10 @@ use std::sync::Arc;
 
 use arnet_core::backend::ComputeBackend;
 use arnet_core::{MemoryOrder, Scalar};
-use arnet_linalg::{TruncSvdParams, contract_dense as contract, trunc_svd_dense as trunc_svd};
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
+use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
+use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, reorder};
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensorData, reorder};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -51,10 +51,10 @@ use super::solver::{
 /// ARPACK behind the `arpack` feature.
 #[derive(Debug, Clone)]
 pub struct EffectiveHamiltonian2Site<'a, T: Scalar, B: ComputeBackend = NativeBackend> {
-    left: &'a Dense<T>,
-    w_i: &'a Dense<T>,
-    w_ip1: &'a Dense<T>,
-    right: &'a Dense<T>,
+    left: &'a DenseTensorData<T>,
+    w_i: &'a DenseTensorData<T>,
+    w_ip1: &'a DenseTensorData<T>,
+    right: &'a DenseTensorData<T>,
     chi_l: usize,
     d_i: usize,
     d_ip1: usize,
@@ -79,10 +79,10 @@ impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
     /// manually instead of going through `dmrg_2site_step`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        left: &'a Dense<T>,
-        w_i: &'a Dense<T>,
-        w_ip1: &'a Dense<T>,
-        right: &'a Dense<T>,
+        left: &'a DenseTensorData<T>,
+        w_i: &'a DenseTensorData<T>,
+        w_ip1: &'a DenseTensorData<T>,
+        right: &'a DenseTensorData<T>,
         chi_l: usize,
         d_i: usize,
         d_ip1: usize,
@@ -159,7 +159,7 @@ impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
 }
 
 impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T> for EffectiveHamiltonian2Site<'a, T, B> {
-    fn apply(&self, v: &Dense<T>) -> Dense<T> {
+    fn apply(&self, v: &DenseTensorData<T>) -> DenseTensorData<T> {
         // Shapes are pre-validated by `dmrg_2site_step` before this
         // operator is constructed, so the contractions cannot fail.
         let psi = v.reshape(vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
@@ -206,13 +206,13 @@ pub struct TwoSiteStepResult<T: Scalar> {
     /// Left singular vectors, shape `[chi_l, d_i, chi_new]`.
     /// Left-canonical at axes `(chi_l, d_i)` — i.e. `U^† U =
     /// I_{chi_new}`.
-    pub u: Dense<T>,
+    pub u: DenseTensorData<T>,
     /// Singular values, shape `[chi_new]`, descending.
-    pub s: Dense<T::Real>,
+    pub s: DenseTensorData<T::Real>,
     /// Right singular vectors, shape `[chi_new, d_{i+1}, chi_r]`.
     /// Right-canonical at axes `(d_{i+1}, chi_r)` — i.e. `Vt Vt^† =
     /// I_{chi_new}`.
-    pub vt: Dense<T>,
+    pub vt: DenseTensorData<T>,
     /// Frobenius norm of the discarded singular values.
     pub trunc_err: T::Real,
 }
@@ -258,9 +258,9 @@ pub struct TwoSiteStepResult<T: Scalar> {
 /// branch is only reachable on genuine backend / allocation
 /// failures rather than user input.
 pub fn dmrg_2site_step<T, B>(
-    envs: &DmrgEnvs<Dense<T>, B>,
-    mps: &Mps<Dense<T>, B>,
-    mpo: &Mpo<Dense<T>, B>,
+    envs: &DmrgEnvs<DenseStorage<T>, DenseLayout, B>,
+    mps: &Mps<DenseStorage<T>, DenseLayout, B>,
+    mpo: &Mpo<DenseStorage<T>, DenseLayout, B>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
@@ -310,10 +310,10 @@ where
         side: "right",
         index: site + 2,
     })?;
-    let w_i = mpo.storage(site);
-    let w_ip1 = mpo.storage(site + 1);
-    let mps_i = mps.storage(site);
-    let mps_ip1 = mps.storage(site + 1);
+    let w_i = mpo.site(site);
+    let w_ip1 = mpo.site(site + 1);
+    let mps_i = mps.site(site);
+    let mps_ip1 = mps.site(site + 1);
 
     // ---- Rank checks first (must precede any `shape()[N]` access)
     // so an unexpectedly-ranked tensor surfaces a `ShapeMismatch`
@@ -475,9 +475,9 @@ where
 
     let order = backend.preferred_order();
     let rm = MemoryOrder::RowMajor;
-    let reshape_to_3d = |t_2d: Dense<T>, new_shape: Vec<usize>| -> Dense<T> {
+    let reshape_to_3d = |t_2d: DenseTensorData<T>, new_shape: Vec<usize>| -> DenseTensorData<T> {
         // 2D backend-order → RM → multi-dim split → backend-order.
-        // Mirrors the pattern in `arnet_mps::truncate_repr::truncate_dense`.
+        // Mirrors the pattern in `arnet_mps::truncate::truncate_dense`.
         let rm_view = reorder(&t_2d, order, rm);
         let multi = rm_view.reshape(new_shape);
         reorder(&multi, rm, order)

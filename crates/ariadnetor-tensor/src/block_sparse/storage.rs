@@ -34,6 +34,14 @@ pub struct BlockSparseStorage<T> {
     data: Arc<AVec<T, ConstAlign<64>>>,
 }
 
+impl<T: std::fmt::Debug> std::fmt::Debug for BlockSparseStorage<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlockSparseStorage")
+            .field("len", &self.data.len())
+            .finish_non_exhaustive()
+    }
+}
+
 // Manual Clone: Arc::clone does not require T: Clone (same pattern as Dense<T>).
 impl<T> Clone for BlockSparseStorage<T> {
     fn clone(&self) -> Self {

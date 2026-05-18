@@ -21,12 +21,9 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_core::Scalar;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{
-    MpoRepr as Mpo, MpsRepr as Mps, braket_repr as braket, canonicalize_repr as canonicalize,
-    norm_repr as norm,
-};
+use arnet_mps::{Mpo, Mps, braket, canonicalize, norm};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData};
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -63,7 +60,7 @@ fn build_mpo_site_f64(
     w_l_dim: usize,
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
-) -> Dense<f64> {
+) -> DenseTensorData<f64> {
     let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
@@ -75,11 +72,11 @@ fn build_mpo_site_f64(
             }
         }
     }
-    backend.make_tensor(data, vec![w_l_dim, D, D, w_r_dim])
+    backend.make_tensor_data(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 /// Spin-1/2 Heisenberg `H = J Σ S_i · S_{i+1}` as a bond-dim-5 MPO.
-fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
+fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 2);
     let mut sites = Vec::with_capacity(n);
 
@@ -119,31 +116,35 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
             (3, 0, op_sz, 1.0),
         ],
     ));
-    Mpo::from_storages(sites)
+    Mpo::from_sites(sites)
 }
 
-fn random_mps_center_zero_f64(n: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_center_zero_f64(
+    n: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            backend.make_tensor(data, vec![l, D, r])
+            backend.make_tensor_data(data, vec![l, D, r])
         })
         .collect();
-    let mut mps = Mps::from_storages(storages);
+    let mut mps = Mps::from_sites(storages);
     canonicalize(&mut mps, 0);
     mps
 }
 
-fn psd_local_mpo_f64(n: usize, seed: u64) -> Mpo<Dense<f64>> {
+fn psd_local_mpo_f64(n: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let eps = 0.5_f64;
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let g: Vec<f64> = (0..D * D)
                 .map(|_| rng.random_range(-1.0_f64..1.0))
@@ -159,10 +160,10 @@ fn psd_local_mpo_f64(n: usize, seed: u64) -> Mpo<Dense<f64>> {
                 }
                 h[s + D * s] += eps;
             }
-            backend.make_tensor(h, vec![1, D, D, 1])
+            backend.make_tensor_data(h, vec![1, D, D, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 fn base_params(chi_max: Option<usize>, seed: u64) -> DmrgSweepParams {
@@ -197,7 +198,8 @@ fn sweep_energy_renormalizes_post_truncation() {
     let n = 2;
     let mut mps = random_mps_center_zero_f64(n, 2, 0xA1A1);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
+        DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = base_params(Some(1), 0xB00B);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
@@ -231,7 +233,8 @@ fn n_sweeps_reaches_max_when_min_locked() {
     let n = 4;
     let mut mps = random_mps_center_zero_f64(n, 3, 0xC0DE);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
+        DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 3,
         min_sweeps: 3,
@@ -269,7 +272,8 @@ fn no_premature_convergence_on_tight_tol() {
     let n = 4;
     let mut mps = random_mps_center_zero_f64(n, 3, 0xD0D0);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
+        DmrgEnvs::build(&mps, &mpo).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 5,
         min_sweeps: 2,
@@ -310,9 +314,9 @@ fn no_premature_convergence_on_tight_tol() {
 // ---------------------------------------------------------------------------
 
 type ValidationFixture = (
-    DmrgEnvs<Dense<f64>>,
-    Mps<Dense<f64>>,
-    Mpo<Dense<f64>>,
+    DmrgEnvs<DenseStorage<f64>, DenseLayout>,
+    Mps<DenseStorage<f64>, DenseLayout>,
+    Mpo<DenseStorage<f64>, DenseLayout>,
     DmrgSweepParams,
 );
 
@@ -320,7 +324,8 @@ fn small_validation_setup(target_trunc_err: Option<f64>) -> ValidationFixture {
     let n = 2;
     let mps = random_mps_center_zero_f64(n, 2, 0xE1E1);
     let mpo = psd_local_mpo_f64(n, 0xE2E2);
-    let envs: DmrgEnvs<Dense<f64>> = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
+        DmrgEnvs::build(&mps, &mpo).expect("build");
     let mut params = base_params(Some(1), 0xE3E3);
     params.trunc.target_trunc_err = target_trunc_err;
     (envs, mps, mpo, params)

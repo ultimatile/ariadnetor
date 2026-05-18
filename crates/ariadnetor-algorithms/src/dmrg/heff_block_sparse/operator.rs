@@ -2,24 +2,21 @@
 //! implementation.
 //!
 //! The flat-buffer matvec lives here: scatter the flat input into a
-//! pre-allocated psi `BlockSparse` template, run four
+//! pre-allocated psi `BlockSparseTensorData` template, run four
 //! `contract_block_sparse` calls (the natural `lhs_free | rhs_free`
 //! order ends in `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input
 //! shape with no axis swap), gather the rank-4 result back into a
 //! flat vector. The template is owned by the operator so per-matvec
-//! allocation is bounded to a single `BlockSparse::clone` plus the
+//! allocation is bounded to a single template clone plus the
 //! transient contract intermediates.
 
 use std::sync::Arc;
 
 use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{
-    BlockSparseContractResultRepr as BlockSparseContractResult,
-    contract_block_sparse_repr as contract_block_sparse,
-};
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
+use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockSparse, Sector};
+use arnet_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::krylov::LinearOp;
 
@@ -34,20 +31,19 @@ where
     S: Sector,
     B: ComputeBackend,
 {
-    pub(super) left: &'a BlockSparse<T, S>,
-    pub(super) w_i: &'a BlockSparse<T, S>,
-    pub(super) w_ip1: &'a BlockSparse<T, S>,
-    pub(super) right: &'a BlockSparse<T, S>,
+    pub(super) left: &'a BlockSparseTensorData<T, S>,
+    pub(super) w_i: &'a BlockSparseTensorData<T, S>,
+    pub(super) w_ip1: &'a BlockSparseTensorData<T, S>,
+    pub(super) right: &'a BlockSparseTensorData<T, S>,
     /// Zero-filled rank-4 BlockSparse with the psi indices / flux.
     /// Cloned on every `apply` to receive the scattered flat input;
     /// also reused on the gather side so the output indexing
     /// matches.
-    pub(super) psi_template: BlockSparse<T, S>,
-    /// Cumulative flat offsets for each block in
-    /// `psi_template.block_metas()` order. `block_offsets[k]` is
-    /// the starting flat index of the k-th block; `block_offsets`
-    /// has length `num_blocks + 1` with the final entry equal to
-    /// `dim`.
+    pub(super) psi_template: BlockSparseTensorData<T, S>,
+    /// Cumulative flat offsets for each block in the template's
+    /// `block_metas()` order. `block_offsets[k]` is the starting
+    /// flat index of the k-th block; `block_offsets` has length
+    /// `num_blocks + 1` with the final entry equal to `dim`.
     pub(super) block_offsets: Vec<usize>,
     psi_flux: S,
     dim: usize,
@@ -70,33 +66,41 @@ where
     /// constructor's `.expect`-style invariants cannot fire on
     /// well-formed input.
     pub fn new(
-        left: &'a BlockSparse<T, S>,
-        w_i: &'a BlockSparse<T, S>,
-        w_ip1: &'a BlockSparse<T, S>,
-        right: &'a BlockSparse<T, S>,
-        mps_i: &BlockSparse<T, S>,
-        mps_ip1: &BlockSparse<T, S>,
+        left: &'a BlockSparseTensorData<T, S>,
+        w_i: &'a BlockSparseTensorData<T, S>,
+        w_ip1: &'a BlockSparseTensorData<T, S>,
+        right: &'a BlockSparseTensorData<T, S>,
+        mps_i: &BlockSparseTensorData<T, S>,
+        mps_ip1: &BlockSparseTensorData<T, S>,
         backend: Arc<B>,
     ) -> Self {
-        debug_assert_eq!(left.rank(), 3, "left.rank == 3");
-        debug_assert_eq!(right.rank(), 3, "right.rank == 3");
-        debug_assert_eq!(w_i.rank(), 4, "W[i].rank == 4");
-        debug_assert_eq!(w_ip1.rank(), 4, "W[i+1].rank == 4");
-        debug_assert_eq!(mps_i.rank(), 3, "MPS[i].rank == 3");
-        debug_assert_eq!(mps_ip1.rank(), 3, "MPS[i+1].rank == 3");
+        debug_assert_eq!(left.layout().rank(), 3, "left.rank == 3");
+        debug_assert_eq!(right.layout().rank(), 3, "right.rank == 3");
+        debug_assert_eq!(w_i.layout().rank(), 4, "W[i].rank == 4");
+        debug_assert_eq!(w_ip1.layout().rank(), 4, "W[i+1].rank == 4");
+        debug_assert_eq!(mps_i.layout().rank(), 3, "MPS[i].rank == 3");
+        debug_assert_eq!(mps_ip1.layout().rank(), 3, "MPS[i+1].rank == 3");
 
         let psi_indices = vec![
-            mps_i.indices()[0].clone(),
-            mps_i.indices()[1].clone(),
-            mps_ip1.indices()[1].clone(),
-            mps_ip1.indices()[2].clone(),
+            mps_i.layout().indices()[0].clone(),
+            mps_i.layout().indices()[1].clone(),
+            mps_ip1.layout().indices()[1].clone(),
+            mps_ip1.layout().indices()[2].clone(),
         ];
-        let psi_flux = mps_i.flux().fuse(mps_ip1.flux());
-        let psi_template = BlockSparse::<T, S>::zeros(psi_indices, psi_flux.clone());
+        let psi_flux = mps_i.layout().flux().fuse(mps_ip1.layout().flux());
+        // The psi template's per-block memory order must match the
+        // env / MPO operands' order so `contract_block_sparse`
+        // accepts the pair. All env / MPO tensors are produced by
+        // the same active backend and therefore share a single
+        // order; read it off `left` rather than re-querying the
+        // backend.
+        let order = left.layout().order();
+        let psi_template =
+            BlockSparseTensorData::<T, S>::zeros(psi_indices, psi_flux.clone(), order);
 
-        let mut block_offsets = Vec::with_capacity(psi_template.num_blocks() + 1);
+        let mut block_offsets = Vec::with_capacity(psi_template.layout().num_blocks() + 1);
         let mut running = 0_usize;
-        for meta in psi_template.block_metas() {
+        for meta in psi_template.layout().block_metas() {
             block_offsets.push(running);
             running += meta.size;
         }
@@ -134,7 +138,7 @@ where
     S: Sector,
     B: ComputeBackend,
 {
-    fn apply(&self, v: &arnet_tensor::Dense<T>) -> arnet_tensor::Dense<T> {
+    fn apply(&self, v: &DenseTensorData<T>) -> DenseTensorData<T> {
         assert_eq!(
             v.shape(),
             &[self.dim],
@@ -196,19 +200,20 @@ where
         // num_sectors), small relative to the four BlockSparse
         // contractions above.
         assert_eq!(
-            out.flux(),
+            out.layout().flux(),
             &self.psi_flux,
             "BlockSparse heff matvec output flux must equal psi_flux"
         );
         assert_eq!(
-            out.indices().len(),
-            self.psi_template.indices().len(),
+            out.layout().indices().len(),
+            self.psi_template.layout().indices().len(),
             "BlockSparse heff matvec output rank must match template"
         );
         for (axis, (out_idx, tmpl_idx)) in out
+            .layout()
             .indices()
             .iter()
-            .zip(self.psi_template.indices().iter())
+            .zip(self.psi_template.layout().indices().iter())
             .enumerate()
         {
             assert_eq!(
@@ -224,43 +229,45 @@ where
         }
 
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
-        // 1D output is layout-invariant; declare the active backend's
-        // preferred order so downstream Lanczos arithmetic does not
-        // normalize.
-        arnet_tensor::Dense::new(flat, vec![self.dim], self.backend.preferred_order())
+        // 1D output is layout-invariant; the Lanczos basis uses
+        // `MemoryOrder::ColumnMajor`, so tag the output likewise to
+        // match without forcing a downstream reorder.
+        DenseTensorData::from_raw_parts(flat, vec![self.dim], MemoryOrder::ColumnMajor)
     }
 }
 
 /// Scatter a flat slice into a clone of the psi template. Each
 /// block's per-block buffer is filled by direct memcpy from the
 /// flat slice's `[block_offsets[k]..block_offsets[k+1]]` slab —
-/// the per-block memory order (set by `BlockSparse::zeros` to
-/// match the backend) is preserved bit-for-bit.
+/// the per-block memory order (set by the template's layout) is
+/// preserved bit-for-bit.
 pub(super) fn scatter_flat_to_template<T, S>(
     flat: &[T],
-    template: &BlockSparse<T, S>,
+    template: &BlockSparseTensorData<T, S>,
     block_offsets: &[usize],
-) -> BlockSparse<T, S>
+) -> BlockSparseTensorData<T, S>
 where
     T: Scalar,
     S: Sector,
 {
     let mut out = template.clone();
-    // `template` and `out` are separate `BlockSparse` instances
-    // after `clone`, so iterating `template.block_metas()` while
-    // mutating `out.block_data_mut(...)` is a clean two-borrow
+    // `template` and `out` are separate `BlockSparseTensorData`
+    // instances after `clone`, so iterating `template.layout().block_metas()`
+    // while mutating `out.block_data_mut(...)` is a clean two-borrow
     // pattern — no per-call `Vec<BlockCoord>` cache needed.
-    for (k, meta) in template.block_metas().iter().enumerate() {
+    let coords: Vec<_> = template
+        .layout()
+        .block_metas()
+        .iter()
+        .map(|m| (m.coord.clone(), m.size))
+        .collect();
+    for (k, (coord, size)) in coords.iter().enumerate() {
         let lo = block_offsets[k];
         let hi = block_offsets[k + 1];
+        debug_assert_eq!(*size, hi - lo, "scatter: block size mismatch with offsets");
         let dst = out
-            .block_data_mut(&meta.coord)
+            .block_data_mut(coord)
             .expect("template's allocated block must be writable");
-        debug_assert_eq!(
-            dst.len(),
-            hi - lo,
-            "scatter: block size mismatch with offsets"
-        );
         dst.copy_from_slice(&flat[lo..hi]);
     }
     out
@@ -275,8 +282,8 @@ where
 /// indices / flux do not match the template, which the entry
 /// point pre-validation prevents).
 fn gather_template_aware<T, S>(
-    out_4d: &BlockSparse<T, S>,
-    template: &BlockSparse<T, S>,
+    out_4d: &BlockSparseTensorData<T, S>,
+    template: &BlockSparseTensorData<T, S>,
     block_offsets: &[usize],
     dim: usize,
 ) -> Vec<T>
@@ -285,7 +292,7 @@ where
     S: Sector,
 {
     let mut flat = vec![T::zero(); dim];
-    for (k, meta) in template.block_metas().iter().enumerate() {
+    for (k, meta) in template.layout().block_metas().iter().enumerate() {
         if let Some(src) = out_4d.block_data(&meta.coord) {
             let lo = block_offsets[k];
             let hi = block_offsets[k + 1];

@@ -8,34 +8,34 @@
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
+use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData};
 
-fn product_state_mps(n: usize, d: usize) -> Mps<Dense<f64>> {
+fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            backend.make_tensor(data, vec![1, d, 1])
+            backend.make_tensor_data(data, vec![1, d, 1])
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
-fn identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
+fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            backend.make_tensor(data, vec![1, d, d, 1])
+            backend.make_tensor_data(data, vec![1, d, d, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 // The length predicate is `mps.len() != n_sites || mpo.len() != n_sites`.

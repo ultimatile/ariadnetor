@@ -36,10 +36,8 @@ use std::sync::Arc;
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::LinalgError;
-use arnet_mps::{
-    CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
-    braket_repr as braket, norm_repr as norm,
-};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, norm};
+use arnet_tensor::TensorLayout;
 
 use crate::numeric::try_real_from_f64;
 
@@ -67,7 +65,7 @@ pub enum SweepDirection {
 /// paths).
 ///
 /// Stored as plain `f64` for `energy_tol`; the entry point converts
-/// it to `<R::Elem as Scalar>::Real` via the same `NumCast::from(f64)`
+/// it to `<St::Elem as Scalar>::Real` via the same `NumCast::from(f64)`
 /// idiom as [`crate::krylov::LanczosParams::tol`]. This keeps the
 /// params type non-generic across the scalar type.
 #[derive(Debug, Clone)]
@@ -269,26 +267,28 @@ impl std::error::Error for DmrgSweepError {
 }
 
 /// Run alternating L→R / R→L sweeps until convergence or
-/// `max_sweeps` over a [`DmrgOps`] storage type. Mutates `mps` and
+/// `max_sweeps` over a [`DmrgOps`] storage flavor. Mutates `mps` and
 /// `envs` in place; the final MPS state is
 /// `CanonicalForm::Mixed { center: 0 }` (R→L runs last).
 ///
-/// Generic over `R: DmrgOps`, so a single call site covers both the
-/// Dense (`R = Dense<T>`) and BlockSparse / U(1)
-/// (`R = BlockSparse<T, S>`) paths. The trait dispatches the local
-/// solve and S-absorb to the storage-specific implementations.
+/// Generic over `St: DmrgOps<L>`, so a single call site covers both
+/// the dense (`St = DenseStorage<T>, L = DenseLayout`) and BlockSparse
+/// / U(1) (`St = BlockSparseStorage<T>, L = BlockSparseLayout<S>`)
+/// paths. The trait dispatches the local solve and S-absorb to the
+/// storage-specific implementations.
 ///
 /// See the module-level rustdoc for the canonical-form contract on
 /// the input MPS and for the convergence criterion.
-pub fn sweep_2site<R, B>(
-    envs: &mut DmrgEnvs<R, B>,
-    mps: &mut Mps<R, B>,
-    mpo: &Mpo<R, B>,
+pub fn sweep_2site<St, L, B>(
+    envs: &mut DmrgEnvs<St, L, B>,
+    mps: &mut Mps<St, L, B>,
+    mpo: &Mpo<St, L, B>,
     params: &DmrgSweepParams,
-) -> Result<DmrgResult<<R::Elem as Scalar>::Real>, DmrgSweepError>
+) -> Result<DmrgResult<<St::Elem as Scalar>::Real>, DmrgSweepError>
 where
-    R: DmrgOps,
-    <R::Elem as Scalar>::Real: Scalar<Real = <R::Elem as Scalar>::Real>,
+    St: DmrgOps<L>,
+    L: TensorLayout,
+    <St::Elem as Scalar>::Real: Scalar<Real = <St::Elem as Scalar>::Real>,
     B: ComputeBackend,
 {
     // ---- Length / size validation -------------------------------
@@ -307,7 +307,7 @@ where
     // ---- Param validation ---------------------------------------
     validate_params(params)?;
     // Casts may fail when the storage's real scalar type
-    // (`<R::Elem as Scalar>::Real`) is `f32` and the user supplied a
+    // (`<St::Elem as Scalar>::Real`) is `f32` and the user supplied a
     // finite value outside f32 range (NumCast::from returns Some(inf),
     // which try_real_from_f64 then maps to None). Surface that as
     // `InvalidParams` so the public API stays fallible end-to-end
@@ -317,11 +317,11 @@ where
     // gated here too so a borderline f32 tol does not slip past
     // sweep-level validation only to abort the run from inside the
     // local solve.
-    let energy_tol_real: <R::Elem as Scalar>::Real =
-        try_real_from_f64::<R::Elem>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
+    let energy_tol_real: <St::Elem as Scalar>::Real =
+        try_real_from_f64::<St::Elem>(params.energy_tol).ok_or(DmrgSweepError::InvalidParams {
             detail: "energy_tol is not representable in the storage's real scalar type",
         })?;
-    if try_real_from_f64::<R::Elem>(eigensolver_tol(&params.eigensolver)).is_none() {
+    if try_real_from_f64::<St::Elem>(eigensolver_tol(&params.eigensolver)).is_none() {
         return Err(DmrgSweepError::InvalidParams {
             detail: "eigensolver tol is not representable in the storage's real scalar type",
         });
@@ -339,15 +339,15 @@ where
     }
 
     let backend: Arc<B> = mps.backend_arc().clone();
-    let mut sweeps: Vec<DmrgSweepRecord<<R::Elem as Scalar>::Real>> =
+    let mut sweeps: Vec<DmrgSweepRecord<<St::Elem as Scalar>::Real>> =
         Vec::with_capacity(params.max_sweeps);
-    let mut last_energy: Option<<R::Elem as Scalar>::Real> = None;
+    let mut last_energy: Option<<St::Elem as Scalar>::Real> = None;
     let mut converged = false;
     let mut completed_sweeps = 0usize;
 
     // ---- Main sweep loop ----------------------------------------
     for sweep_idx in 0..params.max_sweeps {
-        let mut steps: Vec<DmrgStepRecord<<R::Elem as Scalar>::Real>> =
+        let mut steps: Vec<DmrgStepRecord<<St::Elem as Scalar>::Real>> =
             Vec::with_capacity(2 * (n_sites - 1));
 
         // L→R half-sweep.
@@ -422,9 +422,9 @@ where
         // ---- Post-sweep diagnostics -----------------------------
         let bra_h_ket = braket(mps, mpo, mps);
         let nrm = norm(mps);
-        let nrm_sq: <R::Elem as Scalar>::Real = nrm * nrm;
+        let nrm_sq: <St::Elem as Scalar>::Real = nrm * nrm;
         // The Float bound on the storage's real scalar type guarantees division.
-        let sweep_energy: <R::Elem as Scalar>::Real = bra_h_ket.re() / nrm_sq;
+        let sweep_energy: <St::Elem as Scalar>::Real = bra_h_ket.re() / nrm_sq;
 
         let max_bond = mps.max_bond_dim();
         let mut min_eig = steps[0].eigenvalue;
@@ -488,23 +488,24 @@ where
 /// for advancing the env afterwards (or skipping the advance at the
 /// trailing boundary of a half-sweep).
 #[allow(clippy::too_many_arguments)]
-fn run_step<R, B>(
-    envs: &DmrgEnvs<R, B>,
-    mps: &mut Mps<R, B>,
-    mpo: &Mpo<R, B>,
+fn run_step<St, L, B>(
+    envs: &DmrgEnvs<St, L, B>,
+    mps: &mut Mps<St, L, B>,
+    mpo: &Mpo<St, L, B>,
     site: usize,
     params: &DmrgSweepParams,
     sweep_idx: usize,
     direction: SweepDirection,
     backend: &Arc<B>,
-) -> Result<DmrgStepRecord<<R::Elem as Scalar>::Real>, DmrgSweepError>
+) -> Result<DmrgStepRecord<<St::Elem as Scalar>::Real>, DmrgSweepError>
 where
-    R: DmrgOps,
-    <R::Elem as Scalar>::Real: Scalar<Real = <R::Elem as Scalar>::Real>,
+    St: DmrgOps<L>,
+    L: TensorLayout,
+    <St::Elem as Scalar>::Real: Scalar<Real = <St::Elem as Scalar>::Real>,
     B: ComputeBackend,
 {
     let result =
-        R::step(envs, mps, mpo, site, &params.eigensolver, &params.trunc).map_err(|source| {
+        St::step(envs, mps, mpo, site, &params.eigensolver, &params.trunc).map_err(|source| {
             DmrgSweepError::Step {
                 sweep: sweep_idx,
                 direction,
@@ -522,9 +523,9 @@ where
         source,
     };
 
-    let absorbed = R::commit_step(&**backend, result, direction).map_err(scale_err)?;
-    *mps.storage_mut(site) = absorbed.site_i;
-    *mps.storage_mut(site + 1) = absorbed.site_ip1;
+    let absorbed = St::commit_step(&**backend, result, direction).map_err(scale_err)?;
+    *mps.site_mut(site) = absorbed.site_i;
+    *mps.site_mut(site + 1) = absorbed.site_ip1;
 
     Ok(DmrgStepRecord {
         sweep: sweep_idx,

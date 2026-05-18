@@ -1,7 +1,7 @@
 //! Storage-generic dispatch for the 2-site DMRG sweep driver.
 //!
 //! [`DmrgOps`] is the per-storage trait that lets [`super::sweep::sweep_2site`]
-//! be written once over both `Dense<T>` and `BlockSparse<T, S>`. It mirrors
+//! be written once over both the dense and BlockSparse flavors. It mirrors
 //! the [`MpsOps`] pattern in `arnet-mps`: each implementation is a thin
 //! delegation to the existing storage-specific free functions, with no
 //! logic duplication.
@@ -22,7 +22,7 @@
 //! Everything else in the sweep body — validation, canonical-form gate,
 //! env advance, post-sweep diagnostics, convergence test — uses only
 //! [`MpsOps`] dispatch and the storage-generic [`super::env::DmrgEnvs`] API,
-//! so it lifts to the unified `sweep_2site<R: DmrgOps, B>` directly.
+//! so it lifts to the unified `sweep_2site<St, L, B>` directly.
 //!
 //! # Sector preservation (BlockSparse path)
 //!
@@ -33,12 +33,12 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{
-    LinalgError, TruncSvdParams, diagonal_scale_block_sparse_repr as diagonal_scale_block_sparse,
-    diagonal_scale_dense as diagonal_scale,
+use arnet_linalg::{LinalgError, TruncSvdParams, diagonal_scale, diagonal_scale_block_sparse};
+use arnet_mps::{Mpo, Mps, MpsOps};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, TensorData,
+    TensorLayout,
 };
-use arnet_mps::{MpoRepr as Mpo, MpsOpsRepr as MpsOps, MpsRepr as Mps};
-use arnet_tensor::{BlockSparse, Dense, Sector, TensorRepr};
 
 use super::env::{DmrgEnvOps, DmrgEnvs};
 use super::heff::{TwoSiteStepResult, dmrg_2site_step};
@@ -48,26 +48,30 @@ use super::solver::{DmrgScalar, LocalEigensolverParams};
 use super::sweep::SweepDirection;
 
 /// Per-step output projected to scalar diagnostics + post-S-absorb site
-/// storages + new bond dimension.
+/// tensors + new bond dimension.
 ///
-/// Returned by [`DmrgOps::commit_step`]. The two `R`-typed fields
-/// (`site_i`, `site_ip1`) are the site tensors the caller writes back
-/// into the MPS at indices `(site, site + 1)`.
-pub struct AbsorbedStep<R: TensorRepr> {
-    /// Post-absorb storage to write into MPS site `i`.
-    pub site_i: R,
-    /// Post-absorb storage to write into MPS site `i + 1`.
-    pub site_ip1: R,
+/// Returned by [`DmrgOps::commit_step`]. The two `TensorData<St, L>`
+/// fields (`site_i`, `site_ip1`) are the site tensors the caller writes
+/// back into the MPS at indices `(site, site + 1)`.
+pub struct AbsorbedStep<St, L>
+where
+    St: MpsOps<L>,
+    L: TensorLayout,
+{
+    /// Post-absorb site tensor to write into MPS site `i`.
+    pub site_i: TensorData<St, L>,
+    /// Post-absorb site tensor to write into MPS site `i + 1`.
+    pub site_ip1: TensorData<St, L>,
     /// Bond dimension of the new shared bond between sites `i` and
     /// `i + 1`. For BlockSparse / U(1), this is the total over all
     /// retained sectors.
     pub bond_dim: usize,
     /// Smallest eigenvalue of `H_eff` at this step (pre-truncation).
-    pub eigenvalue: <R::Elem as Scalar>::Real,
+    pub eigenvalue: <St::Elem as Scalar>::Real,
     /// Local-eigensolver true residual `‖H v − λ v‖₂`.
-    pub residual: <R::Elem as Scalar>::Real,
+    pub residual: <St::Elem as Scalar>::Real,
     /// Frobenius norm of the discarded singular values.
-    pub trunc_err: <R::Elem as Scalar>::Real,
+    pub trunc_err: <St::Elem as Scalar>::Real,
     /// Number of iterations the local eigensolver executed.
     pub iters: usize,
     /// `true` iff the local eigensolver succeeded — Lanczos by its
@@ -84,15 +88,15 @@ pub struct AbsorbedStep<R: TensorRepr> {
 /// Per-storage dispatch trait for the 2-site DMRG sweep driver.
 ///
 /// Extends [`MpsOps`] so the sweep body can call `braket` / `norm` for
-/// post-sweep diagnostics, and [`DmrgEnvOps`] so `DmrgEnvs<Self, B>` is
+/// post-sweep diagnostics, and [`DmrgEnvOps`] so `DmrgEnvs<Self, L, B>` is
 /// well-formed. Adds the two ops that vary per storage: the local solve
 /// ([`step`](DmrgOps::step)) and the S-absorb-and-split
 /// ([`commit_step`](DmrgOps::commit_step)).
-pub trait DmrgOps: MpsOps + DmrgEnvOps + Sized {
+pub trait DmrgOps<L: TensorLayout>: MpsOps<L> + DmrgEnvOps<L> + Sized {
     /// Storage-typed step result.
     ///
-    /// `Dense<T>` → [`TwoSiteStepResult<T>`],
-    /// `BlockSparse<T, S>` → [`TwoSiteStepResultBlockSparse<T, S>`].
+    /// Dense → [`TwoSiteStepResult<T>`], BlockSparse →
+    /// [`TwoSiteStepResultBlockSparse<T, S>`].
     type StepResult;
 
     /// Build local `H_eff` at `(site, site + 1)`, drive the chosen
@@ -101,9 +105,9 @@ pub trait DmrgOps: MpsOps + DmrgEnvOps + Sized {
     /// truncated-SVD split (U, S, Vt) of the optimized two-site block
     /// plus diagnostic scalars. Does not mutate `mps` or `envs`.
     fn step<B: ComputeBackend>(
-        envs: &DmrgEnvs<Self, B>,
-        mps: &Mps<Self, B>,
-        mpo: &Mpo<Self, B>,
+        envs: &DmrgEnvs<Self, L, B>,
+        mps: &Mps<Self, L, B>,
+        mpo: &Mpo<Self, L, B>,
         site: usize,
         eigensolver: &LocalEigensolverParams,
         trunc: &TruncSvdParams,
@@ -117,23 +121,23 @@ pub trait DmrgOps: MpsOps + DmrgEnvOps + Sized {
         backend: &B,
         result: Self::StepResult,
         direction: SweepDirection,
-    ) -> Result<AbsorbedStep<Self>, LinalgError>;
+    ) -> Result<AbsorbedStep<Self, L>, LinalgError>;
 }
 
 // ---------------------------------------------------------------------------
 // Dense implementation
 // ---------------------------------------------------------------------------
 
-impl<T: DmrgScalar> DmrgOps for Dense<T>
+impl<T: DmrgScalar> DmrgOps<DenseLayout> for DenseStorage<T>
 where
     T::Real: Scalar<Real = T::Real>,
 {
     type StepResult = TwoSiteStepResult<T>;
 
     fn step<B: ComputeBackend>(
-        envs: &DmrgEnvs<Self, B>,
-        mps: &Mps<Self, B>,
-        mpo: &Mpo<Self, B>,
+        envs: &DmrgEnvs<Self, DenseLayout, B>,
+        mps: &Mps<Self, DenseLayout, B>,
+        mpo: &Mpo<Self, DenseLayout, B>,
         site: usize,
         eigensolver: &LocalEigensolverParams,
         trunc: &TruncSvdParams,
@@ -145,7 +149,7 @@ where
         backend: &B,
         result: Self::StepResult,
         direction: SweepDirection,
-    ) -> Result<AbsorbedStep<Self>, LinalgError> {
+    ) -> Result<AbsorbedStep<Self, DenseLayout>, LinalgError> {
         let bond_dim = result.s.shape()[0];
         let (site_i, site_ip1) = match direction {
             SweepDirection::LeftToRight => {
@@ -178,16 +182,16 @@ where
 // BlockSparse implementation
 // ---------------------------------------------------------------------------
 
-impl<T: DmrgScalar, S: Sector> DmrgOps for BlockSparse<T, S>
+impl<T: DmrgScalar, S: Sector> DmrgOps<BlockSparseLayout<S>> for BlockSparseStorage<T>
 where
     T::Real: Scalar<Real = T::Real>,
 {
     type StepResult = TwoSiteStepResultBlockSparse<T, S>;
 
     fn step<B: ComputeBackend>(
-        envs: &DmrgEnvs<Self, B>,
-        mps: &Mps<Self, B>,
-        mpo: &Mpo<Self, B>,
+        envs: &DmrgEnvs<Self, BlockSparseLayout<S>, B>,
+        mps: &Mps<Self, BlockSparseLayout<S>, B>,
+        mpo: &Mpo<Self, BlockSparseLayout<S>, B>,
         site: usize,
         eigensolver: &LocalEigensolverParams,
         trunc: &TruncSvdParams,
@@ -199,7 +203,7 @@ where
         backend: &B,
         result: Self::StepResult,
         direction: SweepDirection,
-    ) -> Result<AbsorbedStep<Self>, LinalgError> {
+    ) -> Result<AbsorbedStep<Self, BlockSparseLayout<S>>, LinalgError> {
         // Total post-truncation singular values across sectors — the
         // conventional U(1) MPS bond dimension.
         let bond_dim: usize = result.s.values.iter().map(|(_, v)| v.len()).sum();

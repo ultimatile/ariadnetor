@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
-use arnet_tensor::{BlockSparse, QNIndex, Sector};
+use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, QNIndex, Sector};
 
 use super::super::env::DmrgEnvs;
 use super::super::heff_error::DmrgHeffError;
@@ -25,19 +25,19 @@ use super::super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eig
 /// (the entry point in `mod.rs`) so it can build the Heff and drive
 /// the local eigensolver without re-deriving anything.
 pub(super) struct ValidatedInputs<'a, T: Scalar, S: Sector, B: ComputeBackend> {
-    pub left: &'a BlockSparse<T, S>,
-    pub right: &'a BlockSparse<T, S>,
-    pub w_i: &'a BlockSparse<T, S>,
-    pub w_ip1: &'a BlockSparse<T, S>,
-    pub mps_i: &'a BlockSparse<T, S>,
-    pub mps_ip1: &'a BlockSparse<T, S>,
+    pub left: &'a BlockSparseTensorData<T, S>,
+    pub right: &'a BlockSparseTensorData<T, S>,
+    pub w_i: &'a BlockSparseTensorData<T, S>,
+    pub w_ip1: &'a BlockSparseTensorData<T, S>,
+    pub mps_i: &'a BlockSparseTensorData<T, S>,
+    pub mps_ip1: &'a BlockSparseTensorData<T, S>,
     pub backend: Arc<B>,
 }
 
 pub(super) fn validate_inputs<'a, T, S, B>(
-    envs: &'a DmrgEnvs<BlockSparse<T, S>, B>,
-    mps: &'a Mps<BlockSparse<T, S>, B>,
-    mpo: &'a Mpo<BlockSparse<T, S>, B>,
+    envs: &'a DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mps: &'a Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mpo: &'a Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
 ) -> Result<ValidatedInputs<'a, T, S, B>, DmrgHeffError>
@@ -74,10 +74,10 @@ where
         side: "right",
         index: site + 2,
     })?;
-    let w_i = mpo.storage(site);
-    let w_ip1 = mpo.storage(site + 1);
-    let mps_i = mps.storage(site);
-    let mps_ip1 = mps.storage(site + 1);
+    let w_i = mpo.site(site);
+    let w_ip1 = mpo.site(site + 1);
+    let mps_i = mps.site(site);
+    let mps_ip1 = mps.site(site + 1);
     let backend: Arc<B> = mps.backend_arc().clone();
 
     let check_eq =
@@ -107,69 +107,89 @@ where
             }
         };
 
-    check_eq(3, left.rank(), "left.rank")?;
-    check_eq(3, right.rank(), "right.rank")?;
-    check_eq(4, w_i.rank(), "W[i].rank")?;
-    check_eq(4, w_ip1.rank(), "W[i+1].rank")?;
-    check_eq(3, mps_i.rank(), "MPS[i].rank")?;
-    check_eq(3, mps_ip1.rank(), "MPS[i+1].rank")?;
+    check_eq(3, left.layout().rank(), "left.rank")?;
+    check_eq(3, right.layout().rank(), "right.rank")?;
+    check_eq(4, w_i.layout().rank(), "W[i].rank")?;
+    check_eq(4, w_ip1.layout().rank(), "W[i+1].rank")?;
+    check_eq(3, mps_i.layout().rank(), "MPS[i].rank")?;
+    check_eq(3, mps_ip1.layout().rank(), "MPS[i+1].rank")?;
 
-    check_at_least(1, left.shape()[0], "left.top_bra (chi_l) total_dim")?;
-    check_at_least(1, right.shape()[0], "right.top_bra (chi_r) total_dim")?;
-    check_at_least(1, mps_i.shape()[1], "MPS[i].physical total_dim")?;
-    check_at_least(1, mps_ip1.shape()[1], "MPS[i+1].physical total_dim")?;
-    check_at_least(1, w_i.shape()[0], "W[i].W_l total_dim")?;
-    check_at_least(1, w_i.shape()[3], "W[i].W_r total_dim")?;
-    check_at_least(1, w_ip1.shape()[3], "W[i+1].W_r total_dim")?;
+    check_at_least(
+        1,
+        left.layout().shape()[0],
+        "left.top_bra (chi_l) total_dim",
+    )?;
+    check_at_least(
+        1,
+        right.layout().shape()[0],
+        "right.top_bra (chi_r) total_dim",
+    )?;
+    check_at_least(1, mps_i.layout().shape()[1], "MPS[i].physical total_dim")?;
+    check_at_least(
+        1,
+        mps_ip1.layout().shape()[1],
+        "MPS[i+1].physical total_dim",
+    )?;
+    check_at_least(1, w_i.layout().shape()[0], "W[i].W_l total_dim")?;
+    check_at_least(1, w_i.layout().shape()[3], "W[i].W_r total_dim")?;
+    check_at_least(1, w_ip1.layout().shape()[3], "W[i+1].W_r total_dim")?;
 
-    let chi_l = left.shape()[0];
-    let chi_r = right.shape()[0];
-    let d_i = mps_i.shape()[1];
-    let d_ip1 = mps_ip1.shape()[1];
+    let chi_l = left.layout().shape()[0];
+    let chi_r = right.layout().shape()[0];
+    let d_i = mps_i.layout().shape()[1];
+    let d_ip1 = mps_ip1.layout().shape()[1];
     check_eq(
-        left.shape()[2],
-        mps_i.shape()[0],
+        left.layout().shape()[2],
+        mps_i.layout().shape()[0],
         "left.bot_ket vs MPS[i].left_bond total_dim",
     )?;
     check_eq(
-        left.shape()[2],
+        left.layout().shape()[2],
         chi_l,
         "left.bot_ket vs left.top_bra total_dim",
     )?;
     check_eq(
-        right.shape()[2],
-        mps_ip1.shape()[2],
+        right.layout().shape()[2],
+        mps_ip1.layout().shape()[2],
         "right.bot_ket vs MPS[i+1].right_bond total_dim",
     )?;
     check_eq(
-        right.shape()[2],
+        right.layout().shape()[2],
         chi_r,
         "right.bot_ket vs right.top_bra total_dim",
     )?;
     check_eq(
-        left.shape()[1],
-        w_i.shape()[0],
+        left.layout().shape()[1],
+        w_i.layout().shape()[0],
         "left.W_bond vs W[i].W_l total_dim",
     )?;
     check_eq(
-        right.shape()[1],
-        w_ip1.shape()[3],
+        right.layout().shape()[1],
+        w_ip1.layout().shape()[3],
         "right.W_bond vs W[i+1].W_r total_dim",
     )?;
     check_eq(
-        w_i.shape()[3],
-        w_ip1.shape()[0],
+        w_i.layout().shape()[3],
+        w_ip1.layout().shape()[0],
         "W[i].W_r vs W[i+1].W_l total_dim",
     )?;
-    check_eq(w_i.shape()[1], d_i, "W[i].d_ket vs MPS[i] phys total_dim")?;
-    check_eq(w_i.shape()[2], d_i, "W[i].d_bra vs MPS[i] phys total_dim")?;
     check_eq(
-        w_ip1.shape()[1],
+        w_i.layout().shape()[1],
+        d_i,
+        "W[i].d_ket vs MPS[i] phys total_dim",
+    )?;
+    check_eq(
+        w_i.layout().shape()[2],
+        d_i,
+        "W[i].d_bra vs MPS[i] phys total_dim",
+    )?;
+    check_eq(
+        w_ip1.layout().shape()[1],
         d_ip1,
         "W[i+1].d_ket vs MPS[i+1] phys total_dim",
     )?;
     check_eq(
-        w_ip1.shape()[2],
+        w_ip1.layout().shape()[2],
         d_ip1,
         "W[i+1].d_bra vs MPS[i+1] phys total_dim",
     )?;
@@ -178,50 +198,50 @@ where
     check_qn_pair(
         site,
         "left.bot_ket vs psi.axis 0 (MPS[i].left_bond)",
-        &left.indices()[2],
-        &mps_i.indices()[0],
+        &left.layout().indices()[2],
+        &mps_i.layout().indices()[0],
         true,
     )?;
     check_qn_pair(
         site,
         "left.W_bond vs W[i].W_l",
-        &left.indices()[1],
-        &w_i.indices()[0],
+        &left.layout().indices()[1],
+        &w_i.layout().indices()[0],
         true,
     )?;
     check_qn_pair(
         site,
         "psi.axis 1 (MPS[i].phys) vs W[i].ket",
-        &mps_i.indices()[1],
-        &w_i.indices()[1],
+        &mps_i.layout().indices()[1],
+        &w_i.layout().indices()[1],
         true,
     )?;
     check_qn_pair(
         site,
         "psi.axis 2 (MPS[i+1].phys) vs W[i+1].ket",
-        &mps_ip1.indices()[1],
-        &w_ip1.indices()[1],
+        &mps_ip1.layout().indices()[1],
+        &w_ip1.layout().indices()[1],
         true,
     )?;
     check_qn_pair(
         site,
         "W[i].W_r vs W[i+1].W_l",
-        &w_i.indices()[3],
-        &w_ip1.indices()[0],
+        &w_i.layout().indices()[3],
+        &w_ip1.layout().indices()[0],
         true,
     )?;
     check_qn_pair(
         site,
         "psi.axis 3 (MPS[i+1].right_bond) vs right.bot_ket",
-        &mps_ip1.indices()[2],
-        &right.indices()[2],
+        &mps_ip1.layout().indices()[2],
+        &right.layout().indices()[2],
         true,
     )?;
     check_qn_pair(
         site,
         "right.W_bond vs W[i+1].W_r",
-        &right.indices()[1],
-        &w_ip1.indices()[3],
+        &right.layout().indices()[1],
+        &w_ip1.layout().indices()[3],
         true,
     )?;
 
@@ -230,15 +250,15 @@ where
     check_qn_pair(
         site,
         "left.top_bra vs psi.axis 0 (MPS[i].left_bond)",
-        &left.indices()[0],
-        &mps_i.indices()[0],
+        &left.layout().indices()[0],
+        &mps_i.layout().indices()[0],
         false,
     )?;
     check_qn_pair(
         site,
         "right.top_bra vs psi.axis 3 (MPS[i+1].right_bond)",
-        &right.indices()[0],
-        &mps_ip1.indices()[2],
+        &right.layout().indices()[0],
+        &mps_ip1.layout().indices()[2],
         false,
     )?;
 
@@ -249,36 +269,36 @@ where
     check_qn_pair(
         site,
         "W[i].bra vs W[i].ket",
-        &w_i.indices()[2],
-        &w_i.indices()[1],
+        &w_i.layout().indices()[2],
+        &w_i.layout().indices()[1],
         true,
     )?;
     check_qn_pair(
         site,
         "W[i+1].bra vs W[i+1].ket",
-        &w_ip1.indices()[2],
-        &w_ip1.indices()[1],
+        &w_ip1.layout().indices()[2],
+        &w_ip1.layout().indices()[1],
         true,
     )?;
-    if w_i.indices()[2].direction() != mps_i.indices()[1].direction() {
+    if w_i.layout().indices()[2].direction() != mps_i.layout().indices()[1].direction() {
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "W[i].bra direction vs MPS[i] phys direction",
             detail: format!(
                 "W[i].bra direction = {:?}, MPS[i].phys direction = {:?} (must be equal)",
-                w_i.indices()[2].direction(),
-                mps_i.indices()[1].direction()
+                w_i.layout().indices()[2].direction(),
+                mps_i.layout().indices()[1].direction()
             ),
         });
     }
-    if w_ip1.indices()[2].direction() != mps_ip1.indices()[1].direction() {
+    if w_ip1.layout().indices()[2].direction() != mps_ip1.layout().indices()[1].direction() {
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "W[i+1].bra direction vs MPS[i+1] phys direction",
             detail: format!(
                 "W[i+1].bra direction = {:?}, MPS[i+1].phys direction = {:?} (must be equal)",
-                w_ip1.indices()[2].direction(),
-                mps_ip1.indices()[1].direction()
+                w_ip1.layout().indices()[2].direction(),
+                mps_ip1.layout().indices()[1].direction()
             ),
         });
     }
@@ -293,32 +313,38 @@ where
     // Identity-flux preconditions on env / MPO sites. Without
     // these the matvec output's flux drifts away from psi_flux and
     // the gather template flux check fails inside `apply`.
-    if !is_identity_flux(left.flux()) {
+    if !is_identity_flux(left.layout().flux()) {
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "left.flux",
-            detail: format!("left.flux = {:?} (must be identity)", left.flux()),
+            detail: format!("left.flux = {:?} (must be identity)", left.layout().flux()),
         });
     }
-    if !is_identity_flux(right.flux()) {
+    if !is_identity_flux(right.layout().flux()) {
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "right.flux",
-            detail: format!("right.flux = {:?} (must be identity)", right.flux()),
+            detail: format!(
+                "right.flux = {:?} (must be identity)",
+                right.layout().flux()
+            ),
         });
     }
-    if !is_identity_flux(w_i.flux()) {
+    if !is_identity_flux(w_i.layout().flux()) {
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "W[i].flux",
-            detail: format!("W[i].flux = {:?} (must be identity)", w_i.flux()),
+            detail: format!("W[i].flux = {:?} (must be identity)", w_i.layout().flux()),
         });
     }
-    if !is_identity_flux(w_ip1.flux()) {
+    if !is_identity_flux(w_ip1.layout().flux()) {
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "W[i+1].flux",
-            detail: format!("W[i+1].flux = {:?} (must be identity)", w_ip1.flux()),
+            detail: format!(
+                "W[i+1].flux = {:?} (must be identity)",
+                w_ip1.layout().flux()
+            ),
         });
     }
 

@@ -7,10 +7,10 @@ use arnet_algorithms::dmrg::{
     LocalEigensolverParams, dmrg_2site_step_block_sparse,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
-use arnet_linalg::{TruncSvdParams, eigh_dense as eigh};
-use arnet_mps::TensorChainRepr as TensorChain;
+use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_mps::TensorChain;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder, Sector, U1Sector, reorder};
+use arnet_tensor::{DenseTensorData, MemoryOrder, Sector, U1Sector, reorder};
 
 use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_f64, make_n2_mps_f64, make_n3_mpo_f64, make_n3_mps_f64,
@@ -29,21 +29,21 @@ fn bsp_heff_matvec_matches_dense_oracle() {
     let backend = NativeBackend::shared();
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left env"),
-        mpo.storage(0),
-        mpo.storage(1),
+        mpo.site(0),
+        mpo.site(1),
         envs.right(2).expect("right env"),
-        mps.storage(0),
-        mps.storage(1),
+        mps.site(0),
+        mps.site(1),
         backend.clone(),
     );
 
     let left_d = densify_bsp_f64(envs.left(0).expect("left"));
     let right_d = densify_bsp_f64(envs.right(2).expect("right"));
-    let w0_d = densify_bsp_f64(mpo.storage(0));
-    let w1_d = densify_bsp_f64(mpo.storage(1));
+    let w0_d = densify_bsp_f64(mpo.site(0));
+    let w1_d = densify_bsp_f64(mpo.site(1));
     let chi_l = left_d.shape()[0];
-    let d0 = mps.storage(0).shape()[1];
-    let d1 = mps.storage(1).shape()[1];
+    let d0 = mps.site(0).shape()[1];
+    let d1 = mps.site(1).shape()[1];
     let chi_r = right_d.shape()[0];
     let dense_heff = EffectiveHamiltonian2Site::new(
         &left_d, &w0_d, &w1_d, &right_d, chi_l, d0, d1, chi_r, backend,
@@ -55,9 +55,10 @@ fn bsp_heff_matvec_matches_dense_oracle() {
         (0..dim).map(|i| ((i as i32 - 2) as f64) * 0.7).collect(),
         vec![1.0; dim],
     ];
-    let template = template_from_mps_pair(mps.storage(0), mps.storage(1));
+    let template = template_from_mps_pair(mps.site(0), mps.site(1));
     for (case, v) in test_inputs.iter().enumerate() {
-        let v_dense_flat = Dense::new(v.clone(), vec![dim], MemoryOrder::ColumnMajor);
+        let v_dense_flat =
+            DenseTensorData::from_raw_parts(v.clone(), vec![dim], MemoryOrder::ColumnMajor);
         let bsp_out = bsp_heff.apply(&v_dense_flat);
         assert_eq!(bsp_out.shape(), &[dim], "BSP output shape");
 
@@ -91,11 +92,11 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
     let site = 0;
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(site).expect("left boundary"),
-        mpo.storage(site),
-        mpo.storage(site + 1),
+        mpo.site(site),
+        mpo.site(site + 1),
         envs.right(site + 2).expect("right ext"),
-        mps.storage(site),
-        mps.storage(site + 1),
+        mps.site(site),
+        mps.site(site + 1),
         backend.clone(),
     );
 
@@ -108,17 +109,17 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
 
     let left_d = densify_bsp_f64(envs.left(site).expect("left"));
     let right_d = densify_bsp_f64(envs.right(site + 2).expect("right"));
-    let w_i_d = densify_bsp_f64(mpo.storage(site));
-    let w_ip1_d = densify_bsp_f64(mpo.storage(site + 1));
+    let w_i_d = densify_bsp_f64(mpo.site(site));
+    let w_ip1_d = densify_bsp_f64(mpo.site(site + 1));
     let chi_l = left_d.shape()[0];
-    let d_i = mps.storage(site).shape()[1];
-    let d_ip1 = mps.storage(site + 1).shape()[1];
+    let d_i = mps.site(site).shape()[1];
+    let d_ip1 = mps.site(site + 1).shape()[1];
     let chi_r = right_d.shape()[0];
     let dense_heff = EffectiveHamiltonian2Site::new(
         &left_d, &w_i_d, &w_ip1_d, &right_d, chi_l, d_i, d_ip1, chi_r, backend,
     );
 
-    let template = template_from_mps_pair(mps.storage(site), mps.storage(site + 1));
+    let template = template_from_mps_pair(mps.site(site), mps.site(site + 1));
     let dim = bsp_heff.dim();
     assert_eq!(dim, *template_block_offsets(&template).last().unwrap());
 
@@ -127,7 +128,11 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
         (0..dim).map(|i| ((i as i32 - 1) as f64) * 0.3).collect(),
     ];
     for (case, v) in test_inputs.iter().enumerate() {
-        let bsp_out = bsp_heff.apply(&Dense::new(v.clone(), vec![dim], MemoryOrder::ColumnMajor));
+        let bsp_out = bsp_heff.apply(&DenseTensorData::from_raw_parts(
+            v.clone(),
+            vec![dim],
+            MemoryOrder::ColumnMajor,
+        ));
         let psi_dense = build_dense_psi_from_flat(v, &template);
         let dense_out = dense_heff.apply(&psi_dense.reshape(vec![chi_l * d_i * d_ip1 * chi_r]));
         let dense_out_4d = dense_out.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
@@ -165,11 +170,11 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     let backend = NativeBackend::shared();
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left"),
-        mpo.storage(0),
-        mpo.storage(1),
+        mpo.site(0),
+        mpo.site(1),
         envs.right(2).expect("right"),
-        mps.storage(0),
-        mps.storage(1),
+        mps.site(0),
+        mps.site(1),
         backend.clone(),
     );
     let dim = bsp_heff.dim();
@@ -184,7 +189,11 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     for j in 0..dim {
         let mut e_j = vec![0.0_f64; dim];
         e_j[j] = 1.0;
-        let out = bsp_heff.apply(&Dense::new(e_j, vec![dim], MemoryOrder::ColumnMajor));
+        let out = bsp_heff.apply(&DenseTensorData::from_raw_parts(
+            e_j,
+            vec![dim],
+            MemoryOrder::ColumnMajor,
+        ));
         for i in 0..dim {
             h_data[i + dim * j] = out.data()[i];
         }
@@ -202,7 +211,7 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
         }
     }
 
-    let h_dense = Dense::new(h_data, vec![dim, dim], MemoryOrder::ColumnMajor);
+    let h_dense = DenseTensorData::from_raw_parts(h_data, vec![dim, dim], MemoryOrder::ColumnMajor);
     let (eigvals, _eigvecs) = eigh(backend.as_ref(), &h_dense, 1).expect("eigh");
     let eigh_smallest = eigvals.data()[0];
 
@@ -295,7 +304,7 @@ fn bsp_heff_step_flux_propagation() {
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);
 
-    let psi_flux = mps.storage(0).flux().fuse(mps.storage(1).flux());
+    let psi_flux = mps.site(0).flux().fuse(mps.site(1).flux());
     assert_ne!(
         psi_flux,
         U1Sector::identity(),
@@ -314,11 +323,15 @@ fn bsp_heff_step_flux_propagation() {
     let result = dmrg_2site_step_block_sparse(&envs, &mps, &mpo, 0, &params, &trunc).expect("step");
 
     assert_eq!(
-        result.u.flux(),
+        result.u.layout().flux(),
         &U1Sector::identity(),
         "U.flux must be identity"
     );
-    assert_eq!(result.vt.flux(), &psi_flux, "Vt.flux must equal psi_flux");
+    assert_eq!(
+        result.vt.layout().flux(),
+        &psi_flux,
+        "Vt.flux must equal psi_flux"
+    );
 }
 
 #[test]

@@ -9,18 +9,16 @@
 //! extraction is tracked as future work and will land as a separate
 //! entry point once `arpack-rs` exposes a `nev > 1` API.
 //!
-//! The matvec adapter copies the read-side slice into a fresh `Dense`
-//! per call, applies the operator, and copies the result back into the
-//! ARPACK-managed buffer. The two allocations per matvec are a known
-//! cost — they will be eliminated once `LinearOp` grows a
-//! slice-in-place variant.
+//! The matvec adapter copies the read-side slice into a fresh
+//! `DenseTensorData` per call, applies the operator, and copies the
+//! result back into the ARPACK-managed buffer. The two allocations
+//! per matvec are a known cost — they will be eliminated once
+//! `LinearOp` grows a slice-in-place variant.
 
 use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
-use arnet_linalg::{
-    linear_combine_dense as linear_combine, norm_dense as norm, normalize_dense as normalize,
-};
-use arnet_tensor::{Dense, reorder};
+use arnet_linalg::{linear_combine, norm, normalize};
+use arnet_tensor::{DenseTensorData, reorder};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 
@@ -75,7 +73,7 @@ pub struct ArpackResult<T: Scalar> {
     /// zero by construction.
     pub eigenvalue: T::Real,
     /// Corresponding eigenvector of length `dim`, unit-normalized.
-    pub eigenvector: Dense<T>,
+    pub eigenvector: DenseTensorData<T>,
     /// Number of restart iterations performed (ARPACK's `iparam[2]`
     /// writeback).
     pub iters: usize,
@@ -280,13 +278,18 @@ where
     }
 
     // Drive ARPACK with a closure that adapts ARPACK's slice-in /
-    // slice-out matvec interface to the `LinearOp` Dense-in / Dense-
-    // out interface. Two `Vec` allocations per matvec is a known cost
-    // and will be eliminated when `LinearOp` grows a slice variant.
+    // slice-out matvec interface to the `LinearOp`
+    // `DenseTensorData`-in / `DenseTensorData`-out interface. Two
+    // `Vec` allocations per matvec is a known cost and will be
+    // eliminated when `LinearOp` grows a slice variant.
     let solution = T::solve(
         dim,
         &mut |x_slice, y_slice| {
-            let x_dense = Dense::new(x_slice.to_vec(), vec![dim], MemoryOrder::ColumnMajor);
+            let x_dense = DenseTensorData::from_raw_parts(
+                x_slice.to_vec(),
+                vec![dim],
+                MemoryOrder::ColumnMajor,
+            );
             let y_dense = op.apply(&x_dense);
             assert_eq!(
                 y_dense.shape(),
@@ -299,7 +302,8 @@ where
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let eigenvector = Dense::new(solution.eigenvector, vec![dim], MemoryOrder::ColumnMajor);
+    let eigenvector =
+        DenseTensorData::from_raw_parts(solution.eigenvector, vec![dim], MemoryOrder::ColumnMajor);
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
     let (eigenvector, _) = normalize(&eigenvector);

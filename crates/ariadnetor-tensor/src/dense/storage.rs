@@ -27,6 +27,14 @@ pub struct DenseStorage<T = f64> {
     data: Arc<AVec<T, Align64>>,
 }
 
+impl<T: std::fmt::Debug> std::fmt::Debug for DenseStorage<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DenseStorage")
+            .field("len", &self.data.len())
+            .finish_non_exhaustive()
+    }
+}
+
 // Manual Clone impl: Arc<AVec<T, _>> is Clone regardless of T.
 // #[derive(Clone)] would unnecessarily require T: Clone.
 impl<T> Clone for DenseStorage<T> {

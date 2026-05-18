@@ -6,12 +6,10 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use arnet_linalg::contract_dense as contract;
-use arnet_mps::{
-    MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain, braket_repr as braket,
-};
+use arnet_linalg::contract;
+use arnet_mps::{Mpo, Mps, TensorChain, braket};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData};
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -20,41 +18,46 @@ use arnet_tensor::{ComputeBackendTensorExt, Dense};
 /// Tiny MPS fixture: 4-site, physical dim d=2, all bond dim 1 (i.e. a
 /// product state of single complex amplitudes per site). Each site
 /// stores `[1, 0]` so the state is |0000⟩.
-fn product_state_mps(n: usize) -> Mps<Dense<f64>> {
+fn product_state_mps(n: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
-        .map(|_| backend.make_tensor(vec![1.0_f64, 0.0], vec![1, 2, 1]))
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
+        .map(|_| backend.make_tensor_data(vec![1.0_f64, 0.0], vec![1, 2, 1]))
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 /// Identity MPO for d=2, n sites — every site is the rank-4 tensor
 /// W[1, d_ket, d_bra, 1] with `W[0,k,k,0] = 1`, off-diagonal 0.
 /// `<psi|H|psi> = <psi|psi> = 1` for any normalized MPS.
-fn identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
+fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            backend.make_tensor(data, vec![1, d, d, 1])
+            backend.make_tensor_data(data, vec![1, d, d, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 /// Random-but-seeded MPS for the cross-check tests. All bonds are
 /// `chi`, physical `d`. Edge sites still have rank 3 with the outer
 /// bond dim 1.
-fn random_mps_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_f64(
+    n: usize,
+    d: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
@@ -62,21 +65,21 @@ fn random_mps_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> 
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::Rng::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            backend.make_tensor(data, vec![l, d, r])
+            backend.make_tensor_data(data, vec![l, d, r])
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 /// Random-but-seeded MPO for the cross-check tests. All MPO bonds
 /// are `w`, physical `d`. Edge sites have outer bond dim 1.
-fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<Dense<f64>> {
+fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { w };
             let r = if i + 1 == n { 1 } else { w };
@@ -84,10 +87,10 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<Dense<f64>> {
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::Rng::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            backend.make_tensor(data, vec![l, d, d, r])
+            backend.make_tensor_data(data, vec![l, d, d, r])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 /// Fold an L env forward by absorbing sites `0..upto`. Stand-alone
@@ -95,24 +98,28 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<Dense<f64>> {
 /// compute `left[upto]` independently and pair it with the existing
 /// `env.right(upto)` produced by `build()`.
 fn fold_left_to_boundary(
-    mps: &Mps<Dense<f64>>,
-    mpo: &Mpo<Dense<f64>>,
-    initial: &Dense<f64>,
+    mps: &Mps<DenseStorage<f64>, DenseLayout>,
+    mpo: &Mpo<DenseStorage<f64>, DenseLayout>,
+    initial: &DenseTensorData<f64>,
     upto: usize,
-) -> Dense<f64> {
+) -> DenseTensorData<f64> {
     let backend = NativeBackend::shared();
     let mut env = initial.clone();
     for i in 0..upto {
-        let bra = mps.storage(i).conj();
+        let bra = mps.site(i).conj();
         let t1 = contract(&*backend, &env, &bra, "abc,ade->bcde").expect("step 1");
-        let t2 = contract(&*backend, &t1, mpo.storage(i), "bcde,bfdg->cefg").expect("step 2");
-        env = contract(&*backend, &t2, mps.storage(i), "cefg,cfh->egh").expect("step 3");
+        let t2 = contract(&*backend, &t1, mpo.site(i), "bcde,bfdg->cefg").expect("step 2");
+        env = contract(&*backend, &t2, mps.site(i), "cefg,cfh->egh").expect("step 3");
     }
     env
 }
 
 /// Fold an L env all the way through the chain to a 1×1×1 scalar.
-fn fold_left_to_scalar(mps: &Mps<Dense<f64>>, mpo: &Mpo<Dense<f64>>, initial: &Dense<f64>) -> f64 {
+fn fold_left_to_scalar(
+    mps: &Mps<DenseStorage<f64>, DenseLayout>,
+    mpo: &Mpo<DenseStorage<f64>, DenseLayout>,
+    initial: &DenseTensorData<f64>,
+) -> f64 {
     let env = fold_left_to_boundary(mps, mpo, initial, mps.len());
     env.data()[0]
 }

@@ -25,9 +25,9 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, LanczosParams};
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
+use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData};
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -64,7 +64,7 @@ fn build_mpo_site_f64(
     w_l_dim: usize,
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
-) -> Dense<f64> {
+) -> DenseTensorData<f64> {
     let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
@@ -76,10 +76,10 @@ fn build_mpo_site_f64(
             }
         }
     }
-    backend.make_tensor(data, vec![w_l_dim, D, D, w_r_dim])
+    backend.make_tensor_data(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
-fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
+fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 2, "heisenberg_mpo_f64 requires n >= 2");
     let mut sites = Vec::with_capacity(n);
 
@@ -122,22 +122,22 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
         ],
     ));
 
-    Mpo::from_storages(sites)
+    Mpo::from_sites(sites)
 }
 
-fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            backend.make_tensor(data, vec![l, D, r])
+            backend.make_tensor_data(data, vec![l, D, r])
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 // ---------------------------------------------------------------------------

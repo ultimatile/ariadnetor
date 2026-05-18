@@ -218,6 +218,20 @@ where
     }
 }
 
+impl<St, L, B> std::fmt::Debug for TensorChainData<St, L, B>
+where
+    St: Storage + StorageFor<L> + std::fmt::Debug,
+    L: TensorLayout + std::fmt::Debug,
+    B: ComputeBackend,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TensorChainData")
+            .field("sites", &self.sites)
+            .field("canonical_form", &self.canonical_form)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Matrix Product State — rank-3 tensor chain.
 ///
 /// Each site is a [`TensorData<St, L>`] with shape `(χ_L, d, χ_R)`:
@@ -238,6 +252,17 @@ where
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+impl<St, L, B> std::fmt::Debug for Mps<St, L, B>
+where
+    St: Storage + StorageFor<L> + std::fmt::Debug,
+    L: TensorLayout + std::fmt::Debug,
+    B: ComputeBackend,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Mps").field(&self.0).finish()
     }
 }
 
@@ -263,6 +288,17 @@ where
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+impl<St, L, B> std::fmt::Debug for Mpo<St, L, B>
+where
+    St: Storage + StorageFor<L> + std::fmt::Debug,
+    L: TensorLayout + std::fmt::Debug,
+    B: ComputeBackend,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Mpo").field(&self.0).finish()
     }
 }
 

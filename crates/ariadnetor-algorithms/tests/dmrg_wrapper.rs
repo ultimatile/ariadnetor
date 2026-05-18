@@ -17,12 +17,9 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{
-    CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
-    canonicalize_repr as canonicalize,
-};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensorData};
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -66,7 +63,7 @@ fn build_mpo_site_f64(
     w_l_dim: usize,
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
-) -> Dense<f64> {
+) -> DenseTensorData<f64> {
     let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
@@ -78,10 +75,10 @@ fn build_mpo_site_f64(
             }
         }
     }
-    backend.make_tensor(data, vec![w_l_dim, D, D, w_r_dim])
+    backend.make_tensor_data(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
-fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
+fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 2, "heisenberg_mpo_f64 requires n >= 2");
     let mut sites = Vec::with_capacity(n);
 
@@ -124,24 +121,24 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
         ],
     ));
 
-    Mpo::from_storages(sites)
+    Mpo::from_sites(sites)
 }
 
 /// Build a random MPS with no canonical form set (`CanonicalForm::Unknown`).
 /// The wrapper is responsible for canonicalizing internally.
-fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensorData<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            backend.make_tensor(data, vec![l, D, r])
+            backend.make_tensor_data(data, vec![l, D, r])
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 fn small_params(seed: u64) -> DmrgSweepParams {
@@ -215,8 +212,8 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
     // Per-site tensor data identical between wrapper output and manual run.
     for i in 0..n {
         assert_eq!(
-            psi_wrapper.storage(i).data(),
-            psi_manual.storage(i).data(),
+            psi_wrapper.site(i).data(),
+            psi_manual.site(i).data(),
             "site {i} tensor data diverged between wrapper and manual",
         );
     }
@@ -248,8 +245,8 @@ fn wrapper_accepts_unknown_canonical() {
 
 #[test]
 fn wrapper_rejects_empty_mps() {
-    let mpo: Mpo<Dense<f64>> = Mpo::from_storages(Vec::new());
-    let psi0: Mps<Dense<f64>> = Mps::from_storages(Vec::new());
+    let mpo: Mpo<DenseStorage<f64>, DenseLayout> = Mpo::from_sites(Vec::new());
+    let psi0: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(Vec::new());
     let params = small_params(0xACED);
 
     match dmrg_2site(&mpo, &psi0, &params) {
@@ -291,8 +288,8 @@ fn wrapper_does_not_mutate_input() {
     assert_eq!(*psi0.canonical_form(), *psi0_snapshot.canonical_form());
     for i in 0..n {
         assert_eq!(
-            psi0.storage(i).data(),
-            psi0_snapshot.storage(i).data(),
+            psi0.site(i).data(),
+            psi0_snapshot.site(i).data(),
             "site {i} tensor data was mutated by the wrapper",
         );
     }

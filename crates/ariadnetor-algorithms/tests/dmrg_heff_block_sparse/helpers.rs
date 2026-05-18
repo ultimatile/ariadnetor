@@ -1,23 +1,30 @@
 //! Test helpers shared across BlockSparse Heff integration test
-//! sub-modules: densify a `BlockSparse<T, U1Sector>` to a CM
-//! `Dense<T>`, build per-template-block flat offset tables, and
+//! sub-modules: densify a `BlockSparseTensorData<T, U1Sector>` to a CM
+//! `DenseTensorData<T>`, build per-template-block flat offset tables, and
 //! convert back and forth between flat-template-aware vectors and
 //! Dense rank-4 tensors in the global shape.
 
 #![allow(dead_code)]
 
-use arnet_tensor::{BlockSparse, Dense, MemoryOrder, Sector, U1Sector, reorder};
+use arnet_tensor::{
+    BlockSparseTensorData, DenseTensorData, MemoryOrder, Sector, U1Sector, reorder,
+};
 use num_complex::Complex;
 
-pub fn densify_bsp_f64(bsp: &BlockSparse<f64, U1Sector>) -> Dense<f64> {
+pub fn densify_bsp_f64(bsp: &BlockSparseTensorData<f64, U1Sector>) -> DenseTensorData<f64> {
     densify_bsp_generic(bsp, 0.0)
 }
 
-pub fn densify_bsp_c64(bsp: &BlockSparse<Complex<f64>, U1Sector>) -> Dense<Complex<f64>> {
+pub fn densify_bsp_c64(
+    bsp: &BlockSparseTensorData<Complex<f64>, U1Sector>,
+) -> DenseTensorData<Complex<f64>> {
     densify_bsp_generic(bsp, Complex::new(0.0, 0.0))
 }
 
-fn densify_bsp_generic<T: arnet_core::Scalar>(bsp: &BlockSparse<T, U1Sector>, zero: T) -> Dense<T> {
+fn densify_bsp_generic<T: arnet_core::Scalar>(
+    bsp: &BlockSparseTensorData<T, U1Sector>,
+    zero: T,
+) -> DenseTensorData<T> {
     let global_dims: Vec<usize> = bsp.shape().to_vec();
     let total: usize = global_dims.iter().product();
     let mut out = vec![zero; total];
@@ -36,7 +43,7 @@ fn densify_bsp_generic<T: arnet_core::Scalar>(bsp: &BlockSparse<T, U1Sector>, ze
                 .collect()
         })
         .collect();
-    for meta in bsp.block_metas() {
+    for meta in bsp.layout().block_metas() {
         let coord = &meta.coord;
         let block_shape = bsp.block_shape(coord).expect("allowed block");
         let block_data = bsp.block_data(coord).expect("allowed block");
@@ -70,14 +77,14 @@ fn densify_bsp_generic<T: arnet_core::Scalar>(bsp: &BlockSparse<T, U1Sector>, ze
             }
         }
     }
-    let rm = Dense::new(out, global_dims, MemoryOrder::RowMajor);
+    let rm = DenseTensorData::from_raw_parts(out, global_dims, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
-pub fn template_block_offsets(template: &BlockSparse<f64, U1Sector>) -> Vec<usize> {
+pub fn template_block_offsets(template: &BlockSparseTensorData<f64, U1Sector>) -> Vec<usize> {
     let mut offsets = Vec::with_capacity(template.num_blocks() + 1);
     let mut running = 0_usize;
-    for meta in template.block_metas() {
+    for meta in template.layout().block_metas() {
         offsets.push(running);
         running += template
             .block_shape(&meta.coord)
@@ -90,25 +97,25 @@ pub fn template_block_offsets(template: &BlockSparse<f64, U1Sector>) -> Vec<usiz
 }
 
 pub fn template_from_mps_pair(
-    mps_i: &BlockSparse<f64, U1Sector>,
-    mps_ip1: &BlockSparse<f64, U1Sector>,
-) -> BlockSparse<f64, U1Sector> {
+    mps_i: &BlockSparseTensorData<f64, U1Sector>,
+    mps_ip1: &BlockSparseTensorData<f64, U1Sector>,
+) -> BlockSparseTensorData<f64, U1Sector> {
     let psi_indices = vec![
-        mps_i.indices()[0].clone(),
-        mps_i.indices()[1].clone(),
-        mps_ip1.indices()[1].clone(),
-        mps_ip1.indices()[2].clone(),
+        mps_i.layout().indices()[0].clone(),
+        mps_i.layout().indices()[1].clone(),
+        mps_ip1.layout().indices()[1].clone(),
+        mps_ip1.layout().indices()[2].clone(),
     ];
-    let psi_flux = mps_i.flux().fuse(mps_ip1.flux());
-    BlockSparse::<f64, U1Sector>::zeros(psi_indices, psi_flux)
+    let psi_flux = mps_i.layout().flux().fuse(mps_ip1.layout().flux());
+    BlockSparseTensorData::<f64, U1Sector>::zeros(psi_indices, psi_flux, MemoryOrder::ColumnMajor)
 }
 
 /// Densified rank-4 → flat-template-aware vec. Used to build the
 /// "expected" output of the BlockSparse matvec given a Dense matvec
 /// applied to densified inputs.
 pub fn dense_to_template_flat(
-    dense: &Dense<f64>,
-    template: &BlockSparse<f64, U1Sector>,
+    dense: &DenseTensorData<f64>,
+    template: &BlockSparseTensorData<f64, U1Sector>,
 ) -> Vec<f64> {
     let global_dims: Vec<usize> = dense.shape().to_vec();
     let rank = global_dims.len();
@@ -131,7 +138,7 @@ pub fn dense_to_template_flat(
     let block_offsets = template_block_offsets(template);
     let total_dim = *block_offsets.last().unwrap_or(&0);
     let mut flat = vec![0.0_f64; total_dim];
-    for (k, meta) in template.block_metas().iter().enumerate() {
+    for (k, meta) in template.layout().block_metas().iter().enumerate() {
         let coord = &meta.coord;
         let block_shape = template.block_shape(coord).expect("template block");
         let offsets: Vec<usize> = (0..rank)
@@ -169,8 +176,8 @@ pub fn dense_to_template_flat(
 /// a Dense in CM (NativeBackend preferred order).
 pub fn build_dense_psi_from_flat(
     flat: &[f64],
-    template: &BlockSparse<f64, U1Sector>,
-) -> Dense<f64> {
+    template: &BlockSparseTensorData<f64, U1Sector>,
+) -> DenseTensorData<f64> {
     let global_dims: Vec<usize> = template.shape().to_vec();
     let total: usize = global_dims.iter().product();
     let rank = global_dims.len();
@@ -190,7 +197,7 @@ pub fn build_dense_psi_from_flat(
         })
         .collect();
     let block_offsets = template_block_offsets(template);
-    for (k, meta) in template.block_metas().iter().enumerate() {
+    for (k, meta) in template.layout().block_metas().iter().enumerate() {
         let coord = &meta.coord;
         let block_shape = template.block_shape(coord).expect("template block");
         let offsets: Vec<usize> = (0..rank)
@@ -220,6 +227,6 @@ pub fn build_dense_psi_from_flat(
             }
         }
     }
-    let rm = Dense::new(rm_data, global_dims, MemoryOrder::RowMajor);
+    let rm = DenseTensorData::from_raw_parts(rm_data, global_dims, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }

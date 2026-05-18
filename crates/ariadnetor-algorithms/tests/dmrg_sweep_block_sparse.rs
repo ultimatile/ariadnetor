@@ -21,11 +21,11 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{
-    CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain,
-    braket_repr as braket, canonicalize_repr as canonicalize, norm_repr as norm,
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, norm};
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, Direction,
+    MemoryOrder, QNIndex, Sector, U1Sector,
 };
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, Sector, U1Sector};
 use num_complex::Complex;
 
 use fixtures::{
@@ -59,18 +59,18 @@ fn standard_params(seed: u64) -> DmrgSweepParams {
 /// `from_storages` produces `Unknown`, so position the orthogonality
 /// center at 0 first, then build envs.
 fn setup_f64(
-    mps: &mut Mps<BlockSparse<f64, U1Sector>>,
-    mpo: &Mpo<BlockSparse<f64, U1Sector>>,
-) -> DmrgEnvs<BlockSparse<f64, U1Sector>> {
-    canonicalize::<BlockSparse<f64, U1Sector>, _>(mps, 0);
+    mps: &mut Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+    mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+) -> DmrgEnvs<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
+    canonicalize(mps, 0);
     DmrgEnvs::build(mps, mpo).expect("envs build")
 }
 
 fn setup_c64(
-    mps: &mut Mps<BlockSparse<Complex<f64>, U1Sector>>,
-    mpo: &Mpo<BlockSparse<Complex<f64>, U1Sector>>,
-) -> DmrgEnvs<BlockSparse<Complex<f64>, U1Sector>> {
-    canonicalize::<BlockSparse<Complex<f64>, U1Sector>, _>(mps, 0);
+    mps: &mut Mps<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>>,
+    mpo: &Mpo<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>>,
+) -> DmrgEnvs<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>> {
+    canonicalize(mps, 0);
     DmrgEnvs::build(mps, mpo).expect("envs build")
 }
 
@@ -413,8 +413,8 @@ fn bsp_sweep_lanczos_nonconvergence_blocks_dmrg_convergence() {
 // T6 — TooFewSites and Step error propagation
 // ---------------------------------------------------------------------------
 
-type BspMpsF64 = Mps<BlockSparse<f64, U1Sector>>;
-type BspMpoF64 = Mpo<BlockSparse<f64, U1Sector>>;
+type BspMpsF64 = Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
+type BspMpoF64 = Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
 
 /// Build a 1-site BlockSparse MPS / MPO pair with trivial dim-1
 /// sectors so `DmrgEnvs::build` succeeds at n=1; the sweep must
@@ -422,18 +422,19 @@ type BspMpoF64 = Mpo<BlockSparse<f64, U1Sector>>;
 fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
     let trivial = vec![(U1Sector(0), 1)];
     let phys = vec![(U1Sector(0), 1)];
-    let mut mps_site = BlockSparse::<f64, U1Sector>::zeros(
+    let mut mps_site = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::Out),
             QNIndex::new(trivial.clone(), Direction::In),
         ],
         U1Sector::identity(),
+        MemoryOrder::ColumnMajor,
     );
     mps_site
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("a")[0] = 1.0;
-    let mut mpo_site = BlockSparse::<f64, U1Sector>::zeros(
+    let mut mpo_site = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -441,13 +442,14 @@ fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
             QNIndex::new(trivial, Direction::In),
         ],
         U1Sector::identity(),
+        MemoryOrder::ColumnMajor,
     );
     mpo_site
         .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
         .expect("b")[0] = 1.0;
     (
-        Mps::from_storages(vec![mps_site]),
-        Mpo::from_storages(vec![mpo_site]),
+        Mps::from_sites(vec![mps_site]),
+        Mpo::from_sites(vec![mpo_site]),
     )
 }
 
@@ -474,7 +476,7 @@ fn bsp_sweep_error_step_error_propagated() {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
-    let bad_w0 = BlockSparse::<f64, U1Sector>::zeros(
+    let bad_w0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial, Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -482,8 +484,9 @@ fn bsp_sweep_error_step_error_propagated() {
             QNIndex::new(xy_bond, Direction::In),
         ],
         U1Sector(2),
+        MemoryOrder::ColumnMajor,
     );
-    let bad_mpo = Mpo::from_storages(vec![bad_w0, mpo_good.storage(1).clone()]);
+    let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
 
     let params = standard_params(0);
     let err = sweep_2site(&mut envs, &mut mps, &bad_mpo, &params).expect_err("err");
@@ -505,15 +508,19 @@ fn bsp_sweep_error_step_error_propagated() {
 // ---------------------------------------------------------------------------
 
 fn assert_bsp_close(
-    a: &BlockSparse<f64, U1Sector>,
-    b: &BlockSparse<f64, U1Sector>,
+    a: &BlockSparseTensorData<f64, U1Sector>,
+    b: &BlockSparseTensorData<f64, U1Sector>,
     eps: f64,
     ctx: &str,
 ) {
-    assert_eq!(a.indices().len(), b.indices().len(), "{ctx}: rank");
-    for ax in 0..a.indices().len() {
-        let ia = &a.indices()[ax];
-        let ib = &b.indices()[ax];
+    assert_eq!(
+        a.layout().indices().len(),
+        b.layout().indices().len(),
+        "{ctx}: rank"
+    );
+    for ax in 0..a.layout().indices().len() {
+        let ia = &a.layout().indices()[ax];
+        let ib = &b.layout().indices()[ax];
         assert_eq!(ia.direction(), ib.direction(), "{ctx}: axis {ax} dir");
         assert_eq!(
             ia.blocks().to_vec(),
@@ -521,8 +528,8 @@ fn assert_bsp_close(
             "{ctx}: axis {ax} sectors"
         );
     }
-    assert_eq!(a.flux(), b.flux(), "{ctx}: flux");
-    for meta in a.block_metas() {
+    assert_eq!(a.layout().flux(), b.layout().flux(), "{ctx}: flux");
+    for meta in a.layout().block_metas() {
         let coord = &meta.coord;
         let da = a.block_data(coord).expect("a block");
         let db = b
@@ -537,7 +544,7 @@ fn assert_bsp_close(
             );
         }
     }
-    for meta in b.block_metas() {
+    for meta in b.layout().block_metas() {
         a.block_data(&meta.coord)
             .unwrap_or_else(|| panic!("{ctx}: extra block in b at {:?}", meta.coord));
     }

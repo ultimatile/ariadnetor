@@ -2,9 +2,8 @@
 //!
 //! Each env slot carries a rank-3 tensor of shape `(top-bra-bond,
 //! W-bond, bot-ket-bond)` matching the axis convention used by the
-//! `arnet_mps::inner_repr` braket family (`braket_dense` for [`Dense<T>`],
-//! `braket_bsp` for `BlockSparse<T, S>`). Boundary slots (`left[0]`
-//! and `right[N]`) hold the trivial 1×1×1 identity tensor; for the
+//! `arnet_mps::inner` braket family. Boundary slots (`left[0]` and
+//! `right[N]`) hold the trivial 1×1×1 identity tensor; for the
 //! BlockSparse variant they additionally carry QNIndex / direction /
 //! flux metadata (`flux = S::identity()`).
 //!
@@ -15,22 +14,25 @@
 //! step at sites `(i, i+1)` consumes `left(i)`, `W[i]`, `W[i+1]`, and
 //! `right(i+2)`.
 //!
-//! Storage-specific dispatch is provided by [`DmrgEnvOps`], which is
-//! implemented for [`Dense<T>`] in this module and for
-//! `BlockSparse<T, S>` in a sibling module. The two boundary helpers
-//! fail loudly with [`DmrgEnvError::MalformedEdgeBond`] when a chain's
-//! edge bonds violate the dim-1 single-sector contract required by
-//! the BlockSparse boundary; for `Dense<T>` the helpers always
-//! succeed.
+//! Storage-flavor dispatch is provided by [`DmrgEnvOps<L>`], which is
+//! implemented for [`DenseStorage<T>`] (with `L = DenseLayout`) in
+//! this module and for [`BlockSparseStorage<T>`] (with `L =
+//! BlockSparseLayout<S>`) in a sibling module. The two boundary
+//! helpers fail loudly with [`DmrgEnvError::MalformedEdgeBond`] when
+//! a chain's edge bonds violate the dim-1 single-sector contract
+//! required by the BlockSparse boundary; for the dense flavor the
+//! helpers always succeed.
 
 use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{LinalgError, contract_dense as contract};
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
+use arnet_linalg::{LinalgError, contract};
+use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense, TensorRepr};
+use arnet_tensor::{
+    DenseLayout, DenseStorage, DenseTensorData, Storage, StorageFor, TensorData, TensorLayout,
+};
 
 /// Errors raised by [`DmrgEnvs`] construction and advance operations.
 #[derive(Debug)]
@@ -114,17 +116,17 @@ impl std::error::Error for DmrgEnvError {
     }
 }
 
-/// Storage-specific dispatch for DMRG env construction and per-site
+/// Storage-flavor dispatch for DMRG env construction and per-site
 /// updates.
 ///
 /// The four trait methods are the only points at which storage type
 /// matters; everything else in [`DmrgEnvs`] is dispatched generically
-/// over `R: DmrgEnvOps`. Boundary helpers receive the chain's edge
-/// site tensors (rather than just the backend) so the BlockSparse
-/// implementation can extract QNIndex / direction / flux metadata; the
-/// [`Dense<T>`] implementation ignores the site arguments and returns a
-/// constant 1×1×1 tensor.
-pub trait DmrgEnvOps: TensorRepr + Sized {
+/// over `St: DmrgEnvOps<L>`. Boundary helpers receive the chain's
+/// edge site tensors (rather than just the backend) so the
+/// BlockSparse implementation can extract QNIndex / direction / flux
+/// metadata; the dense implementation ignores the site arguments and
+/// returns a constant 1×1×1 tensor.
+pub trait DmrgEnvOps<L: TensorLayout>: Storage + StorageFor<L> + Sized {
     /// Build the trivial L boundary tensor sitting just left of site 0.
     ///
     /// `mps_left_edge` and `mpo_left_edge` are the leftmost MPS / MPO
@@ -133,9 +135,9 @@ pub trait DmrgEnvOps: TensorRepr + Sized {
     /// direction structure.
     fn trivial_left_boundary<B: ComputeBackend>(
         backend: &B,
-        mps_left_edge: &Self,
-        mpo_left_edge: &Self,
-    ) -> Result<Self, DmrgEnvError>;
+        mps_left_edge: &TensorData<Self, L>,
+        mpo_left_edge: &TensorData<Self, L>,
+    ) -> Result<TensorData<Self, L>, DmrgEnvError>;
 
     /// Build the trivial R boundary tensor sitting just right of site
     /// `n_sites - 1`.
@@ -146,59 +148,67 @@ pub trait DmrgEnvOps: TensorRepr + Sized {
     /// metadata to construct the env's structure.
     fn trivial_right_boundary<B: ComputeBackend>(
         backend: &B,
-        mps_right_edge: &Self,
-        mpo_right_edge: &Self,
-    ) -> Result<Self, DmrgEnvError>;
+        mps_right_edge: &TensorData<Self, L>,
+        mpo_right_edge: &TensorData<Self, L>,
+    ) -> Result<TensorData<Self, L>, DmrgEnvError>;
 
     /// Absorb one site into the L environment, advancing it by one
     /// step to the right.
     fn extend_left_step<B: ComputeBackend>(
         backend: &B,
-        env: &Self,
-        site: &Self,
-        mpo_site: &Self,
-    ) -> Result<Self, LinalgError>;
+        env: &TensorData<Self, L>,
+        site: &TensorData<Self, L>,
+        mpo_site: &TensorData<Self, L>,
+    ) -> Result<TensorData<Self, L>, LinalgError>;
 
     /// Absorb one site into the R environment, advancing it by one
     /// step to the left.
     fn extend_right_step<B: ComputeBackend>(
         backend: &B,
-        env: &Self,
-        site: &Self,
-        mpo_site: &Self,
-    ) -> Result<Self, LinalgError>;
+        env: &TensorData<Self, L>,
+        site: &TensorData<Self, L>,
+        mpo_site: &TensorData<Self, L>,
+    ) -> Result<TensorData<Self, L>, LinalgError>;
 }
 
 // ============================================================================
-// Dense<T> implementation
+// DenseStorage<T> / DenseLayout implementation
 // ============================================================================
 
-impl<T: Scalar> DmrgEnvOps for Dense<T> {
+impl<T: Scalar> DmrgEnvOps<DenseLayout> for DenseStorage<T> {
     fn trivial_left_boundary<B: ComputeBackend>(
         backend: &B,
-        _mps_left_edge: &Self,
-        _mpo_left_edge: &Self,
-    ) -> Result<Self, DmrgEnvError> {
-        Ok(backend.make_tensor(vec![T::one()], vec![1, 1, 1]))
+        _mps_left_edge: &DenseTensorData<T>,
+        _mpo_left_edge: &DenseTensorData<T>,
+    ) -> Result<DenseTensorData<T>, DmrgEnvError> {
+        Ok(DenseTensorData::from_raw_parts(
+            vec![T::one()],
+            vec![1, 1, 1],
+            backend.preferred_order(),
+        ))
     }
 
     fn trivial_right_boundary<B: ComputeBackend>(
         backend: &B,
-        _mps_right_edge: &Self,
-        _mpo_right_edge: &Self,
-    ) -> Result<Self, DmrgEnvError> {
-        Ok(backend.make_tensor(vec![T::one()], vec![1, 1, 1]))
+        _mps_right_edge: &DenseTensorData<T>,
+        _mpo_right_edge: &DenseTensorData<T>,
+    ) -> Result<DenseTensorData<T>, DmrgEnvError> {
+        Ok(DenseTensorData::from_raw_parts(
+            vec![T::one()],
+            vec![1, 1, 1],
+            backend.preferred_order(),
+        ))
     }
 
-    /// Per-site left extension for `Dense<T>`. Mirrors the loop body of
-    /// `arnet_mps::inner_repr::braket_dense`: bra = `site.conj()`, then a
-    /// 3-step contraction `(env, bra) → (·, mpo) → (·, site)`.
+    /// Per-site left extension for the dense flavor. Mirrors the loop
+    /// body of `arnet_mps::inner::braket_dense`: bra = `site.conj()`,
+    /// then a 3-step contraction `(env, bra) → (·, mpo) → (·, site)`.
     fn extend_left_step<B: ComputeBackend>(
         backend: &B,
-        env: &Self,
-        site: &Self,
-        mpo_site: &Self,
-    ) -> Result<Self, LinalgError> {
+        env: &DenseTensorData<T>,
+        site: &DenseTensorData<T>,
+        mpo_site: &DenseTensorData<T>,
+    ) -> Result<DenseTensorData<T>, LinalgError> {
         let bra = site.conj();
         // env(a,b,c) × conj(A)(a,d,e) → t1(b,c,d,e)
         let t1 = contract(backend, env, &bra, "abc,ade->bcde")?;
@@ -208,14 +218,15 @@ impl<T: Scalar> DmrgEnvOps for Dense<T> {
         contract(backend, &t2, site, "cefg,cfh->egh")
     }
 
-    /// Per-site right extension for `Dense<T>`. Mirror of
-    /// [`Self::extend_left_step`] with the contraction order reversed.
+    /// Per-site right extension for the dense flavor. Mirror of
+    /// [`extend_left_step`](Self::extend_left_step) with the
+    /// contraction order reversed.
     fn extend_right_step<B: ComputeBackend>(
         backend: &B,
-        env: &Self,
-        site: &Self,
-        mpo_site: &Self,
-    ) -> Result<Self, LinalgError> {
+        env: &DenseTensorData<T>,
+        site: &DenseTensorData<T>,
+        mpo_site: &DenseTensorData<T>,
+    ) -> Result<DenseTensorData<T>, LinalgError> {
         let bra = site.conj();
         // R(e,g,h) × A(c,f,h) → t1(e,g,c,f)
         let t1 = contract(backend, env, site, "egh,cfh->egcf")?;
@@ -227,41 +238,50 @@ impl<T: Scalar> DmrgEnvOps for Dense<T> {
 }
 
 // ============================================================================
-// DmrgEnvs<R, B>
+// DmrgEnvs<St, L, B>
 // ============================================================================
 
 /// L/R environment tensors for 2-site DMRG, with incremental
 /// update operations for left-to-right and right-to-left sweeps.
 ///
-/// Generic over the storage type `R: DmrgEnvOps`, which routes the
-/// per-site extension and the boundary-tensor construction to either
-/// the [`Dense<T>`] or `BlockSparse<T, S>` implementation. The struct
-/// itself is storage-agnostic.
+/// Generic over a storage half `St: DmrgEnvOps<L>` and its paired
+/// layout `L: TensorLayout`, which route per-site extension and
+/// boundary-tensor construction to the dense or BlockSparse
+/// implementation. The struct itself is storage-agnostic.
 ///
 /// See the module-level docs for the index convention.
 #[derive(Debug, Clone)]
-pub struct DmrgEnvs<R: DmrgEnvOps, B: ComputeBackend = NativeBackend> {
+pub struct DmrgEnvs<St, L, B: ComputeBackend = NativeBackend>
+where
+    St: DmrgEnvOps<L>,
+    L: TensorLayout,
+{
     /// `left[i]` for `i in 0..=n_sites`. `left[0]` is the trivial
     /// boundary; `left[i]` for `i > 0` carries sites `0..i`. `None`
     /// indicates the slot is stale relative to the current sweep
     /// position.
-    left: Vec<Option<R>>,
+    left: Vec<Option<TensorData<St, L>>>,
     /// Mirror of `left` for the right sweep. `right[N]` is the
     /// trivial boundary; `right[j]` for `j < N` carries sites
     /// `j..N`.
-    right: Vec<Option<R>>,
+    right: Vec<Option<TensorData<St, L>>>,
     n_sites: usize,
     backend: Arc<B>,
 }
 
-impl<R: DmrgEnvOps, B: ComputeBackend> DmrgEnvs<R, B> {
+impl<St, L, B> DmrgEnvs<St, L, B>
+where
+    St: DmrgEnvOps<L>,
+    L: TensorLayout,
+    B: ComputeBackend,
+{
     /// Initial right-sweep build. Computes `right[N-1..=1]` from the
     /// trivial right boundary down through the chain, leaving only
     /// `left[0]` populated. Caller is responsible for ensuring the
     /// MPS is in a canonical form compatible with the intended sweep
     /// direction (typically right-canonical for an L→R sweep that
     /// will follow); the wrapper does not assert this.
-    pub fn build(mps: &Mps<R, B>, mpo: &Mpo<R, B>) -> Result<Self, DmrgEnvError> {
+    pub fn build(mps: &Mps<St, L, B>, mpo: &Mpo<St, L, B>) -> Result<Self, DmrgEnvError> {
         let n_sites = mps.len();
         if n_sites == 0 {
             return Err(DmrgEnvError::EmptyChain);
@@ -274,21 +294,22 @@ impl<R: DmrgEnvOps, B: ComputeBackend> DmrgEnvs<R, B> {
         }
 
         let backend: Arc<B> = mps.backend_arc().clone();
-        let mut left: Vec<Option<R>> = vec![None; n_sites + 1];
-        let mut right: Vec<Option<R>> = vec![None; n_sites + 1];
+        let mut left: Vec<Option<TensorData<St, L>>> = (0..=n_sites).map(|_| None).collect();
+        let mut right: Vec<Option<TensorData<St, L>>> = (0..=n_sites).map(|_| None).collect();
 
-        // Trivial boundary tensors at the chain edges. For Dense these
-        // are constant 1×1×1 ones; for BlockSparse they additionally
-        // validate the dim-1 / single-sector edge-bond contract.
-        left[0] = Some(R::trivial_left_boundary(
+        // Trivial boundary tensors at the chain edges. For the dense
+        // flavor these are constant 1×1×1 ones; for BlockSparse they
+        // additionally validate the dim-1 / single-sector edge-bond
+        // contract.
+        left[0] = Some(St::trivial_left_boundary(
             &*backend,
-            mps.storage(0),
-            mpo.storage(0),
+            mps.site(0),
+            mpo.site(0),
         )?);
-        right[n_sites] = Some(R::trivial_right_boundary(
+        right[n_sites] = Some(St::trivial_right_boundary(
             &*backend,
-            mps.storage(n_sites - 1),
-            mpo.storage(n_sites - 1),
+            mps.site(n_sites - 1),
+            mpo.site(n_sites - 1),
         )?);
 
         // Build right envs from the right edge down to right[1].
@@ -304,8 +325,7 @@ impl<R: DmrgEnvOps, B: ComputeBackend> DmrgEnvs<R, B> {
                 break;
             }
             let prev = right[j].as_ref().expect("just initialized or computed");
-            let new =
-                R::extend_right_step(&*backend, prev, mps.storage(j - 1), mpo.storage(j - 1))?;
+            let new = St::extend_right_step(&*backend, prev, mps.site(j - 1), mpo.site(j - 1))?;
             right[j - 1] = Some(new);
         }
 
@@ -326,27 +346,27 @@ impl<R: DmrgEnvOps, B: ComputeBackend> DmrgEnvs<R, B> {
     /// when stale (typical between an `advance_*` call that
     /// invalidated this slot and a subsequent advance that recomputes
     /// it).
-    pub fn left(&self, i: usize) -> Option<&R> {
+    pub fn left(&self, i: usize) -> Option<&TensorData<St, L>> {
         self.left.get(i).and_then(Option::as_ref)
     }
 
     /// R tensor at the boundary just left of site `j`. See [`left`]
     /// for staleness semantics.
-    pub fn right(&self, j: usize) -> Option<&R> {
+    pub fn right(&self, j: usize) -> Option<&TensorData<St, L>> {
         self.right.get(j).and_then(Option::as_ref)
     }
 
     /// Absorb site `i` into the left environment.
     ///
-    /// Reads `mps.storage(i)` (assumed left-canonical at this point
-    /// in a left-to-right sweep) and `mpo.storage(i)`, computes
+    /// Reads `mps.site(i)` (assumed left-canonical at this point
+    /// in a left-to-right sweep) and `mpo.site(i)`, computes
     /// `left[i+1]` from `left[i]`, and **invalidates `right[i+1]`
     /// only when interior** (`i + 1 < n_sites`). The trivial
     /// `right[n_sites]` boundary is never invalidated.
     pub fn advance_left(
         &mut self,
-        mps: &Mps<R, B>,
-        mpo: &Mpo<R, B>,
+        mps: &Mps<St, L, B>,
+        mpo: &Mpo<St, L, B>,
         i: usize,
     ) -> Result<(), DmrgEnvError> {
         if i >= self.n_sites {
@@ -370,7 +390,7 @@ impl<R: DmrgEnvOps, B: ComputeBackend> DmrgEnvs<R, B> {
                 });
             }
         };
-        let new = R::extend_left_step(&*self.backend, prev, mps.storage(i), mpo.storage(i))?;
+        let new = St::extend_left_step(&*self.backend, prev, mps.site(i), mpo.site(i))?;
         self.left[i + 1] = Some(new);
         if i + 1 < self.n_sites {
             self.right[i + 1] = None;
@@ -380,15 +400,15 @@ impl<R: DmrgEnvOps, B: ComputeBackend> DmrgEnvs<R, B> {
 
     /// Absorb site `j` into the right environment.
     ///
-    /// Reads `mps.storage(j)` (assumed right-canonical at this point
-    /// in a right-to-left sweep) and `mpo.storage(j)`, computes
+    /// Reads `mps.site(j)` (assumed right-canonical at this point
+    /// in a right-to-left sweep) and `mpo.site(j)`, computes
     /// `right[j]` from `right[j+1]`, and **invalidates `left[j]` only
     /// when interior** (`j > 0`). The trivial `left[0]` boundary is
     /// never invalidated.
     pub fn advance_right(
         &mut self,
-        mps: &Mps<R, B>,
-        mpo: &Mpo<R, B>,
+        mps: &Mps<St, L, B>,
+        mpo: &Mpo<St, L, B>,
         j: usize,
     ) -> Result<(), DmrgEnvError> {
         if j >= self.n_sites {
@@ -412,7 +432,7 @@ impl<R: DmrgEnvOps, B: ComputeBackend> DmrgEnvs<R, B> {
                 });
             }
         };
-        let new = R::extend_right_step(&*self.backend, prev, mps.storage(j), mpo.storage(j))?;
+        let new = St::extend_right_step(&*self.backend, prev, mps.site(j), mpo.site(j))?;
         self.right[j] = Some(new);
         if j > 0 {
             self.left[j] = None;

@@ -1,7 +1,7 @@
 //! BlockSparse / U(1) variant of the 2-site DMRG local update.
 //!
 //! Mirrors [`super::heff`] (the Dense path) for a
-//! `BlockSparse<T, S>`-backed chain. The effective Hamiltonian
+//! `BlockSparseTensorData<T, S>`-backed chain. The effective Hamiltonian
 //! built from `(left(i), W[i], W[i+1], right(i+2))` is exposed as
 //! a [`crate::krylov::LinearOp<T>`] so the existing Dense Krylov
 //! solvers (Lanczos by default, ARPACK behind the `arpack` feature)
@@ -9,22 +9,23 @@
 //!
 //! ## Flat-buffer adapter
 //!
-//! `LinearOp<T>` operates on `Dense<T>` flat vectors. The
-//! BlockSparse Heff implements `apply(&Dense<T>) -> Dense<T>` via:
+//! `LinearOp<T>` operates on `DenseTensorData<T>` flat vectors. The
+//! BlockSparse Heff implements
+//! `apply(&DenseTensorData<T>) -> DenseTensorData<T>` via:
 //!
-//! 1. **Scatter** the flat input into a populated `BlockSparse`
-//!    2-site tensor whose indices and flux match the psi template
-//!    derived from the MPS sites at `(site, site+1)`.
+//! 1. **Scatter** the flat input into a populated
+//!    `BlockSparseTensorData` 2-site tensor whose indices and flux
+//!    match the psi template derived from the MPS sites at `(site,
+//!    site+1)`.
 //! 2. **Contract** through the env / W tensors using
 //!    [`arnet_linalg::contract_block_sparse`] in four steps. The
-//!    axis convention mirrors `arnet_mps::inner_repr::braket_bsp` and
-//!    the Phase 6.1 `extend_*_step` kernels; the natural output
-//!    order `lhs_free | rhs_free` ends in
-//!    `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
-//!    no axis swap.
-//! 3. **Gather** the rank-4 result back into a flat `Dense<T>` of
-//!    the same length, walking the psi template's
-//!    [`BlockSparse::block_metas`] and looking up each block in
+//!    axis convention mirrors `arnet_mps::inner::braket_bsp` and the
+//!    `extend_*_step` kernels; the natural output order
+//!    `lhs_free | rhs_free` ends in `[chi_l, d_i, d_{i+1}, chi_r]`,
+//!    matching the input shape with no axis swap.
+//! 3. **Gather** the rank-4 result back into a flat
+//!    `DenseTensorData<T>` of the same length, walking the psi
+//!    template's block enumeration and looking up each block in
 //!    the contracted output by coordinate.
 //!
 //! Symmetry preservation is structural: the psi template only
@@ -42,11 +43,9 @@ use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{
-    BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
-};
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps};
-use arnet_tensor::{BlockSparse, Sector};
+use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse};
+use arnet_mps::{Mpo, Mps};
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, Sector};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -82,13 +81,13 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
     pub converged: bool,
     /// Left singular vectors. Legs `[chi_l, d_i, bond(In)]`,
     /// `flux = identity()`. Left-canonical at axes `(chi_l, d_i)`.
-    pub u: BlockSparse<T, S>,
+    pub u: BlockSparseTensorData<T, S>,
     /// Singular values per fused sector (descending within each
     /// sector).
     pub s: BlockSingularValues<<T as Scalar>::Real, S>,
     /// Right singular vectors. Legs `[bond(Out), d_{i+1}, chi_r]`,
     /// `flux = psi_flux`. Right-canonical at axes `(d_{i+1}, chi_r)`.
-    pub vt: BlockSparse<T, S>,
+    pub vt: BlockSparseTensorData<T, S>,
     /// Frobenius norm of the discarded singular values.
     pub trunc_err: T::Real,
 }
@@ -118,9 +117,9 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
 ///   property, env-template-compatibility property, and identity-flux
 ///   precondition is validated up front.
 pub fn dmrg_2site_step_block_sparse<T, S, B>(
-    envs: &DmrgEnvs<BlockSparse<T, S>, B>,
-    mps: &Mps<BlockSparse<T, S>, B>,
-    mpo: &Mpo<BlockSparse<T, S>, B>,
+    envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mps: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mpo: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
@@ -163,10 +162,10 @@ where
                  given MPS[i].axis 0 = {:?}, MPS[i].axis 1 = {:?}, \
                  MPS[i+1].axis 1 = {:?}, MPS[i+1].axis 2 = {:?}",
                 heff.psi_flux(),
-                v.mps_i.indices()[0].blocks(),
-                v.mps_i.indices()[1].blocks(),
-                v.mps_ip1.indices()[1].blocks(),
-                v.mps_ip1.indices()[2].blocks(),
+                v.mps_i.layout().indices()[0].blocks(),
+                v.mps_i.layout().indices()[1].blocks(),
+                v.mps_ip1.layout().indices()[1].blocks(),
+                v.mps_ip1.layout().indices()[2].blocks(),
             ),
         });
     }

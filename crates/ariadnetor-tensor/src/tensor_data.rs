@@ -87,6 +87,19 @@ where
     }
 }
 
+impl<St, L> std::fmt::Debug for TensorData<St, L>
+where
+    St: Storage + StorageFor<L> + std::fmt::Debug,
+    L: TensorLayout + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TensorData")
+            .field("storage", &self.storage)
+            .field("layout", &self.layout)
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use arnet_core::backend::MemoryOrder;

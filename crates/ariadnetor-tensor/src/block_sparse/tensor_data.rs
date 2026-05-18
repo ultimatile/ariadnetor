@@ -128,6 +128,46 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
         Self::new(storage, layout)
     }
 
+    /// Total dimension per axis (read from layout).
+    pub fn shape(&self) -> Vec<usize> {
+        self.layout().shape().to_vec()
+    }
+
+    /// Rank (number of axes).
+    pub fn rank(&self) -> usize {
+        self.layout().rank()
+    }
+
+    /// QNIndex list (one per axis).
+    pub fn indices(&self) -> &[QNIndex<S>] {
+        self.layout().indices()
+    }
+
+    /// Symmetry flux.
+    pub fn flux(&self) -> &S {
+        self.layout().flux()
+    }
+
+    /// Number of allocated (flux-allowed) blocks.
+    pub fn num_blocks(&self) -> usize {
+        self.layout().num_blocks()
+    }
+
+    /// Block metadata for every allocated block.
+    pub fn block_metas(&self) -> &[super::BlockMeta] {
+        self.layout().block_metas()
+    }
+
+    /// Per-axis block dimensions for a given block coordinate.
+    pub fn block_shape(&self, coord: &BlockCoord) -> Option<Vec<usize>> {
+        self.layout().block_shape(coord)
+    }
+
+    /// Memory order of the per-block stored data.
+    pub fn order(&self) -> MemoryOrder {
+        self.layout().order()
+    }
+
     /// Data slice for a block identified by coordinate.
     ///
     /// Returns `None` if the block is not stored (zero by symmetry).

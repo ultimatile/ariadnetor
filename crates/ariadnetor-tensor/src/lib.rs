@@ -79,6 +79,50 @@ pub trait ComputeBackendTensorExt: ComputeBackend {
         }
         Dense::new(data, vec![n, n], self.preferred_order())
     }
+
+    /// Construct a `DenseTensorData` from data in this backend's
+    /// preferred memory order. Canonical counterpart of
+    /// [`make_tensor`](Self::make_tensor).
+    fn make_tensor_data<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> DenseTensorData<T> {
+        DenseTensorData::from_raw_parts(data, shape, self.preferred_order())
+    }
+
+    /// Zero-filled `DenseTensorData` whose `order()` matches this
+    /// backend.
+    fn zeros_data<T: Clone + num_traits::Zero>(&self, shape: Vec<usize>) -> DenseTensorData<T> {
+        let total: usize = shape.iter().product();
+        DenseTensorData::from_raw_parts(vec![T::zero(); total], shape, self.preferred_order())
+    }
+
+    /// Ones-filled `DenseTensorData` whose `order()` matches this
+    /// backend.
+    fn ones_data<T: Clone + num_traits::Zero + num_traits::One>(
+        &self,
+        shape: Vec<usize>,
+    ) -> DenseTensorData<T> {
+        let total: usize = shape.iter().product();
+        DenseTensorData::from_raw_parts(vec![T::one(); total], shape, self.preferred_order())
+    }
+
+    /// Constant-filled `DenseTensorData` whose `order()` matches this
+    /// backend.
+    fn constant_data<T: Clone>(&self, shape: Vec<usize>, value: T) -> DenseTensorData<T> {
+        let total: usize = shape.iter().product();
+        DenseTensorData::from_raw_parts(vec![value; total], shape, self.preferred_order())
+    }
+
+    /// `n×n` identity `DenseTensorData` whose `order()` matches this
+    /// backend.
+    fn eye_data<T: Clone + num_traits::Zero + num_traits::One>(
+        &self,
+        n: usize,
+    ) -> DenseTensorData<T> {
+        let mut data = vec![T::zero(); n * n];
+        for i in 0..n {
+            data[i * n + i] = T::one();
+        }
+        DenseTensorData::from_raw_parts(data, vec![n, n], self.preferred_order())
+    }
 }
 
 impl<B: ComputeBackend> ComputeBackendTensorExt for B {}
