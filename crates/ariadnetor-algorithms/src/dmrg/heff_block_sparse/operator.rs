@@ -251,10 +251,11 @@ where
     S: Sector,
 {
     let mut out = template.clone();
-    // `template` and `out` are separate `BlockSparseTensorData`
-    // instances after `clone`, so iterating `template.layout().block_metas()`
-    // while mutating `out.block_data_mut(...)` is a clean two-borrow
-    // pattern — no per-call `Vec<BlockCoord>` cache needed.
+    // Materialize `(coord, size)` pairs up front so the mutating
+    // `out.block_data_mut(coord)` call below does not have to coexist
+    // with a borrow into `template.layout().block_metas()`. The cost
+    // is one short-lived Vec per matvec, dominated by the contract
+    // intermediates.
     let coords: Vec<_> = template
         .layout()
         .block_metas()

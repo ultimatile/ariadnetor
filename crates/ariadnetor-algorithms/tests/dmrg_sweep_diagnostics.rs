@@ -1,7 +1,6 @@
-//! Tail tests for the DMRG 2-site sweep driver — extracted from
-//! `dmrg_sweep.rs` to keep individual test files under the project's
-//! 800-line cap. Covers eigensolver-convergence propagation (T8) and
-//! env-equivalence cross-check (T9).
+//! Diagnostic-surface tests for the DMRG 2-site sweep driver:
+//! eigensolver-convergence propagation (T8) and env-equivalence
+//! cross-check (T9).
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};

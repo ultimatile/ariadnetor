@@ -24,13 +24,13 @@
 //! point covers both the dense (`St = DenseStorage<T>, L =
 //! DenseLayout`) and BlockSparse / U(1) (`St = BlockSparseStorage<T>,
 //! L = BlockSparseLayout<S>`) storage paths. The `Clone` bounds on
-//! the storage / layout halves are required because `Mps<St, L, B>`
-//! is `Clone` only when all type parameters are (the
-//! `#[derive(Clone)]` on `Mps` introduces an implicit `B: Clone`
-//! bound even though the backend is held behind `Arc`). Both storage
-//! flavors, both layout types, and `NativeBackend` satisfy `Clone`,
-//! so the bound is met for every concrete storage / layout / backend
-//! in the workspace.
+//! `St` and `L` are required because `Mps<St, L, B>` is `Clone` only
+//! when its storage and layout halves are (the manual `impl Clone`
+//! delegates per-site `TensorData::clone`). The `B: Clone` bound is
+//! demanded by this wrapper's own `psi0.clone()` of the input MPS.
+//! Both storage flavors, both layout types, and `NativeBackend`
+//! satisfy `Clone`, so the bounds are met for every concrete storage
+//! / layout / backend in the workspace.
 //!
 //! # Errors
 //!
