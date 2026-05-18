@@ -182,6 +182,19 @@ where
         let storage = DenseStorage::from_arc(Arc::new(new_data));
         Self::new(storage, self.layout().clone())
     }
+
+    /// Frobenius norm: √(Σ |element|²).
+    pub fn norm(&self) -> T::Real {
+        let sq = self
+            .data()
+            .iter()
+            .map(|&x| {
+                let a = x.abs();
+                a * a
+            })
+            .fold(<T::Real as num_traits::Zero>::zero(), |acc, x| acc + x);
+        <T::Real as num_traits::Float>::sqrt(sq)
+    }
 }
 
 #[cfg(test)]
@@ -291,6 +304,31 @@ mod tests {
             )
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn norm_matches_classic_pythagorean_triple() {
+        // ‖(3, 4)‖₂ = 5 — a Pythagorean triple gives an exact f64 result
+        // that pins both the sum-of-squares and the sqrt step.
+        let t = DenseTensorData::<f64>::from_raw_parts(
+            vec![3.0, 4.0],
+            vec![2],
+            MemoryOrder::ColumnMajor,
+        );
+        assert_eq!(t.norm(), 5.0);
+    }
+
+    #[test]
+    fn norm_uses_complex_abs_not_real_part() {
+        // |3 + 4i| = 5, so a rank-1 complex tensor with that single entry
+        // must have norm 5 — not |3| = 3, which is what a real-part-only
+        // implementation would return.
+        let t = DenseTensorData::<Complex<f64>>::from_raw_parts(
+            vec![Complex::new(3.0, 4.0)],
+            vec![1],
+            MemoryOrder::ColumnMajor,
+        );
+        assert_eq!(t.norm(), 5.0);
     }
 
     #[test]

@@ -6,12 +6,9 @@
 //! (multi-element sector blocks), which is essential for catching mutants in
 //! the per-sector sweep logic.
 
-use arnet_mps::{
-    CanonicalForm, MpsRepr as Mps, TensorChainRepr as TensorChain,
-    canonicalize_repr as canonicalize,
-};
-use arnet_tensor::BlockSparse;
+use arnet_mps::{CanonicalForm, Mps, TensorChain, canonicalize};
 use arnet_tensor::U1Sector;
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, MemoryOrder};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, is_left_canonical_bsp,
@@ -47,7 +44,7 @@ fn canonicalize_bsp_center_0_all_right_isometric() {
     // All sites past the center must be right-canonical.
     for j in 1..mps.len() {
         assert!(
-            is_right_canonical_bsp(mps.storage(j), TOL),
+            is_right_canonical_bsp(mps.site(j), TOL),
             "site {j} is not right-canonical after canonicalize(center=0)"
         );
     }
@@ -63,7 +60,7 @@ fn canonicalize_bsp_center_last_all_left_isometric() {
     // Sites 0..last must be left-canonical.
     for j in 0..last {
         assert!(
-            is_left_canonical_bsp(mps.storage(j), TOL),
+            is_left_canonical_bsp(mps.site(j), TOL),
             "site {j} is not left-canonical after canonicalize(center=last)"
         );
     }
@@ -77,13 +74,13 @@ fn canonicalize_bsp_center_middle_has_mixed_isometry() {
     // 0..2 left-canonical, 3..4 right-canonical; site 2 is the orthogonality center.
     for j in 0..2 {
         assert!(
-            is_left_canonical_bsp(mps.storage(j), TOL),
+            is_left_canonical_bsp(mps.site(j), TOL),
             "site {j} is not left-canonical after canonicalize(center=2)"
         );
     }
     for j in 3..mps.len() {
         assert!(
-            is_right_canonical_bsp(mps.storage(j), TOL),
+            is_right_canonical_bsp(mps.site(j), TOL),
             "site {j} is not right-canonical after canonicalize(center=2)"
         );
     }
@@ -147,7 +144,7 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     // ever changes to carry charge, this test is no longer meaningful.
     for j in 0..mps.len() {
         assert_eq!(
-            *mps.storage(j).flux(),
+            *mps.site(j).flux(),
             U1Sector(0),
             "fixture site {j} unexpectedly has non-identity flux"
         );
@@ -158,7 +155,7 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
 
     for j in 0..mps_after.len() {
         assert_eq!(
-            *mps_after.storage(j).flux(),
+            *mps_after.site(j).flux(),
             U1Sector(0),
             "site {j} flux changed through canonicalize of a zero-flux chain"
         );
@@ -177,7 +174,11 @@ fn canonicalize_bsp_accepts_charged_single_site() {
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(1));
+    let mut site = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left, phys, right],
+        U1Sector(1),
+        MemoryOrder::ColumnMajor,
+    );
     // flux=1 forces the unique allowed block to be (left=0, phys=1, right=0).
     site.block_data_mut(&BlockCoord(vec![0, 1, 0]))
         .expect("allowed block for flux=1")[0] = 7.5;
@@ -188,17 +189,18 @@ fn canonicalize_bsp_accepts_charged_single_site() {
         .flat_map(|m| site.block_data(&m.coord).unwrap().iter().copied())
         .collect();
 
-    let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
+    let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![site]);
     canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
-    assert_eq!(*mps.storage(0).flux(), U1Sector(1));
+    assert_eq!(*mps.site(0).flux(), U1Sector(1));
 
     let data_after: Vec<f64> = mps
-        .storage(0)
+        .site(0)
         .block_metas()
         .iter()
-        .flat_map(|m| mps.storage(0).block_data(&m.coord).unwrap().iter().copied())
+        .flat_map(|m| mps.site(0).block_data(&m.coord).unwrap().iter().copied())
         .collect();
     assert_eq!(data_before, data_after);
 }
@@ -211,23 +213,24 @@ fn canonicalize_bsp_accepts_charged_single_site() {
 fn canonicalize_bsp_single_site_only_updates_canonical_form() {
     // A single-site chain has no bonds to sweep, so canonicalize is a pure
     // canonical-form update. We still require the site data to be unchanged.
-    let site = make_4site_u1_mps().storage(0).clone();
+    let site = make_4site_u1_mps().site(0).clone();
     let data_before: Vec<f64> = site
         .block_metas()
         .iter()
         .flat_map(|m| site.block_data(&m.coord).unwrap().iter().copied())
         .collect();
 
-    let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
+    let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![site]);
     canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
     let data_after: Vec<f64> = mps
-        .storage(0)
+        .site(0)
         .block_metas()
         .iter()
-        .flat_map(|m| mps.storage(0).block_data(&m.coord).unwrap().iter().copied())
+        .flat_map(|m| mps.site(0).block_data(&m.coord).unwrap().iter().copied())
         .collect();
     assert_eq!(data_before, data_after);
 }

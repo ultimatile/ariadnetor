@@ -1,7 +1,7 @@
 //! Canonicalization tests.
 
-use arnet_mps::{self as mps, CanonicalForm, MpsRepr as Mps, TensorChainRepr as TensorChain};
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensorData, MemoryOrder};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
@@ -10,7 +10,7 @@ fn test_canonicalize_center_0() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::canonicalize_repr(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
@@ -18,7 +18,7 @@ fn test_canonicalize_center_0() {
     let tol = 1e-10;
     for j in 1..4 {
         assert!(
-            is_right_canonical(mps.storage(j), tol),
+            is_right_canonical(mps.site(j), tol),
             "site {j} not right-canonical"
         );
     }
@@ -47,16 +47,16 @@ fn test_canonicalize_center_middle() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::canonicalize_repr(&mut mps, 2);
+    mps::canonicalize(&mut mps, 2);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 
     let tol = 1e-10;
     // Sites 0, 1 should be left-canonical
-    assert!(is_left_canonical(mps.storage(0), tol));
-    assert!(is_left_canonical(mps.storage(1), tol));
+    assert!(is_left_canonical(mps.site(0), tol));
+    assert!(is_left_canonical(mps.site(1), tol));
     // Site 3 should be right-canonical
-    assert!(is_right_canonical(mps.storage(3), tol));
+    assert!(is_right_canonical(mps.site(3), tol));
 
     // State vector preserved
     let dense_after = mps_to_dense(&mps);
@@ -78,14 +78,14 @@ fn test_canonicalize_center_middle() {
 fn test_canonicalize_center_last() {
     let mut mps = make_4site_mps();
 
-    mps::canonicalize_repr(&mut mps, 3);
+    mps::canonicalize(&mut mps, 3);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
     let tol = 1e-10;
     for j in 0..3 {
         assert!(
-            is_left_canonical(mps.storage(j), tol),
+            is_left_canonical(mps.site(j), tol),
             "site {j} not left-canonical"
         );
     }
@@ -93,14 +93,14 @@ fn test_canonicalize_center_last() {
 
 #[test]
 fn test_canonicalize_single_site() {
-    let storages = vec![Dense::new(
+    let sites = vec![DenseTensorData::from_raw_parts(
         vec![1.0, 2.0],
         vec![1, 2, 1],
         MemoryOrder::ColumnMajor,
     )];
-    let mut mps = Mps::from_storages(storages);
+    let mut mps: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(sites);
 
-    mps::canonicalize_repr(&mut mps, 0);
+    mps::canonicalize(&mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
@@ -109,13 +109,13 @@ fn test_canonicalize_single_site() {
 fn test_canonicalize_preserves_physical_dims() {
     let mut mps = make_4site_mps();
 
-    let phys_dims: Vec<usize> = (0..4).map(|j| mps.storage(j).shape()[1]).collect();
+    let phys_dims: Vec<usize> = (0..4).map(|j| mps.site(j).shape()[1]).collect();
 
-    mps::canonicalize_repr(&mut mps, 1);
+    mps::canonicalize(&mut mps, 1);
 
     for (j, &expected) in phys_dims.iter().enumerate() {
         assert_eq!(
-            mps.storage(j).shape()[1],
+            mps.site(j).shape()[1],
             expected,
             "physical dim changed at site {j}"
         );

@@ -2,11 +2,13 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{
-    self as mps, ApplyMethod, CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, SvdAbsorb,
-    TensorChainRepr as TensorChain, TruncSvdParams, TruncateParams, apply_repr as apply,
-    inner_repr as inner, norm_repr as norm,
+    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
+    TruncateParams, apply, inner, norm,
 };
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, Direction,
+    MemoryOrder, QNIndex, U1Sector,
+};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, make_2site_entangled_u1_mps,
@@ -66,8 +68,8 @@ fn output_is_rank3_mps() {
 
     assert_eq!(result.len(), mps.len());
     for j in 0..result.len() {
-        assert_eq!(result.storage(j).rank(), 3, "site {j} should be rank-3");
-        let indices = result.storage(j).indices();
+        assert_eq!(result.site(j).rank(), 3, "site {j} should be rank-3");
+        let indices = result.site(j).indices();
         assert_eq!(indices[0].direction(), Direction::Out, "site {j} left bond");
         assert_eq!(indices[1].direction(), Direction::Out, "site {j} physical");
         assert_eq!(indices[2].direction(), Direction::In, "site {j} right bond");
@@ -83,7 +85,7 @@ fn output_flux_preserved() {
 
     for j in 0..result.len() {
         assert_eq!(
-            result.storage(j).flux(),
+            result.site(j).flux(),
             &U1Sector(0),
             "site {j} flux should be 0"
         );
@@ -112,9 +114,9 @@ fn apply_with_truncation() {
 
     assert_eq!(result.len(), 4);
     for j in 0..result.len() {
-        assert_eq!(result.storage(j).rank(), 3);
-        for meta in result.storage(j).block_metas() {
-            let data = result.storage(j).block_data(&meta.coord).unwrap();
+        assert_eq!(result.site(j).rank(), 3);
+        for meta in result.site(j).block_metas() {
+            let data = result.site(j).block_data(&meta.coord).unwrap();
             for &v in data {
                 assert!(v.is_finite(), "site {j} has non-finite value");
             }
@@ -145,8 +147,8 @@ fn length_mismatch_panics() {
 #[test]
 #[should_panic(expected = "must have at least one site")]
 fn empty_mps_panics() {
-    let mps = Mps::<BlockSparse<f64, U1Sector>>::from_storages(vec![]);
-    let mpo = Mpo::<BlockSparse<f64, U1Sector>>::from_storages(vec![]);
+    let mps = Mps::<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>::from_sites(vec![]);
+    let mpo = Mpo::<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>::from_sites(vec![]);
     apply(&mpo, &mps, None);
 }
 
@@ -162,7 +164,7 @@ fn zipup_lossless_matches_naive_no_params() {
     let identity = make_identity_u1_mpo(4);
 
     let phi_naive = apply(&identity, &psi, None);
-    let phi_zipup = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -180,8 +182,7 @@ fn zipup_lossless_matches_naive_large_chi() {
     });
 
     let phi_naive = apply(&identity, &psi, Some(&lossless));
-    let phi_zipup =
-        mps::apply_with_method_repr(&identity, &psi, Some(&lossless), ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method(&identity, &psi, Some(&lossless), ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -193,7 +194,7 @@ fn zipup_identity_preserves_state() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
 
     let v_before = bsp_mps_contract_full(&psi);
     let v_after = bsp_mps_contract_full(&phi);
@@ -205,7 +206,7 @@ fn zipup_canonical_form() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi_none = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi_none = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
     assert_eq!(
         *phi_none.canonical_form(),
         CanonicalForm::Mixed { center: 3 }
@@ -215,7 +216,7 @@ fn zipup_canonical_form() {
         chi_max: Some(8),
         target_trunc_err: None,
     });
-    let phi_some = mps::apply_with_method_repr(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_some = mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
     assert_eq!(
         *phi_some.canonical_form(),
         CanonicalForm::Mixed { center: 0 }
@@ -227,11 +228,11 @@ fn zipup_output_structure_and_flux() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
 
     assert_eq!(phi.len(), psi.len());
     for j in 0..phi.len() {
-        let site = phi.storage(j);
+        let site = phi.site(j);
         assert_eq!(site.rank(), 3, "site {j} should be rank-3");
         let indices = site.indices();
         assert_eq!(indices[0].direction(), Direction::Out, "site {j} left bond");
@@ -244,12 +245,20 @@ fn zipup_output_structure_and_flux() {
 /// Single-basis-state U(1) MPS site with bond dim 1 and the requested
 /// integer charges on each leg. Used to construct definite-particle-number
 /// product states for MPO correctness anchors.
-fn bsp_basis_site(left_c: i32, phys_c: usize, right_c: i32) -> BlockSparse<f64, U1Sector> {
+fn bsp_basis_site(
+    left_c: i32,
+    phys_c: usize,
+    right_c: i32,
+) -> BlockSparseTensorData<f64, U1Sector> {
     assert!(phys_c <= 1, "physical dim assumed to be 2 (charges 0, 1)");
     let left = QNIndex::new(vec![(U1Sector(left_c), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(right_c), 1)], Direction::In);
-    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left, phys, right],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     site.block_data_mut(&BlockCoord(vec![0, phys_c, 0]))
         .unwrap()[0] = 1.0;
     site
@@ -260,7 +269,7 @@ fn apply_bsp_n_on_zero_state() {
     // |0000⟩ has total N = 0. The right-edge charge-0 block (bL=I → apply
     // n_phys = 0) is the only one that fires here, so this anchors the
     // boundary case.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         bsp_basis_site(0, 0, 0),
         bsp_basis_site(0, 0, 0),
         bsp_basis_site(0, 0, 0),
@@ -282,7 +291,7 @@ fn apply_bsp_n_eigenvalue_on_multi_particle_basis_state() {
     // simultaneously. With 2 particles distributed across 4 sites, the FSM
     // bond traverses I → n → n → n on sites 0, 1, 2, 3 (the I → n transition
     // fires at site 0, then stays at n until the right boundary).
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         bsp_basis_site(0, 1, 1),
         bsp_basis_site(1, 0, 1),
         bsp_basis_site(1, 1, 2),
@@ -304,7 +313,7 @@ fn apply_bsp_n_squared_via_composition() {
     // apply output back into apply tests that the result is a well-formed
     // MPS the operator can act on again — the algebraic eigenvalue
     // identity acts as the analytical anchor across the composition.
-    let psi = Mps::from_storages(vec![bsp_basis_site(0, 1, 1), bsp_basis_site(1, 1, 2)]);
+    let psi = Mps::from_sites(vec![bsp_basis_site(0, 1, 1), bsp_basis_site(1, 1, 2)]);
     let n_op = make_total_n_u1_mpo(2);
 
     let n_psi = apply(&n_op, &psi, None);
@@ -322,7 +331,7 @@ fn total_n_mpo_acts_as_total_particle_number_3site_interior() {
     // non-trivial axes interact non-trivially under RowMajor vs ColumnMajor.
     //
     // |010⟩: single particle at site 1, total N = 1, norm² = 1.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         bsp_basis_site(0, 0, 0),
         bsp_basis_site(0, 1, 1),
         bsp_basis_site(1, 0, 1),
@@ -366,7 +375,7 @@ fn zipup_lossless_matches_naive_nontrivial_mpo_no_params() {
     let op = make_total_n_u1_mpo(4);
 
     let phi_naive = apply(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -383,7 +392,7 @@ fn zipup_lossless_matches_naive_nontrivial_mpo_large_chi() {
     });
 
     let phi_naive = apply(&op, &psi, Some(&lossless));
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
 
     let v_naive = bsp_mps_contract_full(&phi_naive);
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -399,7 +408,7 @@ fn zipup_truncates_bond_dim() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi = mps::apply_with_method_repr(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
@@ -435,7 +444,7 @@ fn zipup_truncated_matches_naive_truncated_chi1() {
     });
 
     let phi_naive = apply(&op, &psi, Some(&params));
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi_zipup.bond_dims() {
         assert!(d <= 1, "zipup bond {d} exceeds chi_max=1");
@@ -468,7 +477,7 @@ fn zipup_no_params_reduces_bond_dims_vs_naive_at_early_sites() {
     let op = make_total_n_u1_mpo(4);
 
     let phi_naive = apply(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
 
     let bd_naive = phi_naive.bond_dims();
     let bd_zipup = phi_zipup.bond_dims();
@@ -532,7 +541,7 @@ fn zipup_rejects_all_unsupported_truncate_params() {
 
     for (name, params) in unsupported {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mps::apply_with_method_repr(&identity, &psi, Some(&params), ApplyMethod::ZipUp)
+            mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp)
         }));
         assert!(
             result.is_err(),

@@ -1,18 +1,17 @@
 //! Shared test helpers for MPS tests.
 
-use arnet_linalg::{
-    BlockSparseContractResultRepr as BlockSparseContractResult,
-    contract_block_sparse_repr as contract_block_sparse,
-};
-use arnet_mps::{MpoRepr as Mpo, MpsRepr as Mps, TensorChainRepr as TensorChain};
+use arnet_linalg::{BlockSparseContractResult, contract_block_sparse};
+use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::U1Sector;
 use arnet_tensor::reorder;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{BlockCoord, BlockSparseLayout, BlockSparseStorage, Direction, QNIndex};
+use arnet_tensor::{
+    BlockSparseTensorData, DenseLayout, DenseStorage, DenseTensorData, MemoryOrder,
+};
 
 /// Build a Dense from row-major data and convert to column-major (NativeBackend order).
-fn rm_dense(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
+fn rm_dense(data: Vec<f64>, shape: Vec<usize>) -> DenseTensorData<f64> {
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
@@ -21,13 +20,13 @@ fn rm_dense(data: Vec<f64>, shape: Vec<usize>) -> Dense<f64> {
 /// Used to build product states with a known total particle number for the
 /// dense-side analytical anchors that mirror the BlockSparse `bsp_basis_site`
 /// helper. Physical dim is fixed at 2 (charges 0 and 1).
-pub fn dense_basis_site(phys_c: usize) -> Dense<f64> {
+pub fn dense_basis_site(phys_c: usize) -> DenseTensorData<f64> {
     assert!(phys_c <= 1, "physical dim is 2 (charges 0, 1)");
     let mut data = vec![0.0; 2];
     data[phys_c] = 1.0;
     // Shape (1, 2, 1) has only one non-trivial axis, so RowMajor and
     // ColumnMajor flatten to the same byte order — no rm_dense needed.
-    Dense::new(data, vec![1, 2, 1], MemoryOrder::ColumnMajor)
+    DenseTensorData::from_raw_parts(data, vec![1, 2, 1], MemoryOrder::ColumnMajor)
 }
 
 /// Dense total-particle-number MPO `N = Σ_j n_j` over `n` sites.
@@ -40,16 +39,16 @@ pub fn dense_basis_site(phys_c: usize) -> Dense<f64> {
 /// Compared to the bond-dim-1 fixtures used by the existing dense apply
 /// tests, this exercises the non-trivial `w_L⊗χ_L` and `w_R⊗χ_R` bond
 /// fusion; pairing it with [`dense_basis_site`] gives an analytical
-/// expectation value (`⟨c1…cn|N|c1…cn⟩ = Σ c_i`) that pins `apply_dense`
+/// expectation value (`⟨c1…cn|N|c1…cn⟩ = Σ c_i`) that pins `apply`
 /// against algebra rather than against another implementation.
-pub fn make_total_n_dense_mpo(n: usize) -> Mpo<Dense<f64>> {
+pub fn make_total_n_dense_mpo(n: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 1, "need at least one site");
-    let mut storages = Vec::with_capacity(n);
+    let mut sites = Vec::with_capacity(n);
     for j in 0..n {
         // Site data is written in conceptual RowMajor (index
         // `wL*Bdk*Cdb*DwR + dk*Cdb*DwR + db*DwR + wR`) for readability and
         // converted to the backend's preferred order via rm_dense.
-        let storage = match (j == 0, j == n - 1) {
+        let site = match (j == 0, j == n - 1) {
             (true, true) => {
                 // n == 1: the single site reduces to n_phys = diag(0, 1).
                 rm_dense(vec![0.0, 0.0, 0.0, 1.0], vec![1, 2, 2, 1])
@@ -87,25 +86,25 @@ pub fn make_total_n_dense_mpo(n: usize) -> Mpo<Dense<f64>> {
                 rm_dense(data, vec![2, 2, 2, 2])
             }
         };
-        storages.push(storage);
+        sites.push(site);
     }
-    Mpo::from_storages(storages)
+    Mpo::from_sites(sites)
 }
 
 /// Build a random-ish 4-site MPS from deterministic data.
-pub fn make_4site_mps() -> Mps<Dense<f64>> {
-    let storages = vec![
+pub fn make_4site_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
+    let sites = vec![
         rm_dense(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8], vec![1, 2, 4]),
         rm_dense((1..=32).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 4]),
         rm_dense((1..=24).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 3]),
         rm_dense((1..=6).map(|i| i as f64 * 0.1).collect(), vec![3, 2, 1]),
     ];
-    Mps::from_storages(storages)
+    Mps::from_sites(sites)
 }
 
 /// Check that a site tensor is left-canonical: Q^H Q ≈ I.
 /// Reshape to (m, k) where m = product(shape[..rank-1]), k = shape[rank-1].
-pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
+pub fn is_left_canonical(dense: &DenseTensorData<f64>, tol: f64) -> bool {
     let shape = dense.shape();
     let rank = shape.len();
     let k = shape[rank - 1];
@@ -116,7 +115,7 @@ pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let mat = reorder(&rm2d, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
 
     let backend = arnet_native::NativeBackend::new();
-    let qtq = arnet_linalg::contract_dense(&backend, &mat, &mat, "ab,ac->bc").unwrap();
+    let qtq = arnet_linalg::contract(&backend, &mat, &mat, "ab,ac->bc").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -133,7 +132,7 @@ pub fn is_left_canonical(dense: &Dense<f64>, tol: f64) -> bool {
 
 /// Check that a site tensor is right-canonical: Q Q^H ≈ I.
 /// Reshape to (k, n) where k = shape[0], n = product(shape[1..]).
-pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
+pub fn is_right_canonical(dense: &DenseTensorData<f64>, tol: f64) -> bool {
     let shape = dense.shape();
     let k = shape[0];
     let n: usize = shape[1..].iter().product();
@@ -143,7 +142,7 @@ pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
     let mat = reorder(&rm2d, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
 
     let backend = arnet_native::NativeBackend::new();
-    let qqt = arnet_linalg::contract_dense(&backend, &mat, &mat, "ab,cb->ac").unwrap();
+    let qqt = arnet_linalg::contract(&backend, &mat, &mat, "ab,cb->ac").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -160,16 +159,16 @@ pub fn is_right_canonical(dense: &Dense<f64>, tol: f64) -> bool {
 
 /// Compute the full state vector from an MPS by contracting all sites.
 /// Returns the result in the backend's preferred order (ColumnMajor).
-pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
+pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensorData<f64> {
     let backend = arnet_native::NativeBackend::new();
     let order = MemoryOrder::ColumnMajor;
     let rm = MemoryOrder::RowMajor;
     let n = mps.len();
 
-    let mut result = mps.storage(0).clone();
+    let mut result = mps.site(0).clone();
 
     for j in 1..n {
-        let site = mps.storage(j);
+        let site = mps.site(j);
         let r_rank = result.rank();
         let r_last: usize = *result.shape().last().unwrap();
         let r_rest: usize = result.shape()[..r_rank - 1].iter().product();
@@ -185,7 +184,7 @@ pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
         let site_2d = reorder(&site_2d_rm, rm, order);
 
         let contracted =
-            arnet_linalg::contract_dense(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
+            arnet_linalg::contract(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
 
         // Reorder to RM for axis-split reshape, then back to CM.
         let contracted_rm = reorder(&contracted, order, rm);
@@ -199,8 +198,8 @@ pub fn mps_to_dense(mps: &Mps<Dense<f64>>) -> Dense<f64> {
 }
 
 /// Build an identity MPO for a given number of sites and physical dimension.
-pub fn make_identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
-    let storages = (0..n)
+pub fn make_identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
+    let sites = (0..n)
         .map(|_| {
             // Identity operator in RM, then convert to CM
             let mut data = vec![0.0; d * d];
@@ -210,7 +209,7 @@ pub fn make_identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
             rm_dense(data, vec![1, d, d, 1])
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(sites)
 }
 
 // ============================================================================
@@ -230,11 +229,15 @@ fn make_u1_site(
     phys_sectors: Vec<(U1Sector, usize)>,
     right_sectors: Vec<(U1Sector, usize)>,
     counter: &mut f64,
-) -> BlockSparse<f64, U1Sector> {
+) -> BlockSparseTensorData<f64, U1Sector> {
     let left = QNIndex::new(left_sectors, Direction::Out);
     let phys = QNIndex::new(phys_sectors, Direction::Out);
     let right = QNIndex::new(right_sectors, Direction::In);
-    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left, phys, right],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
 
     // Populate each allowed block with a deterministic monotone sequence so the
     // resulting site has non-trivial content in every live sector (avoiding
@@ -260,7 +263,7 @@ fn make_u1_site(
 ///
 /// Each site has at least one non-trivial QR / LQ factorization sector, which is
 /// essential for mutant-testing coverage of the BlockSparse canonicalize sweeps.
-pub fn make_4site_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
+pub fn make_4site_u1_mps() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let mut counter: f64 = 0.1;
 
     let site0 = make_u1_site(
@@ -288,7 +291,7 @@ pub fn make_4site_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
         &mut counter,
     );
 
-    Mps::from_storages(vec![site0, site1, site2, site3])
+    Mps::from_sites(vec![site0, site1, site2, site3])
 }
 
 /// Check that a block-sparse site is left-canonical: `Q^H Q ≈ I` on the new
@@ -298,7 +301,7 @@ pub fn make_4site_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
 /// `coord.last() == b` into a single `(Σ_i m_i) × k_b` matrix and verify the
 /// accumulated `M^H M` is the `k_b × k_b` identity. Different new-bond sectors
 /// are decoupled by symmetry, so per-sector checks are sufficient.
-pub fn is_left_canonical_bsp(site: &BlockSparse<f64, U1Sector>, tol: f64) -> bool {
+pub fn is_left_canonical_bsp(site: &BlockSparseTensorData<f64, U1Sector>, tol: f64) -> bool {
     let rank = site.rank();
     let new_bond = &site.indices()[rank - 1];
 
@@ -345,7 +348,7 @@ pub fn is_left_canonical_bsp(site: &BlockSparse<f64, U1Sector>, tol: f64) -> boo
 /// Dual of [`is_left_canonical_bsp`]: for each sector `b` of the leftmost index,
 /// accumulate `M M^H` from all allowed blocks with `coord[0] == b`, treating each
 /// block as a `k_b × n_rest` row-major matrix.
-pub fn is_right_canonical_bsp(site: &BlockSparse<f64, U1Sector>, tol: f64) -> bool {
+pub fn is_right_canonical_bsp(site: &BlockSparseTensorData<f64, U1Sector>, tol: f64) -> bool {
     let left = &site.indices()[0];
 
     for b in 0..left.num_blocks() {
@@ -389,13 +392,15 @@ pub fn is_right_canonical_bsp(site: &BlockSparse<f64, U1Sector>, tol: f64) -> bo
 /// Contract an entire block-sparse MPS into a single tensor by sequentially
 /// merging adjacent sites. Used as an external state-equivalence witness in
 /// canonicalize tests.
-pub fn bsp_mps_contract_full(mps: &Mps<BlockSparse<f64, U1Sector>>) -> BlockSparse<f64, U1Sector> {
+pub fn bsp_mps_contract_full(
+    mps: &Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+) -> BlockSparseTensorData<f64, U1Sector> {
     let n = mps.len();
     assert!(n > 0, "cannot contract an empty MPS");
 
-    let mut acc = mps.storage(0).clone();
+    let mut acc = mps.site(0).clone();
     for j in 1..n {
-        let site = mps.storage(j);
+        let site = mps.site(j);
         let last_axis = acc.rank() - 1;
         let result = contract_block_sparse(mps.backend(), &acc, site, &[last_axis], &[0])
             .expect("chain contraction failed in bsp_mps_contract_full");
@@ -418,8 +423,8 @@ pub fn bsp_mps_contract_full(mps: &Mps<BlockSparse<f64, U1Sector>>) -> BlockSpar
 /// different sector labeling could share `BlockCoord` indices that point to
 /// semantically unrelated blocks and spuriously compare equal.
 pub fn assert_block_sparse_close(
-    a: &BlockSparse<f64, U1Sector>,
-    b: &BlockSparse<f64, U1Sector>,
+    a: &BlockSparseTensorData<f64, U1Sector>,
+    b: &BlockSparseTensorData<f64, U1Sector>,
     tol: f64,
 ) {
     assert_eq!(a.rank(), b.rank(), "rank mismatch");
@@ -473,22 +478,30 @@ pub fn assert_block_sparse_close(
 /// The state spans two basis vectors: |01⟩ (coeff 3) and |10⟩ (coeff 8),
 /// giving bond dim 2 with two non-zero singular values — genuine
 /// entanglement that truncation can meaningfully discard.
-pub fn make_2site_entangled_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
+pub fn make_2site_entangled_u1_mps() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site0 = BlockSparse::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
+    let mut site0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left0, phys0, right0],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     site0.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
     site0.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 2.0;
 
     let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right1 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-    let mut site1 = BlockSparse::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
+    let mut site1 = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left1, phys1, right1],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     site1.block_data_mut(&BlockCoord(vec![0, 1, 0])).unwrap()[0] = 3.0;
     site1.block_data_mut(&BlockCoord(vec![1, 0, 0])).unwrap()[0] = 4.0;
 
-    Mps::from_storages(vec![site0, site1])
+    Mps::from_sites(vec![site0, site1])
 }
 
 /// Build a U(1) total-particle-number MPO `N = Σ_j n_j` over `n` sites.
@@ -503,9 +516,9 @@ pub fn make_2site_entangled_u1_mps() -> Mps<BlockSparse<f64, U1Sector>> {
 /// the non-trivial `w_L⊗χ_L` and `w_R⊗χ_R` bond fusions that any apply
 /// implementation has to perform, so bugs that survive the identity-only
 /// path can still be caught here.
-pub fn make_total_n_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
+pub fn make_total_n_u1_mpo(n: usize) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     assert!(n >= 1, "need at least one site");
-    let mut storages = Vec::with_capacity(n);
+    let mut sites = Vec::with_capacity(n);
     for j in 0..n {
         let left_dim = if j == 0 { 1 } else { 2 };
         let right_dim = if j == n - 1 { 1 } else { 2 };
@@ -513,8 +526,11 @@ pub fn make_total_n_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
         let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
         let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
         let right = QNIndex::new(vec![(U1Sector(0), right_dim)], Direction::In);
-        let mut site =
-            BlockSparse::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+        let mut site = BlockSparseTensorData::<f64, U1Sector>::zeros(
+            vec![left, ket, bra, right],
+            U1Sector(0),
+            MemoryOrder::ColumnMajor,
+        );
 
         // Block-data layout follows the backend's preferred order. NativeBackend
         // is ColumnMajor, so for an interior block of shape (a, b, c, d) the
@@ -595,28 +611,31 @@ pub fn make_total_n_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
             }
         }
 
-        storages.push(site);
+        sites.push(site);
     }
-    Mpo::from_storages(storages)
+    Mpo::from_sites(sites)
 }
 
 /// Build a U(1) identity MPO for the given number of sites.
 ///
 /// MPO convention: (Out, In, Out, In) = (w_L, d_ket, d_bra, w_R).
 /// Physical charges {0, 1}. Bond dim = 1. Flux = 0 per site.
-pub fn make_identity_u1_mpo(n: usize) -> Mpo<BlockSparse<f64, U1Sector>> {
-    let storages = (0..n)
+pub fn make_identity_u1_mpo(n: usize) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
+    let sites = (0..n)
         .map(|_| {
             let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
             let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
             let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
             let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-            let mut site =
-                BlockSparse::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+            let mut site = BlockSparseTensorData::<f64, U1Sector>::zeros(
+                vec![left, ket, bra, right],
+                U1Sector(0),
+                MemoryOrder::ColumnMajor,
+            );
             site.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).unwrap()[0] = 1.0;
             site.block_data_mut(&BlockCoord(vec![0, 1, 1, 0])).unwrap()[0] = 1.0;
             site
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(sites)
 }

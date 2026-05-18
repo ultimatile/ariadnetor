@@ -2,10 +2,10 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{
-    self as mps, ApplyMethod, CanonicalForm, MpoRepr as Mpo, MpsRepr as Mps, SvdAbsorb,
-    TensorChainRepr as TensorChain, TruncSvdParams, TruncateParams,
+    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
+    TruncateParams,
 };
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensorData, MemoryOrder};
 
 use super::helpers::{
     dense_basis_site, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
@@ -13,14 +13,14 @@ use super::helpers::{
 
 #[test]
 fn test_apply_identity_preserves_state() {
-    let psi = Mps::from_storages(vec![
-        Dense::new(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
-        Dense::new(vec![0.0, 1.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
-        Dense::new(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
+    let psi = Mps::from_sites(vec![
+        DenseTensorData::from_raw_parts(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
+        DenseTensorData::from_raw_parts(vec![0.0, 1.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
+        DenseTensorData::from_raw_parts(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
     ]);
     let identity = make_identity_mpo(3, 2);
 
-    let result = mps::apply_repr(&identity, &psi, None);
+    let result = mps::apply(&identity, &psi, None);
 
     assert_eq!(result.len(), 3);
 
@@ -40,33 +40,33 @@ fn test_apply_identity_preserves_state() {
 fn test_apply_increases_bond_dim() {
     // MPO with bond dim 2: doubles MPS bond dims
     let mpo_storages = vec![
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0],
             vec![1, 2, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
             vec![2, 2, 2, 1],
             MemoryOrder::ColumnMajor,
         ),
     ];
-    let mpo = Mpo::from_storages(mpo_storages);
+    let mpo = Mpo::from_sites(mpo_storages);
 
-    let psi = Mps::from_storages(vec![
-        Dense::new(
+    let psi = Mps::from_sites(vec![
+        DenseTensorData::from_raw_parts(
             vec![1.0, 0.0, 0.5, 0.5],
             vec![1, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![1.0, 0.0, 0.0, 1.0],
             vec![2, 2, 1],
             MemoryOrder::ColumnMajor,
         ),
     ]);
 
-    let result = mps::apply_repr(&mpo, &psi, None);
+    let result = mps::apply(&mpo, &psi, None);
 
     assert_eq!(result.len(), 2);
     // Bond dim should be product of MPO and MPS bond dims
@@ -76,18 +76,18 @@ fn test_apply_increases_bond_dim() {
 
 #[test]
 fn test_apply_with_truncation() {
-    let psi = Mps::from_storages(vec![
-        Dense::new(
+    let psi = Mps::from_sites(vec![
+        DenseTensorData::from_raw_parts(
             vec![1.0, 0.0, 0.5, 0.5],
             vec![1, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
             vec![2, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![1.0, 0.0, 0.0, 1.0],
             vec![2, 2, 1],
             MemoryOrder::ColumnMajor,
@@ -99,7 +99,7 @@ fn test_apply_with_truncation() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let result = mps::apply_repr(&identity, &psi, Some(&params));
+    let result = mps::apply(&identity, &psi, Some(&params));
 
     // Bond dims should be capped at 2
     for d in result.bond_dims() {
@@ -112,21 +112,21 @@ fn test_apply_with_truncation() {
 #[test]
 fn test_apply_sz_expectation() {
     // Apply Sz MPO to |0⟩, then compute ⟨0|Sz|0⟩ via inner product
-    let up = Mps::from_storages(vec![Dense::new(
+    let up = Mps::from_sites(vec![DenseTensorData::from_raw_parts(
         vec![1.0, 0.0],
         vec![1, 2, 1],
         MemoryOrder::ColumnMajor,
     )]);
-    let sz_mpo = Mpo::from_storages(vec![Dense::new(
+    let sz_mpo = Mpo::from_sites(vec![DenseTensorData::from_raw_parts(
         vec![0.5, 0.0, 0.0, -0.5],
         vec![1, 2, 2, 1],
         MemoryOrder::ColumnMajor,
     )]);
 
-    let sz_psi = mps::apply_repr(&sz_mpo, &up, None);
+    let sz_psi = mps::apply(&sz_mpo, &up, None);
 
     // ⟨0|Sz|0⟩ = inner(|0⟩, Sz|0⟩)
-    let expect_val = mps::inner_repr(&up, &sz_psi);
+    let expect_val = mps::inner(&up, &sz_psi);
     assert_abs_diff_eq!(expect_val, 0.5, epsilon = 1e-12);
 }
 
@@ -139,16 +139,16 @@ fn test_apply_dense_total_n_mpo_acts_as_total_particle_number_2site_eigenstate()
     // 2-site MPS in the total-N=1 subspace: ψ = 3|01⟩ + 8|10⟩.
     // Both basis vectors are N-eigenstates with eigenvalue 1, so
     // ⟨ψ|N|ψ⟩ = ⟨ψ|ψ⟩ = 9 + 64 = 73.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         // Site 0 shape (1, 2, 2): bond carries the basis label.
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![3.0, 0.0, 0.0, 8.0],
             vec![1, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
         // Site 1 shape (2, 2, 1): bond=0 → phys=1 (|01⟩ branch),
         // bond=1 → phys=0 (|10⟩ branch).
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![0.0, 1.0, 1.0, 0.0],
             vec![2, 2, 1],
             MemoryOrder::ColumnMajor,
@@ -156,9 +156,9 @@ fn test_apply_dense_total_n_mpo_acts_as_total_particle_number_2site_eigenstate()
     ]);
     let n_op = make_total_n_dense_mpo(2);
 
-    let psi_norm_sq = mps::inner_repr(&psi, &psi);
-    let n_psi = mps::apply_repr(&n_op, &psi, None);
-    let exp_n = mps::inner_repr(&psi, &n_psi);
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
 
     assert_abs_diff_eq!(psi_norm_sq, 73.0, epsilon = 1e-10);
     assert_abs_diff_eq!(exp_n, 73.0, epsilon = 1e-10);
@@ -169,16 +169,16 @@ fn test_apply_dense_total_n_mpo_3site_interior() {
     // 3-site basis state |010⟩: single particle at site 1, total N = 1.
     // Exercises one interior MPO site, where RowMajor and ColumnMajor
     // bond-fusion layouts disagree on the off-diagonal "I → n" entry.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         dense_basis_site(0),
         dense_basis_site(1),
         dense_basis_site(0),
     ]);
     let n_op = make_total_n_dense_mpo(3);
 
-    let psi_norm_sq = mps::inner_repr(&psi, &psi);
-    let n_psi = mps::apply_repr(&n_op, &psi, None);
-    let exp_n = mps::inner_repr(&psi, &n_psi);
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
 
     assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
     assert_abs_diff_eq!(exp_n, 1.0, epsilon = 1e-10);
@@ -188,7 +188,7 @@ fn test_apply_dense_total_n_mpo_3site_interior() {
 fn test_apply_dense_n_on_zero_state() {
     // |0000⟩ has total N = 0. Anchors the right-edge boundary
     // (bL=I → apply n_phys = 0 at charge 0) along the all-zero path.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         dense_basis_site(0),
         dense_basis_site(0),
         dense_basis_site(0),
@@ -196,9 +196,9 @@ fn test_apply_dense_n_on_zero_state() {
     ]);
     let n_op = make_total_n_dense_mpo(4);
 
-    let psi_norm_sq = mps::inner_repr(&psi, &psi);
-    let n_psi = mps::apply_repr(&n_op, &psi, None);
-    let exp_n = mps::inner_repr(&psi, &n_psi);
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
 
     assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
     assert_abs_diff_eq!(exp_n, 0.0, epsilon = 1e-10);
@@ -210,7 +210,7 @@ fn test_apply_dense_n_eigenvalue_on_multi_particle_basis_state() {
     // simultaneously (sites 1 and 2). The total-N contraction sums over
     // FSM paths where the single I → n transition can fire at any site,
     // so the eigenvalue is collected from the occupied sites 0 and 2.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         dense_basis_site(1),
         dense_basis_site(0),
         dense_basis_site(1),
@@ -218,9 +218,9 @@ fn test_apply_dense_n_eigenvalue_on_multi_particle_basis_state() {
     ]);
     let n_op = make_total_n_dense_mpo(4);
 
-    let psi_norm_sq = mps::inner_repr(&psi, &psi);
-    let n_psi = mps::apply_repr(&n_op, &psi, None);
-    let exp_n = mps::inner_repr(&psi, &n_psi);
+    let psi_norm_sq = mps::inner(&psi, &psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let exp_n = mps::inner(&psi, &n_psi);
 
     assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
     assert_abs_diff_eq!(exp_n, 2.0, epsilon = 1e-10);
@@ -233,12 +233,12 @@ fn test_apply_dense_n_squared_via_composition() {
     // verifies that the result is a well-formed MPS the operator can
     // act on again — the algebraic eigenvalue identity acts as the
     // analytical anchor across the composition.
-    let psi = Mps::from_storages(vec![dense_basis_site(1), dense_basis_site(1)]);
+    let psi = Mps::from_sites(vec![dense_basis_site(1), dense_basis_site(1)]);
     let n_op = make_total_n_dense_mpo(2);
 
-    let n_psi = mps::apply_repr(&n_op, &psi, None);
-    let nn_psi = mps::apply_repr(&n_op, &n_psi, None);
-    let exp_n_sq = mps::inner_repr(&psi, &nn_psi);
+    let n_psi = mps::apply(&n_op, &psi, None);
+    let nn_psi = mps::apply(&n_op, &n_psi, None);
+    let exp_n_sq = mps::inner(&psi, &nn_psi);
 
     assert_abs_diff_eq!(exp_n_sq, 4.0, epsilon = 1e-10);
 }
@@ -249,11 +249,11 @@ fn test_apply_matches_expect() {
     let identity = make_identity_mpo(4, 2);
 
     // ⟨ψ|I|ψ⟩ via expect
-    let expect_val = mps::braket_repr(&psi, &identity, &psi);
+    let expect_val = mps::braket(&psi, &identity, &psi);
 
     // ⟨ψ|I|ψ⟩ via apply + inner: inner(ψ, I·ψ)
-    let i_psi = mps::apply_repr(&identity, &psi, None);
-    let apply_val = mps::inner_repr(&psi, &i_psi);
+    let i_psi = mps::apply(&identity, &psi, None);
+    let apply_val = mps::inner(&psi, &i_psi);
 
     assert_abs_diff_eq!(expect_val, apply_val, epsilon = 1e-10);
 }
@@ -263,19 +263,19 @@ fn test_apply_matches_expect() {
 // ===========================================================================
 
 /// 3-site MPS with bond dim 2 and physical dim 2. Deterministic content.
-fn make_3site_test_mps() -> Mps<Dense<f64>> {
-    Mps::from_storages(vec![
-        Dense::new(
+fn make_3site_test_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
+    Mps::from_sites(vec![
+        DenseTensorData::from_raw_parts(
             vec![1.0, 0.0, 0.5, 0.5],
             vec![1, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
             vec![2, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![1.0, 0.0, 0.0, 1.0],
             vec![2, 2, 1],
             MemoryOrder::ColumnMajor,
@@ -284,19 +284,19 @@ fn make_3site_test_mps() -> Mps<Dense<f64>> {
 }
 
 /// 3-site MPO with bond dim 2 and physical dim 2.
-fn make_3site_test_mpo() -> Mpo<Dense<f64>> {
-    Mpo::from_storages(vec![
-        Dense::new(
+fn make_3site_test_mpo() -> Mpo<DenseStorage<f64>, DenseLayout> {
+    Mpo::from_sites(vec![
+        DenseTensorData::from_raw_parts(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
             vec![1, 2, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             (1..=16).map(|i| i as f64 * 0.05).collect(),
             vec![2, 2, 2, 2],
             MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             (1..=8).map(|i| i as f64 * 0.1).collect(),
             vec![2, 2, 2, 1],
             MemoryOrder::ColumnMajor,
@@ -304,7 +304,7 @@ fn make_3site_test_mpo() -> Mpo<Dense<f64>> {
     ])
 }
 
-fn assert_dense_close(a: &Dense<f64>, b: &Dense<f64>, tol: f64) {
+fn assert_dense_close(a: &DenseTensorData<f64>, b: &DenseTensorData<f64>, tol: f64) {
     assert_eq!(a.shape(), b.shape(), "shape mismatch");
     for (i, (x, y)) in a.data().iter().zip(b.data().iter()).enumerate() {
         let diff = (x - y).abs();
@@ -319,8 +319,8 @@ fn test_apply_zipup_lossless_matches_naive_no_params() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let phi_naive = mps::apply_repr(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, None, ApplyMethod::ZipUp);
+    let phi_naive = mps::apply(&op, &psi, None);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
 
     let v_naive = mps_to_dense(&phi_naive);
     let v_zipup = mps_to_dense(&phi_zipup);
@@ -337,8 +337,8 @@ fn test_apply_zipup_lossless_matches_naive_large_chi() {
         target_trunc_err: None,
     });
 
-    let phi_naive = mps::apply_repr(&op, &psi, Some(&lossless));
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
+    let phi_naive = mps::apply(&op, &psi, Some(&lossless));
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
 
     let v_naive = mps_to_dense(&phi_naive);
     let v_zipup = mps_to_dense(&phi_zipup);
@@ -350,7 +350,7 @@ fn test_apply_zipup_identity_preserves_state() {
     let psi = make_3site_test_mps();
     let identity = make_identity_mpo(3, 2);
 
-    let phi = mps::apply_with_method_repr(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
 
     let v_orig = mps_to_dense(&psi);
     let v_after = mps_to_dense(&phi);
@@ -363,7 +363,7 @@ fn test_apply_zipup_canonical_form() {
     let op = make_3site_test_mpo();
 
     // No params → forward QR only, center at last site.
-    let phi_none = mps::apply_with_method_repr(&op, &psi, None, ApplyMethod::ZipUp);
+    let phi_none = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
     assert_eq!(
         *phi_none.canonical_form(),
         CanonicalForm::Mixed { center: 2 }
@@ -374,7 +374,7 @@ fn test_apply_zipup_canonical_form() {
         chi_max: Some(8),
         target_trunc_err: None,
     });
-    let phi_some = mps::apply_with_method_repr(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_some = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
     assert_eq!(
         *phi_some.canonical_form(),
         CanonicalForm::Mixed { center: 0 }
@@ -390,7 +390,7 @@ fn test_apply_zipup_truncates_bond_dim() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi = mps::apply_with_method_repr(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
@@ -411,8 +411,8 @@ fn test_apply_zipup_dense_no_params_reduces_bond_dims_vs_naive() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let phi_naive = mps::apply_repr(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, None, ApplyMethod::ZipUp);
+    let phi_naive = mps::apply(&op, &psi, None);
+    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
 
     let bd_naive = phi_naive.bond_dims();
     let bd_zipup = phi_zipup.bond_dims();
@@ -446,8 +446,8 @@ fn test_apply_zipup_dense_truncated_matches_naive_truncated_chi1() {
         target_trunc_err: None,
     });
 
-    let phi_naive = mps::apply_repr(&op, &psi, Some(&params));
-    let phi_zipup = mps::apply_with_method_repr(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_naive = mps::apply(&op, &psi, Some(&params));
+    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi_zipup.bond_dims() {
         assert!(d <= 1, "zipup bond {d} exceeds chi_max=1");
@@ -520,7 +520,7 @@ fn test_apply_zipup_rejects_all_unsupported_truncate_params() {
 
     for (name, params) in unsupported {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mps::apply_with_method_repr(&op, &psi, Some(&params), ApplyMethod::ZipUp)
+            mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp)
         }));
         assert!(
             result.is_err(),
@@ -539,8 +539,8 @@ fn test_apply_with_method_naive_dispatch_matches_apply() {
         target_trunc_err: None,
     });
 
-    let phi_a = mps::apply_repr(&op, &psi, Some(&params));
-    let phi_b = mps::apply_with_method_repr(&op, &psi, Some(&params), ApplyMethod::Naive);
+    let phi_a = mps::apply(&op, &psi, Some(&params));
+    let phi_b = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::Naive);
 
     let v_a = mps_to_dense(&phi_a);
     let v_b = mps_to_dense(&phi_b);

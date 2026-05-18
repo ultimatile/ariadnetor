@@ -6,10 +6,13 @@
 //! state comparison).
 
 use arnet_mps::{
-    CanonicalForm, MpsRepr as Mps, SvdAbsorb, TensorChainRepr as TensorChain, TruncSvdParams,
-    TruncateParams, canonicalize_repr as canonicalize, truncate_repr as truncate,
+    CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams, canonicalize,
+    truncate,
 };
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, Direction,
+    MemoryOrder, QNIndex, U1Sector,
+};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, is_left_canonical_bsp,
@@ -123,13 +126,13 @@ fn truncate_bsp_absorb_right_isometry() {
     // Sites 0 and 1 left-canonical, site 2 is center, site 3 right-canonical
     for j in 0..2 {
         assert!(
-            is_left_canonical_bsp(mps.storage(j), TOL),
+            is_left_canonical_bsp(mps.site(j), TOL),
             "site {j} not left-canonical after truncate (SvdAbsorb::Right)"
         );
     }
     for j in 3..mps.len() {
         assert!(
-            is_right_canonical_bsp(mps.storage(j), TOL),
+            is_right_canonical_bsp(mps.site(j), TOL),
             "site {j} not right-canonical after truncate (SvdAbsorb::Right)"
         );
     }
@@ -155,12 +158,12 @@ fn truncate_bsp_absorb_left_isometry() {
 
     // Site 0 left-canonical, sites 2..4 right-canonical
     assert!(
-        is_left_canonical_bsp(mps.storage(0), TOL),
+        is_left_canonical_bsp(mps.site(0), TOL),
         "site 0 not left-canonical with SvdAbsorb::Left"
     );
     for j in 2..mps.len() {
         assert!(
-            is_right_canonical_bsp(mps.storage(j), TOL),
+            is_right_canonical_bsp(mps.site(j), TOL),
             "site {j} not right-canonical with SvdAbsorb::Left"
         );
     }
@@ -199,11 +202,16 @@ fn truncate_bsp_single_site() {
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left, phys, right],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     site.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("allowed block")[0] = 3.0;
 
-    let mut mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![site]);
+    let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![site]);
     canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -312,11 +320,15 @@ fn truncate_bsp_error_matches_reconstruction_error() {
 /// and a zero contribution at the final right sweep — making 5 of the 6 sweep
 /// positions distinguish the original arithmetic from each missed mutant on
 /// `truncate.rs:349/354/424/482`.
-fn make_3site_u1_truncate_fixture() -> Mps<BlockSparse<f64, U1Sector>> {
+fn make_3site_u1_truncate_fixture() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site0 = BlockSparse::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
+    let mut site0 = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left0, phys0, right0],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     site0
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("site0 block [0,0,0]")[0] = 1.0;
@@ -327,7 +339,11 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparse<f64, U1Sector>> {
     let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site1 = BlockSparse::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
+    let mut site1 = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left1, phys1, right1],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     site1
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("site1 block [0,0,0]")[0] = 3.0;
@@ -341,7 +357,11 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparse<f64, U1Sector>> {
     let left2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let phys2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right2 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-    let mut site2 = BlockSparse::<f64, U1Sector>::zeros(vec![left2, phys2, right2], U1Sector(0));
+    let mut site2 = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![left2, phys2, right2],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     site2
         .block_data_mut(&BlockCoord(vec![0, 1, 0]))
         .expect("site2 block [0,1,0]")[0] = 6.0;
@@ -349,7 +369,7 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparse<f64, U1Sector>> {
         .block_data_mut(&BlockCoord(vec![1, 0, 0]))
         .expect("site2 block [1,0,0]")[0] = 7.0;
 
-    Mps::from_storages(vec![site0, site1, site2])
+    Mps::from_sites(vec![site0, site1, site2])
 }
 
 /// Pin the reported truncation error against the Pythagorean reconstruction
@@ -443,7 +463,7 @@ fn truncate_bsp_left_form_center_is_last_site() {
     );
     for j in 0..n - 1 {
         assert!(
-            is_left_canonical_bsp(mps.storage(j), TOL),
+            is_left_canonical_bsp(mps.site(j), TOL),
             "site {j} not left-canonical after truncate from Left form"
         );
     }

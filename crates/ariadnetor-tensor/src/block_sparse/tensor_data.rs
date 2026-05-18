@@ -228,4 +228,9 @@ where
         let storage = BlockSparseStorage::from_aligned(new_data);
         Self::new(storage, self.layout().clone())
     }
+
+    /// Frobenius norm: √(Σ |element|²) summed over all stored blocks.
+    pub fn norm(&self) -> T::Real {
+        self.storage().norm()
+    }
 }

@@ -310,6 +310,19 @@ fn from_block_fn_panics_on_wrong_block_length() {
 }
 
 #[test]
+fn norm_sums_squares_across_all_allowed_blocks() {
+    // Build a flux-0 U(1) tensor where allowed blocks (0,0) and (1,1) are
+    // populated with values whose squared magnitudes sum to a
+    // Pythagorean total: block (0,0) holds (3, 0, 0, 0) and block (1,1)
+    // holds (4, 0, ..., 0). Then ‖t‖₂ = √(9 + 16) = 5, exact in f64.
+    let mut td = sample_u1_rank2_data();
+    td.block_data_mut(&BlockCoord(vec![0, 0])).unwrap()[0] = 3.0;
+    td.block_data_mut(&BlockCoord(vec![1, 1])).unwrap()[0] = 4.0;
+
+    assert_eq!(td.norm(), 5.0);
+}
+
+#[test]
 fn is_allowed_block_matches_flux_for_u1_rank2() {
     // Flux 0 over Out(0:2, 1:3) × In(0:2, 1:3): a block (i, j) is
     // allowed iff the directed sectors fuse to 0, i.e. row charge
