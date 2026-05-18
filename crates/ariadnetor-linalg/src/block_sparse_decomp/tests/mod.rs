@@ -1,19 +1,9 @@
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
 use arnet_tensor::{U1Sector, Z2Sector};
 
 use super::*;
-use super::{
-    lq_block_sparse_repr as lq_block_sparse,
-    lq_block_sparse_with_policy_repr as lq_block_sparse_with_policy,
-    qr_block_sparse_repr as qr_block_sparse,
-    qr_block_sparse_with_policy_repr as qr_block_sparse_with_policy,
-    svd_block_sparse_repr as svd_block_sparse,
-    svd_block_sparse_with_policy_repr as svd_block_sparse_with_policy,
-    trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
-    trunc_svd_block_sparse_with_policy_repr as trunc_svd_block_sparse_with_policy,
-};
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
@@ -25,10 +15,14 @@ fn order() -> MemoryOrder {
 // -- Test tensor constructors ------------------------------------------------
 
 /// Rank-2 U1, identity flux, blocks (0,0): 2×2 and (1,1): 3×3.
-fn sample_u1_rank2() -> BlockSparse<f64, U1Sector> {
+fn sample_u1_rank2() -> BlockSparseTensorData<f64, U1Sector> {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     let d = bs.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
     d.copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
     let d = bs.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
@@ -37,11 +31,15 @@ fn sample_u1_rank2() -> BlockSparse<f64, U1Sector> {
 }
 
 /// Rank-3 U1, identity flux. Fused left sector 1 merges tuples (0,1) and (1,0).
-fn sample_u1_rank3() -> BlockSparse<f64, U1Sector> {
+fn sample_u1_rank3() -> BlockSparseTensorData<f64, U1Sector> {
     let leg0 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
     let leg1 = QNIndex::new(vec![(U1Sector(0), 3), (U1Sector(1), 2)], Direction::Out);
     let leg2 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![leg0, leg1, leg2], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![leg0, leg1, leg2],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     for (i, v) in bs
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .unwrap()
@@ -70,10 +68,14 @@ fn sample_u1_rank3() -> BlockSparse<f64, U1Sector> {
 }
 
 /// Rank-2 U1, flux=1. Single allowed block (1,0): 3×4.
-fn sample_u1_nonzero_flux() -> BlockSparse<f64, U1Sector> {
+fn sample_u1_nonzero_flux() -> BlockSparseTensorData<f64, U1Sector> {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(1),
+        MemoryOrder::ColumnMajor,
+    );
     for (i, v) in bs
         .block_data_mut(&BlockCoord(vec![1, 0]))
         .unwrap()
@@ -137,10 +139,10 @@ fn assert_approx_eq(a: &[f64], b: &[f64], tol: f64) {
 
 /// Per-sector SVD reconstruction check: U * diag(S) * Vt ≈ original.
 fn verify_svd_reconstruction<S: Sector + PartialEq>(
-    tensor: &BlockSparse<f64, S>,
-    u: &BlockSparse<f64, S>,
+    tensor: &BlockSparseTensorData<f64, S>,
+    u: &BlockSparseTensorData<f64, S>,
     sv: &BlockSingularValues<f64, S>,
-    vt: &BlockSparse<f64, S>,
+    vt: &BlockSparseTensorData<f64, S>,
     nrow: usize,
     order: MemoryOrder,
 ) {
@@ -168,9 +170,9 @@ fn verify_svd_reconstruction<S: Sector + PartialEq>(
 
 /// Per-sector two-factor reconstruction: left * right ≈ original.
 fn verify_two_factor_reconstruction<S: Sector + PartialEq>(
-    tensor: &BlockSparse<f64, S>,
-    left: &BlockSparse<f64, S>,
-    right: &BlockSparse<f64, S>,
+    tensor: &BlockSparseTensorData<f64, S>,
+    left: &BlockSparseTensorData<f64, S>,
+    right: &BlockSparseTensorData<f64, S>,
     nrow: usize,
     order: MemoryOrder,
 ) {
@@ -191,10 +193,14 @@ fn verify_two_factor_reconstruction<S: Sector + PartialEq>(
 
 /// Rank-2 with known SVs: sector 0 → identity [1,1], sector 1 → diag(3,2).
 /// Global SVs sorted: [3, 2, 1, 1].
-fn sample_known_svs() -> BlockSparse<f64, U1Sector> {
+fn sample_known_svs() -> BlockSparseTensorData<f64, U1Sector> {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     bs.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&[1.0, 0.0, 0.0, 1.0]);
@@ -208,12 +214,16 @@ fn sample_known_svs() -> BlockSparse<f64, U1Sector> {
 ///
 /// Fused sector U1(1) has left tuples [(0,1),(1,0)] and right tuples [(0,1),(1,0)],
 /// giving non-trivial cumulative offsets [0, 1] on both sides.
-fn sample_rank4_multi_tuple() -> BlockSparse<f64, U1Sector> {
+fn sample_rank4_multi_tuple() -> BlockSparseTensorData<f64, U1Sector> {
     let leg0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let leg1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let leg2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
     let leg3 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![leg0, leg1, leg2, leg3], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![leg0, leg1, leg2, leg3],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
     // Distinct values so offset errors are detectable
     bs.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).unwrap()[0] = 5.0;
     bs.block_data_mut(&BlockCoord(vec![0, 1, 0, 1])).unwrap()[0] = 1.0;
@@ -564,7 +574,11 @@ fn svd_z2_reconstruction() {
         vec![(Z2Sector::new(0), 4), (Z2Sector::new(1), 5)],
         Direction::In,
     );
-    let mut bs = BlockSparse::<f64, Z2Sector>::zeros(vec![row, col], Z2Sector::new(0));
+    let mut bs = BlockSparseTensorData::<f64, Z2Sector>::zeros(
+        vec![row, col],
+        Z2Sector::new(0),
+        MemoryOrder::ColumnMajor,
+    );
     for (i, v) in bs
         .block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
@@ -593,7 +607,11 @@ fn svd_z2_reconstruction() {
 fn svd_empty_tensor() {
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1));
+    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(1),
+        MemoryOrder::ColumnMajor,
+    );
     let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 1).unwrap();
     assert_eq!(sv.values.len(), 0);
     assert_eq!(u.num_blocks(), 0);
@@ -604,7 +622,11 @@ fn svd_empty_tensor() {
 fn trunc_svd_empty_tensor_with_target_err() {
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1));
+    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(1),
+        MemoryOrder::ColumnMajor,
+    );
     let params = TruncSvdParams {
         chi_max: None,
         target_trunc_err: Some(0.1),

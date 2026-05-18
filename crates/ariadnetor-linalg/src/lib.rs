@@ -36,7 +36,6 @@
 
 mod block_sparse_contract;
 mod block_sparse_decomp;
-mod block_sparse_decomp_canonical;
 mod block_sparse_fuse;
 mod block_sparse_layout_ops;
 mod block_sparse_permute;
@@ -58,52 +57,29 @@ pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
 pub use block_sparse_contract::{
-    BlockSparseContractResult, BlockSparseContractResultRepr, contract_block_sparse,
-    contract_block_sparse_repr, contract_block_sparse_with_policy,
-    contract_block_sparse_with_policy_repr,
+    BlockSparseContractResult, contract_block_sparse, contract_block_sparse_with_policy,
 };
 pub use block_sparse_decomp::{
-    BlockSingularValues, BlockSparseQrResult, BlockSparseQrResultRepr, BlockSparseSvdResult,
-    BlockSparseSvdResultRepr, BlockSparseTruncSvdResult, BlockSparseTruncSvdResultRepr,
-    lq_block_sparse_repr, lq_block_sparse_with_policy_repr, qr_block_sparse_repr,
-    qr_block_sparse_with_policy_repr, svd_block_sparse_repr, svd_block_sparse_with_policy_repr,
-    trunc_svd_block_sparse_repr, trunc_svd_block_sparse_with_policy_repr,
-};
-pub use block_sparse_decomp_canonical::{
+    BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
     lq_block_sparse, lq_block_sparse_with_policy, qr_block_sparse, qr_block_sparse_with_policy,
     svd_block_sparse, svd_block_sparse_with_policy, trunc_svd_block_sparse,
     trunc_svd_block_sparse_with_policy,
 };
-pub use block_sparse_fuse::{fuse_legs_block_sparse, fuse_legs_block_sparse_repr};
-pub use block_sparse_permute::{permute_block_sparse, permute_block_sparse_repr};
-pub use block_sparse_scale::{diagonal_scale_block_sparse, diagonal_scale_block_sparse_repr};
-pub use contract::{contract, contract_dense, contract_with_policy, contract_with_policy_dense};
+pub use block_sparse_fuse::fuse_legs_block_sparse;
+pub use block_sparse_permute::permute_block_sparse;
+pub use block_sparse_scale::diagonal_scale_block_sparse;
+pub use contract::{contract, contract_with_policy};
 pub use decomposition::{
-    LqResult, LqResultDense, QrResult, QrResultDense, SvdResult, SvdResultDense, TruncSvdParams,
-    TruncSvdResult, TruncSvdResultDense, lq, lq_dense, lq_with_policy, lq_with_policy_dense, qr,
-    qr_dense, qr_with_policy, qr_with_policy_dense, svd, svd_dense, svd_with_policy,
-    svd_with_policy_dense, trunc_svd, trunc_svd_dense, trunc_svd_with_policy,
-    trunc_svd_with_policy_dense,
+    LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq, lq_with_policy, qr,
+    qr_with_policy, svd, svd_with_policy, trunc_svd, trunc_svd_with_policy,
 };
 pub use eigen::{
-    EigResult, EigResultDense, EighResult, EighResultDense, eig, eig_dense, eig_with_policy,
-    eig_with_policy_dense, eigh, eigh_dense, eigh_with_policy, eigh_with_policy_dense, eigvals,
-    eigvals_dense, eigvalsh, eigvalsh_dense,
+    EigResult, EighResult, eig, eig_with_policy, eigh, eigh_with_policy, eigvals, eigvalsh,
 };
-pub use einsum::{einsum, einsum_dense};
-pub use expm::{
-    expm, expm_antihermitian, expm_antihermitian_dense, expm_dense, expm_hermitian,
-    expm_hermitian_dense,
-};
-pub use scalar_ops::{
-    diag, diag_dense, diagonal_scale, diagonal_scale_dense, linear_combine, linear_combine_dense,
-    norm, norm_dense, normalize, normalize_dense, scale, scale_dense, trace, trace_dense,
-};
-pub use solve::{
-    inverse, inverse_dense, solve, solve_dense, solve_with_policy, solve_with_policy_dense,
-};
+pub use einsum::einsum;
+pub use expm::{expm, expm_antihermitian, expm_hermitian};
+pub use scalar_ops::{diag, diagonal_scale, linear_combine, norm, normalize, scale, trace};
+pub use solve::{inverse, solve, solve_with_policy};
 pub use transpose::{
-    conjugate_transpose, conjugate_transpose_dense, conjugate_transpose_with_policy,
-    conjugate_transpose_with_policy_dense, transpose, transpose_dense, transpose_with_policy,
-    transpose_with_policy_dense,
+    conjugate_transpose, conjugate_transpose_with_policy, transpose, transpose_with_policy,
 };

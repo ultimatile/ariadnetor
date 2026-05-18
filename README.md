@@ -18,7 +18,7 @@ Tensor network framework in Rust
 │  linear algebra API      │  faer + hptt-rs              │
 ├──────────────────────────┴──────────────────────────────┤
 │  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
-│    Dense, BlockSparse, Sector, TensorRepr               │
+│    TensorData (Dense + BlockSparse), Sector, QNIndex    │
 ├─────────────────────────────────────────────────────────┤
 │  ariadnetor-core (arnet_core)  - Core Abstractions      │
 │    Scalar, LabelId, ComputeBackend trait, EinsumExpr    │
@@ -33,13 +33,13 @@ Backend-agnostic core abstractions: `Scalar` trait, `LabelId`, `EinsumExpr`, `Co
 
 ### `ariadnetor-tensor`
 
-Tensor data structures with Arc-based Copy-on-Write.
+Tensor data structures with Arc-based Copy-on-Write. Storage primitives are opaque (raw element buffer); interpretation metadata (memory order, symmetry, axis directions) lives on the layout.
 
-- `Dense<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag, scale, norm, normalize
-- `BlockSparse<T, S>` — Block-sparse tensor with abelian symmetry conservation. Stores only flux-allowed blocks in a flat aligned buffer
+- `TensorData<St, L>` — Generic storage + layout bundle. Concrete aliases: `DenseTensorData<T> = TensorData<DenseStorage<T>, DenseLayout>`, `BlockSparseTensorData<T, S> = TensorData<BlockSparseStorage<T>, BlockSparseLayout<S>>`
+- `DenseStorage<T>` / `BlockSparseStorage<T>` — Opaque element buffers (Arc-backed for CoW)
+- `DenseLayout` / `BlockSparseLayout<S>` — Interpretation metadata (shape, memory order, QN indices, flux)
 - `Sector` trait — Abelian symmetry sector algebra (fuse, identity, dual). Implementations: `Z2Sector`, `U1Sector`, tuple products
 - `QNIndex<S>` — Quantum-number index: maps sectors to block dimensions with direction (In/Out)
-- `TensorRepr` — Common trait for tensor storage representations (`Dense`, `BlockSparse`)
 - `Tensor<St, L, B>` — Main API type: wraps a `TensorData<St, L>` bundle with a compute backend. Aliases: `DenseTensor<T, B>`, `BlockSparseTensor<T, S, B>`
 
 ### `ariadnetor-linalg`

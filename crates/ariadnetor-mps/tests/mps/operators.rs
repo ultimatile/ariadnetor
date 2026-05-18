@@ -11,8 +11,8 @@ fn cm(i: usize, j: usize, rows: usize) -> usize {
     j * rows + i
 }
 
-/// Get element at (i, j) from a 2D Dense using CM indexing.
-fn cm_get<T: Clone>(t: &arnet_tensor::Dense<T>, i: usize, j: usize) -> T {
+/// Get element at (i, j) from a 2D DenseTensorData using CM indexing.
+fn cm_get<T: Clone>(t: &arnet_tensor::DenseTensorData<T>, i: usize, j: usize) -> T {
     let rows = t.shape()[0];
     t.data()[cm(i, j, rows)].clone()
 }
@@ -89,8 +89,8 @@ fn test_spin_half_commutation() {
     let sm = SpinHalf.sm::<f64>();
     let sz = SpinHalf.sz::<f64>();
 
-    let sp_sm = arnet_linalg::contract_dense(&backend, &sp, &sm, "ij,jk->ik").unwrap();
-    let sm_sp = arnet_linalg::contract_dense(&backend, &sm, &sp, "ij,jk->ik").unwrap();
+    let sp_sm = arnet_linalg::contract(&backend, &sp, &sm, "ij,jk->ik").unwrap();
+    let sm_sp = arnet_linalg::contract(&backend, &sm, &sp, "ij,jk->ik").unwrap();
 
     // [S+, S-] = S+S- - S-S+
     for i in 0..2 {
@@ -185,7 +185,7 @@ fn test_qubit_proj1_f64() {
 fn test_qubit_x_squared_is_identity() {
     let backend = arnet_native::NativeBackend::new();
     let x = Qubit.x::<f64>();
-    let x2 = arnet_linalg::contract_dense(&backend, &x, &x, "ij,jk->ik").unwrap();
+    let x2 = arnet_linalg::contract(&backend, &x, &x, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {
@@ -198,7 +198,7 @@ fn test_qubit_x_squared_is_identity() {
 fn test_qubit_hadamard_squared_is_identity() {
     let backend = arnet_native::NativeBackend::new();
     let h = Qubit.h::<f64>();
-    let h2 = arnet_linalg::contract_dense(&backend, &h, &h, "ij,jk->ik").unwrap();
+    let h2 = arnet_linalg::contract(&backend, &h, &h, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {

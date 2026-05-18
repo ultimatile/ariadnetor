@@ -1,13 +1,13 @@
 //! Block-sparse tensor leg fusion.
 //!
-//! Fuses consecutive legs of a [`BlockSparse<T, S>`] tensor into a single leg
-//! via Kronecker-product sector fusion.
+//! Fuses consecutive legs of a [`BlockSparseTensorData<T, S>`] tensor into a
+//! single leg via Kronecker-product sector fusion.
 
 use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensorData, Direction, QNIndex, Sector};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, Sector};
 
 use crate::block_sparse_decomp::fused_sector::enumerate_fused_tuples;
 use crate::error::LinalgError;
@@ -46,52 +46,8 @@ where
     S: Sector,
     B: ComputeBackend,
 {
-    let order = tensor.layout().order();
-    let bs = BlockSparse::from_tensor_data(tensor.clone());
-    let r = fuse_legs_block_sparse_inner(backend, &bs, start, count, fused_direction, order)?;
-    Ok(r.into_tensor_data(order))
-}
-
-/// Legacy `&BlockSparse<T, S>`-typed sister of
-/// [`fuse_legs_block_sparse`]; output tagged at
-/// `backend.preferred_order()` (historical convention). Collapses with
-/// the canonical fn in Unit 5.
-pub fn fuse_legs_block_sparse_repr<T, S, B>(
-    backend: &B,
-    tensor: &BlockSparse<T, S>,
-    start: usize,
-    count: usize,
-    fused_direction: Direction,
-) -> Result<BlockSparse<T, S>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    fuse_legs_block_sparse_inner(
-        backend,
-        tensor,
-        start,
-        count,
-        fused_direction,
-        backend.preferred_order(),
-    )
-}
-
-fn fuse_legs_block_sparse_inner<T, S, B>(
-    backend: &B,
-    tensor: &BlockSparse<T, S>,
-    start: usize,
-    count: usize,
-    fused_direction: Direction,
-    order: MemoryOrder,
-) -> Result<BlockSparse<T, S>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
     let _ = backend;
+    let order = tensor.layout().order();
     let rank = tensor.rank();
 
     if count < 2 {
@@ -160,7 +116,7 @@ where
     out_indices.push(fused_index);
     out_indices.extend(indices[start + count..].iter().cloned());
 
-    let mut output = BlockSparse::zeros(out_indices, tensor.flux().clone());
+    let mut output = BlockSparseTensorData::zeros(out_indices, tensor.flux().clone(), order);
 
     // Pre-compute fused dimension sizes per fused block index (avoids borrow conflict)
     let fused_dim_per_block: Vec<usize> = (0..output.indices()[start].num_blocks())

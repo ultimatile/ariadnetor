@@ -477,7 +477,6 @@ where
     let rm = MemoryOrder::RowMajor;
     let reshape_to_3d = |t_2d: DenseTensorData<T>, new_shape: Vec<usize>| -> DenseTensorData<T> {
         // 2D backend-order → RM → multi-dim split → backend-order.
-        // Mirrors the pattern in `arnet_mps::truncate_data::truncate_dense`.
         let rm_view = reorder(&t_2d, order, rm);
         let multi = rm_view.reshape(new_shape);
         reorder(&multi, rm, order)

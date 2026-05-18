@@ -324,13 +324,9 @@ fn bench_singh_reference(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("svd_bsp", &p.label), &a, |bench, a| {
             bench.iter_with_large_drop(|| svd_block_sparse(&backend, a, 1).unwrap());
         });
-        group.bench_with_input(
-            BenchmarkId::new("svd_dense", &p.label),
-            &a_dense,
-            |bench, a| {
-                bench.iter_with_large_drop(|| svd(&backend, a, 1).unwrap());
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("svd", &p.label), &a_dense, |bench, a| {
+            bench.iter_with_large_drop(|| svd(&backend, a, 1).unwrap());
+        });
     }
 
     group.finish();

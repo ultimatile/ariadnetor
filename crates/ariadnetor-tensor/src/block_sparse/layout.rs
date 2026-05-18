@@ -67,6 +67,7 @@ impl<S: Sector> BlockSparseLayout<S> {
     /// Used by joined-level constructors that already have the
     /// structure on hand; caller is responsible for the same
     /// invariants enforced by [`new`](Self::new).
+    #[cfg(test)]
     pub(crate) fn from_parts(
         blocks: Vec<BlockMeta>,
         block_index: HashMap<BlockCoord, usize>,
@@ -85,33 +86,6 @@ impl<S: Sector> BlockSparseLayout<S> {
             order,
             storage_extent,
         }
-    }
-
-    /// Decompose into raw component parts (companion to
-    /// [`from_parts`](Self::from_parts)). The cached
-    /// `storage_extent` is discarded — recomputable from `blocks`.
-    ///
-    /// Migration scaffolding for the storage/layout split. Removed in
-    /// Unit 5 along with the legacy `BlockSparse<T, S>` type.
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        Vec<BlockMeta>,
-        HashMap<BlockCoord, usize>,
-        Vec<QNIndex<S>>,
-        S,
-        Vec<usize>,
-        MemoryOrder,
-    ) {
-        (
-            self.blocks,
-            self.block_index,
-            self.indices,
-            self.flux,
-            self.shape,
-            self.order,
-        )
     }
 
     /// Conserved flux (total quantum number).

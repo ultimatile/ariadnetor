@@ -1,9 +1,9 @@
-//! Cross-crate invariant tests for the `Dense::order()` field.
+//! Cross-crate invariant tests for the `DenseTensorData::order()` field.
 //!
 //! Pins assertions that span linalg ops (`linear_combine` mixed-order
-//! rejection) and the cross-API regression (a `RowMajor` Dense paired
+//! rejection) and the cross-API regression (a `RowMajor` tensor paired
 //! with a `ColumnMajor` backend must produce the same `contract` result
-//! as the equivalent `ColumnMajor` Dense, demonstrating that op-entry
+//! as the equivalent `ColumnMajor` tensor, demonstrating that op-entry
 //! normalization is wired up).
 
 use arnet_core::Scalar;
@@ -189,37 +189,37 @@ fn contract_with_permutation_normalizes_row_major_input_against_column_major_bac
 }
 
 #[test]
-fn backend_make_tensor_uses_preferred_order() {
+fn backend_make_tensor_data_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let t = backend.make_tensor::<f64>(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let t = backend.make_tensor_data::<f64>(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     assert_eq!(t.order(), backend.preferred_order());
 }
 
 #[test]
-fn backend_zeros_uses_preferred_order() {
+fn backend_zeros_data_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let t = backend.zeros::<f64>(vec![2, 3]);
+    let t = backend.zeros_data::<f64>(vec![2, 3]);
     assert_eq!(t.order(), backend.preferred_order());
 }
 
 #[test]
-fn backend_ones_uses_preferred_order() {
+fn backend_ones_data_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let t = backend.ones::<f64>(vec![2, 3]);
+    let t = backend.ones_data::<f64>(vec![2, 3]);
     assert_eq!(t.order(), backend.preferred_order());
 }
 
 #[test]
-fn backend_constant_uses_preferred_order() {
+fn backend_constant_data_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let t = backend.constant::<f64>(vec![2, 3], 7.0);
+    let t = backend.constant_data::<f64>(vec![2, 3], 7.0);
     assert_eq!(t.order(), backend.preferred_order());
 }
 
 #[test]
-fn backend_eye_uses_preferred_order() {
+fn backend_eye_data_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let t = backend.eye::<f64>(3);
+    let t = backend.eye_data::<f64>(3);
     assert_eq!(t.order(), backend.preferred_order());
 }
 

@@ -8,8 +8,8 @@ fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensorData<T> {
     arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
 }
 
-/// Convert a column-major Dense to row-major so `Dense::get` (which is
-/// row-major-fixed by design) returns the logical `[i, j]` element.
+/// Convert a column-major `DenseTensorData` to row-major so logical
+/// `[i, j]` indexing via `get` reads off the row-major-laid buffer.
 fn to_rm<T: Clone>(tensor: &DenseTensorData<T>) -> DenseTensorData<T> {
     arnet_tensor::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
 }

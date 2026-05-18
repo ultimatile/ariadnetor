@@ -6,7 +6,7 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
-use arnet_tensor::Dense;
+use arnet_tensor::DenseTensorData;
 use num_traits::{NumCast, Zero};
 
 /// Trait for site-local operator dictionaries.
@@ -34,12 +34,12 @@ impl SiteOps for SpinHalf {
 
 impl SpinHalf {
     /// S_z = diag(1/2, -1/2)
-    pub fn sz<T: Scalar>(&self) -> Dense<T> {
+    pub fn sz<T: Scalar>(&self) -> DenseTensorData<T> {
         let half = real::<T>(0.5);
         let neg_half = real::<T>(-0.5);
         let z = T::zero();
         // CM layout of [[0.5, 0], [0, -0.5]]: col0=[0.5, 0], col1=[0, -0.5]
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![half, z, z, neg_half],
             vec![2, 2],
             MemoryOrder::ColumnMajor,
@@ -47,27 +47,27 @@ impl SpinHalf {
     }
 
     /// S+ (raising operator) = [[0, 1], [0, 0]]
-    pub fn sp<T: Scalar>(&self) -> Dense<T> {
+    pub fn sp<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 1], [0, 0]]: col0=[0, 0], col1=[1, 0]
-        Dense::new(vec![z, z, o, z], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![z, z, o, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// S- (lowering operator) = [[0, 0], [1, 0]]
-    pub fn sm<T: Scalar>(&self) -> Dense<T> {
+    pub fn sm<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 0], [1, 0]]: col0=[0, 1], col1=[0, 0]
-        Dense::new(vec![z, o, z, z], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![z, o, z, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Identity operator = [[1, 0], [0, 1]]
-    pub fn id<T: Scalar>(&self) -> Dense<T> {
+    pub fn id<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[1, 0], [0, 1]]: col0=[1, 0], col1=[0, 1]
-        Dense::new(vec![o, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![o, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 }
 
@@ -89,22 +89,22 @@ impl SiteOps for Qubit {
 
 impl Qubit {
     /// Pauli X = [[0, 1], [1, 0]]
-    pub fn x<T: Scalar>(&self) -> Dense<T> {
+    pub fn x<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 1], [1, 0]]: col0=[0, 1], col1=[1, 0]
-        Dense::new(vec![z, o, o, z], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![z, o, o, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Pauli Y = [[0, -i], [i, 0]]
-    pub fn y<T: Scalar>(&self) -> Dense<T> {
+    pub fn y<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let zi = T::Real::zero();
         let one = real_val::<T::Real>(1.0);
         let neg_i = T::from_real_imag(zi, real_val::<T::Real>(-1.0));
         let pos_i = T::from_real_imag(zi, one);
         // CM layout of [[0, -i], [i, 0]]: col0=[0, i], col1=[-i, 0]
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![z, pos_i, neg_i, z],
             vec![2, 2],
             MemoryOrder::ColumnMajor,
@@ -112,20 +112,20 @@ impl Qubit {
     }
 
     /// Pauli Z = [[1, 0], [0, -1]]
-    pub fn z<T: Scalar>(&self) -> Dense<T> {
+    pub fn z<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         let neg = real::<T>(-1.0);
         // CM layout of [[1, 0], [0, -1]]: col0=[1, 0], col1=[0, -1]
-        Dense::new(vec![o, z, z, neg], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![o, z, z, neg], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Hadamard = [[1, 1], [1, -1]] / sqrt(2)
-    pub fn h<T: Scalar>(&self) -> Dense<T> {
+    pub fn h<T: Scalar>(&self) -> DenseTensorData<T> {
         let inv_sqrt2 = real::<T>(std::f64::consts::FRAC_1_SQRT_2);
         let neg_inv_sqrt2 = real::<T>(-std::f64::consts::FRAC_1_SQRT_2);
         // CM layout of [[h, h], [h, -h]]: col0=[h, h], col1=[h, -h]
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![inv_sqrt2, inv_sqrt2, inv_sqrt2, neg_inv_sqrt2],
             vec![2, 2],
             MemoryOrder::ColumnMajor,
@@ -133,16 +133,16 @@ impl Qubit {
     }
 
     /// S gate = [[1, 0], [0, i]]
-    pub fn s<T: Scalar>(&self) -> Dense<T> {
+    pub fn s<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         let i = T::from_real_imag(T::Real::zero(), real_val::<T::Real>(1.0));
         // CM layout of [[1, 0], [0, i]]: col0=[1, 0], col1=[0, i]
-        Dense::new(vec![o, z, z, i], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![o, z, z, i], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// T gate = [[1, 0], [0, exp(iπ/4)]]
-    pub fn t<T: Scalar>(&self) -> Dense<T> {
+    pub fn t<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         let angle = std::f64::consts::FRAC_PI_4;
@@ -151,31 +151,31 @@ impl Qubit {
             real_val::<T::Real>(angle.sin()),
         );
         // CM layout of [[1, 0], [0, t]]: col0=[1, 0], col1=[0, t]
-        Dense::new(vec![o, z, z, t_val], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![o, z, z, t_val], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// Identity = [[1, 0], [0, 1]]
-    pub fn id<T: Scalar>(&self) -> Dense<T> {
+    pub fn id<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[1, 0], [0, 1]]: col0=[1, 0], col1=[0, 1]
-        Dense::new(vec![o, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![o, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// |0⟩⟨0| = [[1, 0], [0, 0]]
-    pub fn proj0<T: Scalar>(&self) -> Dense<T> {
+    pub fn proj0<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[1, 0], [0, 0]]: col0=[1, 0], col1=[0, 0]
-        Dense::new(vec![o, z, z, z], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![o, z, z, z], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 
     /// |1⟩⟨1| = [[0, 0], [0, 1]]
-    pub fn proj1<T: Scalar>(&self) -> Dense<T> {
+    pub fn proj1<T: Scalar>(&self) -> DenseTensorData<T> {
         let z = T::zero();
         let o = T::one();
         // CM layout of [[0, 0], [0, 1]]: col0=[0, 0], col1=[0, 1]
-        Dense::new(vec![z, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
+        DenseTensorData::from_raw_parts(vec![z, z, z, o], vec![2, 2], MemoryOrder::ColumnMajor)
     }
 }
 

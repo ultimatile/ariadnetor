@@ -332,6 +332,23 @@ mod tests {
     }
 
     #[test]
+    fn clone_shares_storage_and_data_mut_triggers_cow() {
+        // Pins the Arc-based Copy-on-Write invariant on DenseStorage:
+        // cloning is cheap (shared Arc), and mutating one side via
+        // `Arc::make_mut` leaves the other side untouched.
+        let t1 = DenseTensorData::<f64>::from_raw_parts(
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2, 2],
+            MemoryOrder::ColumnMajor,
+        );
+        let mut t2 = t1.clone();
+        assert_eq!(t1.data(), t2.data());
+        t2.storage_mut().data_mut()[0] = 99.0;
+        assert_eq!(t1.data(), &[1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(t2.data(), &[99.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
     fn get_reads_through_layout_order() {
         // Row-major-tagged 2×3 matrix `[[10, 20, 30], [40, 50, 60]]`.
         let t_rm = DenseTensorData::<f64>::from_raw_parts(

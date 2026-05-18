@@ -1,9 +1,9 @@
 //! Scalar trait for tensor element types
 //!
 //! Provides `Scalar` trait unifying real and complex floating-point types.
-//! This auxiliary trait resolves E0592 (inherent impl overlap) that prevents
-//! separate generic impls for `Dense<T: Float>` and
-//! `Dense<Complex<T: Float>>`.
+//! This auxiliary trait resolves E0592 (inherent impl overlap) that
+//! prevents separate generic impls keyed on `T: Float` vs
+//! `Complex<T: Float>` element types.
 
 use num_complex::Complex;
 use num_traits::{One, Zero};
@@ -32,8 +32,9 @@ pub trait Scalar:
     + std::ops::Mul<Output = Self>
     + std::ops::Mul<Self::Real, Output = Self>
 {
-    /// The real part type. Always `Scalar + Float` — supports both tensor
-    /// operations (`TensorRepr`) and floating-point math (`sqrt`, `exp`, etc.).
+    /// The real part type. Always `Scalar + Float` — supports both
+    /// tensor element-level use (storage as `T`) and floating-point
+    /// math (`sqrt`, `exp`, etc.).
     type Real: Scalar + num_traits::Float;
     type Complex: Scalar;
     fn abs(self) -> Self::Real;

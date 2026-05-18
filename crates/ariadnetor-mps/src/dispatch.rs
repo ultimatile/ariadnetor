@@ -1,241 +1,20 @@
-//! Dispatch traits for MPS operations.
+//! Dispatch trait for MPS operations over the storage / layout split.
 //!
-//! - [`MpsOpsRepr`] is implemented for `R: TensorRepr` (i.e.
-//!   [`Dense<T>`] and [`BlockSparse<T, S>`]). It routes operations on
-//!   [`MpsRepr`] / [`MpoRepr`] chains to the `*_repr` algorithm
-//!   bodies in [`super`].
-//! - [`MpsOps<L>`] is implemented for `St: Storage + StorageFor<L>`
-//!   (i.e. [`DenseStorage<T>`] with `L = DenseLayout` and
-//!   [`BlockSparseStorage<T>`] with `L = BlockSparseLayout<S>`). It
-//!   routes operations on [`Mps`] / [`Mpo`] chains to the
-//!   bare-named algorithm bodies in [`super`].
+//! [`MpsOps<L>`] is implemented for `St: Storage + StorageFor<L>`
+//! (i.e. [`DenseStorage<T>`] with `L = DenseLayout` and
+//! [`BlockSparseStorage<T>`] with `L = BlockSparseLayout<S>`). It
+//! routes operations on [`Mps`] / [`Mpo`] chains to the algorithm
+//! bodies in [`super`].
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_tensor::{
-    BlockSparse, BlockSparseLayout, BlockSparseStorage, Dense, DenseLayout, DenseStorage, Sector,
-    Storage, StorageFor, TensorLayout, TensorRepr,
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, Storage, StorageFor,
+    TensorLayout,
 };
 
-use super::chain::{TensorChain, TensorChainRepr};
-use super::types::{ApplyMethod, Mpo, MpoRepr, Mps, MpsRepr, TruncResult, TruncateParams};
-
-// ============================================================================
-// `R: TensorRepr` dispatch — `MpsRepr` / `MpoRepr` chains
-// ============================================================================
-
-/// Dispatch trait for MPS / MPO operations whose chain sites are
-/// `R: TensorRepr`.
-///
-/// Implemented for [`Dense<T>`] and [`BlockSparse<T, S>`]; routes each
-/// operation on [`MpsRepr`] / [`MpoRepr`] chains to its
-/// storage-specific implementation.
-pub trait MpsOpsRepr: TensorRepr + Sized {
-    /// Position the orthogonality center at `center`.
-    fn canonicalize<B: ComputeBackend>(chain: &mut impl TensorChainRepr<Self, B>, center: usize);
-
-    /// Truncate bond dimensions according to `params`.
-    fn truncate<B: ComputeBackend>(
-        chain: &mut impl TensorChainRepr<Self, B>,
-        params: &TruncateParams,
-    ) -> TruncResult<Self::Elem>;
-
-    /// Compute the inner product ⟨ψ|φ⟩.
-    fn inner<B: ComputeBackend>(psi: &MpsRepr<Self, B>, phi: &MpsRepr<Self, B>) -> Self::Elem;
-
-    /// Compute the norm ‖ψ‖.
-    fn norm<B: ComputeBackend>(psi: &MpsRepr<Self, B>) -> <Self::Elem as Scalar>::Real;
-
-    /// Compute the expectation value ⟨ψ|O|φ⟩.
-    fn braket<B: ComputeBackend>(
-        psi: &MpsRepr<Self, B>,
-        op: &MpoRepr<Self, B>,
-        phi: &MpsRepr<Self, B>,
-    ) -> Self::Elem;
-
-    /// Apply an MPO to an MPS: O|ψ⟩.
-    fn apply<B: ComputeBackend>(
-        op: &MpoRepr<Self, B>,
-        psi: &MpsRepr<Self, B>,
-        params: Option<&TruncateParams>,
-    ) -> MpsRepr<Self, B>;
-
-    /// Apply an MPO to an MPS via the zip-up algorithm.
-    ///
-    /// Implementations may panic when zip-up is not yet supported for
-    /// the underlying storage type — callers that need a portable
-    /// fallback should route through [`apply_with_method_repr`] with
-    /// [`ApplyMethod::Naive`].
-    fn apply_zipup<B: ComputeBackend>(
-        op: &MpoRepr<Self, B>,
-        psi: &MpsRepr<Self, B>,
-        params: Option<&TruncateParams>,
-    ) -> MpsRepr<Self, B>;
-}
-
-impl<T: Scalar> MpsOpsRepr for Dense<T> {
-    fn canonicalize<B: ComputeBackend>(chain: &mut impl TensorChainRepr<Self, B>, center: usize) {
-        super::canonicalize::canonicalize_dense_repr(chain, center);
-    }
-
-    fn truncate<B: ComputeBackend>(
-        chain: &mut impl TensorChainRepr<Self, B>,
-        params: &TruncateParams,
-    ) -> TruncResult<T> {
-        super::truncate::truncate_dense_repr(chain, params)
-    }
-
-    fn inner<B: ComputeBackend>(psi: &MpsRepr<Self, B>, phi: &MpsRepr<Self, B>) -> T {
-        super::inner::inner_dense_repr(psi, phi)
-    }
-
-    fn norm<B: ComputeBackend>(psi: &MpsRepr<Self, B>) -> T::Real {
-        super::inner::norm_dense_repr(psi)
-    }
-
-    fn braket<B: ComputeBackend>(
-        psi: &MpsRepr<Self, B>,
-        op: &MpoRepr<Self, B>,
-        phi: &MpsRepr<Self, B>,
-    ) -> T {
-        super::inner::braket_dense_repr(psi, op, phi)
-    }
-
-    fn apply<B: ComputeBackend>(
-        op: &MpoRepr<Self, B>,
-        psi: &MpsRepr<Self, B>,
-        params: Option<&TruncateParams>,
-    ) -> MpsRepr<Self, B> {
-        super::apply::apply_dense_repr(op, psi, params)
-    }
-
-    fn apply_zipup<B: ComputeBackend>(
-        op: &MpoRepr<Self, B>,
-        psi: &MpsRepr<Self, B>,
-        params: Option<&TruncateParams>,
-    ) -> MpsRepr<Self, B> {
-        super::apply::apply_zipup_dense_repr(op, psi, params)
-    }
-}
-
-impl<T: Scalar, S: Sector> MpsOpsRepr for BlockSparse<T, S> {
-    fn canonicalize<B: ComputeBackend>(chain: &mut impl TensorChainRepr<Self, B>, center: usize) {
-        super::canonicalize::canonicalize_bsp_repr(chain, center);
-    }
-
-    fn truncate<B: ComputeBackend>(
-        chain: &mut impl TensorChainRepr<Self, B>,
-        params: &TruncateParams,
-    ) -> TruncResult<T> {
-        super::truncate::truncate_bsp_repr(chain, params)
-    }
-
-    fn inner<B: ComputeBackend>(psi: &MpsRepr<Self, B>, phi: &MpsRepr<Self, B>) -> T {
-        super::inner::inner_bsp_repr(psi, phi)
-    }
-
-    fn norm<B: ComputeBackend>(psi: &MpsRepr<Self, B>) -> T::Real {
-        super::inner::norm_bsp_repr(psi)
-    }
-
-    fn braket<B: ComputeBackend>(
-        psi: &MpsRepr<Self, B>,
-        op: &MpoRepr<Self, B>,
-        phi: &MpsRepr<Self, B>,
-    ) -> T {
-        super::inner::braket_bsp_repr(psi, op, phi)
-    }
-
-    fn apply<B: ComputeBackend>(
-        op: &MpoRepr<Self, B>,
-        psi: &MpsRepr<Self, B>,
-        params: Option<&TruncateParams>,
-    ) -> MpsRepr<Self, B> {
-        super::apply::apply_bsp_repr(op, psi, params)
-    }
-
-    fn apply_zipup<B: ComputeBackend>(
-        op: &MpoRepr<Self, B>,
-        psi: &MpsRepr<Self, B>,
-        params: Option<&TruncateParams>,
-    ) -> MpsRepr<Self, B> {
-        super::apply::apply_zipup_bsp_repr(op, psi, params)
-    }
-}
-
-// ----------------------------------------------------------------------------
-// `R: TensorRepr` free functions
-// ----------------------------------------------------------------------------
-
-/// Position the orthogonality center at `center` (`*Repr` chains).
-pub fn canonicalize_repr<R: MpsOpsRepr, B: ComputeBackend>(
-    chain: &mut impl TensorChainRepr<R, B>,
-    center: usize,
-) {
-    R::canonicalize(chain, center);
-}
-
-/// Truncate bond dimensions according to `params` (`*Repr` chains).
-pub fn truncate_repr<R: MpsOpsRepr, B: ComputeBackend>(
-    chain: &mut impl TensorChainRepr<R, B>,
-    params: &TruncateParams,
-) -> TruncResult<R::Elem> {
-    R::truncate(chain, params)
-}
-
-/// Compute the inner product ⟨ψ|φ⟩ (`*Repr` chains).
-pub fn inner_repr<R: MpsOpsRepr, B: ComputeBackend>(
-    psi: &MpsRepr<R, B>,
-    phi: &MpsRepr<R, B>,
-) -> R::Elem {
-    R::inner(psi, phi)
-}
-
-/// Compute the norm ‖ψ‖ (`*Repr` chains).
-pub fn norm_repr<R: MpsOpsRepr, B: ComputeBackend>(
-    psi: &MpsRepr<R, B>,
-) -> <R::Elem as Scalar>::Real {
-    R::norm(psi)
-}
-
-/// Compute the expectation value ⟨ψ|O|φ⟩ (`*Repr` chains).
-pub fn braket_repr<R: MpsOpsRepr, B: ComputeBackend>(
-    psi: &MpsRepr<R, B>,
-    op: &MpoRepr<R, B>,
-    phi: &MpsRepr<R, B>,
-) -> R::Elem {
-    R::braket(psi, op, phi)
-}
-
-/// Apply an MPO to an MPS: O|ψ⟩ (`*Repr` chains).
-///
-/// Equivalent to [`apply_with_method_repr`] with [`ApplyMethod::Naive`].
-pub fn apply_repr<R: MpsOpsRepr, B: ComputeBackend>(
-    op: &MpoRepr<R, B>,
-    psi: &MpsRepr<R, B>,
-    params: Option<&TruncateParams>,
-) -> MpsRepr<R, B> {
-    R::apply(op, psi, params)
-}
-
-/// Apply an MPO to an MPS using the requested algorithm (`*Repr`
-/// chains).
-///
-/// # Panics
-///
-/// Panics if the chosen `method` is not supported for the storage type
-/// (e.g. [`ApplyMethod::ZipUp`] on [`BlockSparse`]).
-pub fn apply_with_method_repr<R: MpsOpsRepr, B: ComputeBackend>(
-    op: &MpoRepr<R, B>,
-    psi: &MpsRepr<R, B>,
-    params: Option<&TruncateParams>,
-    method: ApplyMethod,
-) -> MpsRepr<R, B> {
-    match method {
-        ApplyMethod::Naive => R::apply(op, psi, params),
-        ApplyMethod::ZipUp => R::apply_zipup(op, psi, params),
-    }
-}
+use super::chain::TensorChain;
+use super::types::{ApplyMethod, Mpo, Mps, TruncResult, TruncateParams};
 
 // ============================================================================
 // `St: Storage + StorageFor<L>` dispatch — `Mps` / `Mpo` chains
@@ -304,7 +83,7 @@ impl<T: Scalar> MpsOps<DenseLayout> for DenseStorage<T> {
         chain: &mut impl TensorChain<Self, DenseLayout, B>,
         params: &TruncateParams,
     ) -> TruncResult<T> {
-        super::truncate_data::truncate_dense(chain, params)
+        super::truncate::truncate_dense(chain, params)
     }
 
     fn inner<B: ComputeBackend>(
@@ -331,7 +110,7 @@ impl<T: Scalar> MpsOps<DenseLayout> for DenseStorage<T> {
         psi: &Mps<Self, DenseLayout, B>,
         params: Option<&TruncateParams>,
     ) -> Mps<Self, DenseLayout, B> {
-        super::apply_data::apply_dense(op, psi, params)
+        super::apply::apply_dense(op, psi, params)
     }
 
     fn apply_zipup<B: ComputeBackend>(
@@ -339,7 +118,7 @@ impl<T: Scalar> MpsOps<DenseLayout> for DenseStorage<T> {
         psi: &Mps<Self, DenseLayout, B>,
         params: Option<&TruncateParams>,
     ) -> Mps<Self, DenseLayout, B> {
-        super::apply_data::apply_zipup_dense(op, psi, params)
+        super::apply::apply_zipup_dense(op, psi, params)
     }
 }
 
@@ -357,7 +136,7 @@ impl<T: Scalar, S: Sector> MpsOps<BlockSparseLayout<S>> for BlockSparseStorage<T
         chain: &mut impl TensorChain<Self, BlockSparseLayout<S>, B>,
         params: &TruncateParams,
     ) -> TruncResult<T> {
-        super::truncate_data::truncate_bsp(chain, params)
+        super::truncate::truncate_bsp(chain, params)
     }
 
     fn inner<B: ComputeBackend>(
@@ -384,7 +163,7 @@ impl<T: Scalar, S: Sector> MpsOps<BlockSparseLayout<S>> for BlockSparseStorage<T
         psi: &Mps<Self, BlockSparseLayout<S>, B>,
         params: Option<&TruncateParams>,
     ) -> Mps<Self, BlockSparseLayout<S>, B> {
-        super::apply_data::apply_bsp(op, psi, params)
+        super::apply::apply_bsp(op, psi, params)
     }
 
     fn apply_zipup<B: ComputeBackend>(
@@ -392,7 +171,7 @@ impl<T: Scalar, S: Sector> MpsOps<BlockSparseLayout<S>> for BlockSparseStorage<T
         psi: &Mps<Self, BlockSparseLayout<S>, B>,
         params: Option<&TruncateParams>,
     ) -> Mps<Self, BlockSparseLayout<S>, B> {
-        super::apply_data::apply_zipup_bsp(op, psi, params)
+        super::apply::apply_zipup_bsp(op, psi, params)
     }
 }
 

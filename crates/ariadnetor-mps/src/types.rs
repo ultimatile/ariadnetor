@@ -1,14 +1,9 @@
 //! Core MPS / MPO data types.
 //!
-//! Two parameterizations coexist:
-//!
-//! - [`Mps<St, L, B>`] / [`Mpo<St, L, B>`] hold sites as
-//!   [`TensorData<St, L>`](arnet_tensor::TensorData) over a
-//!   [`Storage`](arnet_tensor::Storage) +
-//!   [`TensorLayout`](arnet_tensor::TensorLayout) pair.
-//! - [`MpsRepr<R, B>`] / [`MpoRepr<R, B>`] hold sites as
-//!   `R: TensorRepr` (i.e. [`Dense<T>`](arnet_tensor::Dense) or
-//!   [`BlockSparse<T, S>`](arnet_tensor::BlockSparse)).
+//! [`Mps<St, L, B>`] / [`Mpo<St, L, B>`] hold sites as
+//! [`TensorData<St, L>`](arnet_tensor::TensorData) over a
+//! [`Storage`](arnet_tensor::Storage) +
+//! [`TensorLayout`](arnet_tensor::TensorLayout) pair.
 
 use std::sync::Arc;
 
@@ -16,7 +11,7 @@ use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::TruncSvdParams;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, Storage, StorageFor, TensorData, TensorLayout, TensorRepr};
+use arnet_tensor::{Storage, StorageFor, TensorData, TensorLayout};
 
 /// Canonical form of a tensor chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,80 +105,6 @@ pub enum ApplyMethod {
 pub struct TruncResult<T: Scalar> {
     /// Total truncation error (Frobenius norm of discarded SVs).
     pub error: T::Real,
-}
-
-// ============================================================================
-// `R: TensorRepr` form — `MpsRepr` / `MpoRepr`
-// ============================================================================
-
-/// Internal data container for `R: TensorRepr` MPS / MPO tensor chains.
-///
-/// Backs [`MpsRepr`] / [`MpoRepr`].
-#[derive(Debug, Clone)]
-pub(crate) struct TensorChainDataRepr<R, B: ComputeBackend = NativeBackend> {
-    pub(crate) storages: Vec<R>,
-    pub(crate) backend: Arc<B>,
-    pub(crate) canonical_form: CanonicalForm,
-}
-
-/// Matrix Product State whose sites are `R: TensorRepr`.
-///
-/// Counterpart of [`Mps`](crate::Mps), which holds sites as
-/// [`TensorData`](arnet_tensor::TensorData).
-#[derive(Debug, Clone)]
-pub struct MpsRepr<R = Dense<f64>, B: ComputeBackend = NativeBackend>(
-    pub(crate) TensorChainDataRepr<R, B>,
-);
-
-/// Matrix Product Operator whose sites are `R: TensorRepr`.
-///
-/// Counterpart of [`Mpo`](crate::Mpo), which holds sites as
-/// [`TensorData`](arnet_tensor::TensorData).
-#[derive(Debug, Clone)]
-pub struct MpoRepr<R = Dense<f64>, B: ComputeBackend = NativeBackend>(
-    pub(crate) TensorChainDataRepr<R, B>,
-);
-
-impl<R: TensorRepr, B: ComputeBackend> MpsRepr<R, B> {
-    /// Create an MPS from raw site storages and an explicit backend.
-    ///
-    /// Each storage should have rank 3 with shape `(χ_L, d, χ_R)`.
-    /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<R>, backend: Arc<B>) -> Self {
-        Self(TensorChainDataRepr {
-            storages,
-            backend,
-            canonical_form: CanonicalForm::Unknown,
-        })
-    }
-}
-
-impl<R: TensorRepr, B: ComputeBackend> MpoRepr<R, B> {
-    /// Create an MPO from raw site storages and an explicit backend.
-    ///
-    /// Each storage should have rank 4 with shape `(χ_L, d_ket, d_bra, χ_R)`.
-    /// The canonical form is initially `Unknown`.
-    pub fn with_backend(storages: Vec<R>, backend: Arc<B>) -> Self {
-        Self(TensorChainDataRepr {
-            storages,
-            backend,
-            canonical_form: CanonicalForm::Unknown,
-        })
-    }
-}
-
-impl<R: TensorRepr> MpsRepr<R, NativeBackend> {
-    /// Create an MPS from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<R>) -> Self {
-        Self::with_backend(storages, NativeBackend::shared())
-    }
-}
-
-impl<R: TensorRepr> MpoRepr<R, NativeBackend> {
-    /// Create an MPO from raw site storages using the default NativeBackend.
-    pub fn from_storages(storages: Vec<R>) -> Self {
-        Self::with_backend(storages, NativeBackend::shared())
-    }
 }
 
 // ============================================================================

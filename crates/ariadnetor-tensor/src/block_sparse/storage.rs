@@ -42,7 +42,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for BlockSparseStorage<T> {
     }
 }
 
-// Manual Clone: Arc::clone does not require T: Clone (same pattern as Dense<T>).
+// Manual Clone: Arc::clone does not require T: Clone.
 impl<T> Clone for BlockSparseStorage<T> {
     fn clone(&self) -> Self {
         Self {
@@ -69,23 +69,6 @@ impl<T> BlockSparseStorage<T> {
         Self {
             data: Arc::new(data),
         }
-    }
-
-    /// Construct from an existing Arc, reusing it without reallocation.
-    ///
-    /// Migration scaffolding for the storage/layout split: the
-    /// `BlockSparse<T, S>` → `BlockSparseTensorData<T, S>` converter
-    /// moves the buffer Arc across the boundary in O(1). Removed in
-    /// Unit 5 along with the legacy `BlockSparse<T, S>` type.
-    pub(crate) fn from_arc(data: Arc<AVec<T, ConstAlign<64>>>) -> Self {
-        Self { data }
-    }
-
-    /// Consume `self` and return the underlying Arc, transferring
-    /// ownership without reallocation. Companion to
-    /// [`from_arc`](Self::from_arc).
-    pub(crate) fn into_arc(self) -> Arc<AVec<T, ConstAlign<64>>> {
-        self.data
     }
 
     /// Reference to the packed flat buffer.
@@ -122,8 +105,7 @@ impl<T, S: Sector> StorageFor<crate::BlockSparseLayout<S>> for BlockSparseStorag
 // Scalar-only data operations
 //
 // These read only `self.data` (no block metadata, no flux, no backend),
-// so they live on the storage half. Signatures preserve the previous
-// `BlockSparse<T, S>` API.
+// so they live on the storage half.
 // ---------------------------------------------------------------------------
 
 impl<T> BlockSparseStorage<T>

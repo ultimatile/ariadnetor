@@ -8,8 +8,10 @@ use std::sync::Arc;
 
 use aligned_vec::{AVec, ConstAlign};
 
-use super::Align64;
 use crate::{Storage, StorageFor};
+
+/// 64-byte alignment for SIMD (AVX-512).
+type Align64 = ConstAlign<64>;
 
 /// Pure-data half of the dense tensor split.
 ///
@@ -61,18 +63,11 @@ impl<T> DenseStorage<T> {
 
     /// Wrap an existing `Arc<AVec<T, Align64>>` without reallocation.
     ///
-    /// Used by the zero-cost conversion path between
-    /// [`DenseTensorData`](crate::DenseTensorData) and the legacy
-    /// [`Dense`](crate::Dense) struct during the storage / layout
-    /// split migration.
+    /// Lets in-crate constructors that already produced an aligned,
+    /// Arc-wrapped buffer (e.g. `DenseTensorData::conj`) reuse the
+    /// allocation rather than rebuilding it.
     pub(crate) fn from_arc(data: Arc<AVec<T, ConstAlign<64>>>) -> Self {
         Self { data }
-    }
-
-    /// Consume and return the underlying `Arc<AVec<T, Align64>>`
-    /// without reallocation.
-    pub(crate) fn into_arc(self) -> Arc<AVec<T, ConstAlign<64>>> {
-        self.data
     }
 
     /// Get a reference to the underlying contiguous data.

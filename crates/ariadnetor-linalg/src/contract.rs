@@ -1,10 +1,10 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensorData};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
 use crate::error::LinalgError;
-use crate::transpose::transpose_dense;
+use crate::transpose::transpose;
 use arnet_tensor::{normalize_to, reorder};
 
 /// Contract two tensors using Einstein summation notation with the provided backend.
@@ -34,20 +34,6 @@ pub fn contract<T: Scalar>(
     rhs: &DenseTensorData<T>,
     notation: &str,
 ) -> Result<DenseTensorData<T>, LinalgError> {
-    let lhs = Dense::from_tensor_data(lhs.clone());
-    let rhs = Dense::from_tensor_data(rhs.clone());
-    let r = contract_dense(backend, &lhs, &rhs, notation)?;
-    Ok(r.into_tensor_data())
-}
-
-/// Dense-typed sister of [`contract`]; used by other linalg modules
-/// that already hold a `Dense<T>` value.
-pub fn contract_dense<T: Scalar>(
-    backend: &impl ComputeBackend,
-    lhs: &Dense<T>,
-    rhs: &Dense<T>,
-    notation: &str,
-) -> Result<Dense<T>, LinalgError> {
     // Parse once up-front so we can compute the GEMM key (m, n, k) for
     // par_for_gemm. Parsing is not free, but the result is reused inside
     // contract_with_policy via a re-parse; keeping the two paths independent
@@ -84,7 +70,7 @@ pub fn contract_dense<T: Scalar>(
     };
 
     let policy = backend.par_for_gemm(m, n, k);
-    contract_with_policy_dense(backend, lhs, rhs, notation, policy)
+    contract_with_policy(backend, lhs, rhs, notation, policy)
 }
 
 /// Pure tensor contraction with caller-specified execution policy for the
@@ -103,20 +89,6 @@ pub fn contract_with_policy<T: Scalar>(
     notation: &str,
     policy: ExecPolicy,
 ) -> Result<DenseTensorData<T>, LinalgError> {
-    let lhs = Dense::from_tensor_data(lhs.clone());
-    let rhs = Dense::from_tensor_data(rhs.clone());
-    let r = contract_with_policy_dense(backend, &lhs, &rhs, notation, policy)?;
-    Ok(r.into_tensor_data())
-}
-
-/// Dense-typed sister of [`contract_with_policy`].
-pub fn contract_with_policy_dense<T: Scalar>(
-    backend: &impl ComputeBackend,
-    lhs: &Dense<T>,
-    rhs: &Dense<T>,
-    notation: &str,
-    policy: ExecPolicy,
-) -> Result<Dense<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
@@ -153,13 +125,13 @@ pub fn contract_with_policy_dense<T: Scalar>(
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
-        transpose_dense(backend, lhs, &perm)?
+        transpose(backend, lhs, &perm)?
     } else {
         lhs.clone()
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
-        transpose_dense(backend, rhs, &perm)?
+        transpose(backend, rhs, &perm)?
     } else {
         rhs.clone()
     };
@@ -190,7 +162,7 @@ pub fn contract_with_policy_dense<T: Scalar>(
     // Prepare operands for GEMM: reshape to 2D.
     // rank <= 2: no axis merge needed; `prepare_for_gemm` normalizes
     // the operand to `order` via `normalize_to` so a caller-supplied
-    // Dense tagged in a different order is reordered at the boundary.
+    // tensor tagged in a different order is reordered at the boundary.
     // rank > 2: RowMajor reshape (correct axis merge semantics) is
     // required, then the reshaped tensor is reordered to `order`.
     let lhs_ready = prepare_for_gemm(&lhs_permuted, m, k, order);
@@ -218,12 +190,12 @@ pub fn contract_with_policy_dense<T: Scalar>(
     // via RowMajor 2D intermediate (correct axis split semantics).
     let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
     let result = if output_shape.len() <= 2 {
-        backend.make_tensor(c_data, output_shape)
+        backend.make_tensor_data(c_data, output_shape)
     } else {
         // 2D preferred_order -> RowMajor 2D -> reshape to multi-dim -> preferred_order
-        let result_2d = Dense::new(c_data, vec![m, n], order);
+        let result_2d = DenseTensorData::from_raw_parts(c_data, vec![m, n], order);
         let result_rm = reorder(&result_2d, order, MemoryOrder::RowMajor);
-        let multi_dim = Dense::new(
+        let multi_dim = DenseTensorData::from_raw_parts(
             result_rm.data().to_vec(),
             output_shape,
             MemoryOrder::RowMajor,
@@ -242,11 +214,11 @@ pub fn contract_with_policy_dense<T: Scalar>(
 /// target order and return.
 /// For rank > 2, reorder to RowMajor, reshape (correct axis merge), then back.
 fn prepare_for_gemm<T: Scalar>(
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     rows: usize,
     cols: usize,
     order: MemoryOrder,
-) -> Dense<T> {
+) -> DenseTensorData<T> {
     if tensor.rank() <= 2 {
         // No axis merge needed; ensure data is in the target order before GEMM.
         normalize_to(tensor, order).into_owned()
@@ -270,10 +242,10 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
 /// Reorder output dimensions from [free_lhs, free_rhs] to the requested output order.
 fn reorder_output<T: Scalar>(
     backend: &impl ComputeBackend,
-    result: Dense<T>,
+    result: DenseTensorData<T>,
     plan: &ContractionPlan,
     expr: &EinsumExpr,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let out = expr.out_indices();
     if out.is_empty() {
         // Scalar result — no reordering needed
@@ -286,7 +258,7 @@ fn reorder_output<T: Scalar>(
     actual.extend(&plan.free_rhs);
 
     match compute_permutation(&actual, out) {
-        Some(perm) => transpose_dense(backend, &result, &perm),
+        Some(perm) => transpose(backend, &result, &perm),
         None => Ok(result),
     }
 }

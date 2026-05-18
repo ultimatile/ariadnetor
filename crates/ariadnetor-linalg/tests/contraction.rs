@@ -1,7 +1,4 @@
-//! Contraction tests using arnet_linalg::contract_dense with NativeBackend
-//!
-//! Migrated from ariadnetor-tensor integration tests after moving
-//! contraction logic to the linalg crate.
+//! Contraction tests using `arnet_linalg::contract` with `NativeBackend`.
 
 use arnet_linalg::{contract, einsum, transpose};
 use arnet_native::NativeBackend;

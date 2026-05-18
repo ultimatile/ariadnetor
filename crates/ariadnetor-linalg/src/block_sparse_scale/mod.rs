@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
+use arnet_tensor::BlockSparseTensorData;
 use arnet_tensor::Sector;
-use arnet_tensor::{BlockSparse, BlockSparseTensorData};
 
 use crate::block_sparse_decomp::BlockSingularValues;
 use crate::error::LinalgError;
@@ -38,40 +38,8 @@ where
     T: Scalar,
     S: Sector,
 {
-    let order = tensor.layout().order();
-    let bs = BlockSparse::from_tensor_data(tensor.clone());
-    let r = diagonal_scale_block_sparse_inner(backend, &bs, weights, axis, order)?;
-    Ok(r.into_tensor_data(order))
-}
-
-/// Legacy `&BlockSparse<T, S>`-typed sister of
-/// [`diagonal_scale_block_sparse`]; output tagged at
-/// `backend.preferred_order()` (historical convention).
-pub fn diagonal_scale_block_sparse_repr<T, S>(
-    backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
-    weights: &BlockSingularValues<T::Real, S>,
-    axis: usize,
-) -> Result<BlockSparse<T, S>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-{
-    diagonal_scale_block_sparse_inner(backend, tensor, weights, axis, backend.preferred_order())
-}
-
-fn diagonal_scale_block_sparse_inner<T, S>(
-    backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
-    weights: &BlockSingularValues<T::Real, S>,
-    axis: usize,
-    order: MemoryOrder,
-) -> Result<BlockSparse<T, S>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-{
     let _ = backend;
+    let order = tensor.layout().order();
     if axis >= tensor.rank() {
         return Err(LinalgError::InvalidArgument(format!(
             "axis {axis} out of range for rank {}",

@@ -7,13 +7,14 @@
 //! wrong order, the downstream operation would produce numerically wrong
 //! results.
 //!
-//! Motivation: `Dense::order()` records each tensor's flat-data layout,
-//! but downstream backend kernels still expect the active backend's
-//! preferred order. These tests pin the metadata-vs-data consistency
-//! at the linalg output boundary so a regression where an op tags its
-//! output with the wrong order — or produces bytes in a different
-//! order than its `Dense::order()` claims — surfaces as a numerical
-//! mismatch rather than silently propagating downstream.
+//! Motivation: `DenseTensorData::order()` records each tensor's
+//! flat-data layout, but downstream backend kernels still expect the
+//! active backend's preferred order. These tests pin the
+//! metadata-vs-data consistency at the linalg output boundary so a
+//! regression where an op tags its output with the wrong order — or
+//! produces bytes in a different order than its `order()` claims —
+//! surfaces as a numerical mismatch rather than silently propagating
+//! downstream.
 
 use arnet_linalg::{contract, diagonal_scale, expm, inverse, solve, svd, transpose};
 use arnet_native::NativeBackend;

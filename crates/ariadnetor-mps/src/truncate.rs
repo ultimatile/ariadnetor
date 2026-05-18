@@ -1,32 +1,30 @@
 //! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps.
 //!
-//! - `truncate_dense_repr` / `truncate_bsp_repr` operate on
-//!   [`MpsRepr`] / [`MpoRepr`] chains over [`Dense<T>`] /
-//!   [`BlockSparse<T, S>`].
 //! - [`truncate_dense`] / [`truncate_bsp`] operate on [`Mps`] /
 //!   [`Mpo`] chains whose sites are
-//!   [`TensorData<St, L>`](arnet_tensor::TensorData). Their bodies
-//!   build a temporary `*Repr` chain by bumping each site's storage
-//!   `Arc`, delegate to the corresponding `_repr` body, and write
-//!   the truncated sites back.
+//!   [`TensorData<St, L>`](arnet_tensor::TensorData).
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{
-    BlockSparseContractResultRepr as BlockSparseContractResult, TruncSvdParams,
-    contract_block_sparse_repr as contract_block_sparse, contract_dense as contract,
-    diagonal_scale_block_sparse_repr as diagonal_scale_block_sparse,
-    diagonal_scale_dense as diagonal_scale, trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
-    trunc_svd_dense as trunc_svd,
+    BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
+    diagonal_scale_block_sparse, trunc_svd, trunc_svd_block_sparse,
 };
-use arnet_tensor::{BlockSparse, Dense, Sector, reorder};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, DenseLayout, DenseStorage,
+    DenseTensorData, Sector, reorder,
+};
 use num_traits::{Float, Zero};
 
-use super::canonicalize::{canonicalize_bsp_repr, canonicalize_dense_repr};
-use super::chain::TensorChainRepr;
+use super::canonicalize::{canonicalize_bsp, canonicalize_dense};
+use super::chain::TensorChain;
 use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
-/// Truncate bond dimensions of a tensor chain via SVD sweeps.
+// ============================================================================
+// Dense path
+// ============================================================================
+
+/// Truncate bond dimensions of a dense tensor chain via SVD sweeps.
 ///
 /// Performs SVD sweeps from the orthogonality center outward in both
 /// directions, applying truncation at each bond. Returns the total
@@ -42,11 +40,11 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 ///
 /// Panics if the chain is empty, or if `params.center` is `Some(c)` with
 /// `c >= chain.len()`.
-pub(super) fn truncate_dense_repr<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub(super) fn truncate_dense<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChainRepr<Dense<T>, B>,
+    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
 {
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
@@ -57,7 +55,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize_dense_repr(chain, c);
+            canonicalize_dense(chain, c);
             c
         }
     };
@@ -74,12 +72,12 @@ where
 
     // Right sweep from center to N-2: truncate bonds, center moves to N-1
     for j in center..n - 1 {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
+        total_err_sq = total_err_sq + right_trunc_step_dense(chain, j, svd_params, absorb);
     }
 
     // Left sweep from N-1 to 1: truncate all bonds, center moves to 0
     for j in (1..n).rev() {
-        total_err_sq = total_err_sq + left_trunc_step(chain, j, svd_params, absorb);
+        total_err_sq = total_err_sq + left_trunc_step_dense(chain, j, svd_params, absorb);
     }
 
     // Right sweep from 0 to center-1: restore center position.
@@ -116,16 +114,16 @@ fn restore_center_sweep_dense<T, B, C>(
 ) where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChainRepr<Dense<T>, B>,
+    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
 {
     for j in 0..center {
-        *total_err_sq = *total_err_sq + right_trunc_step(chain, j, svd_params, absorb);
+        *total_err_sq = *total_err_sq + right_trunc_step_dense(chain, j, svd_params, absorb);
     }
 }
 
 /// Right SVD step at site j: decompose, absorb into j+1 based on absorb mode.
 /// Returns squared truncation error.
-fn right_trunc_step<T, B, C>(
+fn right_trunc_step_dense<T, B, C>(
     chain: &mut C,
     j: usize,
     params: &TruncSvdParams,
@@ -134,17 +132,17 @@ fn right_trunc_step<T, B, C>(
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChainRepr<Dense<T>, B>,
+    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
 {
     let order = chain.backend().preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
 
     let (left_storage, right_factor, err) = {
-        let dense = chain.storage(j);
-        let rank = dense.rank();
-        let orig_shape = dense.shape().to_vec();
+        let site = chain.site(j);
+        let rank = site.rank();
+        let orig_shape = site.shape().to_vec();
 
-        let (u, s, vt, err) = trunc_svd(chain.backend(), dense, rank - 1, params)
+        let (u, s, vt, err) = trunc_svd(chain.backend(), site, rank - 1, params)
             .expect("trunc_svd failed during truncate");
 
         let chi = u.shape()[1];
@@ -153,7 +151,7 @@ where
 
         // Helper: reshape U from 2D backend-order to multi-dim in backend order.
         // Converts to RM for axis-split semantics, then back.
-        let reshape_u = |u_2d: Dense<T>| -> Dense<T> {
+        let reshape_u = |u_2d: DenseTensorData<T>| -> DenseTensorData<T> {
             let u_rm = reorder(&u_2d, order, rm);
             let multi = u_rm.reshape(u_shape.clone());
             reorder(&multi, rm, order)
@@ -184,21 +182,21 @@ where
         }
     };
 
-    *chain.storage_mut(j) = left_storage;
+    *chain.site_mut(j) = left_storage;
 
     let new_next = {
-        let next = chain.storage(j + 1);
-        absorb_from_left(&right_factor, next, chain.backend())
+        let next = chain.site(j + 1);
+        absorb_from_left_dense(&right_factor, next, chain.backend())
     };
 
-    *chain.storage_mut(j + 1) = new_next;
+    *chain.site_mut(j + 1) = new_next;
 
     err * err
 }
 
 /// Left SVD step at site j: decompose, absorb into j-1 based on absorb mode.
 /// Returns squared truncation error.
-fn left_trunc_step<T, B, C>(
+fn left_trunc_step_dense<T, B, C>(
     chain: &mut C,
     j: usize,
     params: &TruncSvdParams,
@@ -207,24 +205,24 @@ fn left_trunc_step<T, B, C>(
 where
     T: Scalar,
     B: ComputeBackend,
-    C: TensorChainRepr<Dense<T>, B>,
+    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
 {
     let order = chain.backend().preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
 
     let (right_storage, left_factor, err) = {
-        let dense = chain.storage(j);
-        let orig_shape = dense.shape().to_vec();
+        let site = chain.site(j);
+        let orig_shape = site.shape().to_vec();
 
         let (u, s, vt, err) =
-            trunc_svd(chain.backend(), dense, 1, params).expect("trunc_svd failed during truncate");
+            trunc_svd(chain.backend(), site, 1, params).expect("trunc_svd failed during truncate");
 
         let chi = vt.shape()[0];
         let mut vt_shape = vec![chi];
         vt_shape.extend_from_slice(&orig_shape[1..]);
 
         // Helper: reshape Vt from 2D backend-order to multi-dim in backend order.
-        let reshape_vt = |vt_2d: Dense<T>| -> Dense<T> {
+        let reshape_vt = |vt_2d: DenseTensorData<T>| -> DenseTensorData<T> {
             let vt_rm = reorder(&vt_2d, order, rm);
             let multi = vt_rm.reshape(vt_shape.clone());
             reorder(&multi, rm, order)
@@ -257,24 +255,24 @@ where
         }
     };
 
-    *chain.storage_mut(j) = right_storage;
+    *chain.site_mut(j) = right_storage;
 
     let new_prev = {
-        let prev = chain.storage(j - 1);
-        absorb_from_right(prev, &left_factor, chain.backend())
+        let prev = chain.site(j - 1);
+        absorb_from_right_dense(prev, &left_factor, chain.backend())
     };
 
-    *chain.storage_mut(j - 1) = new_prev;
+    *chain.site_mut(j - 1) = new_prev;
 
     err * err
 }
 
 /// Multiply a 2D matrix into the next site tensor from the left.
-fn absorb_from_left<T: Scalar>(
-    left: &Dense<T>,
-    next: &Dense<T>,
+fn absorb_from_left_dense<T: Scalar>(
+    left: &DenseTensorData<T>,
+    next: &DenseTensorData<T>,
     backend: &impl ComputeBackend,
-) -> Dense<T> {
+) -> DenseTensorData<T> {
     let order = backend.preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
     // Reorder to RM for correct axis-merge semantics in reshape. Use
@@ -300,11 +298,11 @@ fn absorb_from_left<T: Scalar>(
 }
 
 /// Multiply a 2D matrix into the previous site tensor from the right.
-fn absorb_from_right<T: Scalar>(
-    prev: &Dense<T>,
-    right: &Dense<T>,
+fn absorb_from_right_dense<T: Scalar>(
+    prev: &DenseTensorData<T>,
+    right: &DenseTensorData<T>,
     backend: &impl ComputeBackend,
-) -> Dense<T> {
+) -> DenseTensorData<T> {
     let order = backend.preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
     // Reorder to RM for correct axis-merge semantics in reshape. Use
@@ -330,18 +328,18 @@ fn absorb_from_right<T: Scalar>(
 }
 
 // ============================================================================
-// BlockSparse truncate — parallel path for Mps<BlockSparse<T, S>, B>
+// BlockSparse path
 // ============================================================================
 
 /// Truncate bond dimensions of a block-sparse tensor chain via SVD sweeps.
 ///
-/// BlockSparse analogue of [`truncate_dense_repr`]. Uses
+/// BlockSparse analogue of [`truncate_dense`]. Uses
 /// [`trunc_svd_block_sparse`], [`diagonal_scale_block_sparse`], and
 /// [`contract_block_sparse`] instead of their Dense counterparts. No
 /// reshape or memory-order conversion is needed because block-sparse
 /// SVD preserves the leg structure.
 ///
-/// See [`truncate_dense_repr`] for the sweep structure and
+/// See [`truncate_dense`] for the sweep structure and
 /// canonical-form semantics.
 ///
 /// # Panics
@@ -350,15 +348,12 @@ fn absorb_from_right<T: Scalar>(
 /// `c >= chain.len()` and the chain is not already in `Mixed`, `Left`, or
 /// `Right` canonical form (since those forms determine the center
 /// internally and ignore `params.center`).
-pub(super) fn truncate_bsp_repr<T, S, B, C>(
-    chain: &mut C,
-    params: &TruncateParams,
-) -> TruncResult<T>
+pub(super) fn truncate_bsp<T, S, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChainRepr<BlockSparse<T, S>, B>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
 {
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
@@ -369,7 +364,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize_bsp_repr(chain, c);
+            canonicalize_bsp(chain, c);
             c
         }
     };
@@ -386,17 +381,17 @@ where
 
     // Right sweep from center to N-2: truncate bonds, center moves to N-1
     for j in center..n - 1 {
-        total_err_sq = total_err_sq + right_trunc_step_block_sparse(chain, j, svd_params, absorb);
+        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb);
     }
 
     // Left sweep from N-1 to 1: truncate all bonds, center moves to 0
     for j in (1..n).rev() {
-        total_err_sq = total_err_sq + left_trunc_step_block_sparse(chain, j, svd_params, absorb);
+        total_err_sq = total_err_sq + left_trunc_step_bsp(chain, j, svd_params, absorb);
     }
 
     // Right sweep from 0 to center-1: restore center position
     for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step_block_sparse(chain, j, svd_params, absorb);
+        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb);
     }
 
     // Both distributes √S to both sides, breaking isometry on all sites.
@@ -412,7 +407,7 @@ where
 
 /// Right SVD step at site j for block-sparse chains.
 /// Returns squared truncation error.
-fn right_trunc_step_block_sparse<T, S, B, C>(
+fn right_trunc_step_bsp<T, S, B, C>(
     chain: &mut C,
     j: usize,
     params: &TruncSvdParams,
@@ -422,10 +417,10 @@ where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChainRepr<BlockSparse<T, S>, B>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
 {
     let (left_storage, right_factor, err) = {
-        let site = chain.storage(j);
+        let site = chain.site(j);
         let rank = site.rank();
 
         let (u, s, vt, err) = trunc_svd_block_sparse(chain.backend(), site, rank - 1, params)
@@ -457,21 +452,21 @@ where
         }
     };
 
-    *chain.storage_mut(j) = left_storage;
+    *chain.site_mut(j) = left_storage;
 
     let new_next = {
-        let next = chain.storage(j + 1);
+        let next = chain.site(j + 1);
         absorb_from_left_bsp(&right_factor, next, chain.backend())
     };
 
-    *chain.storage_mut(j + 1) = new_next;
+    *chain.site_mut(j + 1) = new_next;
 
     err * err
 }
 
 /// Left SVD step at site j for block-sparse chains.
 /// Returns squared truncation error.
-fn left_trunc_step_block_sparse<T, S, B, C>(
+fn left_trunc_step_bsp<T, S, B, C>(
     chain: &mut C,
     j: usize,
     params: &TruncSvdParams,
@@ -481,10 +476,10 @@ where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    C: TensorChainRepr<BlockSparse<T, S>, B>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
 {
     let (right_storage, left_factor, err) = {
-        let site = chain.storage(j);
+        let site = chain.site(j);
 
         let (u, s, vt, err) = trunc_svd_block_sparse(chain.backend(), site, 1, params)
             .expect("trunc_svd_block_sparse failed during truncate");
@@ -515,24 +510,24 @@ where
         }
     };
 
-    *chain.storage_mut(j) = right_storage;
+    *chain.site_mut(j) = right_storage;
 
     let new_prev = {
-        let prev = chain.storage(j - 1);
+        let prev = chain.site(j - 1);
         absorb_from_right_bsp(prev, &left_factor, chain.backend())
     };
 
-    *chain.storage_mut(j - 1) = new_prev;
+    *chain.site_mut(j - 1) = new_prev;
 
     err * err
 }
 
 /// Multiply a rank-2 factor into the next block-sparse site from the left.
 fn absorb_from_left_bsp<T, S, B>(
-    left: &BlockSparse<T, S>,
-    next: &BlockSparse<T, S>,
+    left: &BlockSparseTensorData<T, S>,
+    next: &BlockSparseTensorData<T, S>,
     backend: &B,
-) -> BlockSparse<T, S>
+) -> BlockSparseTensorData<T, S>
 where
     T: Scalar,
     S: Sector,
@@ -550,10 +545,10 @@ where
 
 /// Multiply a rank-2 factor into the previous block-sparse site from the right.
 fn absorb_from_right_bsp<T, S, B>(
-    prev: &BlockSparse<T, S>,
-    right: &BlockSparse<T, S>,
+    prev: &BlockSparseTensorData<T, S>,
+    right: &BlockSparseTensorData<T, S>,
     backend: &B,
-) -> BlockSparse<T, S>
+) -> BlockSparseTensorData<T, S>
 where
     T: Scalar,
     S: Sector,

@@ -1,8 +1,6 @@
 mod construction;
 mod tensor_data;
 
-use std::sync::Arc;
-
 use super::*;
 use crate::sector::{U1Sector, Z2Sector};
 
@@ -103,99 +101,91 @@ fn block_coord_eq_hash() {
 }
 
 // ---------------------------------------------------------------------------
-// BlockSparse
+// BlockSparseTensorData — joined accessors and structural invariants
 // ---------------------------------------------------------------------------
 
-/// Helper: build a simple rank-2 BlockSparse with U(1) symmetry.
-///
-/// Indices: row = {charge 0: dim 2, charge 1: dim 3}, Out
-///          col = {charge 0: dim 2, charge 1: dim 3}, In
-/// Flux = identity (charge 0)
-///
-/// Allowed blocks: (0,0) → 2×2=4 elems, (1,1) → 3×3=9 elems
-fn sample_u1_rank2() -> BlockSparse<f64, U1Sector> {
+use arnet_core::backend::MemoryOrder;
+
+/// Helper: rank-2 BlockSparseTensorData with U(1) symmetry, flux 0,
+/// allowed blocks (0,0) of size 2×2 with values 1..=4 and (1,1) of
+/// size 3×3 with values 5..=13.
+pub(super) fn sample_u1_rank2_data() -> BlockSparseTensorData<f64, U1Sector> {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-
-    // Block (0,0): Out(0) fuse In(0).dual() = 0 + 0 = 0 == flux ✓
-    // Block (1,1): Out(1) fuse In(1).dual() = 1 + (-1) = 0 == flux ✓
-
-    let data_00: Vec<f64> = (1..=4).map(|x| x as f64).collect();
-    let data_11: Vec<f64> = (5..=13).map(|x| x as f64).collect();
-
-    let mut data = Vec::with_capacity(13);
-    data.extend_from_slice(&data_00);
-    data.extend_from_slice(&data_11);
-
-    let blocks = vec![
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0]),
-            offset: 0,
-            size: 4,
-        },
-        BlockMeta {
-            coord: BlockCoord(vec![1, 1]),
-            offset: 4,
-            size: 9,
-        },
-    ];
-
-    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(0))
+    let mut td = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(0),
+        MemoryOrder::RowMajor,
+    );
+    {
+        let d = td.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
+        d.copy_from_slice(&(1..=4).map(|x| x as f64).collect::<Vec<_>>());
+    }
+    {
+        let d = td.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
+        d.copy_from_slice(&(5..=13).map(|x| x as f64).collect::<Vec<_>>());
+    }
+    td
 }
 
 #[test]
 fn block_sparse_basic_accessors() {
-    let bs = sample_u1_rank2();
-    assert_eq!(bs.rank(), 2);
-    assert_eq!(bs.shape(), &[5, 5]);
-    assert_eq!(bs.num_blocks(), 2);
-    assert_eq!(bs.stored_len(), 13);
-    assert_eq!(*bs.flux(), U1Sector(0));
+    let td = sample_u1_rank2_data();
+    assert_eq!(td.rank(), 2);
+    assert_eq!(td.shape(), vec![5, 5]);
+    assert_eq!(td.num_blocks(), 2);
+    assert_eq!(td.storage().stored_len(), 13);
+    assert_eq!(*td.flux(), U1Sector(0));
 }
 
 #[test]
 fn block_sparse_block_data() {
-    let bs = sample_u1_rank2();
+    let td = sample_u1_rank2_data();
 
-    let d00 = bs.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    let d00 = td.block_data(&BlockCoord(vec![0, 0])).unwrap();
     assert_eq!(d00, &[1.0, 2.0, 3.0, 4.0]);
 
-    let d11 = bs.block_data(&BlockCoord(vec![1, 1])).unwrap();
+    let d11 = td.block_data(&BlockCoord(vec![1, 1])).unwrap();
     assert_eq!(d11, &[5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0]);
 
     // Non-existent block (forbidden by symmetry)
-    assert!(bs.block_data(&BlockCoord(vec![0, 1])).is_none());
-    assert!(bs.block_data(&BlockCoord(vec![1, 0])).is_none());
+    assert!(td.block_data(&BlockCoord(vec![0, 1])).is_none());
+    assert!(td.block_data(&BlockCoord(vec![1, 0])).is_none());
 }
 
 #[test]
 fn block_sparse_block_shape() {
-    let bs = sample_u1_rank2();
-    assert_eq!(bs.block_shape(&BlockCoord(vec![0, 0])), Some(vec![2, 2]));
-    assert_eq!(bs.block_shape(&BlockCoord(vec![1, 1])), Some(vec![3, 3]));
-    assert_eq!(bs.block_shape(&BlockCoord(vec![0, 1])), Some(vec![2, 3]));
+    let td = sample_u1_rank2_data();
+    assert_eq!(td.block_shape(&BlockCoord(vec![0, 0])), Some(vec![2, 2]));
+    assert_eq!(td.block_shape(&BlockCoord(vec![1, 1])), Some(vec![3, 3]));
+    assert_eq!(td.block_shape(&BlockCoord(vec![0, 1])), Some(vec![2, 3]));
 
     // Invalid coord (out of range)
-    assert_eq!(bs.block_shape(&BlockCoord(vec![2, 0])), None);
+    assert_eq!(td.block_shape(&BlockCoord(vec![2, 0])), None);
     // Wrong rank
-    assert_eq!(bs.block_shape(&BlockCoord(vec![0])), None);
+    assert_eq!(td.block_shape(&BlockCoord(vec![0])), None);
 }
 
 #[test]
 fn block_sparse_is_allowed_block() {
-    let bs = sample_u1_rank2();
-    assert!(bs.is_allowed_block(&BlockCoord(vec![0, 0])));
-    assert!(bs.is_allowed_block(&BlockCoord(vec![1, 1])));
-    assert!(!bs.is_allowed_block(&BlockCoord(vec![0, 1])));
-    assert!(!bs.is_allowed_block(&BlockCoord(vec![1, 0])));
+    let td = sample_u1_rank2_data();
+    assert!(td.is_allowed_block(&BlockCoord(vec![0, 0])));
+    assert!(td.is_allowed_block(&BlockCoord(vec![1, 1])));
+    assert!(!td.is_allowed_block(&BlockCoord(vec![0, 1])));
+    assert!(!td.is_allowed_block(&BlockCoord(vec![1, 0])));
 }
 
 #[test]
-fn block_sparse_clone_shares_data() {
-    let bs = sample_u1_rank2();
-    let cloned = bs.clone();
-    // Arc-shared data: same pointer
-    assert!(Arc::ptr_eq(&bs.data, &cloned.data));
+fn block_sparse_clone_preserves_shape_and_blocks() {
+    let td = sample_u1_rank2_data();
+    let cloned = td.clone();
+    assert_eq!(cloned.shape(), td.shape());
+    assert_eq!(cloned.num_blocks(), td.num_blocks());
+    // Block data is preserved (Arc-shared on the storage half).
+    assert_eq!(
+        cloned.block_data(&BlockCoord(vec![0, 0])).unwrap(),
+        td.block_data(&BlockCoord(vec![0, 0])).unwrap(),
+    );
 }
 
 #[test]
@@ -204,19 +194,15 @@ fn block_sparse_nonzero_flux() {
     // Block (1,0): Out(1) + In(0).dual() = 1 + 0 = 1 == flux ✓
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
-    let data: Vec<f64> = (1..=6).map(|x| x as f64).collect();
-    let blocks = vec![BlockMeta {
-        coord: BlockCoord(vec![1, 0]),
-        offset: 0,
-        size: 6,
-    }];
-
-    let bs = BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(1));
-    assert_eq!(bs.num_blocks(), 1);
-    assert_eq!(*bs.flux(), U1Sector(1));
-    assert!(bs.is_allowed_block(&BlockCoord(vec![1, 0])));
-    assert!(!bs.is_allowed_block(&BlockCoord(vec![0, 0])));
+    let td = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row, col],
+        U1Sector(1),
+        MemoryOrder::RowMajor,
+    );
+    assert_eq!(td.num_blocks(), 1);
+    assert_eq!(*td.flux(), U1Sector(1));
+    assert!(td.is_allowed_block(&BlockCoord(vec![1, 0])));
+    assert!(!td.is_allowed_block(&BlockCoord(vec![0, 0])));
 }
 
 #[test]
@@ -231,80 +217,15 @@ fn block_sparse_z2_symmetry() {
     );
 
     // Z2 is self-dual: allowed blocks (0,0) and (1,1) both fuse to 0
-    let data = vec![0.0_f64; 4 + 9];
-    let blocks = vec![
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0]),
-            offset: 0,
-            size: 4,
-        },
-        BlockMeta {
-            coord: BlockCoord(vec![1, 1]),
-            offset: 4,
-            size: 9,
-        },
-    ];
-
-    let bs = BlockSparse::from_raw_parts(data, blocks, vec![row, col], Z2Sector::new(0));
-    assert_eq!(bs.num_blocks(), 2);
-    assert!(bs.is_allowed_block(&BlockCoord(vec![0, 0])));
-    assert!(bs.is_allowed_block(&BlockCoord(vec![1, 1])));
-    assert!(!bs.is_allowed_block(&BlockCoord(vec![0, 1])));
-}
-
-#[test]
-#[should_panic(expected = "violates flux conservation")]
-fn block_sparse_rejects_invalid_flux() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
-    let data = vec![0.0_f64; 4];
-    let blocks = vec![BlockMeta {
-        coord: BlockCoord(vec![0, 0]),
-        offset: 0,
-        size: 4,
-    }];
-
-    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(1));
-}
-
-#[test]
-#[should_panic(expected = "Duplicate block coordinate")]
-fn block_sparse_rejects_duplicate_coords() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
-    let data = vec![0.0_f64; 8];
-    let blocks = vec![
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0]),
-            offset: 0,
-            size: 4,
-        },
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0]),
-            offset: 4,
-            size: 4,
-        },
-    ];
-
-    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(0));
-}
-
-#[test]
-#[should_panic(expected = "size mismatch")]
-fn block_sparse_rejects_wrong_size() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
-    let data = vec![0.0_f64; 5];
-    let blocks = vec![BlockMeta {
-        coord: BlockCoord(vec![0, 0]),
-        offset: 0,
-        size: 5, // should be 4 (2×2)
-    }];
-
-    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(0));
+    let td = BlockSparseTensorData::<f64, Z2Sector>::zeros(
+        vec![row, col],
+        Z2Sector::new(0),
+        MemoryOrder::RowMajor,
+    );
+    assert_eq!(td.num_blocks(), 2);
+    assert!(td.is_allowed_block(&BlockCoord(vec![0, 0])));
+    assert!(td.is_allowed_block(&BlockCoord(vec![1, 1])));
+    assert!(!td.is_allowed_block(&BlockCoord(vec![0, 1])));
 }
 
 #[test]
@@ -312,11 +233,13 @@ fn block_sparse_empty() {
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
 
-    let bs: BlockSparse<f64, U1Sector> =
-        BlockSparse::from_raw_parts(vec![], vec![], vec![row, col], U1Sector(1));
-    assert_eq!(bs.num_blocks(), 0);
-    assert_eq!(bs.stored_len(), 0);
-    assert_eq!(bs.shape(), &[2, 2]);
+    // Flux U1(1) is unreachable with both legs carrying only charge 0,
+    // so no blocks are allowed; logical shape is still 2×2.
+    let td: BlockSparseTensorData<f64, U1Sector> =
+        BlockSparseTensorData::zeros(vec![row, col], U1Sector(1), MemoryOrder::RowMajor);
+    assert_eq!(td.num_blocks(), 0);
+    assert_eq!(td.storage().stored_len(), 0);
+    assert_eq!(td.shape(), vec![2, 2]);
 }
 
 #[test]
@@ -328,25 +251,15 @@ fn block_sparse_rank3() {
     let leg1 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let leg2 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
 
-    let data = vec![0.0_f64; 12 + 3];
-    let blocks = vec![
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0, 0]),
-            offset: 0,
-            size: 12,
-        },
-        BlockMeta {
-            coord: BlockCoord(vec![1, 0, 1]),
-            offset: 12,
-            size: 3,
-        },
-    ];
-
-    let bs = BlockSparse::from_raw_parts(data, blocks, vec![leg0, leg1, leg2], U1Sector(0));
-    assert_eq!(bs.rank(), 3);
-    assert_eq!(bs.shape(), &[3, 3, 3]);
-    assert_eq!(bs.num_blocks(), 2);
-    assert_eq!(bs.stored_len(), 15);
+    let td = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![leg0, leg1, leg2],
+        U1Sector(0),
+        MemoryOrder::RowMajor,
+    );
+    assert_eq!(td.rank(), 3);
+    assert_eq!(td.shape(), vec![3, 3, 3]);
+    assert_eq!(td.num_blocks(), 2);
+    assert_eq!(td.storage().stored_len(), 15);
 }
 
 #[test]
@@ -362,63 +275,7 @@ fn block_sparse_tuple_symmetry() {
     // flux = identity = (0, 0)
     // Block (0,0): Out(0,0) fuse In(0,0).dual() = (0,0) ✓
     // Block (1,1): Out(1,1) fuse In(1,1).dual() = (1,1).fuse((-1,1)) = (0,0) ✓
-
-    let data = vec![0.0_f64; 4 + 9];
-    let blocks = vec![
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0]),
-            offset: 0,
-            size: 4,
-        },
-        BlockMeta {
-            coord: BlockCoord(vec![1, 1]),
-            offset: 4,
-            size: 9,
-        },
-    ];
-
     let flux: Sym = Sector::identity();
-    let bs: BlockSparse<f64, Sym> = BlockSparse::from_raw_parts(data, blocks, vec![row, col], flux);
-    assert_eq!(bs.num_blocks(), 2);
-}
-
-#[test]
-#[should_panic(expected = "gap or overlap")]
-fn block_sparse_rejects_overlapping_blocks() {
-    // Two valid blocks but with overlapping offsets
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-
-    let data = vec![0.0_f64; 9]; // only 9 elements, not 13
-    let blocks = vec![
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0]),
-            offset: 0,
-            size: 4,
-        },
-        BlockMeta {
-            coord: BlockCoord(vec![1, 1]),
-            offset: 0, // overlaps with block (0,0)
-            size: 9,
-        },
-    ];
-
-    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(0));
-}
-
-#[test]
-#[should_panic(expected = "Data buffer has")]
-fn block_sparse_rejects_trailing_padding() {
-    // Data buffer larger than blocks require
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
-    let data = vec![0.0_f64; 8]; // 8 elements but block only needs 4
-    let blocks = vec![BlockMeta {
-        coord: BlockCoord(vec![0, 0]),
-        offset: 0,
-        size: 4,
-    }];
-
-    BlockSparse::from_raw_parts(data, blocks, vec![row, col], U1Sector(0));
+    let td = BlockSparseTensorData::<f64, Sym>::zeros(vec![row, col], flux, MemoryOrder::RowMajor);
+    assert_eq!(td.num_blocks(), 2);
 }

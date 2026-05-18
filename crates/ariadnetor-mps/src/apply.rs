@@ -1,38 +1,34 @@
 //! MPO-MPS application: apply an MPO to an MPS.
 //!
-//! - `apply_dense_repr` / `apply_zipup_dense_repr` /
-//!   `apply_bsp_repr` / `apply_zipup_bsp_repr` operate on
-//!   [`MpsRepr`] / [`MpoRepr`] chains.
-//! - [`apply_dense`] / [`apply_zipup_dense`] / [`apply_bsp`] /
-//!   [`apply_zipup_bsp`] operate on [`Mps`] / [`Mpo`] chains whose
-//!   sites are [`TensorData<St, L>`](arnet_tensor::TensorData). Their
-//!   bodies build a temporary `*Repr` chain by bumping each site's
-//!   storage `Arc`, delegate to the corresponding `_repr` body, and
-//!   wrap the result back.
+//! [`apply_dense`] / [`apply_zipup_dense`] / [`apply_bsp`] /
+//! [`apply_zipup_bsp`] operate on [`Mps`] / [`Mpo`] chains whose
+//! sites are [`TensorData<St, L>`](arnet_tensor::TensorData).
 
 use std::sync::Arc;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::{
-    BlockSparseContractResultRepr as BlockSparseContractResult, TruncSvdParams,
-    contract_block_sparse_repr as contract_block_sparse, contract_dense as contract,
-    diagonal_scale_block_sparse_repr as diagonal_scale_block_sparse,
-    diagonal_scale_dense as diagonal_scale, fuse_legs_block_sparse_repr as fuse_legs_block_sparse,
-    permute_block_sparse_repr as permute_block_sparse, qr_block_sparse_repr as qr_block_sparse,
-    qr_dense as qr, trunc_svd_block_sparse_repr as trunc_svd_block_sparse,
-    trunc_svd_dense as trunc_svd,
+    BlockSparseContractResult, TruncSvdParams, contract, contract_block_sparse, diagonal_scale,
+    diagonal_scale_block_sparse, fuse_legs_block_sparse, permute_block_sparse, qr, qr_block_sparse,
+    trunc_svd, trunc_svd_block_sparse,
 };
-use arnet_tensor::{BlockSparse, Dense, Direction, Sector, reorder};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, DenseLayout, DenseStorage,
+    DenseTensorData, Direction, Sector, reorder,
+};
 
-use super::chain::TensorChainRepr;
-use super::types::{CanonicalForm, MpoRepr, MpsRepr, SvdAbsorb, TruncateParams};
+use super::types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncateParams};
 
 // Forward pass switches from QR (lossless, fast) to truncated SVD when the
 // natural rank exceeds this multiple of the user-supplied chi_max. The
 // expanded rank cap absorbs the bulk of the singular weight forward while
 // leaving the final, exact truncation to the backward sweep.
 const ZIPUP_SVD_RATIO: usize = 4;
+
+// ============================================================================
+// Dense path
+// ============================================================================
 
 /// Apply an MPO to an MPS, producing a new MPS.
 ///
@@ -52,25 +48,27 @@ const ZIPUP_SVD_RATIO: usize = 4;
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub(super) fn apply_dense_repr<T, B>(
-    op: &MpoRepr<Dense<T>, B>,
-    psi: &MpsRepr<Dense<T>, B>,
+pub(super) fn apply_dense<T, B>(
+    op: &Mpo<DenseStorage<T>, DenseLayout, B>,
+    psi: &Mps<DenseStorage<T>, DenseLayout, B>,
     params: Option<&TruncateParams>,
-) -> MpsRepr<Dense<T>, B>
+) -> Mps<DenseStorage<T>, DenseLayout, B>
 where
     T: Scalar,
     B: ComputeBackend,
 {
-    let n = psi.len();
-    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
+    let n = psi.0.sites.len();
+    assert_eq!(n, op.0.sites.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
-    let backend = psi.backend();
-    let mut storages = Vec::with_capacity(n);
+    let backend = psi.0.backend.as_ref();
+    let order = backend.preferred_order();
+    let rm = arnet_core::MemoryOrder::RowMajor;
+    let mut sites = Vec::with_capacity(n);
 
     for j in 0..n {
-        let w = op.storage(j); // (w_L, d_ket, d_bra, w_R)
-        let a = psi.storage(j); // (χ_L, d, χ_R)
+        let w = &op.0.sites[j]; // (w_L, d_ket, d_bra, w_R)
+        let a = &psi.0.sites[j]; // (χ_L, d, χ_R)
 
         // Contract over physical index (b = d_ket = d):
         // W(a,b,c,d) × A(e,b,f) → result(a,e,c,d,f)
@@ -87,21 +85,19 @@ where
 
         // Fuse bond dimensions: (w_L*χ_L, d_bra, w_R*χ_R)
         // Reorder to RM for correct axis-merge semantics, reshape, then back.
-        let order = backend.preferred_order();
-        let rm = arnet_core::MemoryOrder::RowMajor;
         let result_rm = reorder(&result, order, rm);
         let fused_rm = result_rm.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
         let fused = reorder(&fused_rm, rm, order);
 
-        storages.push(fused);
+        sites.push(fused);
     }
 
-    let mut result_mps = MpsRepr::with_backend(storages, Arc::clone(psi.backend_arc()));
+    let mut result_mps = Mps::with_backend(sites, Arc::clone(&psi.0.backend));
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_dense_repr(&mut result_mps, center);
-        super::truncate::truncate_dense_repr(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_dense(&mut result_mps, center);
+        super::truncate::truncate_dense(&mut result_mps, trunc_params);
     }
 
     result_mps
@@ -126,7 +122,7 @@ where
 /// already has left-isometric tensors at sites `0..N-1` and the
 /// orthogonality center at site `N-1` (`Mixed { center: N-1 }`).
 ///
-/// Unlike [`apply_dense_repr`], zip-up never materializes the inflated bond
+/// Unlike [`apply_dense`], zip-up never materializes the inflated bond
 /// dimension `w * χ` simultaneously across all sites; each per-site
 /// reduction is local. The cost is that per-cut SVDs are taken before the
 /// right environment is fully resolved, so for the same `chi_max` the
@@ -147,24 +143,24 @@ where
 /// center, but zip-up always finishes with the orthogonality center at
 /// site `0`. Other values are rejected up front; callers can shift the
 /// center afterwards via
-/// [`canonicalize_dense_repr`](super::canonicalize::canonicalize_dense_repr).
+/// [`canonicalize`](super::dispatch::canonicalize).
 ///
 /// # Panics
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// `params.absorb` is not [`SvdAbsorb::Right`], or `params.center` is
 /// `Some(c)` with `c != 0`.
-pub(super) fn apply_zipup_dense_repr<T, B>(
-    op: &MpoRepr<Dense<T>, B>,
-    psi: &MpsRepr<Dense<T>, B>,
+pub(super) fn apply_zipup_dense<T, B>(
+    op: &Mpo<DenseStorage<T>, DenseLayout, B>,
+    psi: &Mps<DenseStorage<T>, DenseLayout, B>,
     params: Option<&TruncateParams>,
-) -> MpsRepr<Dense<T>, B>
+) -> Mps<DenseStorage<T>, DenseLayout, B>
 where
     T: Scalar,
     B: ComputeBackend,
 {
-    let n = psi.len();
-    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
+    let n = psi.0.sites.len();
+    assert_eq!(n, op.0.sites.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
     // Validate unsupported TruncateParams up front so we never spend the
@@ -186,7 +182,7 @@ where
         );
     }
 
-    let backend = psi.backend();
+    let backend = psi.0.backend.as_ref();
     let order = backend.preferred_order();
     let rm = arnet_core::MemoryOrder::RowMajor;
 
@@ -195,13 +191,13 @@ where
         .map(|c| c.saturating_mul(ZIPUP_SVD_RATIO));
     let cutoff = params.and_then(|p| p.svd.target_trunc_err);
 
-    let mut tensors: Vec<Dense<T>> = Vec::with_capacity(n);
-    let mut carry: Option<Dense<T>> = None;
+    let mut tensors: Vec<DenseTensorData<T>> = Vec::with_capacity(n);
+    let mut carry: Option<DenseTensorData<T>> = None;
 
     for j in 0..n {
         // Local MPO-MPS product, fused to (w_L * χ_L, d_bra, w_R * χ_R).
-        let w = op.storage(j);
-        let a = psi.storage(j);
+        let w = &op.0.sites[j];
+        let a = &psi.0.sites[j];
         let local = contract(backend, w, a, "abcd,ebf->aecdf")
             .expect("MPO-MPS contraction failed in apply_zipup");
         let s = local.shape();
@@ -257,8 +253,8 @@ where
     }
 
     let Some(trunc_params) = params else {
-        let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
-        result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
+        let mut result_mps = Mps::with_backend(tensors, Arc::clone(&psi.0.backend));
+        result_mps.0.canonical_form = CanonicalForm::Mixed { center: n - 1 };
         return result_mps;
     };
 
@@ -283,10 +279,14 @@ where
         tensors[j - 1] = new_prev;
     }
 
-    let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
-    result_mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
+    let mut result_mps = Mps::with_backend(tensors, Arc::clone(&psi.0.backend));
+    result_mps.0.canonical_form = CanonicalForm::Mixed { center: 0 };
     result_mps
 }
+
+// ============================================================================
+// BlockSparse path
+// ============================================================================
 
 /// Apply a BlockSparse MPO to a BlockSparse MPS, producing a new MPS.
 ///
@@ -308,33 +308,33 @@ where
 ///
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub(super) fn apply_bsp_repr<T, S, B>(
-    op: &MpoRepr<BlockSparse<T, S>, B>,
-    psi: &MpsRepr<BlockSparse<T, S>, B>,
+pub(super) fn apply_bsp<T, S, B>(
+    op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     params: Option<&TruncateParams>,
-) -> MpsRepr<BlockSparse<T, S>, B>
+) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    let n = psi.len();
-    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
+    let n = psi.0.sites.len();
+    assert_eq!(n, op.0.sites.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
-    let backend = psi.backend();
-    let mut storages = Vec::with_capacity(n);
+    let backend = psi.0.backend.as_ref();
+    let mut sites = Vec::with_capacity(n);
 
     for j in 0..n {
-        storages.push(local_product_bsp(backend, op.storage(j), psi.storage(j)));
+        sites.push(local_product_bsp(backend, &op.0.sites[j], &psi.0.sites[j]));
     }
 
-    let mut result_mps = MpsRepr::with_backend(storages, Arc::clone(psi.backend_arc()));
+    let mut result_mps = Mps::with_backend(sites, Arc::clone(&psi.0.backend));
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_bsp_repr(&mut result_mps, center);
-        super::truncate::truncate_bsp_repr(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_bsp(&mut result_mps, center);
+        super::truncate::truncate_bsp(&mut result_mps, trunc_params);
     }
 
     result_mps
@@ -345,9 +345,9 @@ where
 /// single rank-3 site tensor with directions `[Out, Out, In]`.
 fn local_product_bsp<T, S>(
     backend: &impl ComputeBackend,
-    w: &BlockSparse<T, S>,
-    a: &BlockSparse<T, S>,
-) -> BlockSparse<T, S>
+    w: &BlockSparseTensorData<T, S>,
+    a: &BlockSparseTensorData<T, S>,
+) -> BlockSparseTensorData<T, S>
 where
     T: Scalar,
     S: Sector,
@@ -398,18 +398,18 @@ where
 /// Panics if the MPO and MPS have different lengths, either is empty,
 /// `params.absorb` is not [`SvdAbsorb::Right`], or `params.center` is
 /// `Some(c)` with `c != 0`.
-pub(super) fn apply_zipup_bsp_repr<T, S, B>(
-    op: &MpoRepr<BlockSparse<T, S>, B>,
-    psi: &MpsRepr<BlockSparse<T, S>, B>,
+pub(super) fn apply_zipup_bsp<T, S, B>(
+    op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     params: Option<&TruncateParams>,
-) -> MpsRepr<BlockSparse<T, S>, B>
+) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    let n = psi.len();
-    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
+    let n = psi.0.sites.len();
+    assert_eq!(n, op.0.sites.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
     // Validate unsupported TruncateParams up front so we never spend the
@@ -431,18 +431,18 @@ where
         );
     }
 
-    let backend = psi.backend();
+    let backend = psi.0.backend.as_ref();
 
     let chi_max_forward = params
         .and_then(|p| p.svd.chi_max)
         .map(|c| c.saturating_mul(ZIPUP_SVD_RATIO));
     let cutoff = params.and_then(|p| p.svd.target_trunc_err);
 
-    let mut tensors: Vec<BlockSparse<T, S>> = Vec::with_capacity(n);
-    let mut carry: Option<BlockSparse<T, S>> = None;
+    let mut tensors: Vec<BlockSparseTensorData<T, S>> = Vec::with_capacity(n);
+    let mut carry: Option<BlockSparseTensorData<T, S>> = None;
 
     for j in 0..n {
-        let mut p = local_product_bsp(backend, op.storage(j), psi.storage(j));
+        let mut p = local_product_bsp(backend, &op.0.sites[j], &psi.0.sites[j]);
 
         if let Some(c) = carry.as_ref() {
             // carry: [bond(Out), fused_right(In)]; p: [fused_left(Out), d, fused_right(In)].
@@ -490,8 +490,8 @@ where
     }
 
     let Some(trunc_params) = params else {
-        let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
-        result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
+        let mut result_mps = Mps::with_backend(tensors, Arc::clone(&psi.0.backend));
+        result_mps.0.canonical_form = CanonicalForm::Mixed { center: n - 1 };
         return result_mps;
     };
 
@@ -519,8 +519,8 @@ where
         tensors[j - 1] = new_prev;
     }
 
-    let mut result_mps = MpsRepr::with_backend(tensors, Arc::clone(psi.backend_arc()));
-    result_mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
+    let mut result_mps = Mps::with_backend(tensors, Arc::clone(&psi.0.backend));
+    result_mps.0.canonical_form = CanonicalForm::Mixed { center: 0 };
     result_mps
 }
 
@@ -528,7 +528,7 @@ where
 /// dense product `min(left*d, right)` of the logical shape — same heuristic
 /// as the dense path. A tighter, sector-aware estimate is possible but the
 /// extra accuracy does not change the QR-vs-SVD decision in practice.
-fn forward_rank_estimate_bsp<T, S>(p: &BlockSparse<T, S>) -> usize
+fn forward_rank_estimate_bsp<T, S>(p: &BlockSparseTensorData<T, S>) -> usize
 where
     T: Scalar,
     S: Sector,

@@ -27,12 +27,16 @@ fn trunc_svd_error_and_target_err_arithmetic() {
 
 /// Rank-4 tensor where fused sector U1(1) has multi-tuple left AND right,
 /// each with dims > 1, producing non-zero row_off (2) and col_off (2).
-fn sample_rm_rank4() -> BlockSparse<f64, U1Sector> {
+fn sample_rm_rank4() -> BlockSparseTensorData<f64, U1Sector> {
     let leg0 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let leg1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let leg2 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     let leg3 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![leg0, leg1, leg2, leg3], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![leg0, leg1, leg2, leg3],
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
 
     // Sector U1(1) blocks with distinct sequential values:
     // (0,1,0,1): m_i=2, n_j=2, 4 elements

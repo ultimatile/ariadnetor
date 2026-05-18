@@ -2,7 +2,7 @@
 //!
 //! Strategy: hand-chosen analytical inputs (small dim, identity MPO,
 //! product-state MPS or random-but-seeded). The env contract is
-//! pinned via cross-check against `arnet_mps::braket_repr` ground truth.
+//! pinned via cross-check against `arnet_mps::braket` ground truth.
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
