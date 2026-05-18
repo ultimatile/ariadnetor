@@ -353,7 +353,11 @@ where
     S: Sector,
     B: ComputeBackend,
 {
-    match contract_block_sparse(backend, r, next, &[1], &[0])
+    // `r` is tagged at `backend.preferred_order()` by `qr_block_sparse`;
+    // `next` may carry the chain's original order. `contract_block_sparse`
+    // rejects mixed orders, so repack `next` to match `r` before absorbing.
+    let next_aligned = next.to_order(r.order());
+    match contract_block_sparse(backend, r, &next_aligned, &[1], &[0])
         .expect("R absorption into next site failed during canonicalize")
     {
         BlockSparseContractResult::Tensor(t) => t,
@@ -377,8 +381,12 @@ where
     S: Sector,
     B: ComputeBackend,
 {
+    // `l` is tagged at `backend.preferred_order()` by `lq_block_sparse`;
+    // `prev` may carry the chain's original order. Repack `prev` to match
+    // `l` before contraction so `contract_block_sparse` sees equal orders.
     let last = prev.rank() - 1;
-    match contract_block_sparse(backend, prev, l, &[last], &[0])
+    let prev_aligned = prev.to_order(l.order());
+    match contract_block_sparse(backend, &prev_aligned, l, &[last], &[0])
         .expect("L absorption into previous site failed during canonicalize")
     {
         BlockSparseContractResult::Tensor(t) => t,

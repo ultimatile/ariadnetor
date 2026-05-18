@@ -23,7 +23,6 @@ use arnet_tensor::DenseTensorData;
 use arnet_tensor::Sector;
 use num_traits::{Float, ToPrimitive, Zero};
 
-use crate::block_sparse_contract::repack_block_data;
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
 use arnet_tensor::reorder;
@@ -112,7 +111,7 @@ pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector>(
 ) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
-    let tensor = normalize_to_order(tensor, order);
+    let tensor = tensor.to_order(order);
     let groups = compute_fused_sector_groups(&tensor, nrow);
 
     let mut u_matrices = Vec::with_capacity(groups.len());
@@ -186,7 +185,7 @@ pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector>(
 ) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
-    let tensor = normalize_to_order(tensor, order);
+    let tensor = tensor.to_order(order);
     let groups = compute_fused_sector_groups(&tensor, nrow);
 
     // Per-sector full SVD
@@ -296,7 +295,7 @@ pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector>(
 ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
-    let tensor = normalize_to_order(tensor, order);
+    let tensor = tensor.to_order(order);
     let groups = compute_fused_sector_groups(&tensor, nrow);
     let (q_mats, r_mats, k_per) =
         decompose_per_sector(&groups, &tensor, nrow, backend, order, |b, d| {
@@ -342,7 +341,7 @@ pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector>(
 ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
-    let tensor = normalize_to_order(tensor, order);
+    let tensor = tensor.to_order(order);
     let groups = compute_fused_sector_groups(&tensor, nrow);
     let (l_mats, q_mats, k_per) =
         decompose_per_sector(&groups, &tensor, nrow, backend, order, |b, d| {
@@ -365,39 +364,6 @@ pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector>(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/// Normalize a `BlockSparseTensorData` to a target memory order.
-///
-/// No physical work when the target equals the current order (clone is
-/// Arc-light). Otherwise, per-block data is repacked to the target order
-/// and a fresh tensor is built in `target` layout.
-fn normalize_to_order<T: Scalar, S: Sector>(
-    tensor: &BlockSparseTensorData<T, S>,
-    target: MemoryOrder,
-) -> BlockSparseTensorData<T, S> {
-    let current = tensor.layout().order();
-    if current == target {
-        return tensor.clone();
-    }
-    let layout = tensor.layout();
-    let indices: Vec<_> = layout.indices().to_vec();
-    let flux = layout.flux().clone();
-    let mut out = BlockSparseTensorData::zeros(indices, flux, target);
-    for meta in layout.block_metas() {
-        let src = tensor
-            .block_data(&meta.coord)
-            .expect("layout-enumerated block must have storage");
-        let block_shape: Vec<usize> = (0..layout.rank())
-            .map(|a| layout.indices()[a].block_dim(meta.coord.0[a]))
-            .collect();
-        let repacked = repack_block_data(src, &block_shape, current, target);
-        let dst = out
-            .block_data_mut(&meta.coord)
-            .expect("zero-initialized output must have matching block");
-        dst.copy_from_slice(&repacked);
-    }
-    out
-}
 
 /// Keep the first `k_t` columns of an `m × k_f` matrix.
 fn truncate_cols<T: Scalar>(

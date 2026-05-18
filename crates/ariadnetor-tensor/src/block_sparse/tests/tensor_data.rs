@@ -322,6 +322,53 @@ fn norm_sums_squares_across_all_allowed_blocks() {
 }
 
 #[test]
+fn to_order_is_identity_clone_when_already_in_target() {
+    // Already in RowMajor: `to_order(RowMajor)` returns a clone whose data
+    // and order match the input bit-for-bit. Pins the early-return path.
+    let mut td = sample_u1_rank2_data();
+    td.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+
+    let same = td.to_order(MemoryOrder::RowMajor);
+    assert_eq!(same.layout().order(), MemoryOrder::RowMajor);
+    assert_eq!(
+        same.block_data(&BlockCoord(vec![0, 0])).unwrap(),
+        &[1.0, 2.0, 3.0, 4.0]
+    );
+}
+
+#[test]
+fn to_order_repacks_2x2_block_between_row_and_column_major() {
+    // Block (0, 0) is a 2×2 block. With RowMajor input `[1, 2, 3, 4]`
+    // representing
+    //   [[1, 2],
+    //    [3, 4]],
+    // the same logical matrix laid out in ColumnMajor is `[1, 3, 2, 4]`.
+    // `to_order` must physically rearrange the per-block buffer to match
+    // the target order while keeping the logical matrix identical.
+    let mut td = sample_u1_rank2_data();
+    td.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+
+    let cm = td.to_order(MemoryOrder::ColumnMajor);
+    assert_eq!(cm.layout().order(), MemoryOrder::ColumnMajor);
+    assert_eq!(
+        cm.block_data(&BlockCoord(vec![0, 0])).unwrap(),
+        &[1.0, 3.0, 2.0, 4.0]
+    );
+
+    // Round-trip CM → RM recovers the original buffer exactly.
+    let rm = cm.to_order(MemoryOrder::RowMajor);
+    assert_eq!(rm.layout().order(), MemoryOrder::RowMajor);
+    assert_eq!(
+        rm.block_data(&BlockCoord(vec![0, 0])).unwrap(),
+        &[1.0, 2.0, 3.0, 4.0]
+    );
+}
+
+#[test]
 fn is_allowed_block_matches_flux_for_u1_rank2() {
     // Flux 0 over Out(0:2, 1:3) × In(0:2, 1:3): a block (i, j) is
     // allowed iff the directed sectors fuse to 0, i.e. row charge

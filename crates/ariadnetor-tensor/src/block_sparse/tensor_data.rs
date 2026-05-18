@@ -198,6 +198,59 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
         let data = Arc::make_mut(arc);
         Some(&mut data[offset..offset + size])
     }
+
+    /// Repack per-block data to a different memory order.
+    ///
+    /// Returns a clone (Arc-shared) when the tensor is already in
+    /// `target`. Otherwise allocates a fresh buffer, rearranges each
+    /// block's flat data from the current order to `target`, and tags
+    /// the new layout at `target`. Blocks of rank ≤ 1 are layout-
+    /// invariant and copy through unchanged.
+    pub fn to_order(&self, target: MemoryOrder) -> Self
+    where
+        T: Clone + Zero,
+    {
+        let current = self.layout().order();
+        if current == target {
+            return self.clone();
+        }
+        let layout = self.layout();
+        let indices: Vec<_> = layout.indices().to_vec();
+        let flux = layout.flux().clone();
+        let mut out = Self::zeros(indices, flux, target);
+        for meta in layout.block_metas() {
+            let src = self
+                .block_data(&meta.coord)
+                .expect("layout-enumerated block must have storage");
+            let block_shape: Vec<usize> = (0..layout.rank())
+                .map(|a| layout.indices()[a].block_dim(meta.coord.0[a]))
+                .collect();
+            let dst = out
+                .block_data_mut(&meta.coord)
+                .expect("zero-initialized output must have matching block");
+            if block_shape.len() <= 1 || src.is_empty() {
+                dst.clone_from_slice(src);
+                continue;
+            }
+            let axis_order: Vec<usize> = match target {
+                MemoryOrder::RowMajor => (0..block_shape.len()).collect(),
+                MemoryOrder::ColumnMajor => (0..block_shape.len()).rev().collect(),
+            };
+            let mut coords = vec![0usize; block_shape.len()];
+            for dst_slot in dst.iter_mut() {
+                let src_flat = crate::flat_index(&coords, &block_shape, current);
+                *dst_slot = src[src_flat].clone();
+                for &d in axis_order.iter().rev() {
+                    coords[d] += 1;
+                    if coords[d] < block_shape[d] {
+                        break;
+                    }
+                    coords[d] = 0;
+                }
+            }
+        }
+        out
+    }
 }
 
 impl<T, S: Sector> BlockSparseTensorData<T, S>

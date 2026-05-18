@@ -209,6 +209,65 @@ fn canonicalize_bsp_accepts_charged_single_site() {
 // Edge case: single-site chain
 // --------------------------------------------------------------------------
 
+// --------------------------------------------------------------------------
+// RowMajor input under a ColumnMajor backend
+// --------------------------------------------------------------------------
+
+/// Regression: a chain whose sites are all tagged `RowMajor` must canonicalize
+/// without panicking on the `NativeBackend` (whose preferred order is
+/// `ColumnMajor`). The QR / LQ outputs are emitted in the backend's preferred
+/// order, while the neighbour site that absorbs the factor is still
+/// `RowMajor`; the absorb path repacks one side so `contract_block_sparse`
+/// sees equal orders. The full chain state must round-trip through the sweep.
+#[test]
+fn canonicalize_bsp_row_major_chain_under_column_major_backend() {
+    let mut counter: f64 = 0.1;
+    let make_rm_site = |left, phys, right, counter: &mut f64| {
+        use arnet_tensor::{BlockCoord, Direction, QNIndex};
+        let left = QNIndex::new(left, Direction::Out);
+        let phys = QNIndex::new(phys, Direction::Out);
+        let right = QNIndex::new(right, Direction::In);
+        let mut site = BlockSparseTensorData::<f64, U1Sector>::zeros(
+            vec![left, phys, right],
+            U1Sector(0),
+            MemoryOrder::RowMajor,
+        );
+        let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
+        for coord in coords {
+            let data = site.block_data_mut(&coord).expect("allowed block");
+            for slot in data.iter_mut() {
+                *slot = *counter;
+                *counter += 0.1;
+            }
+        }
+        site
+    };
+
+    let site0 = make_rm_site(
+        vec![(U1Sector(0), 1)],
+        vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+        vec![(U1Sector(0), 2), (U1Sector(1), 1)],
+        &mut counter,
+    );
+    let site1 = make_rm_site(
+        vec![(U1Sector(0), 2), (U1Sector(1), 1)],
+        vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+        vec![(U1Sector(0), 1)],
+        &mut counter,
+    );
+
+    let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![site0, site1]);
+
+    // Bug fingerprint: pre-fix this panics in `absorb_from_left_bsp` because
+    // `r` from `qr_block_sparse` is tagged `ColumnMajor` while `next` is still
+    // `RowMajor`, and `contract_block_sparse` rejects mixed orders.
+    canonicalize(&mut mps, 1);
+
+    assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
+    assert!(is_left_canonical_bsp(mps.site(0), TOL));
+}
+
 #[test]
 fn canonicalize_bsp_single_site_only_updates_canonical_form() {
     // A single-site chain has no bonds to sweep, so canonicalize is a pure

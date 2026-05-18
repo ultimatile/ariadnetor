@@ -429,7 +429,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 // at `pub(crate)` so other block_sparse modules can keep their existing
 // import paths.
 
-pub(crate) use crate::block_sparse_layout_ops::{repack_block_data, transpose_block_data};
+pub(crate) use crate::block_sparse_layout_ops::transpose_block_data;
 
 #[cfg(test)]
 pub(crate) use crate::block_sparse_layout_ops::compute_strides;

@@ -533,7 +533,12 @@ where
     S: Sector,
     B: ComputeBackend,
 {
-    match contract_block_sparse(backend, left, next, &[1], &[0])
+    // `left` (S·Vt or similar) is tagged at `backend.preferred_order()`
+    // by the prior truncated SVD; `next` may carry the chain's original
+    // order. `contract_block_sparse` rejects mixed orders, so repack
+    // `next` to match `left` before absorbing.
+    let next_aligned = next.to_order(left.order());
+    match contract_block_sparse(backend, left, &next_aligned, &[1], &[0])
         .expect("left absorption failed during truncate")
     {
         BlockSparseContractResult::Tensor(t) => t,
@@ -555,7 +560,11 @@ where
     B: ComputeBackend,
 {
     let last = prev.rank() - 1;
-    match contract_block_sparse(backend, prev, right, &[last], &[0])
+    // `right` (U·S or similar) is tagged at `backend.preferred_order()`;
+    // `prev` may carry the chain's original order. Align `prev` to
+    // `right` so `contract_block_sparse` sees equal orders.
+    let prev_aligned = prev.to_order(right.order());
+    match contract_block_sparse(backend, &prev_aligned, right, &[last], &[0])
         .expect("right absorption failed during truncate")
     {
         BlockSparseContractResult::Tensor(t) => t,

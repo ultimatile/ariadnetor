@@ -447,7 +447,11 @@ where
         if let Some(c) = carry.as_ref() {
             // carry: [bond(Out), fused_right(In)]; p: [fused_left(Out), d, fused_right(In)].
             // Contract carry axis 1 with p axis 0 (In ↔ Out) → [bond(Out), d, fused_right(In)].
-            p = match contract_block_sparse(backend, c, &p, &[1], &[0])
+            // `c` is tagged at `backend.preferred_order()` by the prior QR / SVD step,
+            // while `p` may carry the chain's original order; align `p` to `c` so
+            // `contract_block_sparse` sees equal orders.
+            let p_aligned = p.to_order(c.order());
+            p = match contract_block_sparse(backend, c, &p_aligned, &[1], &[0])
                 .expect("carry absorption failed in apply_zipup_bsp forward")
             {
                 BlockSparseContractResult::Tensor(t) => t,
