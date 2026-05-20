@@ -13,8 +13,6 @@
 //! ```
 
 mod diag_tensor;
-#[cfg(feature = "mps")]
-pub use arnet_mps as mps;
 mod ops;
 mod tensor;
 

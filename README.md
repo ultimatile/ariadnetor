@@ -9,8 +9,11 @@ Tensor network framework in Rust
 
 ```
 ┌─────────────────────────────────────────────────────────┐
+│  ariadnetor-mps (arnet_mps)  - MPS/MPO Chains           │
+│    canonicalize, truncate, inner, apply, site ops       │
+├─────────────────────────────────────────────────────────┤
 │  ariadnetor (arnet)  - High-level API                   │
-│    Tensor, Einsum, MPS/MPO                              │
+│    Tensor, Einsum                                       │
 ├──────────────────────────┬──────────────────────────────┤
 │  ariadnetor-linalg       │  ariadnetor-native           │
 │  (arnet_linalg)          │  (arnet_native)              │
@@ -62,7 +65,9 @@ Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
 
 Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
 
-- `arnet::mps` — MPS/MPO tensor chains: canonicalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit)
+### `ariadnetor-mps`
+
+MPS/MPO tensor chains (`arnet_mps`): canonicalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit). Add as a direct dependency.
 
 ## Usage
 

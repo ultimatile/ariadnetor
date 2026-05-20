@@ -5,16 +5,11 @@ edition.workspace = true
 license.workspace = true
 description = "High-performance tensor network framework in Pure Rust"
 
-[features]
-default = ["mps"]
-mps = ["dep:ariadnetor-mps"]
-
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 ariadnetor-linalg = { path = "../ariadnetor-linalg" }
 ariadnetor-native = { path = "../ariadnetor-native" }
-ariadnetor-mps = { path = "../ariadnetor-mps", optional = true }
 anyhow = { workspace = true }
 lru = { workspace = true }
 num-traits = { workspace = true }
