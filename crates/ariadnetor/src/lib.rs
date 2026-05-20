@@ -13,10 +13,9 @@
 //! ```
 
 mod ops;
-mod tensor;
 
 // Main types
-pub use tensor::{BlockSparseTensor, DenseTensor, Tensor};
+pub use arnet_tensor::{BlockSparseTensor, DenseTensor, Tensor};
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{ComputeBackend, ContractionError, EinsumExpr, LabelId, MemoryOrder, Scalar};

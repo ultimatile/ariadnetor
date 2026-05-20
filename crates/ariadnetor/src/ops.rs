@@ -11,9 +11,7 @@ use std::sync::Arc;
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::LinalgError;
-use arnet_tensor::{Dense, DenseTensorData};
-
-use crate::{DenseTensor, Tensor};
+use arnet_tensor::{Dense, DenseTensor, DenseTensorData, Tensor};
 
 // ============================================================================
 // Result type aliases

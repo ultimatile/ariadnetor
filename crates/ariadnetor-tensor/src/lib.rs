@@ -1,11 +1,8 @@
 //! Tensor storage library
 //!
-//! Provides backend-agnostic data structures for tensor storage.
-//!
-//! - [`Dense<T>`]: Dense storage with Arc-based Copy-on-Write
-//! - [`TensorRepr`]: Common trait for tensor storage representations
-//!
-//! For the main `Tensor` type (storage + backend), see the `arnet` crate.
+//! Provides backend-agnostic data structures for tensor storage and
+//! the user-facing [`Tensor<St, L, B>`] type that pairs them with a
+//! compute backend.
 
 mod block_sparse;
 mod dense;
@@ -14,6 +11,7 @@ mod reorder;
 mod repr;
 mod sector;
 mod storage;
+mod tensor;
 mod tensor_data;
 
 // Re-export from ariadnetor-core
@@ -32,7 +30,13 @@ pub use reorder::{flat_index, normalize_to, reorder};
 pub use repr::TensorRepr;
 pub use sector::{Sector, U1Sector, Z2Sector};
 pub use storage::Storage;
+pub use tensor::{BlockSparseTensor, DenseTensor, Tensor};
 pub use tensor_data::TensorData;
+
+// Re-export the native backend so users importing arnet_tensor for
+// `DenseTensor` / `BlockSparseTensor` constructors get its default
+// backend without a separate crate import.
+pub use arnet_native::NativeBackend;
 
 /// Extension trait for backend-aware tensor construction.
 ///
