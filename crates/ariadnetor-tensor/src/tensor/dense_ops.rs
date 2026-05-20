@@ -178,7 +178,10 @@ where
         let mut acc = vec![S::zero(); len];
         for (t, c) in tensors.iter().zip(coefs) {
             for (a, s) in acc.iter_mut().zip(t.data.storage().data()) {
-                *a = a.clone() + s.clone() * c.clone();
+                // Order coefficient * value to match the documented
+                // `Σ_i coefs[i] * tensors[i]` formula; the `Mul`
+                // bound is not restricted to commutative scalars.
+                *a = a.clone() + c.clone() * s.clone();
             }
         }
         let td = DenseTensorData::from_raw_parts(acc, shape0, order0);

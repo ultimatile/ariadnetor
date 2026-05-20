@@ -23,12 +23,13 @@ pub use arnet_core::{ComputeBackend, ContractionError, EinsumExpr, LabelId, Memo
 // High-level free functions (backend extracted from Tensor)
 pub use ops::{
     contract, diag, eig, eigh, eigvals, eigvalsh, einsum, expm, expm_antihermitian, expm_hermitian,
-    inverse, linear_combine, lq, norm, normalize, qr, scale, solve, trace, transpose,
+    inverse, linear_combine, lq, norm, normalize, qr, scale, solve, svd, trace, transpose,
+    trunc_svd,
 };
 
 // Linalg-level error type and SVD parameters.
 pub use arnet_linalg::{LinalgError, TruncSvdParams};
-pub use ops::{EigResult, EighResult, LqResult, QrResult};
+pub use ops::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
 
 // Re-export the native backend
 pub use arnet_native::NativeBackend;

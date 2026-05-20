@@ -23,6 +23,22 @@ pub type QrResult<S, B> = (DenseTensor<S, B>, DenseTensor<S, B>);
 /// LQ result: `(L, Q)`.
 pub type LqResult<S, B> = (DenseTensor<S, B>, DenseTensor<S, B>);
 
+/// SVD result: `(U, S, Vt)` with singular values as a real-valued
+/// 1D `DenseTensor`.
+pub type SvdResult<S, B> = (
+    DenseTensor<S, B>,
+    DenseTensor<<S as Scalar>::Real, B>,
+    DenseTensor<S, B>,
+);
+
+/// Truncated SVD result: `(U, S, Vt, truncation_error)`.
+pub type TruncSvdResult<S, B> = (
+    DenseTensor<S, B>,
+    DenseTensor<<S as Scalar>::Real, B>,
+    DenseTensor<S, B>,
+    <S as Scalar>::Real,
+);
+
 /// Self-adjoint eigenvalue result: `(eigenvalues, eigenvectors)`.
 pub type EighResult<S, B> = (DenseTensor<<S as Scalar>::Real, B>, DenseTensor<S, B>);
 
@@ -100,6 +116,36 @@ pub fn transpose<S: Scalar, B: ComputeBackend>(
 // ============================================================================
 // Decompositions
 // ============================================================================
+
+/// Thin SVD: A = U · diag(S) · Vt. Singular values are returned as a
+/// real-valued 1D `DenseTensor`.
+pub fn svd<S: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<S, B>,
+    nrow: usize,
+) -> Result<SvdResult<S, B>, LinalgError> {
+    let d = bridge_in(tensor.data());
+    let (u, s, vt) = arnet_linalg::svd(tensor.backend(), &d, nrow)?;
+    let ba = tensor.backend_arc();
+    Ok((bridge_out(u, ba), bridge_out(s, ba), bridge_out(vt, ba)))
+}
+
+/// Truncated SVD with bond dimension control. Returns `(U, S, Vt,
+/// truncation_error)`.
+pub fn trunc_svd<S: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<S, B>,
+    nrow: usize,
+    params: &arnet_linalg::TruncSvdParams,
+) -> Result<TruncSvdResult<S, B>, LinalgError> {
+    let d = bridge_in(tensor.data());
+    let (u, s, vt, err) = arnet_linalg::trunc_svd(tensor.backend(), &d, nrow, params)?;
+    let ba = tensor.backend_arc();
+    Ok((
+        bridge_out(u, ba),
+        bridge_out(s, ba),
+        bridge_out(vt, ba),
+        err,
+    ))
+}
 
 /// Thin QR: A = Q * R.
 pub fn qr<S: Scalar, B: ComputeBackend>(
