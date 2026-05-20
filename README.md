@@ -9,8 +9,11 @@ Tensor network framework in Rust
 
 ```
 ┌─────────────────────────────────────────────────────────┐
+│  ariadnetor-mps (arnet_mps)  - Consumer Crate           │
+│    MPS/MPO chains, site operators                       │
+├─────────────────────────────────────────────────────────┤
 │  ariadnetor (arnet)  - High-level API                   │
-│    Tensor, Einsum, MPS/MPO                              │
+│    Tensor, Einsum                                       │
 ├──────────────────────────┬──────────────────────────────┤
 │  ariadnetor-linalg       │  ariadnetor-native           │
 │  (arnet_linalg)          │  (arnet_native)              │
