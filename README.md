@@ -9,8 +9,8 @@ Tensor network framework in Rust
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ariadnetor-mps (arnet_mps)  - Consumer Crate           │
-│    MPS/MPO chains, site operators                       │
+│  ariadnetor-mps (arnet_mps)  - MPS/MPO Chains           │
+│    canonicalize, truncate, inner, apply, site ops       │
 ├─────────────────────────────────────────────────────────┤
 │  ariadnetor (arnet)  - High-level API                   │
 │    Tensor, Einsum                                       │
@@ -67,7 +67,7 @@ Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
 
 ### `ariadnetor-mps`
 
-Consumer crate above the tensor library (`arnet_mps`). MPS/MPO tensor chains: canonicalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit). Add as a direct dependency alongside `ariadnetor`.
+MPS/MPO tensor chains (`arnet_mps`): canonicalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit). Add as a direct dependency.
 
 ## Usage
 
