@@ -20,7 +20,13 @@ pub type BlockSparseTensorData<T, S> = TensorData<BlockSparseStorage<T>, BlockSp
 impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// Construct a zero-filled `BlockSparseTensorData` with all
     /// flux-allowed blocks.
-    pub fn zeros(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder) -> Self
+    ///
+    /// Crate-internal: the user-facing constructor is
+    /// [`BlockSparseTensor::zeros`](crate::BlockSparseTensor::zeros),
+    /// which pins memory order to the active backend. Direct callers
+    /// that need an explicit `order` go through this helper or build
+    /// `TensorData::new(storage, layout)` directly.
+    pub(crate) fn zeros(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder) -> Self
     where
         T: Clone + Zero,
     {
@@ -40,11 +46,20 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// queried. Block coordinates are visited in the layout's
     /// lexicographic enumeration order.
     ///
+    /// Crate-internal: the user-facing constructor is
+    /// [`BlockSparseTensor::from_block_fn`](crate::BlockSparseTensor::from_block_fn),
+    /// which pins memory order to the active backend.
+    ///
     /// # Panics
     ///
     /// Panics if the closure returns a `Vec<T>` whose length differs
     /// from `product(block_shape)` (the per-block element count).
-    pub fn from_block_fn<F>(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder, mut f: F) -> Self
+    pub(crate) fn from_block_fn<F>(
+        indices: Vec<QNIndex<S>>,
+        flux: S,
+        order: MemoryOrder,
+        mut f: F,
+    ) -> Self
     where
         T: Clone + Zero,
         F: FnMut(&BlockCoord, &[usize]) -> Vec<T>,
@@ -79,7 +94,11 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
 
     /// Construct with all flux-allowed blocks filled with random
     /// values from the standard distribution.
-    pub fn random<R: rand::Rng>(
+    ///
+    /// Crate-internal: the user-facing constructor is
+    /// [`BlockSparseTensor::random`](crate::BlockSparseTensor::random),
+    /// which pins memory order to the active backend.
+    pub(crate) fn random<R: rand::Rng>(
         indices: Vec<QNIndex<S>>,
         flux: S,
         order: MemoryOrder,
