@@ -54,18 +54,19 @@ where
     }
 
     /// Mutable reference to the storage half.
-    pub fn storage_mut(&mut self) -> &mut St {
+    ///
+    /// Crate-internal: wholesale replacement (`*td.storage_mut() = ...`)
+    /// would let a caller break the storage-layout boundary invariant
+    /// (`storage.flat_len() == layout.storage_extent()`) re-checked only
+    /// at [`new`](Self::new). Internal callers use this for length-preserving
+    /// element-wise mutation (via the storage's own `data_mut` etc.).
+    pub(crate) fn storage_mut(&mut self) -> &mut St {
         &mut self.storage
     }
 
     /// Reference to the layout half.
     pub fn layout(&self) -> &L {
         &self.layout
-    }
-
-    /// Mutable reference to the layout half.
-    pub fn layout_mut(&mut self) -> &mut L {
-        &mut self.layout
     }
 
     /// Consume and return both halves.
