@@ -308,3 +308,57 @@ fn from_block_fn_panics_on_wrong_block_length() {
         |_, _| vec![0.0; 99],
     );
 }
+
+#[test]
+fn joined_path_pins_arbitrary_order_through_layout_storage_tensor_data() {
+    // Joined-path construction: a user that needs a specific memory
+    // order goes through `BlockSparseLayout::new + BlockSparseStorage::new
+    // + TensorData::new` rather than the backend-pinned
+    // `BlockSparseTensor::*` constructors. This pins that the three
+    // building blocks compose with the `TensorData::new`
+    // storage-extent assertion under both RowMajor and ColumnMajor.
+    use crate::{BlockSparseStorage, TensorData};
+
+    for order in [MemoryOrder::RowMajor, MemoryOrder::ColumnMajor] {
+        let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
+        let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
+        let layout: BlockSparseLayout<U1Sector> =
+            BlockSparseLayout::new(vec![row, col], U1Sector(0), order);
+
+        // Allowed (0,0) → 2×2 = 4 elements, (1,1) → 3×3 = 9 elements,
+        // packed in lexicographic enumeration order ⇒ 13 elements.
+        let extent = TensorLayout::storage_extent(&layout);
+        assert_eq!(extent, 13);
+
+        let data: Vec<f64> = (0..extent).map(|i| i as f64 + 1.0).collect();
+        let storage = BlockSparseStorage::<f64>::new(data);
+        let td: BlockSparseTensorData<f64, U1Sector> = TensorData::new(storage, layout);
+
+        // Order is preserved on the layout side; the storage-layout
+        // boundary assertion in TensorData::new accepted the bundle.
+        assert_eq!(td.layout().order(), order);
+        assert_eq!(td.storage().flat_len(), 13);
+
+        // Block payload visible through the joined accessor.
+        let d00 = td.block_data(&BlockCoord(vec![0, 0])).unwrap();
+        assert_eq!(d00, &[1.0, 2.0, 3.0, 4.0]);
+    }
+}
+
+#[test]
+#[should_panic(expected = "storage.flat_len()")]
+fn joined_path_rejects_storage_layout_size_mismatch() {
+    // `TensorData::new` asserts `storage.flat_len() ==
+    // layout.storage_extent()`; the joined-path construction must trip
+    // that assertion when callers wire a mismatched pair.
+    use crate::{BlockSparseStorage, TensorData};
+
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+    let layout: BlockSparseLayout<U1Sector> =
+        BlockSparseLayout::new(vec![row, col], U1Sector(0), MemoryOrder::RowMajor);
+
+    // storage_extent = 4 (block (0,0) is 2×2), but supply 5-element buffer.
+    let storage = BlockSparseStorage::<f64>::new(vec![0.0; 5]);
+    let _: BlockSparseTensorData<f64, U1Sector> = TensorData::new(storage, layout);
+}
