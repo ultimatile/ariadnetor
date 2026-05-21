@@ -51,8 +51,11 @@ pub use arnet_linalg::{
 };
 
 // Reorder helper used by downstream crates for memory-order conversions
-// at axis-merge / axis-split boundaries.
-pub use arnet_tensor::{flat_index, reorder};
+// at axis-merge / axis-split boundaries. The joined `reorder_dense_data`
+// stays on `DenseTensorData<T>`; the legacy `Dense<T>`-based `reorder` is
+// intentionally not re-exported here to keep the umbrella surface free of
+// the pre-redo storage type.
+pub use arnet_tensor::{flat_index, reorder_dense_data};
 
 // Linalg-level error type and SVD parameters.
 pub use arnet_linalg::{LinalgError, TruncSvdParams};

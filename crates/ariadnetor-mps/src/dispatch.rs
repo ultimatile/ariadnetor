@@ -89,6 +89,16 @@ where
             got, expected,
             "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
         );
+        // Linalg kernels invoked through a site's cached backend would
+        // honor that backend's preferred order, so per-site cached backend
+        // preferred_order must agree with the chain backend's; otherwise
+        // post-`site_mut` mutations could rebind a foreign backend whose
+        // assumed layout disagrees with the layout the chain enforced.
+        let site_backend_order = chain.site(i).backend().preferred_order();
+        assert_eq!(
+            site_backend_order, expected,
+            "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) != chain backend preferred_order ({expected:?})",
+        );
     }
 }
 
@@ -105,6 +115,11 @@ where
         assert_eq!(
             got, expected,
             "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
+        );
+        let site_backend_order = chain.site(i).backend().preferred_order();
+        assert_eq!(
+            site_backend_order, expected,
+            "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) != chain backend preferred_order ({expected:?})",
         );
     }
 }

@@ -3,7 +3,7 @@
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseLayout,
     DenseStorage, DenseTensor, DenseTensorData, Direction, MemoryOrder, NativeBackend, QNIndex,
-    Tensor, U1Sector, contract, contract_block_sparse, reorder,
+    Tensor, U1Sector, contract, contract_block_sparse, reorder_dense_data,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
@@ -28,7 +28,7 @@ pub fn rm_dense_tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
 }
 
 /// Reorder a `DenseTensor` between layouts (test-side helper that
-/// goes through the legacy `Dense` `reorder` free function).
+/// delegates to the joined `arnet::reorder_dense_data`).
 fn super_reorder_dense<T, B>(
     t: &DenseTensor<T, B>,
     from: MemoryOrder,
@@ -39,12 +39,8 @@ where
     B: ComputeBackend,
 {
     let backend_arc = t.backend_arc().clone();
-    let legacy = t.data().as_dense();
-    let reordered = reorder(&legacy, from, to);
-    Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(
-        reordered.into_tensor_data(),
-        backend_arc,
-    )
+    let reordered = reorder_dense_data(t.data(), from, to);
+    Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(reordered, backend_arc)
 }
 
 /// Single-basis-state dense MPS site for |phys_c⟩ with bond dim 1.

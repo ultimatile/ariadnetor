@@ -1,10 +1,9 @@
 //! Crate-internal bridge helpers between the joined-form `Tensor`
-//! surface and the legacy `Dense<T>` / `BlockSparseTensorData` paths
-//! still used inside the mps kernels.
+//! surface and the kernel paths still used inside the mps internals.
 //!
-//! `arnet::reorder` operates on the legacy `Dense<T>` type; callers
-//! holding a `DenseTensor<T, B>` go through [`reorder_dense_tensor`].
-//! Block-sparse `dagger` / `conj` are inherent on
+//! [`reorder_dense_tensor`] wraps `arnet::reorder_dense_data` so callers
+//! holding a `DenseTensor<T, B>` stay on the joined `DenseTensorData`
+//! surface. Block-sparse `dagger` / `conj` are inherent on
 //! `BlockSparseTensorData<T, S>`, so the corresponding wrappers
 //! round-trip through `data()` and re-wrap with the cached backend.
 
@@ -17,9 +16,8 @@ use arnet::{
 
 /// Reorder a `DenseTensor`'s flat data between memory orders.
 ///
-/// Bridges through the legacy `Dense<T>` representation that
-/// `arnet::reorder` operates on. The returned `DenseTensor` shares the
-/// same backend `Arc` as the input.
+/// Delegates to the joined-surface `arnet::reorder_dense_data` and
+/// re-wraps the result with the input's cached backend `Arc`.
 pub(crate) fn reorder_dense_tensor<T, B>(
     t: &DenseTensor<T, B>,
     from: MemoryOrder,
@@ -30,12 +28,8 @@ where
     B: ComputeBackend,
 {
     let backend_arc = Arc::clone(t.backend_arc());
-    let legacy = t.data().as_dense();
-    let reordered = arnet::reorder(&legacy, from, to);
-    Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(
-        reordered.into_tensor_data(),
-        backend_arc,
-    )
+    let reordered = arnet::reorder_dense_data(t.data(), from, to);
+    Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(reordered, backend_arc)
 }
 
 /// Hermitian adjoint of a `BlockSparseTensor`. Wraps the
