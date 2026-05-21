@@ -2,16 +2,20 @@
 
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseLayout,
-    DenseStorage, DenseTensor, DenseTensorData, Direction, MemoryOrder, NativeBackend, QNIndex,
-    Tensor, U1Sector, contract, contract_block_sparse, reorder_dense_data,
+    DenseStorage, DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, Tensor, U1Sector,
+    contract, contract_block_sparse, reorder_dense_data,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
 /// Build a `DenseTensor<f64>` from data already laid out in the active
 /// backend's preferred order (NativeBackend → ColumnMajor).
 pub fn cm_dense_tensor<T: arnet::Scalar>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
-    let td = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(td, NativeBackend::shared())
+    DenseTensor::from_raw_parts(
+        data,
+        shape,
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    )
 }
 
 /// Build a `DenseTensor<f64>` from row-major data and convert to
@@ -19,11 +23,8 @@ pub fn cm_dense_tensor<T: arnet::Scalar>(data: Vec<T>, shape: Vec<usize>) -> Den
 pub fn rm_dense_tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
     let total = shape.iter().product::<usize>();
     assert_eq!(data.len(), total, "rm_dense_tensor: data length mismatch");
-    // Construct in RowMajor, then convert to ColumnMajor via the legacy
-    // `reorder` route so the resulting tensor satisfies Tier 1.
-    let td_rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
-    let backend = NativeBackend::shared();
-    let rm = DenseTensor::with_backend(td_rm, backend.clone());
+    let rm =
+        DenseTensor::from_raw_parts(data, shape, MemoryOrder::RowMajor, NativeBackend::shared());
     super_reorder_dense(&rm, MemoryOrder::ColumnMajor)
 }
 
@@ -44,8 +45,12 @@ pub fn dense_basis_site(phys_c: usize) -> DenseTensor<f64> {
     assert!(phys_c <= 1, "physical dim is 2 (charges 0, 1)");
     let mut data = vec![0.0; 2];
     data[phys_c] = 1.0;
-    let td = DenseTensorData::from_raw_parts(data, vec![1, 2, 1], MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(td, NativeBackend::shared())
+    DenseTensor::from_raw_parts(
+        data,
+        vec![1, 2, 1],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    )
 }
 
 /// Dense total-particle-number MPO `N = Σ_j n_j` over `n` sites.

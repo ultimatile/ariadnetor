@@ -2,17 +2,14 @@
 //! surface and the kernel paths still used inside the mps internals.
 //!
 //! [`reorder_dense_tensor`] wraps `arnet::reorder_dense_data` so callers
-//! holding a `DenseTensor<T, B>` stay on the joined `DenseTensorData`
-//! surface. Block-sparse `dagger` / `conj` are inherent on
-//! `BlockSparseTensorData<T, S>`, so the corresponding wrappers
-//! round-trip through `data()` and re-wrap with the cached backend.
+//! holding a `DenseTensor<T, B>` stay on the joined surface.
+//! [`dense_conj`] / [`dense_reshape`] still bridge through the
+//! legacy `Dense<T>` representation pending native `DenseTensorData`
+//! migrations of `conj` and `reshape`.
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseStorage, BlockSparseTensor, ComputeBackend, DenseLayout, DenseStorage, DenseTensor,
-    MemoryOrder, Scalar, Sector, Tensor,
-};
+use arnet::{ComputeBackend, DenseLayout, DenseStorage, DenseTensor, MemoryOrder, Scalar, Tensor};
 
 /// Reorder a `DenseTensor`'s flat data to the requested memory order.
 ///
@@ -32,19 +29,6 @@ where
     let backend_arc = Arc::clone(t.backend_arc());
     let reordered = arnet::reorder_dense_data(t.data(), to);
     Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(reordered, backend_arc)
-}
-
-/// Hermitian adjoint of a `BlockSparseTensor`. Wraps the
-/// `BlockSparseTensorData::dagger` joined-form method back into a
-/// `BlockSparseTensor` sharing the input's backend Arc.
-pub(crate) fn bsp_dagger<T, S, B>(t: &BlockSparseTensor<T, S, B>) -> BlockSparseTensor<T, S, B>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    let td = t.data().dagger();
-    Tensor::<BlockSparseStorage<T>, _, B>::with_backend(td, Arc::clone(t.backend_arc()))
 }
 
 /// Element-wise complex conjugate of a `DenseTensor`.

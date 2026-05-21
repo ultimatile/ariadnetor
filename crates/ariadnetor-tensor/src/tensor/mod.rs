@@ -158,6 +158,40 @@ where
 }
 
 // ============================================================================
+// Dense generic-backend constructor
+//
+// Tensor-surface entry point for callers that need an explicit memory
+// order and an explicit backend (e.g. mps tests pinning the Tier 1
+// rejection path, internal kernel-output wrapping). Saves callers from
+// reaching into the `DenseTensorData::from_raw_parts` joined surface.
+// ============================================================================
+
+impl<T, B> Tensor<DenseStorage<T>, DenseLayout, B>
+where
+    T: Clone,
+    B: ComputeBackend,
+{
+    /// Construct a Dense tensor from flat data, shape, memory order, and
+    /// an explicit backend `Arc`.
+    ///
+    /// Equivalent to building a `DenseTensorData` via the joined
+    /// `from_raw_parts` accessor and pairing it with `backend`; the
+    /// stored layout's `order()` reflects the `order` argument, not the
+    /// backend's preferred order — downstream Tier 1 / Tier 2 asserts
+    /// are the authority on whether the resulting tensor is valid for
+    /// the target chain.
+    pub fn from_raw_parts(
+        data: Vec<T>,
+        shape: Vec<usize>,
+        order: arnet_core::backend::MemoryOrder,
+        backend: Arc<B>,
+    ) -> Self {
+        let td = DenseTensorData::from_raw_parts(data, shape, order);
+        Self::with_backend(td, backend)
+    }
+}
+
+// ============================================================================
 // Dense-specific constructors with the NativeBackend pin
 //
 // `ComputeBackend` exposes no constructor, so the impl cannot

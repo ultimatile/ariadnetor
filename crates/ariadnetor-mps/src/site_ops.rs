@@ -5,7 +5,7 @@
 //! matrix `[[a, b], [c, d]]`, the flat layout under column-major is
 //! `[a, c, b, d]`.
 
-use arnet::{DenseTensor, DenseTensorData, MemoryOrder, NativeBackend, Scalar};
+use arnet::{DenseTensor, MemoryOrder, NativeBackend, Scalar};
 use num_traits::{NumCast, Zero};
 
 /// Trait for site-local operator dictionaries.
@@ -26,8 +26,12 @@ pub trait SiteOps {
 /// invariant immediately.
 fn make_2x2_cm<T: Scalar>(data: Vec<T>) -> DenseTensor<T> {
     debug_assert_eq!(data.len(), 4, "make_2x2_cm: expected 4 entries");
-    let td = DenseTensorData::from_raw_parts(data, vec![2, 2], MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(td, NativeBackend::shared())
+    DenseTensor::from_raw_parts(
+        data,
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    )
 }
 
 /// Spin-1/2 site operators.

@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage,
-    BlockSparseTensor, ComputeBackend, DenseLayout, DenseStorage, DenseTensor, DenseTensorData,
-    Direction, QNIndex, Scalar, Sector, Tensor, contract, contract_block_sparse,
+    BlockSparseTensor, ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Direction, QNIndex,
+    Scalar, Sector, contract, contract_block_sparse,
 };
 use num_traits::{Float, One};
 
 use super::chain::TensorChain;
-use super::internal_helpers::{bsp_dagger, dense_conj};
+use super::internal_helpers::dense_conj;
 use super::types::{CanonicalForm, Mpo, Mps};
 
 /// Compute the inner product ⟨ψ|φ⟩ of two MPS via the transfer matrix method.
@@ -36,9 +36,8 @@ where
     let order = backend_arc.preferred_order();
 
     // Environment: (χ_ψ, χ_φ), starts as 1×1 identity.
-    let env_td = DenseTensorData::from_raw_parts(vec![T::one()], vec![1, 1], order);
     let mut env: DenseTensor<T, B> =
-        Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(env_td, Arc::clone(&backend_arc));
+        DenseTensor::from_raw_parts(vec![T::one()], vec![1, 1], order, Arc::clone(&backend_arc));
 
     for j in 0..n {
         let psi_j = dense_conj(psi.site(j));
@@ -97,9 +96,12 @@ where
     let order = backend_arc.preferred_order();
 
     // Environment: (χ_ψ, χ_A, χ_φ), starts as 1×1×1.
-    let env_td = DenseTensorData::from_raw_parts(vec![T::one()], vec![1, 1, 1], order);
-    let mut env: DenseTensor<T, B> =
-        Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(env_td, Arc::clone(&backend_arc));
+    let mut env: DenseTensor<T, B> = DenseTensor::from_raw_parts(
+        vec![T::one()],
+        vec![1, 1, 1],
+        order,
+        Arc::clone(&backend_arc),
+    );
 
     for j in 0..n {
         let psi_j = dense_conj(psi.site(j)); // bra: (ψ_L, d_bra, ψ_R)
@@ -164,7 +166,7 @@ where
     };
 
     for j in 0..n {
-        let bra_j = bsp_dagger(psi.site(j));
+        let bra_j = psi.site(j).dagger();
         let phi_j = phi.site(j);
 
         let step1 = match contract_block_sparse(&env, &bra_j, &[0], &[0])
@@ -241,7 +243,7 @@ where
     };
 
     for j in 0..n {
-        let bra_j = bsp_dagger(psi.site(j));
+        let bra_j = psi.site(j).dagger();
         let a_j = op.site(j);
         let phi_j = phi.site(j);
 

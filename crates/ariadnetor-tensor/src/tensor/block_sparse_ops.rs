@@ -9,6 +9,8 @@
 //! to the `Tensor` surface so consumers can write `t.indices()`,
 //! `t.block_data(&coord)`, etc.
 
+use std::sync::Arc;
+
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use num_traits::Float;
@@ -80,5 +82,25 @@ where
             sq = sq + a * a;
         }
         <T::Real as Float>::sqrt(sq)
+    }
+
+    /// Hermitian adjoint: element-wise conjugation, leg-direction flip,
+    /// and flux dualization. Result shares the input's backend `Arc`.
+    pub fn dagger(&self) -> Self {
+        let td = self.data.dagger();
+        Self {
+            data: td,
+            backend: Arc::clone(&self.backend),
+        }
+    }
+
+    /// Element-wise complex conjugate. Result shares the input's
+    /// backend `Arc`.
+    pub fn conj(&self) -> Self {
+        let td = self.data.conj();
+        Self {
+            data: td,
+            backend: Arc::clone(&self.backend),
+        }
     }
 }
