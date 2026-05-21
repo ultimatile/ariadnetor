@@ -39,6 +39,10 @@ where
     S: Sector,
     B: ComputeBackend,
 {
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(
+        tensor,
+        "diagonal_scale_block_sparse",
+    );
     let backend_arc = tensor.backend_arc().clone();
     let order = tensor.backend().preferred_order();
     let bsp = tensor.data().as_block_sparse();

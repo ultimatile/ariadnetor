@@ -74,6 +74,14 @@ pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend
     axes_rhs: &[usize],
     policy: ExecPolicy,
 ) -> Result<BlockSparseContractResult<T, S, B>, LinalgError> {
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(
+        lhs,
+        "contract_block_sparse: lhs",
+    );
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(
+        rhs,
+        "contract_block_sparse: rhs",
+    );
     let backend_arc = lhs.backend_arc().clone();
     let out_order = lhs.backend().preferred_order();
     let lhs_bsp = lhs.data().as_block_sparse();
