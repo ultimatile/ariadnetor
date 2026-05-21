@@ -20,8 +20,15 @@ use super::heff_error::DmrgHeffError;
 use super::solver::{DmrgScalar, LocalEigensolverParams};
 use super::sweep::SweepDirection;
 
-/// Per-step output projected to scalar diagnostics + post-S-absorb
-/// site tensors + new bond dimension.
+/// Post-absorb site tensors + new bond dimension returned by
+/// [`DmrgOps::commit_step`].
+///
+/// The matching diagnostic scalars (eigenvalue / residual / trunc-err /
+/// iters / converged) are typed on `T::Real` and pulled separately from
+/// the step result via [`DmrgOps::step_scalars`] *before* `commit_step`
+/// consumes the result. Holding them on this struct would force a third
+/// scalar parameter; the two-step projection keeps the struct keyed on
+/// `(St, L, B)` only.
 pub struct AbsorbedStep<St, L, B>
 where
     St: Storage + StorageFor<L>,
@@ -33,14 +40,8 @@ where
     /// Post-absorb tensor to write into MPS site `i + 1`.
     pub site_ip1: Tensor<St, L, B>,
     /// Bond dimension of the new shared bond between sites `i` and
-    /// `i + 1`.
+    /// `i + 1`. For BlockSparse / U(1), summed over retained sectors.
     pub bond_dim: usize,
-    /// Smallest eigenvalue of `H_eff` at this step.
-    pub eigenvalue: f64, // placeholder; see typed wrapper below
-    pub residual: f64,
-    pub trunc_err: f64,
-    pub iters: usize,
-    pub converged: bool,
 }
 
 /// Per-(layout, backend) dispatch trait for the 2-site DMRG sweep
@@ -131,11 +132,6 @@ where
             site_i,
             site_ip1,
             bond_dim,
-            eigenvalue: 0.0,
-            residual: 0.0,
-            trunc_err: 0.0,
-            iters: 0,
-            converged: false,
         })
     }
 
@@ -196,11 +192,6 @@ where
             site_i,
             site_ip1,
             bond_dim,
-            eigenvalue: 0.0,
-            residual: 0.0,
-            trunc_err: 0.0,
-            iters: 0,
-            converged: false,
         })
     }
 
