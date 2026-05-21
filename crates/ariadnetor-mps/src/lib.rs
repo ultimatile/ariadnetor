@@ -3,9 +3,10 @@
 //! Provides data structures and operations for tensor chains
 //! used in tensor network algorithms (DMRG, TDVP, TEBD, etc.).
 //!
-//! Sits between the low-level tensor / linalg crates and algorithm crates
-//! so that the latter can depend on the middle layer without consuming the
-//! umbrella `arnet` crate.
+//! Sits above the umbrella `arnet` crate (which is itself the tensor
+//! library after the #262 redo), so algorithm crates such as
+//! `arnet-algorithms` consume `arnet-mps` directly rather than
+//! re-routing through the umbrella.
 //!
 //! # Index convention
 //!
@@ -17,6 +18,7 @@ mod canonicalize;
 mod chain;
 mod dispatch;
 mod inner;
+mod internal_helpers;
 mod site_ops;
 mod truncate;
 mod types;
@@ -32,4 +34,4 @@ pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use types::{ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
 // Re-export TruncSvdParams for convenience
-pub use arnet_linalg::TruncSvdParams;
+pub use arnet::TruncSvdParams;
