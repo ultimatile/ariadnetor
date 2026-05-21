@@ -23,10 +23,18 @@ pub use arnet_tensor::{BlockSparseTensor, DenseTensor, Tensor};
 // representations are intentionally not re-exported here — consumers
 // should only see the joined type.
 pub use arnet_tensor::{
-    BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData,
-    DenseLayout, DenseStorage, DenseTensorData, Direction, QNIndex, Sector, Storage, StorageFor,
-    TensorLayout, U1Sector, Z2Sector,
+    BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage,
+    Direction, QNIndex, Sector, Storage, StorageFor, TensorLayout, U1Sector, Z2Sector,
 };
+
+// Backend-less `TensorData` aliases. These are the "internal escape
+// hatch" surface from issue #262: kernel-output allocation and
+// joined↔legacy bridging callers (arnet-mps / arnet-algorithms
+// internals) reach them through the single umbrella dep, while the
+// `#[doc(hidden)]` attribute keeps them out of the public-doc
+// directory so end users do not see them.
+#[doc(hidden)]
+pub use arnet_tensor::{BlockSparseTensorData, DenseTensorData};
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{

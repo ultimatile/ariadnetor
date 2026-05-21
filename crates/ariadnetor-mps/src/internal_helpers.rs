@@ -14,13 +14,15 @@ use arnet::{
     MemoryOrder, Scalar, Sector, Tensor,
 };
 
-/// Reorder a `DenseTensor`'s flat data between memory orders.
+/// Reorder a `DenseTensor`'s flat data to the requested memory order.
 ///
 /// Delegates to the joined-surface `arnet::reorder_dense_data` and
-/// re-wraps the result with the input's cached backend `Arc`.
+/// re-wraps the result with the input's cached backend `Arc`. The
+/// source layout is taken from `t.data().order()`, so callers do not
+/// pass a redundant `from` argument that could disagree with the
+/// stored layout.
 pub(crate) fn reorder_dense_tensor<T, B>(
     t: &DenseTensor<T, B>,
-    from: MemoryOrder,
     to: MemoryOrder,
 ) -> DenseTensor<T, B>
 where
@@ -28,7 +30,7 @@ where
     B: ComputeBackend,
 {
     let backend_arc = Arc::clone(t.backend_arc());
-    let reordered = arnet::reorder_dense_data(t.data(), from, to);
+    let reordered = arnet::reorder_dense_data(t.data(), to);
     Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(reordered, backend_arc)
 }
 

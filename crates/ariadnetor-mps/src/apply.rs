@@ -69,9 +69,9 @@ where
         let w_r = shape[3];
         let chi_r = shape[4];
 
-        let result_rm = reorder_dense_tensor(&result, order, rm);
+        let result_rm = reorder_dense_tensor(&result, rm);
         let fused_rm = dense_reshape(&result_rm, vec![w_l * chi_l, d_bra, w_r * chi_r]);
-        let fused = reorder_dense_tensor(&fused_rm, rm, order);
+        let fused = reorder_dense_tensor(&fused_rm, order);
 
         sites.push(fused);
     }
@@ -145,9 +145,9 @@ where
             contract(w, a, "abcd,ebf->aecdf").expect("MPO-MPS contraction failed in apply_zipup");
         let s = local.shape();
         let (w_l, chi_l, d_bra, w_r, chi_r) = (s[0], s[1], s[2], s[3], s[4]);
-        let local_rm = reorder_dense_tensor(&local, order, rm);
+        let local_rm = reorder_dense_tensor(&local, rm);
         let fused_rm = dense_reshape(&local_rm, vec![w_l * chi_l, d_bra, w_r * chi_r]);
-        let mut p = reorder_dense_tensor(&fused_rm, rm, order);
+        let mut p = reorder_dense_tensor(&fused_rm, order);
 
         if let Some(c) = carry.as_ref() {
             p = contract(c, &p, "ab,bcd->acd")
@@ -167,9 +167,9 @@ where
             if !use_svd {
                 let (q, r) = qr(&p, 2).expect("QR failed in apply_zipup forward");
                 let k = q.shape()[1];
-                let q_rm = reorder_dense_tensor(&q, order, rm);
+                let q_rm = reorder_dense_tensor(&q, rm);
                 let q_multi_rm = dense_reshape(&q_rm, vec![left, d, k]);
-                let q_site = reorder_dense_tensor(&q_multi_rm, rm, order);
+                let q_site = reorder_dense_tensor(&q_multi_rm, order);
                 tensors.push(q_site);
                 carry = Some(r);
             } else {
@@ -180,9 +180,9 @@ where
                 let (u, s_vec, vt, _err) =
                     trunc_svd(&p, 2, &svd_params).expect("trunc_svd failed in apply_zipup forward");
                 let k = u.shape()[1];
-                let u_rm = reorder_dense_tensor(&u, order, rm);
+                let u_rm = reorder_dense_tensor(&u, rm);
                 let u_multi_rm = dense_reshape(&u_rm, vec![left, d, k]);
-                let u_site = reorder_dense_tensor(&u_multi_rm, rm, order);
+                let u_site = reorder_dense_tensor(&u_multi_rm, order);
                 tensors.push(u_site);
 
                 let svt = diagonal_scale(&vt, s_vec.data_slice(), 0)
@@ -211,9 +211,9 @@ where
             .expect("trunc_svd failed in apply_zipup backward");
         let chi = vt.shape()[0];
 
-        let vt_rm = reorder_dense_tensor(&vt, order, rm);
+        let vt_rm = reorder_dense_tensor(&vt, rm);
         let vt_multi_rm = dense_reshape(&vt_rm, vec![chi, d, right]);
-        tensors[j] = reorder_dense_tensor(&vt_multi_rm, rm, order);
+        tensors[j] = reorder_dense_tensor(&vt_multi_rm, order);
 
         let us = diagonal_scale(&u, s_vec.data_slice(), 1)
             .expect("U·S scaling failed in apply_zipup backward");

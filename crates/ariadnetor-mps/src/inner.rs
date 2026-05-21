@@ -7,7 +7,7 @@ use arnet::{
     BlockSparseTensor, ComputeBackend, DenseLayout, DenseStorage, DenseTensor, DenseTensorData,
     Direction, QNIndex, Scalar, Sector, Tensor, contract, contract_block_sparse,
 };
-use num_traits::{Float, One, Zero};
+use num_traits::{Float, One};
 
 use super::chain::TensorChain;
 use super::internal_helpers::{bsp_dagger, dense_conj};
@@ -297,25 +297,10 @@ where
 {
     match psi.canonical_form() {
         CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
-        CanonicalForm::Mixed { center } => bsp_tensor_norm(psi.site(*center)),
+        CanonicalForm::Mixed { center } => psi.site(*center).norm(),
         _ => {
             let overlap = inner_bsp(psi, psi);
             overlap.re().sqrt()
         }
     }
-}
-
-/// Frobenius norm of a block-sparse tensor (sum of squared abs values).
-fn bsp_tensor_norm<T, S, B>(t: &BlockSparseTensor<T, S, B>) -> T::Real
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    let mut sq = T::Real::zero();
-    for &x in t.data().storage().data() {
-        let a = x.abs();
-        sq = sq + a * a;
-    }
-    <T::Real as Float>::sqrt(sq)
 }

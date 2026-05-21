@@ -118,9 +118,9 @@ where
         u_shape.push(chi);
 
         let reshape_u = |u_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
-            let u_rm = reorder_dense_tensor(&u_2d, order, rm);
+            let u_rm = reorder_dense_tensor(&u_2d, rm);
             let multi = dense_reshape(&u_rm, u_shape.clone());
-            reorder_dense_tensor(&multi, rm, order)
+            reorder_dense_tensor(&multi, order)
         };
 
         match absorb {
@@ -186,9 +186,9 @@ where
         vt_shape.extend_from_slice(&orig_shape[1..]);
 
         let reshape_vt = |vt_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
-            let vt_rm = reorder_dense_tensor(&vt_2d, order, rm);
+            let vt_rm = reorder_dense_tensor(&vt_2d, rm);
             let multi = dense_reshape(&vt_rm, vt_shape.clone());
-            reorder_dense_tensor(&multi, rm, order)
+            reorder_dense_tensor(&multi, order)
         };
 
         match absorb {
@@ -232,22 +232,22 @@ where
 {
     let order = next.backend().preferred_order();
     let rm = MemoryOrder::RowMajor;
-    let next_rm = reorder_dense_tensor(next, order, rm);
+    let next_rm = reorder_dense_tensor(next, rm);
     let next_shape = next_rm.shape().to_vec();
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
 
     let next_2d_rm = dense_reshape(&next_rm, vec![first, rest]);
-    let next_2d = reorder_dense_tensor(&next_2d_rm, rm, order);
+    let next_2d = reorder_dense_tensor(&next_2d_rm, order);
     let result_2d =
         contract(left, &next_2d, "ab,bc->ac").expect("left absorption failed during truncate");
 
-    let result_2d_rm = reorder_dense_tensor(&result_2d, order, rm);
+    let result_2d_rm = reorder_dense_tensor(&result_2d, rm);
     let k = left.shape()[0];
     let mut new_shape = next_shape;
     new_shape[0] = k;
     let result_multi = dense_reshape(&result_2d_rm, new_shape);
-    reorder_dense_tensor(&result_multi, rm, order)
+    reorder_dense_tensor(&result_multi, order)
 }
 
 fn absorb_from_right<T, B>(prev: &DenseTensor<T, B>, right: &DenseTensor<T, B>) -> DenseTensor<T, B>
@@ -257,22 +257,22 @@ where
 {
     let order = prev.backend().preferred_order();
     let rm = MemoryOrder::RowMajor;
-    let prev_rm = reorder_dense_tensor(prev, order, rm);
+    let prev_rm = reorder_dense_tensor(prev, rm);
     let prev_shape = prev_rm.shape().to_vec();
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
 
     let prev_2d_rm = dense_reshape(&prev_rm, vec![rest, last]);
-    let prev_2d = reorder_dense_tensor(&prev_2d_rm, rm, order);
+    let prev_2d = reorder_dense_tensor(&prev_2d_rm, order);
     let result_2d =
         contract(&prev_2d, right, "ab,bc->ac").expect("right absorption failed during truncate");
 
-    let result_2d_rm = reorder_dense_tensor(&result_2d, order, rm);
+    let result_2d_rm = reorder_dense_tensor(&result_2d, rm);
     let k = right.shape()[1];
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
     let result_multi = dense_reshape(&result_2d_rm, new_shape);
-    reorder_dense_tensor(&result_multi, rm, order)
+    reorder_dense_tensor(&result_multi, order)
 }
 
 // ============================================================================
