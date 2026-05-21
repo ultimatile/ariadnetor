@@ -280,28 +280,31 @@ pub fn inverse<S: Scalar, B: ComputeBackend>(
 // ============================================================================
 
 /// Scale tensor by a scalar factor (out-of-place).
+///
+/// Delegates to the inherent [`DenseTensor::scaled`] method, which
+/// operates directly on the underlying storage without round-tripping
+/// through the legacy `Dense<T>` layer.
 pub fn scale<S: Scalar, B: ComputeBackend>(
     tensor: &DenseTensor<S, B>,
     factor: S,
 ) -> DenseTensor<S, B> {
-    let d = bridge_in(tensor.data());
-    let result = arnet_linalg::scale(&d, factor);
-    bridge_out(result, tensor.backend_arc())
+    tensor.scaled(factor)
 }
 
 /// Frobenius norm.
+///
+/// Delegates to the inherent [`DenseTensor::norm`] method.
 pub fn norm<S: Scalar, B: ComputeBackend>(tensor: &DenseTensor<S, B>) -> S::Real {
-    let d = bridge_in(tensor.data());
-    arnet_linalg::norm(&d)
+    tensor.norm()
 }
 
 /// Normalize to unit norm (out-of-place).
+///
+/// Delegates to the inherent [`DenseTensor::normalized`] method.
 pub fn normalize<S: Scalar, B: ComputeBackend>(
     tensor: &DenseTensor<S, B>,
 ) -> (DenseTensor<S, B>, S::Real) {
-    let d = bridge_in(tensor.data());
-    let (result, n) = arnet_linalg::normalize(&d);
-    (bridge_out(result, tensor.backend_arc()), n)
+    tensor.normalized()
 }
 
 /// Partial trace over bond index pairs.
@@ -326,17 +329,13 @@ pub fn diag<S: Scalar, B: ComputeBackend>(
 }
 
 /// Linear combination of tensors.
+///
+/// Delegates to the inherent [`DenseTensor::linear_combine`] method;
+/// its `String` error is re-wrapped as `LinalgError::InvalidArgument`
+/// to keep the facade's error type unchanged.
 pub fn linear_combine<S: Scalar, B: ComputeBackend>(
     tensors: &[&DenseTensor<S, B>],
     coefs: &[S],
 ) -> Result<DenseTensor<S, B>, LinalgError> {
-    if tensors.is_empty() {
-        return Err(LinalgError::InvalidArgument(
-            "Cannot combine empty tensor list".to_string(),
-        ));
-    }
-    let owned: Vec<Dense<S>> = tensors.iter().map(|t| bridge_in(t.data())).collect();
-    let refs: Vec<&Dense<S>> = owned.iter().collect();
-    let result = arnet_linalg::linear_combine(&refs, coefs)?;
-    Ok(bridge_out(result, tensors[0].backend_arc()))
+    DenseTensor::linear_combine(tensors, coefs).map_err(LinalgError::InvalidArgument)
 }
