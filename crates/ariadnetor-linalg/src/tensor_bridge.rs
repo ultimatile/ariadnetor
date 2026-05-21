@@ -5,8 +5,10 @@
 //! Crate-internal only: every pub fn in `arnet-linalg` accepts
 //! `&DenseTensor<T, B>` / `&BlockSparseTensor<T, S, B>` and immediately
 //! views into the legacy storage form via these helpers. Kernel bodies
-//! remain on `Dense<T>` / `BlockSparse<T, S>` during the #259 migration
-//! window; once those legacy types are retired the helpers go with them.
+//! remain on `Dense<T>` / `BlockSparse<T, S>` during the #262
+//! Tensor-only-redo migration window; once those legacy types are
+//! retired (the salvage of `6c8ee51` planned for a later PR in the
+//! sequence) the helpers go with them.
 
 use std::sync::Arc;
 
