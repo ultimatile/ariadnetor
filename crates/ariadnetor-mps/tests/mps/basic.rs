@@ -1,7 +1,11 @@
 //! MPS/MPO construction, accessors, canonical form, and edge case tests.
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
+use arnet::{
+    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, DenseTensorData, MemoryOrder,
+    NativeBackend,
+};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
+use std::sync::Arc;
 
 /// Build a simple 3-site MPS with shapes (1,2,4), (4,2,4), (4,2,1).
 fn make_3site_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
@@ -154,4 +158,88 @@ fn test_mps_clone() {
 
     assert_eq!(mps.len(), mps2.len());
     assert_eq!(mps.bond_dims(), mps2.bond_dims());
+}
+
+// ============================================================================
+// Tier 1 rejection tests — every chain constructor must enforce the order
+// invariant. These pin the rejection so a future "papers over instead of
+// rejects" defensive align cannot silently regress the invariant.
+// ============================================================================
+
+#[test]
+#[should_panic(expected = "from_sites")]
+fn test_mps_from_sites_empty_rejected() {
+    let _ = Mps::<DenseStorage<f64>, DenseLayout, NativeBackend>::from_sites(Vec::new());
+}
+
+#[test]
+#[should_panic(expected = "from_sites")]
+fn test_mpo_from_sites_empty_rejected() {
+    let _ = Mpo::<DenseStorage<f64>, DenseLayout, NativeBackend>::from_sites(Vec::new());
+}
+
+/// Build a single site whose layout order disagrees with NativeBackend's
+/// preferred order. NativeBackend is ColumnMajor, so we construct a
+/// RowMajor `DenseTensorData` directly via `from_raw_parts`.
+fn rm_site() -> DenseTensor<f64> {
+    let td =
+        DenseTensorData::<f64>::from_raw_parts(vec![1.0; 4], vec![1, 2, 2], MemoryOrder::RowMajor);
+    DenseTensor::with_backend(td, NativeBackend::shared())
+}
+
+#[test]
+#[should_panic(expected = "order")]
+fn test_mps_from_sites_rejects_mismatched_order() {
+    let _ = Mps::from_sites(vec![rm_site()]);
+}
+
+#[test]
+#[should_panic(expected = "order")]
+fn test_mpo_from_sites_rejects_mismatched_order() {
+    // MPO sites are rank-4. Build a rank-4 RowMajor site.
+    let td = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0; 8],
+        vec![1, 2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let site = DenseTensor::with_backend(td, NativeBackend::shared());
+    let _ = Mpo::from_sites(vec![site]);
+}
+
+#[test]
+#[should_panic(expected = "order")]
+fn test_mps_with_backend_rejects_mismatched_order() {
+    let _ = Mps::with_backend(vec![rm_site()], NativeBackend::shared());
+}
+
+#[test]
+#[should_panic(expected = "order")]
+fn test_mpo_with_backend_rejects_mismatched_order() {
+    let td = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0; 8],
+        vec![1, 2, 2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let site = DenseTensor::with_backend(td, NativeBackend::shared());
+    let _ = Mpo::with_backend(vec![site], NativeBackend::shared());
+}
+
+#[test]
+fn test_mps_with_backend_accepts_distinct_arc_same_preferred_order() {
+    // The plan deliberately uses a per-site `order == backend.preferred_order()`
+    // check rather than `Arc::ptr_eq`, so distinct backend instances with
+    // matching preferred order must be accepted.
+    let site_backend: Arc<NativeBackend> = Arc::new(NativeBackend::new());
+    let chain_backend: Arc<NativeBackend> = Arc::new(NativeBackend::new());
+    assert!(!Arc::ptr_eq(&site_backend, &chain_backend));
+
+    let td = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0; 4],
+        vec![1, 2, 2],
+        NativeBackend::new().preferred_order(),
+    );
+    let site = DenseTensor::with_backend(td, site_backend);
+
+    let mps = Mps::with_backend(vec![site], chain_backend);
+    assert_eq!(mps.len(), 1);
 }
