@@ -32,5 +32,13 @@ pub use chain::TensorChain;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use types::{ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
+// `LayoutOrderCheck` is referenced in the `where` bounds of
+// `Mps`/`Mpo` constructors. Re-exporting it at the crate root makes
+// the bound reachable by downstream callers (so trait-resolution
+// diagnostics name a public path), while the `#[doc(hidden)]`
+// attribute on the trait definition keeps it out of rendered docs —
+// users never need to think about the sealed-dispatch mechanism.
+pub use types::LayoutOrderCheck;
+
 // Re-export TruncSvdParams for convenience
 pub use arnet::TruncSvdParams;
