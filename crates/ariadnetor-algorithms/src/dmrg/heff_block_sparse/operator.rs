@@ -13,8 +13,8 @@
 use std::sync::Arc;
 
 use arnet::{
-    BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseTensor, NativeBackend,
-    Scalar, Sector, contract_block_sparse,
+    BlockCoord, BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseTensor,
+    NativeBackend, Scalar, Sector, contract_block_sparse,
 };
 
 use super::super::heff_error::DmrgHeffError;
@@ -40,9 +40,13 @@ where
     /// Cumulative flat offsets for each block in
     /// `psi_template.block_metas()` order.
     pub(super) block_offsets: Vec<usize>,
+    /// Cached `BlockCoord` per template block in
+    /// `psi_template.block_metas()` order. Cached so the matvec hot
+    /// path (`scatter_flat_to_template`) does not clone the coord
+    /// `Vec` on every Lanczos / ARPACK iteration.
+    pub(super) block_coords: Vec<BlockCoord>,
     psi_flux: S,
     dim: usize,
-    pub(super) backend: Arc<B>,
 }
 
 impl<'a, T, S, B> EffectiveHamiltonian2SiteBlockSparse<'a, T, S, B>
@@ -112,9 +116,11 @@ where
         );
 
         let mut block_offsets = Vec::with_capacity(psi_template.num_blocks() + 1);
+        let mut block_coords = Vec::with_capacity(psi_template.num_blocks());
         let mut running = 0_usize;
         for meta in psi_template.block_metas() {
             block_offsets.push(running);
+            block_coords.push(meta.coord.clone());
             running += meta.size;
         }
         block_offsets.push(running);
@@ -127,9 +133,9 @@ where
             right,
             psi_template,
             block_offsets,
+            block_coords,
             psi_flux,
             dim,
-            backend,
         })
     }
 
@@ -156,7 +162,12 @@ where
             &[self.dim],
             "BlockSparse heff matvec input must have shape [dim]"
         );
-        let psi = scatter_flat_to_template(v.data_slice(), &self.psi_template, &self.block_offsets);
+        let psi = scatter_flat_to_template(
+            v.data_slice(),
+            &self.psi_template,
+            &self.block_offsets,
+            &self.block_coords,
+        );
 
         // env(a,b,c) × psi(c,i,j,f) → tmp1(a,b,i,j,f)
         let tmp1 = match contract_block_sparse(self.left, &psi, &[2], &[0])
@@ -227,12 +238,14 @@ where
         }
 
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
-        // 1D output is layout-invariant; declare the active backend's
-        // preferred order so downstream Lanczos arithmetic does not
-        // normalize. Result is bound to `NativeBackend` because the
-        // Krylov family keeps its 1-D scratch space there.
+        // 1D output is layout-invariant. Bind to `NativeBackend` (the
+        // Krylov family keeps its 1-D scratch space there) and label
+        // the order with that backend's `preferred_order()` so the
+        // tensor's layout-order matches its cached backend; the input
+        // is read-only here, so it imposes no order constraint.
         let native = NativeBackend::shared();
-        DenseTensor::from_raw_parts(flat, vec![self.dim], self.backend.preferred_order(), native)
+        let order = native.preferred_order();
+        DenseTensor::from_raw_parts(flat, vec![self.dim], order, native)
     }
 }
 
@@ -241,6 +254,7 @@ pub(super) fn scatter_flat_to_template<T, S, B>(
     flat: &[T],
     template: &BlockSparseTensor<T, S, B>,
     block_offsets: &[usize],
+    block_coords: &[BlockCoord],
 ) -> BlockSparseTensor<T, S, B>
 where
     T: Scalar,
@@ -248,12 +262,7 @@ where
     B: ComputeBackend,
 {
     let mut out = template.clone();
-    let coords: Vec<_> = template
-        .block_metas()
-        .iter()
-        .map(|m| m.coord.clone())
-        .collect();
-    for (k, coord) in coords.iter().enumerate() {
+    for (k, coord) in block_coords.iter().enumerate() {
         let lo = block_offsets[k];
         let hi = block_offsets[k + 1];
         let dst = out

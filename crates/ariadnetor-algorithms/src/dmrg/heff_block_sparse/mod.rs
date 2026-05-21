@@ -194,6 +194,7 @@ where
         eigenvector.data_slice(),
         &heff.psi_template,
         &heff.block_offsets,
+        &heff.block_coords,
     );
     let (u, s, vt, trunc_err) = trunc_svd_block_sparse(&psi_4d, 2, trunc)?;
 
