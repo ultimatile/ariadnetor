@@ -55,12 +55,16 @@ where
 
 /// Compute the norm ‖ψ‖ = √⟨ψ|ψ⟩.
 ///
-/// If the MPS is in canonical form, exploits the structure for O(1)
-/// computation:
+/// The kernel exploits canonical form when available:
 /// - `Left` / `Right`: returns 1.0 (normalized by construction).
-/// - `Mixed`: returns Frobenius norm of the orthogonality center tensor.
+/// - `Mixed`: returns Frobenius norm of the orthogonality center
+///   tensor (O(d) where d is the center site size).
+/// - Otherwise: full inner-product evaluation, O(n × χ³).
 ///
-/// Otherwise computes the full inner product.
+/// User-visible callers invoke this through `MpsOps::norm`, which
+/// prefixes a Tier 2 defensive site-order scan (O(n)). The kernel
+/// itself is O(1)/O(d) in the canonical branches, but the user-facing
+/// path is therefore Ω(n) regardless of canonical form.
 pub(super) fn norm_dense<T, B>(psi: &Mps<DenseStorage<T>, DenseLayout, B>) -> T::Real
 where
     T: Scalar,

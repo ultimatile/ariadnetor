@@ -1,9 +1,8 @@
 //! SiteOps trait and concrete operator dictionaries.
 //!
-//! Operator data is stored in the active backend's preferred memory
-//! order ([`NativeBackend`]'s preferred is `ColumnMajor`). For a 2×2
-//! matrix `[[a, b], [c, d]]`, the flat layout under column-major is
-//! `[a, c, b, d]`.
+//! All operators here are pinned to [`NativeBackend`] and laid out in
+//! `ColumnMajor` (`NativeBackend`'s preferred order). For a 2×2 matrix
+//! `[[a, b], [c, d]]`, the flat layout is `[a, c, b, d]`.
 
 use arnet::{DenseTensor, MemoryOrder, NativeBackend, Scalar};
 use num_traits::{NumCast, Zero};
