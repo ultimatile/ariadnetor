@@ -4,6 +4,7 @@
 //! The `cm` helper computes the CM flat index for element access.
 
 use approx::assert_abs_diff_eq;
+use arnet::{ComputeBackend, DenseTensor};
 use arnet_mps::{Qubit, SiteOps, SpinHalf};
 
 /// Column-major flat index for 2D (i, j) in shape [rows, cols].
@@ -11,10 +12,10 @@ fn cm(i: usize, j: usize, rows: usize) -> usize {
     j * rows + i
 }
 
-/// Get element at (i, j) from a 2D Dense using CM indexing.
-fn cm_get<T: Clone>(t: &arnet_tensor::Dense<T>, i: usize, j: usize) -> T {
+/// Get element at (i, j) from a 2D `DenseTensor` using CM indexing.
+fn cm_get<T: Clone, B: ComputeBackend>(t: &DenseTensor<T, B>, i: usize, j: usize) -> T {
     let rows = t.shape()[0];
-    t.data()[cm(i, j, rows)].clone()
+    t.data_slice()[cm(i, j, rows)].clone()
 }
 
 // ============================================================================
@@ -73,7 +74,7 @@ fn test_spin_half_sz_f32() {
 
 #[test]
 fn test_spin_half_sz_complex_f64() {
-    use arnet_tensor::Complex;
+    use arnet::Complex;
     let sz = SpinHalf.sz::<Complex<f64>>();
     assert_abs_diff_eq!(cm_get(&sz, 0, 0).re, 0.5, epsilon = 1e-15);
     assert_abs_diff_eq!(cm_get(&sz, 0, 0).im, 0.0, epsilon = 1e-15);
@@ -84,13 +85,13 @@ fn test_spin_half_sz_complex_f64() {
 #[test]
 fn test_spin_half_commutation() {
     // [S+, S-] = 2*Sz
-    let backend = arnet_native::NativeBackend::new();
+    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let sp = SpinHalf.sp::<f64>();
     let sm = SpinHalf.sm::<f64>();
     let sz = SpinHalf.sz::<f64>();
 
-    let sp_sm = arnet_linalg::contract(&backend, &sp, &sm, "ij,jk->ik").unwrap();
-    let sm_sp = arnet_linalg::contract(&backend, &sm, &sp, "ij,jk->ik").unwrap();
+    let sp_sm = arnet::contract(&sp, &sm, "ij,jk->ik").unwrap();
+    let sm_sp = arnet::contract(&sm, &sp, "ij,jk->ik").unwrap();
 
     // [S+, S-] = S+S- - S-S+
     for i in 0..2 {
@@ -123,7 +124,7 @@ fn test_qubit_x_f64() {
 
 #[test]
 fn test_qubit_y_complex() {
-    use arnet_tensor::Complex;
+    use arnet::Complex;
     let y = Qubit.y::<Complex<f64>>();
     assert_abs_diff_eq!(cm_get(&y, 0, 1).re, 0.0, epsilon = 1e-15);
     assert_abs_diff_eq!(cm_get(&y, 0, 1).im, -1.0, epsilon = 1e-15);
@@ -150,7 +151,7 @@ fn test_qubit_hadamard_f64() {
 
 #[test]
 fn test_qubit_s_complex() {
-    use arnet_tensor::Complex;
+    use arnet::Complex;
     let s = Qubit.s::<Complex<f64>>();
     assert_abs_diff_eq!(cm_get(&s, 0, 0).re, 1.0, epsilon = 1e-15);
     assert_abs_diff_eq!(cm_get(&s, 1, 1).re, 0.0, epsilon = 1e-15);
@@ -159,7 +160,7 @@ fn test_qubit_s_complex() {
 
 #[test]
 fn test_qubit_t_complex() {
-    use arnet_tensor::Complex;
+    use arnet::Complex;
     let t = Qubit.t::<Complex<f64>>();
     let angle = std::f64::consts::FRAC_PI_4;
     assert_abs_diff_eq!(cm_get(&t, 0, 0).re, 1.0, epsilon = 1e-15);
@@ -183,9 +184,9 @@ fn test_qubit_proj1_f64() {
 
 #[test]
 fn test_qubit_x_squared_is_identity() {
-    let backend = arnet_native::NativeBackend::new();
+    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let x = Qubit.x::<f64>();
-    let x2 = arnet_linalg::contract(&backend, &x, &x, "ij,jk->ik").unwrap();
+    let x2 = arnet::contract(&x, &x, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {
@@ -196,9 +197,9 @@ fn test_qubit_x_squared_is_identity() {
 
 #[test]
 fn test_qubit_hadamard_squared_is_identity() {
-    let backend = arnet_native::NativeBackend::new();
+    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let h = Qubit.h::<f64>();
-    let h2 = arnet_linalg::contract(&backend, &h, &h, "ij,jk->ik").unwrap();
+    let h2 = arnet::contract(&h, &h, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {

@@ -1,9 +1,11 @@
 //! Inner product and norm tests for block-sparse MPS.
 
 use approx::assert_abs_diff_eq;
+use arnet::U1Sector;
+use arnet::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
+};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, inner, norm};
-use arnet_tensor::U1Sector;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 
 use super::helpers::{
     bsp_mps_contract_full, make_2site_entangled_u1_mps, make_4site_u1_mps, make_identity_u1_mpo,
@@ -56,10 +58,10 @@ fn inner_single_site() {
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
     site.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 3.0;
 
-    let mps = Mps::from_storages(vec![site]);
+    let mps = Mps::from_sites(vec![site]);
     let overlap = inner(&mps, &mps);
     assert_abs_diff_eq!(overlap, 9.0, epsilon = 1e-12);
 }
@@ -101,7 +103,7 @@ fn norm_mixed_uses_center_tensor() {
     let norm_mixed = norm(&mps);
 
     assert_abs_diff_eq!(norm_full, norm_mixed, epsilon = 1e-10);
-    let center_norm = mps.storage(1).norm();
+    let center_norm = mps.site(1).norm();
     assert_abs_diff_eq!(norm_mixed, center_norm, epsilon = 1e-12);
 }
 
@@ -162,23 +164,26 @@ fn braket_diagonal_single_site() {
     let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
     let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut sz_site = BlockSparse::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+    let mut sz_site =
+        BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
     sz_site
         .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
         .unwrap()[0] = 0.5;
     sz_site
         .block_data_mut(&BlockCoord(vec![0, 1, 1, 0]))
         .unwrap()[0] = -0.5;
-    let sz_mpo: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(vec![sz_site]);
+    let sz_mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mpo::from_sites(vec![sz_site]);
 
     // |0⟩ state: charge-0 physical only
     let s_left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let s_phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let s_right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
     let mut up_site =
-        BlockSparse::<f64, U1Sector>::zeros(vec![s_left, s_phys, s_right], U1Sector(0));
+        BlockSparseTensor::<f64, U1Sector>::zeros(vec![s_left, s_phys, s_right], U1Sector(0));
     up_site.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
-    let up: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![up_site]);
+    let up: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![up_site]);
 
     // ⟨0|Sz|0⟩ = 0.5
     assert_abs_diff_eq!(braket(&up, &sz_mpo, &up), 0.5, epsilon = 1e-12);

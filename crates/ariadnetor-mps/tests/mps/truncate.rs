@@ -4,9 +4,10 @@ use approx::assert_abs_diff_eq;
 use arnet_mps::{
     self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
-use arnet_tensor::{Dense, MemoryOrder};
 
-use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
+use super::helpers::{
+    cm_dense_tensor, is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense,
+};
 
 #[test]
 fn test_truncate_no_change_within_tolerance() {
@@ -36,28 +37,12 @@ fn test_truncate_no_change_within_tolerance() {
 fn test_truncate_reduces_bond_dim() {
     // Build MPS with large bond dims, canonicalize, then truncate to chi_max=2
     let storages = vec![
-        Dense::new(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![1, 2, 4],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            (1..=32).map(|i| i as f64 * 0.1).collect(),
-            vec![4, 2, 4],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            (1..=32).map(|i| i as f64 * 0.01).collect(),
-            vec![4, 2, 4],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![4, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 4]),
+        cm_dense_tensor((1..=32).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 4]),
+        cm_dense_tensor((1..=32).map(|i| i as f64 * 0.01).collect(), vec![4, 2, 4]),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 1]),
     ];
-    let mut mps = Mps::from_storages(storages);
+    let mut mps = Mps::from_sites(storages);
     mps::canonicalize(&mut mps, 1);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -94,7 +79,8 @@ fn test_truncate_preserves_state_approximately() {
     // Normalize and compute overlap between original and truncated
     let mut overlap = 0.0;
     for i in 0..dense_before.len() {
-        overlap += (dense_before.data()[i] / norm_before) * (dense_after.data()[i] / norm_after);
+        overlap += (dense_before.data_slice()[i] / norm_before)
+            * (dense_after.data_slice()[i] / norm_after);
     }
     // Overlap should be close to 1 (truncation removes small components)
     assert!(overlap > 0.9, "overlap too low: {overlap}");
@@ -118,12 +104,8 @@ fn test_truncate_with_cutoff() {
 
 #[test]
 fn test_truncate_single_site() {
-    let storages = vec![Dense::new(
-        vec![3.0, 4.0],
-        vec![1, 2, 1],
-        MemoryOrder::ColumnMajor,
-    )];
-    let mut mps = Mps::from_storages(storages);
+    let storages = vec![cm_dense_tensor(vec![3.0, 4.0], vec![1, 2, 1])];
+    let mut mps = Mps::from_sites(storages);
     mps::canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -154,7 +136,7 @@ fn test_truncate_canonical_form_after() {
     let tol = 1e-10;
     for j in 0..3 {
         assert!(
-            is_left_canonical(mps.storage(j), tol),
+            is_left_canonical(mps.site(j), tol),
             "site {j} not left-canonical after truncate"
         );
     }
@@ -188,12 +170,12 @@ fn test_truncate_absorb_left() {
 
     let tol = 1e-10;
     assert!(
-        is_left_canonical(mps.storage(0), tol),
+        is_left_canonical(mps.site(0), tol),
         "site 0 not left-canonical with SvdAbsorb::Left"
     );
     for j in 2..4 {
         assert!(
-            is_right_canonical(mps.storage(j), tol),
+            is_right_canonical(mps.site(j), tol),
             "site {j} not right-canonical with SvdAbsorb::Left"
         );
     }
@@ -228,7 +210,8 @@ fn test_truncate_absorb_both() {
     let norm_after = mps::norm(&mps);
     let mut overlap = 0.0;
     for i in 0..dense_before.len() {
-        overlap += (dense_before.data()[i] / norm_before) * (dense_after.data()[i] / norm_after);
+        overlap += (dense_before.data_slice()[i] / norm_before)
+            * (dense_after.data_slice()[i] / norm_after);
     }
     assert!(overlap > 0.9, "overlap too low: {overlap}");
 }
@@ -367,12 +350,12 @@ fn test_absorb_left_differs_from_right() {
     mps::truncate(&mut mps_r, &params_r);
 
     // Center tensors should differ between Left and Right
-    let center_l = mps_l.storage(1);
-    let center_r = mps_r.storage(1);
+    let center_l = mps_l.site(1);
+    let center_r = mps_r.site(1);
     let max_diff = center_l
-        .data()
+        .data_slice()
         .iter()
-        .zip(center_r.data())
+        .zip(center_r.data_slice())
         .map(|(a, b)| (a - b).abs())
         .fold(0.0_f64, f64::max);
     assert!(
