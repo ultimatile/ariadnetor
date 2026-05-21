@@ -39,6 +39,15 @@ where
 /// Wrap a [`BlockSparse<T, S>`] result into a `BlockSparseTensor`
 /// sharing the reference tensor's backend Arc and supplying the
 /// missing memory order field.
+///
+/// Pass `tensor.backend().preferred_order()` for `order` — the
+/// block-sparse kernels operate at the backend's preferred order
+/// internally and produce outputs in that order. The input tensor's
+/// recorded `layout().order()` is the input contract, not the output
+/// layout, and using it here would mislabel outputs whenever input
+/// order ≠ preferred order. Once the #262 Tier 1 / Tier 2 invariant
+/// (PR 4 / PR 5) pins input order to preferred order, the two are
+/// equal at every callsite.
 pub(crate) fn wrap_block_sparse<T, S, B>(
     bsp: BlockSparse<T, S>,
     backend: Arc<B>,

@@ -70,7 +70,7 @@ pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend
     policy: ExecPolicy,
 ) -> Result<BlockSparseContractResult<T, S, B>, LinalgError> {
     let backend_arc = lhs.backend_arc().clone();
-    let lhs_order = lhs.data().layout().order();
+    let out_order = lhs.backend().preferred_order();
     let lhs_bsp = lhs.data().as_block_sparse();
     let rhs_bsp = rhs.data().as_block_sparse();
     let result = contract_block_sparse_with_policy_dense(
@@ -83,7 +83,7 @@ pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend
     )?;
     match result {
         BlockSparseContractResultBsp::Tensor(t) => Ok(BlockSparseContractResult::Tensor(
-            wrap_block_sparse(t, backend_arc, lhs_order),
+            wrap_block_sparse(t, backend_arc, out_order),
         )),
         BlockSparseContractResultBsp::Scalar(s) => Ok(BlockSparseContractResult::Scalar(s)),
     }

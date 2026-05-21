@@ -33,7 +33,7 @@ where
     B: ComputeBackend,
 {
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.data().layout().order();
+    let order = tensor.backend().preferred_order();
     let bsp = tensor.data().as_block_sparse();
     let result = permute_block_sparse_dense(tensor.backend(), &bsp, perm)?;
     Ok(wrap_block_sparse(result, backend_arc, order))

@@ -122,7 +122,7 @@ pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<BlockSparseSvdResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.data().layout().order();
+    let order = tensor.backend().preferred_order();
     let bsp = tensor.data().as_block_sparse();
     let (u, s, vt) = svd_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
     Ok((
@@ -211,7 +211,7 @@ pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBacken
     policy: ExecPolicy,
 ) -> Result<BlockSparseTruncSvdResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.data().layout().order();
+    let order = tensor.backend().preferred_order();
     let bsp = tensor.data().as_block_sparse();
     let (u, s, vt, err) =
         trunc_svd_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, params, policy)?;
@@ -339,7 +339,7 @@ pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.data().layout().order();
+    let order = tensor.backend().preferred_order();
     let bsp = tensor.data().as_block_sparse();
     let (q, r) = qr_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
     Ok((
@@ -399,7 +399,7 @@ pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.data().layout().order();
+    let order = tensor.backend().preferred_order();
     let bsp = tensor.data().as_block_sparse();
     let (l, q) = lq_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
     Ok((
