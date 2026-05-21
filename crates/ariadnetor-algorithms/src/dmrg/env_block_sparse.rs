@@ -18,8 +18,8 @@ use std::sync::Arc;
 
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage,
-    BlockSparseTensor, ComputeBackend, Direction, LinalgError, MemoryOrder, QNIndex, Scalar,
-    Sector, Tensor, contract_block_sparse, flat_index,
+    BlockSparseTensor, ComputeBackend, Direction, LinalgError, QNIndex, Scalar, Sector, Tensor,
+    contract_block_sparse, flat_index,
 };
 
 use super::env::{DmrgEnvError, DmrgEnvOps};
@@ -39,14 +39,11 @@ fn flip(d: Direction) -> Direction {
 /// receives `(c, b, a)` and must swap to `(a, b, c)` to match the env
 /// axis convention.
 ///
-/// `order` is the per-block memory layout used by the contracting
-/// backend (`backend.preferred_order()`). Both old and new buffers
-/// share that layout, so the helper is correct for either RowMajor or
+/// Per-block buffers share the new tensor's backend `preferred_order()`
+/// (both old and new are bound to the same backend), so the index
+/// arithmetic uses that single layout for either RowMajor or
 /// ColumnMajor without code changes.
-fn swap_axes_0_and_2<T, S, B>(
-    t: &BlockSparseTensor<T, S, B>,
-    order: MemoryOrder,
-) -> BlockSparseTensor<T, S, B>
+fn swap_axes_0_and_2<T, S, B>(t: &BlockSparseTensor<T, S, B>) -> BlockSparseTensor<T, S, B>
 where
     T: Scalar,
     S: Sector,
@@ -59,7 +56,6 @@ where
         t.indices()[0].clone(),
     ];
     let backend_arc = Arc::clone(t.backend_arc());
-    let _ = order;
     let mut out = BlockSparseTensor::<T, S, B>::zeros_with_backend(
         new_indices,
         t.flux().clone(),
@@ -235,7 +231,7 @@ where
 
     /// Per-site right extension.
     fn extend_right_step<B: ComputeBackend>(
-        backend: &Arc<B>,
+        _backend: &Arc<B>,
         env: &BlockSparseTensor<T, S, B>,
         site: &BlockSparseTensor<T, S, B>,
         mpo_site: &BlockSparseTensor<T, S, B>,
@@ -268,6 +264,6 @@ where
             }
         };
 
-        Ok(swap_axes_0_and_2(&env_raw, backend.preferred_order()))
+        Ok(swap_axes_0_and_2(&env_raw))
     }
 }

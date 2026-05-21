@@ -76,12 +76,12 @@ pub trait DmrgOps<T: Scalar, B: ComputeBackend = NativeBackend>:
         direction: SweepDirection,
     ) -> Result<AbsorbedStep<<Self as MpsOps<T>>::Storage, Self, B>, LinalgError>;
 
-    /// Project diagnostic scalars (the absorbed step's
-    /// `eigenvalue / residual / trunc_err` typed as `T::Real`).
-    /// Required because [`AbsorbedStep`] holds them as `f64`
-    /// placeholders to keep the struct layout backend-agnostic; the
-    /// sweep driver pairs the typed scalars with the absorbed
-    /// tensors via this projection.
+    /// Project diagnostic scalars (`eigenvalue / residual / trunc_err`
+    /// typed as `T::Real`, plus `iters / converged`) from the step
+    /// result *before* [`commit_step`](Self::commit_step) consumes
+    /// it. Holding these on [`AbsorbedStep`] would force a third
+    /// scalar parameter; the two-step projection keeps the absorbed
+    /// struct keyed on `(St, L, B)` only.
     fn step_scalars(result: &Self::StepResult) -> (T::Real, T::Real, T::Real, usize, bool);
 }
 

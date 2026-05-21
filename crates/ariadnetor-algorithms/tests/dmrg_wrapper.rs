@@ -263,7 +263,8 @@ fn wrapper_rejects_empty_mps() {
 
     match dmrg_2site(&mpo, &psi0, &params) {
         Err(DmrgError::EmptyMps) => {}
-        other => panic!("expected DmrgError::EmptyMps, got {:?}", other.is_ok()),
+        Err(e) => panic!("expected DmrgError::EmptyMps, got Err({e:?})"),
+        Ok(_) => panic!("expected DmrgError::EmptyMps, got Ok(_)"),
     }
 }
 
@@ -279,10 +280,8 @@ fn wrapper_rejects_length_mismatch() {
 
     match dmrg_2site(&mpo, &psi0, &params) {
         Err(DmrgError::LengthMismatch { mps: 3, mpo: 4 }) => {}
-        other => panic!(
-            "expected LengthMismatch {{ mps: 3, mpo: 4 }}, got ok={}",
-            other.is_ok()
-        ),
+        Err(e) => panic!("expected LengthMismatch {{ mps: 3, mpo: 4 }}, got Err({e:?})"),
+        Ok(_) => panic!("expected LengthMismatch {{ mps: 3, mpo: 4 }}, got Ok(_)"),
     }
 }
 

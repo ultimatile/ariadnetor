@@ -62,17 +62,18 @@ pub enum DmrgHeffError {
         field: &'static str,
         detail: String,
     },
-    /// The `preferred_order()` of the BlockSparse 2-site step's
-    /// operands disagrees. Surfaced by
+    /// The layout `MemoryOrder` of one of the BlockSparse 2-site
+    /// step's four contracted operands diverged from the chain
+    /// backend's `preferred_order()`. Surfaced by
     /// [`super::heff_block_sparse::EffectiveHamiltonian2SiteBlockSparse::new`]
     /// before any contract runs so the `apply` body's `.expect`
     /// calls cannot fire on a mixed-order operand set. `operand`
-    /// names which of the four contracted operands (`"w_i"`,
-    /// `"w_ip1"`, `"right_env"`) diverged from `left_env` (taken as
-    /// the reference). The MPS sites passed to `new` are
+    /// names which of the four contracted operands (`"left_env"`,
+    /// `"w_i"`, `"w_ip1"`, `"right_env"`) carried a non-matching
+    /// layout order. The MPS sites passed to `new` are
     /// template-derivation-only and not asserted here; PR-level
-    /// Tier 2 at the step entry guarantees they share the chain
-    /// `preferred_order` already.
+    /// Tier 2 at the step entry guarantees their layout order
+    /// matches the chain backend's already.
     OrderMismatch {
         operand: &'static str,
         expected: MemoryOrder,
@@ -143,8 +144,8 @@ impl std::fmt::Display for DmrgHeffError {
                 actual,
             } => write!(
                 f,
-                "BlockSparse heff operand `{operand}` has preferred_order {actual:?}, \
-                 expected {expected:?} (taken from `left_env`)"
+                "BlockSparse heff operand `{operand}` has layout order {actual:?}, \
+                 expected {expected:?} (chain backend preferred_order)"
             ),
             DmrgHeffError::Contract(_) => {
                 write!(f, "linalg failure during two-site DMRG step")

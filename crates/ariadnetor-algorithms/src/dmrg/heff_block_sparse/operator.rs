@@ -56,13 +56,11 @@ where
     /// flux).
     ///
     /// Asserts that the four contracted operands (`left`, `w_i`,
-    /// `w_ip1`, `right`) share a common `backend().preferred_order()`,
-    /// matching the `backend` argument's `preferred_order()`. The
-    /// matvec body's `contract_block_sparse` calls take their output
-    /// layout from the first operand and the layout of every
-    /// intermediate must match the backend's preferred order; a
-    /// mixed-order operand set would put an intermediate into a
-    /// non-preferred order and trip the
+    /// `w_ip1`, `right`) have a layout `MemoryOrder` matching the
+    /// `backend` argument's `preferred_order()`. The matvec body's
+    /// `contract_block_sparse` calls put intermediates into the
+    /// backend's preferred order; an operand whose layout was built
+    /// with a different order would trip the
     /// `assert_bsp_layout_order_matches_backend` debug_assert at the
     /// next contract entry. The MPS sites (`mps_i`, `mps_ip1`) are
     /// used only to derive the psi template; their order is checked
@@ -90,7 +88,7 @@ where
             ("w_ip1", w_ip1),
             ("right_env", right),
         ] {
-            let actual = tensor.backend().preferred_order();
+            let actual = tensor.data().layout().order();
             if actual != expected {
                 return Err(DmrgHeffError::OrderMismatch {
                     operand,
