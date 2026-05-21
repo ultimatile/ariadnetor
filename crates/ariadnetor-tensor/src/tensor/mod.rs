@@ -241,6 +241,24 @@ where
     }
 }
 
+impl<T, S, B> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
+where
+    T: Clone + Zero,
+    S: Sector,
+    B: ComputeBackend,
+{
+    /// Create a zero-filled `BlockSparseTensor` anchored on an explicit
+    /// backend. The layout's memory order is taken from the backend's
+    /// preferred order so that the per-tensor Tier 1 invariant
+    /// (`layout.order() == backend.preferred_order()`) holds at
+    /// construction.
+    pub fn zeros_with_backend(indices: Vec<QNIndex<S>>, flux: S, backend: Arc<B>) -> Self {
+        let order = backend.preferred_order();
+        let td = BlockSparseTensorData::zeros(indices, flux, order);
+        Self::with_backend(td, backend)
+    }
+}
+
 impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, NativeBackend>
 where
     T: Clone,
