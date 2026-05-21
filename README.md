@@ -43,7 +43,7 @@ Tensor data structures with Arc-based Copy-on-Write.
 - `Sector` trait — Abelian symmetry sector algebra (fuse, identity, dual). Implementations: `Z2Sector`, `U1Sector`, tuple products
 - `QNIndex<S>` — Quantum-number index: maps sectors to block dimensions with direction (In/Out)
 - `TensorRepr` — Common trait for tensor storage representations (`Dense`, `BlockSparse`)
-- `Tensor<T, B>` — Main API type: wraps storage + backend
+- `Tensor<St, L, B>` — Main API type: wraps a `TensorData<St, L>` bundle with a compute backend. Aliases: `DenseTensor<T, B>`, `BlockSparseTensor<T, S, B>`
 
 ### `ariadnetor-linalg`
 
@@ -72,17 +72,14 @@ MPS/MPO tensor chains (`arnet_mps`): canonicalize, truncate, inner product, brak
 ## Usage
 
 ```rust
-use arnet::{Dense, Tensor, contract, svd};
+use arnet::{DenseTensor, contract};
 
 // Create tensors
-let a = Tensor::<Dense<f64>>::zeros(vec![2, 3]);
-let b = Tensor::<Dense<f64>>::zeros(vec![3, 2]);
+let a = DenseTensor::<f64>::zeros(vec![2, 3]);
+let b = DenseTensor::<f64>::zeros(vec![3, 2]);
 
 // Tensor contraction
 let c = contract(&a, &b, "ij,jk->ik").unwrap();
-
-// SVD decomposition
-let (u, s, vt) = svd(&a, 1).unwrap();
 ```
 
 ## Building
