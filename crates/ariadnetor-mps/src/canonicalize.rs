@@ -8,7 +8,7 @@ use arnet::{
 };
 
 use super::chain::TensorChain;
-use super::internal_helpers::{dense_reshape, reorder_dense_tensor};
+use super::internal_helpers::dense_reshape;
 use super::types::CanonicalForm;
 
 /// Move the orthogonality center of a Dense tensor chain to the specified site.
@@ -65,12 +65,12 @@ where
         // Reshape Q from (m, k) back to (*orig[..rank-1], k). Convert to
         // RowMajor for correct axis-split semantics, then back to backend
         // order.
-        let q_rm = reorder_dense_tensor(&q, MemoryOrder::RowMajor);
+        let q_rm = q.reordered(MemoryOrder::RowMajor);
         let k = q_rm.shape()[1];
         let mut q_shape = orig_shape[..rank - 1].to_vec();
         q_shape.push(k);
         let q_multi = dense_reshape(&q_rm, q_shape);
-        let q_back = reorder_dense_tensor(&q_multi, order);
+        let q_back = q_multi.reordered(order);
 
         (q_back, r)
     };
@@ -100,12 +100,12 @@ where
 
         let (l, q) = lq(site, 1).expect("LQ decomposition failed during canonicalize");
 
-        let q_rm = reorder_dense_tensor(&q, MemoryOrder::RowMajor);
+        let q_rm = q.reordered(MemoryOrder::RowMajor);
         let k = q_rm.shape()[0];
         let mut q_shape = vec![k];
         q_shape.extend_from_slice(&orig_shape[1..]);
         let q_multi = dense_reshape(&q_rm, q_shape);
-        let q_back = reorder_dense_tensor(&q_multi, order);
+        let q_back = q_multi.reordered(order);
 
         (q_back, l)
     };
@@ -133,22 +133,22 @@ where
     B: ComputeBackend,
 {
     let order = next.backend().preferred_order();
-    let next_rm = reorder_dense_tensor(next, MemoryOrder::RowMajor);
+    let next_rm = next.reordered(MemoryOrder::RowMajor);
     let next_shape = next_rm.shape().to_vec();
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
 
     let next_2d_rm = dense_reshape(&next_rm, vec![first, rest]);
-    let next_2d = reorder_dense_tensor(&next_2d_rm, order);
+    let next_2d = next_2d_rm.reordered(order);
     let result_2d = contract(r, &next_2d, "ab,bc->ac")
         .expect("R absorption into next site failed during canonicalize");
 
-    let result_2d_rm = reorder_dense_tensor(&result_2d, MemoryOrder::RowMajor);
+    let result_2d_rm = result_2d.reordered(MemoryOrder::RowMajor);
     let k = r.shape()[0];
     let mut new_shape = next_shape;
     new_shape[0] = k;
     let result_multi = dense_reshape(&result_2d_rm, new_shape);
-    reorder_dense_tensor(&result_multi, order)
+    result_multi.reordered(order)
 }
 
 /// Multiply L matrix into the previous site: `prev(..., d) × L(d, k) → (..., k)`.
@@ -158,22 +158,22 @@ where
     B: ComputeBackend,
 {
     let order = prev.backend().preferred_order();
-    let prev_rm = reorder_dense_tensor(prev, MemoryOrder::RowMajor);
+    let prev_rm = prev.reordered(MemoryOrder::RowMajor);
     let prev_shape = prev_rm.shape().to_vec();
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
 
     let prev_2d_rm = dense_reshape(&prev_rm, vec![rest, last]);
-    let prev_2d = reorder_dense_tensor(&prev_2d_rm, order);
+    let prev_2d = prev_2d_rm.reordered(order);
     let result_2d = contract(&prev_2d, l, "ab,bc->ac")
         .expect("L absorption into previous site failed during canonicalize");
 
-    let result_2d_rm = reorder_dense_tensor(&result_2d, MemoryOrder::RowMajor);
+    let result_2d_rm = result_2d.reordered(MemoryOrder::RowMajor);
     let k = l.shape()[1];
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
     let result_multi = dense_reshape(&result_2d_rm, new_shape);
-    reorder_dense_tensor(&result_multi, order)
+    result_multi.reordered(order)
 }
 
 // ============================================================================

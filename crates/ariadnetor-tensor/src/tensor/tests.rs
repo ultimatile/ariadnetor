@@ -230,3 +230,64 @@ fn block_sparse_tensor_dagger_is_involutive() {
         assert_eq!(a.direction(), b.direction());
     }
 }
+
+#[test]
+fn block_sparse_tensor_dagger_conjugates_complex_and_shares_backend() {
+    use crate::{Direction, U1Sector};
+    use num_complex::Complex;
+    use std::sync::Arc;
+
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+    let mut t = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
+        vec![row.clone(), col.clone()],
+        U1Sector(0),
+    );
+    {
+        let block = t
+            .block_data_mut(&BlockCoord(vec![0, 0]))
+            .expect("flux-allowed block");
+        block[0] = Complex::new(1.0, 2.0);
+        block[1] = Complex::new(3.0, -4.0);
+    }
+
+    let d = t.dagger();
+
+    // Values conjugated.
+    let d_block = d
+        .block_data(&BlockCoord(vec![0, 0]))
+        .expect("block present");
+    assert_eq!(d_block[0], Complex::new(1.0, -2.0));
+    assert_eq!(d_block[1], Complex::new(3.0, 4.0));
+
+    // Leg directions flipped.
+    assert_eq!(d.indices()[0].direction(), Direction::In);
+    assert_eq!(d.indices()[1].direction(), Direction::Out);
+
+    // Backend Arc shared.
+    assert!(Arc::ptr_eq(t.backend_arc(), d.backend_arc()));
+}
+
+#[test]
+fn block_sparse_tensor_conj_keeps_directions_and_flux() {
+    use crate::{Direction, U1Sector};
+    use num_complex::Complex;
+
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+    let mut t = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
+        vec![row.clone(), col.clone()],
+        U1Sector(0),
+    );
+    t.block_data_mut(&BlockCoord(vec![0, 0])).unwrap()[0] = Complex::new(2.0, 5.0);
+
+    let c = t.conj();
+
+    assert_eq!(c.flux(), t.flux());
+    assert_eq!(c.indices()[0].direction(), Direction::Out);
+    assert_eq!(c.indices()[1].direction(), Direction::In);
+    assert_eq!(
+        c.block_data(&BlockCoord(vec![0, 0])).unwrap()[0],
+        Complex::new(2.0, -5.0)
+    );
+}

@@ -3,7 +3,7 @@
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseLayout,
     DenseStorage, DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, Tensor, U1Sector,
-    contract, contract_block_sparse, reorder_dense_data,
+    contract, contract_block_sparse,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
@@ -25,19 +25,7 @@ pub fn rm_dense_tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
     assert_eq!(data.len(), total, "rm_dense_tensor: data length mismatch");
     let rm =
         DenseTensor::from_raw_parts(data, shape, MemoryOrder::RowMajor, NativeBackend::shared());
-    super_reorder_dense(&rm, MemoryOrder::ColumnMajor)
-}
-
-/// Reorder a `DenseTensor` to the requested memory layout (test-side
-/// helper that delegates to the joined `arnet::reorder_dense_data`).
-fn super_reorder_dense<T, B>(t: &DenseTensor<T, B>, to: MemoryOrder) -> DenseTensor<T, B>
-where
-    T: arnet::Scalar,
-    B: ComputeBackend,
-{
-    let backend_arc = t.backend_arc().clone();
-    let reordered = reorder_dense_data(t.data(), to);
-    Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(reordered, backend_arc)
+    rm.reordered(MemoryOrder::ColumnMajor)
 }
 
 /// Single-basis-state dense MPS site for |phys_c⟩ with bond dim 1.
@@ -99,9 +87,9 @@ pub fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let rank = shape.len();
     let k = shape[rank - 1];
     let m: usize = shape[..rank - 1].iter().product();
-    let rm = super_reorder_dense(site, MemoryOrder::RowMajor);
+    let rm = site.reordered(MemoryOrder::RowMajor);
     let rm2d = dense_reshape_tensor(&rm, vec![m, k]);
-    let mat = super_reorder_dense(&rm2d, MemoryOrder::ColumnMajor);
+    let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
     let qtq = contract(&mat, &mat, "ab,ac->bc").unwrap();
 
@@ -123,9 +111,9 @@ pub fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let shape = site.shape();
     let k = shape[0];
     let n: usize = shape[1..].iter().product();
-    let rm = super_reorder_dense(site, MemoryOrder::RowMajor);
+    let rm = site.reordered(MemoryOrder::RowMajor);
     let rm2d = dense_reshape_tensor(&rm, vec![k, n]);
-    let mat = super_reorder_dense(&rm2d, MemoryOrder::ColumnMajor);
+    let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
     let qqt = contract(&mat, &mat, "ab,cb->ac").unwrap();
 
@@ -170,23 +158,23 @@ pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f6
         let r_rank = result.rank();
         let r_last: usize = *result.shape().last().unwrap();
         let r_rest: usize = result.shape()[..r_rank - 1].iter().product();
-        let result_rm = super_reorder_dense(&result, rm);
+        let result_rm = result.reordered(rm);
         let result_2d_rm = dense_reshape_tensor(&result_rm, vec![r_rest, r_last]);
-        let result_2d = super_reorder_dense(&result_2d_rm, order);
+        let result_2d = result_2d_rm.reordered(order);
 
         let s_first = site.shape()[0];
         let s_rest: usize = site.shape()[1..].iter().product();
-        let site_rm = super_reorder_dense(site, rm);
+        let site_rm = site.reordered(rm);
         let site_2d_rm = dense_reshape_tensor(&site_rm, vec![s_first, s_rest]);
-        let site_2d = super_reorder_dense(&site_2d_rm, order);
+        let site_2d = site_2d_rm.reordered(order);
 
         let contracted = contract(&result_2d, &site_2d, "ab,bc->ac").unwrap();
 
-        let contracted_rm = super_reorder_dense(&contracted, rm);
+        let contracted_rm = contracted.reordered(rm);
         let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
         new_shape.extend_from_slice(&site.shape()[1..]);
         let multi_rm = dense_reshape_tensor(&contracted_rm, new_shape);
-        result = super_reorder_dense(&multi_rm, order);
+        result = multi_rm.reordered(order);
     }
 
     result

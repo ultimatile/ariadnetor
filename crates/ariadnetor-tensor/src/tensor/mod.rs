@@ -171,15 +171,13 @@ where
     T: Clone,
     B: ComputeBackend,
 {
-    /// Construct a Dense tensor from flat data, shape, memory order, and
-    /// an explicit backend `Arc`.
+    /// Construct a Dense tensor from flat data, shape, memory order,
+    /// and an explicit backend `Arc`.
     ///
-    /// Equivalent to building a `DenseTensorData` via the joined
-    /// `from_raw_parts` accessor and pairing it with `backend`; the
-    /// stored layout's `order()` reflects the `order` argument, not the
-    /// backend's preferred order — downstream Tier 1 / Tier 2 asserts
-    /// are the authority on whether the resulting tensor is valid for
-    /// the target chain.
+    /// The resulting tensor's layout `order()` is the supplied `order`,
+    /// not the backend's preferred order — callers are responsible for
+    /// choosing an `order` compatible with the operations they intend
+    /// to dispatch.
     pub fn from_raw_parts(
         data: Vec<T>,
         shape: Vec<usize>,
