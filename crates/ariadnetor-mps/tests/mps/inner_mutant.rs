@@ -5,8 +5,8 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
-use arnet_tensor::{Dense, MemoryOrder};
 
+use super::helpers::cm_dense_tensor;
 use super::helpers::make_4site_mps;
 
 // --------------------------------------------------------------------------
@@ -48,7 +48,7 @@ fn test_norm_mixed_center_0() {
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
     let n = mps::norm(&mps);
-    let expected = mps.storage(0).norm();
+    let expected = mps.site(0).norm();
     assert_abs_diff_eq!(n, expected, epsilon = 1e-12);
     // Must be positive
     assert!(n > 0.0);
@@ -65,7 +65,7 @@ fn test_norm_mixed_center_last() {
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
     let n = mps::norm(&mps);
-    let expected = mps.storage(3).norm();
+    let expected = mps.site(3).norm();
     assert_abs_diff_eq!(n, expected, epsilon = 1e-12);
 }
 
@@ -80,7 +80,7 @@ fn test_norm_mixed_center_1() {
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
     let n_mixed = mps::norm(&mps);
-    let center_norm = mps.storage(1).norm();
+    let center_norm = mps.site(1).norm();
     assert_abs_diff_eq!(n_mixed, center_norm, epsilon = 1e-12);
 
     // Also verify consistency with full contraction
@@ -116,18 +116,10 @@ fn test_norm_plus_state_exact() {
     // for 2 sites: norm = sqrt(sum of all products) = 2.0
     let inv_sqrt2 = std::f64::consts::FRAC_1_SQRT_2;
     let storages = vec![
-        Dense::new(
-            vec![inv_sqrt2, inv_sqrt2],
-            vec![1, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            vec![inv_sqrt2, inv_sqrt2],
-            vec![1, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+        cm_dense_tensor(vec![inv_sqrt2, inv_sqrt2], vec![1, 2, 1]),
+        cm_dense_tensor(vec![inv_sqrt2, inv_sqrt2], vec![1, 2, 1]),
     ];
-    let psi = Mps::from_storages(storages);
+    let psi = Mps::from_sites(storages);
     let n = mps::norm(&psi);
     // |+⟩|+⟩ is normalized: ⟨++|++⟩ = 1
     assert_abs_diff_eq!(n, 1.0, epsilon = 1e-12);

@@ -1,17 +1,21 @@
-//! TensorChain trait — common operations for MPS/MPO tensor chains
+//! TensorChain trait — common operations for MPS/MPO tensor chains.
 
 use std::sync::Arc;
 
-use arnet_core::backend::ComputeBackend;
-use arnet_tensor::TensorRepr;
+use arnet::{ComputeBackend, Storage, StorageFor, Tensor, TensorLayout};
 
 use super::types::{CanonicalForm, Mpo, Mps};
 
 /// Common operations for MPS/MPO tensor chains.
 ///
-/// Provides rank-independent accessors for site storages, bond dimensions,
-/// canonical form tracking, and backend access.
-pub trait TensorChain<R: TensorRepr, B: ComputeBackend> {
+/// Provides rank-independent accessors for site tensors, bond
+/// dimensions, canonical form tracking, and backend access.
+pub trait TensorChain<St, L, B>
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+    B: ComputeBackend,
+{
     /// Number of sites.
     fn len(&self) -> usize;
 
@@ -20,24 +24,25 @@ pub trait TensorChain<R: TensorRepr, B: ComputeBackend> {
         self.len() == 0
     }
 
-    /// Reference to the storage at a given site.
+    /// Reference to the site tensor at the given index.
     ///
     /// # Panics
     ///
-    /// Panics if `site >= len()`.
-    fn storage(&self, site: usize) -> &R;
+    /// Panics if `idx >= len()`.
+    fn site(&self, idx: usize) -> &Tensor<St, L, B>;
 
-    /// Mutable reference to the storage at a given site.
+    /// Mutable reference to the site tensor at the given index.
     ///
-    /// Resets canonical form to `Unknown` since the tensor data may be modified.
+    /// Resets canonical form to `Unknown` since the tensor data may be
+    /// modified.
     ///
     /// # Panics
     ///
-    /// Panics if `site >= len()`.
-    fn storage_mut(&mut self, site: usize) -> &mut R;
+    /// Panics if `idx >= len()`.
+    fn site_mut(&mut self, idx: usize) -> &mut Tensor<St, L, B>;
 
-    /// Slice of all site storages.
-    fn storages(&self) -> &[R];
+    /// Slice of all site tensors.
+    fn sites(&self) -> &[Tensor<St, L, B>];
 
     /// Current canonical form.
     fn canonical_form(&self) -> &CanonicalForm;
@@ -60,7 +65,7 @@ pub trait TensorChain<R: TensorRepr, B: ComputeBackend> {
     ///
     /// Panics if `bond >= len() - 1`.
     fn bond_dim(&self, bond: usize) -> usize {
-        let shape = self.storage(bond).shape();
+        let shape = self.site(bond).shape();
         shape[shape.len() - 1]
     }
 
@@ -81,22 +86,27 @@ pub trait TensorChain<R: TensorRepr, B: ComputeBackend> {
 
 macro_rules! impl_tensor_chain {
     ($type:ident) => {
-        impl<R: TensorRepr, B: ComputeBackend> TensorChain<R, B> for $type<R, B> {
+        impl<St, L, B> TensorChain<St, L, B> for $type<St, L, B>
+        where
+            St: Storage + StorageFor<L>,
+            L: TensorLayout,
+            B: ComputeBackend,
+        {
             fn len(&self) -> usize {
-                self.0.storages.len()
+                self.0.sites.len()
             }
 
-            fn storage(&self, site: usize) -> &R {
-                &self.0.storages[site]
+            fn site(&self, idx: usize) -> &Tensor<St, L, B> {
+                &self.0.sites[idx]
             }
 
-            fn storage_mut(&mut self, site: usize) -> &mut R {
+            fn site_mut(&mut self, idx: usize) -> &mut Tensor<St, L, B> {
                 self.0.canonical_form = CanonicalForm::Unknown;
-                &mut self.0.storages[site]
+                &mut self.0.sites[idx]
             }
 
-            fn storages(&self) -> &[R] {
-                &self.0.storages
+            fn sites(&self) -> &[Tensor<St, L, B>] {
+                &self.0.sites
             }
 
             fn canonical_form(&self) -> &CanonicalForm {

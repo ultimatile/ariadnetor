@@ -27,6 +27,8 @@ use crate::{
 
 mod dense_ops;
 
+mod block_sparse_ops;
+
 #[cfg(test)]
 mod tests;
 
@@ -156,6 +158,38 @@ where
 }
 
 // ============================================================================
+// Dense generic-backend constructor
+//
+// Tensor-surface entry point for callers that need an explicit memory
+// order and an explicit backend (e.g. mps tests pinning the Tier 1
+// rejection path, internal kernel-output wrapping). Saves callers from
+// reaching into the `DenseTensorData::from_raw_parts` joined surface.
+// ============================================================================
+
+impl<T, B> Tensor<DenseStorage<T>, DenseLayout, B>
+where
+    T: Clone,
+    B: ComputeBackend,
+{
+    /// Construct a Dense tensor from flat data, shape, memory order,
+    /// and an explicit backend `Arc`.
+    ///
+    /// The resulting tensor's layout `order()` is the supplied `order`,
+    /// not the backend's preferred order — callers are responsible for
+    /// choosing an `order` compatible with the operations they intend
+    /// to dispatch.
+    pub fn from_raw_parts(
+        data: Vec<T>,
+        shape: Vec<usize>,
+        order: arnet_core::backend::MemoryOrder,
+        backend: Arc<B>,
+    ) -> Self {
+        let td = DenseTensorData::from_raw_parts(data, shape, order);
+        Self::with_backend(td, backend)
+    }
+}
+
+// ============================================================================
 // Dense-specific constructors with the NativeBackend pin
 //
 // `ComputeBackend` exposes no constructor, so the impl cannot
@@ -235,6 +269,24 @@ where
     /// flux-allowed block of the supplied `QNIndex` legs.
     pub fn zeros(indices: Vec<QNIndex<S>>, flux: S) -> Self {
         let backend = NativeBackend::shared();
+        let order = backend.preferred_order();
+        let td = BlockSparseTensorData::zeros(indices, flux, order);
+        Self::with_backend(td, backend)
+    }
+}
+
+impl<T, S, B> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
+where
+    T: Clone + Zero,
+    S: Sector,
+    B: ComputeBackend,
+{
+    /// Create a zero-filled `BlockSparseTensor` anchored on an explicit
+    /// backend. The layout's memory order is taken from the backend's
+    /// preferred order so that the per-tensor Tier 1 invariant
+    /// (`layout.order() == backend.preferred_order()`) holds at
+    /// construction.
+    pub fn zeros_with_backend(indices: Vec<QNIndex<S>>, flux: S, backend: Arc<B>) -> Self {
         let order = backend.preferred_order();
         let td = BlockSparseTensorData::zeros(indices, flux, order);
         Self::with_backend(td, backend)

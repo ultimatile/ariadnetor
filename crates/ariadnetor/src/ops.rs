@@ -1,11 +1,11 @@
 //! Re-exports of the `arnet_linalg` Tensor-typed free-fn surface.
 //!
-//! With the #262 redo, `arnet_linalg` itself accepts `&DenseTensor<T, B>`
-//! and returns `DenseTensor<T, B>`, so the umbrella no longer needs the
-//! pre-redo `bridge_in` / `bridge_out` copies around each call site.
+//! `arnet_linalg` accepts `&DenseTensor<T, B>` and returns
+//! `DenseTensor<T, B>`, so the umbrella re-exports each call site
+//! directly without copy bridges.
 //!
 //! Inherent `DenseTensor` scalar ops (`scale`, `norm`, `normalize`,
-//! `linear_combine`) still live as thin wrappers below, since they
+//! `linear_combine`) live as thin wrappers below since they
 //! short-circuit the `arnet_linalg` dispatch entirely and operate on
 //! the joined-form storage directly.
 

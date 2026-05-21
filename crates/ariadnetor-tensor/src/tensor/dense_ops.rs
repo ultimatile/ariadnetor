@@ -239,4 +239,26 @@ where
         let n = clone.normalize();
         (clone, n)
     }
+
+    /// Element-wise complex conjugate. Result shares the input's
+    /// backend `Arc`. Symmetric with [`BlockSparseTensor::conj`].
+    pub fn conj(&self) -> Self {
+        let legacy = self.data.as_dense();
+        let conj = legacy.conj();
+        Self {
+            data: conj.into_tensor_data(),
+            backend: std::sync::Arc::clone(&self.backend),
+        }
+    }
+
+    /// Return a tensor with flat data reordered to `to`. Result shares
+    /// the input's backend `Arc`. When `self.data().order() == to`,
+    /// the underlying buffer is shared via `Arc` rather than copied.
+    pub fn reordered(&self, to: arnet_core::backend::MemoryOrder) -> Self {
+        let reordered = crate::reorder::reorder_dense_data(&self.data, to);
+        Self {
+            data: reordered,
+            backend: std::sync::Arc::clone(&self.backend),
+        }
+    }
 }

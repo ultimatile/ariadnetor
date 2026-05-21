@@ -1,4 +1,4 @@
-use crate::Dense;
+use crate::{Dense, DenseTensorData};
 use arnet_core::backend::MemoryOrder;
 use std::borrow::Cow;
 
@@ -57,6 +57,26 @@ pub fn normalize_to<T: Clone>(tensor: &Dense<T>, target: MemoryOrder) -> Cow<'_,
     } else {
         Cow::Owned(reorder(tensor, tensor.order(), target))
     }
+}
+
+/// Reorder a `DenseTensorData<T>` to the requested memory layout.
+///
+/// Joined-type counterpart of [`reorder`]: callers holding a
+/// `DenseTensorData<T>` (e.g. via `DenseTensor::data()`) can stay on the
+/// joined surface without round-tripping through the legacy `Dense<T>`.
+/// The source layout is taken from `tensor.order()`, eliminating the
+/// silent-mismatch class the legacy `reorder(from, to)` signature
+/// admits when `from` disagrees with the stored layout. If
+/// `tensor.order() == to`, returns a clone (zero-copy via Arc).
+/// Otherwise produces a new `DenseTensorData` whose layout `order()`
+/// matches `to`.
+pub fn reorder_dense_data<T: Clone>(
+    tensor: &DenseTensorData<T>,
+    to: MemoryOrder,
+) -> DenseTensorData<T> {
+    let from = tensor.order();
+    let legacy = tensor.as_dense();
+    reorder(&legacy, from, to).into_tensor_data()
 }
 
 /// Compute flat index for given coordinates in the specified memory order.
