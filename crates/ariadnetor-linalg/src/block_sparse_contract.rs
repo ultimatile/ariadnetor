@@ -30,9 +30,14 @@ pub(crate) enum BlockSparseContractResultBsp<T, S: Sector> {
 
 /// Contract two block-sparse tensors over specified axis pairs.
 ///
+/// The backend is taken from `lhs` and a tensor result is wrapped against
+/// `lhs`'s backend Arc. Callers must ensure `lhs` and `rhs` share the same
+/// backend Arc; a mismatch silently runs on `lhs`'s backend and labels the
+/// output with `lhs`'s backend, which is wrong for backends carrying state.
+///
 /// # Partial contraction (free axes remain)
 ///
-/// Returns `BlockSparse` with indices `[lhs_free..., rhs_free...]` and
+/// Returns `BlockSparseTensor` with indices `[lhs_free..., rhs_free...]` and
 /// `flux = lhs.flux().fuse(rhs.flux())`.
 ///
 /// # Full contraction (all axes contracted)

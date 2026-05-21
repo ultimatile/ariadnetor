@@ -115,7 +115,10 @@ pub(crate) fn normalize_dense<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Rea
 
 /// Linear combination of tensors: sum coefs[i] * tensors[i].
 ///
-/// All tensors must have the same shape.
+/// All tensors must have the same shape. The result is wrapped against
+/// `tensors[0]`'s backend Arc; callers must ensure every input shares the
+/// same backend Arc (a mismatch silently labels the output with the first
+/// tensor's backend, which is wrong for backends carrying state).
 ///
 /// # Errors
 ///

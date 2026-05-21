@@ -12,10 +12,15 @@ use arnet_tensor::reorder;
 /// `nrow_a` axes as rows and the remaining axes as columns. The tensor `b`
 /// must have compatible leading dimension (same number of rows as A).
 ///
+/// The backend is taken from `a` and the result is wrapped against `a`'s
+/// backend Arc. Callers must ensure `a` and `b` share the same backend Arc;
+/// a mismatch silently runs on `a`'s backend and labels the output with `a`'s
+/// backend, which is wrong for backends carrying state.
+///
 /// # Arguments
 ///
-/// * `a` - Coefficient tensor (must reshape to n x n square matrix; backend flows from here)
-/// * `b` - Right-hand side tensor (must have n rows when reshaped)
+/// * `a` - Coefficient tensor (must reshape to n x n square matrix; backend authority)
+/// * `b` - Right-hand side tensor (must have n rows when reshaped; must share `a`'s backend Arc)
 /// * `nrow_a` - Number of leading axes to group as rows for A
 ///
 /// # Returns
