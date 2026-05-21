@@ -9,15 +9,22 @@ use std::collections::HashMap;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparse, QNIndex};
+use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensor, QNIndex};
 
 use crate::error::LinalgError;
+use crate::tensor_bridge::wrap_block_sparse;
 
 /// Result of a block-sparse tensor contraction.
-pub enum BlockSparseContractResult<T, S: Sector> {
+pub enum BlockSparseContractResult<T, S: Sector, B: ComputeBackend> {
     /// Partial contraction produced a block-sparse tensor.
-    Tensor(BlockSparse<T, S>),
+    Tensor(BlockSparseTensor<T, S, B>),
     /// Full contraction produced a scalar.
+    Scalar(T),
+}
+
+/// Internal kernel form of [`BlockSparseContractResult`] operating on legacy `BlockSparse<T, S>`.
+pub(crate) enum BlockSparseContractResultBsp<T, S: Sector> {
+    Tensor(BlockSparse<T, S>),
     Scalar(T),
 }
 
@@ -38,21 +45,13 @@ pub enum BlockSparseContractResult<T, S: Sector> {
 /// Returns `LinalgError::InvalidArgument` if axis pairs are invalid:
 /// length mismatch, out-of-range, duplicates, sector/dimension mismatch,
 /// or non-opposite directions.
-pub fn contract_block_sparse<T: Scalar, S: Sector>(
-    backend: &impl ComputeBackend,
-    lhs: &BlockSparse<T, S>,
-    rhs: &BlockSparse<T, S>,
+pub fn contract_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
+    lhs: &BlockSparseTensor<T, S, B>,
+    rhs: &BlockSparseTensor<T, S, B>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
-    contract_block_sparse_with_policy(
-        backend,
-        lhs,
-        rhs,
-        axes_lhs,
-        axes_rhs,
-        ExecPolicy::Sequential,
-    )
+) -> Result<BlockSparseContractResult<T, S, B>, LinalgError> {
+    contract_block_sparse_with_policy(lhs, rhs, axes_lhs, axes_rhs, ExecPolicy::Sequential)
 }
 
 /// Block-sparse tensor contraction with caller-specified execution policy
@@ -63,14 +62,42 @@ pub fn contract_block_sparse<T: Scalar, S: Sector>(
 /// cases and compatible with future outer parallelism); this entry point lets
 /// a caller opt a large-sector case into `Parallel`. The policy is forwarded
 /// to every per-sector GEMM descriptor.
-pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector>(
+pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+    lhs: &BlockSparseTensor<T, S, B>,
+    rhs: &BlockSparseTensor<T, S, B>,
+    axes_lhs: &[usize],
+    axes_rhs: &[usize],
+    policy: ExecPolicy,
+) -> Result<BlockSparseContractResult<T, S, B>, LinalgError> {
+    let backend_arc = lhs.backend_arc().clone();
+    let lhs_order = lhs.data().layout().order();
+    let lhs_bsp = lhs.data().as_block_sparse();
+    let rhs_bsp = rhs.data().as_block_sparse();
+    let result = contract_block_sparse_with_policy_dense(
+        lhs.backend(),
+        &lhs_bsp,
+        &rhs_bsp,
+        axes_lhs,
+        axes_rhs,
+        policy,
+    )?;
+    match result {
+        BlockSparseContractResultBsp::Tensor(t) => Ok(BlockSparseContractResult::Tensor(
+            wrap_block_sparse(t, backend_arc, lhs_order),
+        )),
+        BlockSparseContractResultBsp::Scalar(s) => Ok(BlockSparseContractResult::Scalar(s)),
+    }
+}
+
+/// Internal kernel for [`contract_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     lhs: &BlockSparse<T, S>,
     rhs: &BlockSparse<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     policy: ExecPolicy,
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
     validate_contraction_axes(lhs, rhs, axes_lhs, axes_rhs)?;
 
     let num_contracted = axes_lhs.len();
@@ -210,9 +237,9 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
     axes_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     order: MemoryOrder,
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
     if lhs.flux().fuse(rhs.flux()) != S::identity() {
-        return Ok(BlockSparseContractResult::Scalar(T::zero()));
+        return Ok(BlockSparseContractResultBsp::Scalar(T::zero()));
     }
 
     // Permute rhs so its axes align with lhs axis order for dot product
@@ -258,7 +285,7 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
         }
     }
 
-    Ok(BlockSparseContractResult::Scalar(sum))
+    Ok(BlockSparseContractResultBsp::Scalar(sum))
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +303,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     free_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     policy: ExecPolicy,
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
     let mut output_indices: Vec<QNIndex<S>> = Vec::with_capacity(free_lhs.len() + free_rhs.len());
     for &a in free_lhs {
         output_indices.push(lhs.indices()[a].clone());
@@ -399,7 +426,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
         }
     }
 
-    Ok(BlockSparseContractResult::Tensor(output))
+    Ok(BlockSparseContractResultBsp::Tensor(output))
 }
 
 // ---------------------------------------------------------------------------

@@ -218,7 +218,7 @@ fn sample_rank4_multi_tuple() -> BlockSparse<f64, U1Sector> {
 #[test]
 fn nrow_zero_rejected() {
     let bs = sample_u1_rank2();
-    let err = svd_block_sparse(&backend(), &bs, 0)
+    let err = svd_block_sparse_with_policy_dense(&backend(), &bs, 0, ExecPolicy::Sequential)
         .err()
         .expect("expected error");
     assert!(err.to_string().contains("nrow"));
@@ -226,9 +226,14 @@ fn nrow_zero_rejected() {
 
 #[test]
 fn nrow_ge_rank_rejected() {
-    let err = svd_block_sparse(&backend(), &sample_u1_rank2(), 2)
-        .err()
-        .expect("expected error");
+    let err = svd_block_sparse_with_policy_dense(
+        &backend(),
+        &sample_u1_rank2(),
+        2,
+        ExecPolicy::Sequential,
+    )
+    .err()
+    .expect("expected error");
     assert!(err.to_string().contains("nrow"));
 }
 
@@ -238,9 +243,15 @@ fn trunc_svd_chi_max_zero_rejected() {
         chi_max: Some(0),
         target_trunc_err: None,
     };
-    let err = trunc_svd_block_sparse(&backend(), &sample_u1_rank2(), 1, &params)
-        .err()
-        .expect("expected error");
+    let err = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &sample_u1_rank2(),
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .err()
+    .expect("expected error");
     assert!(err.to_string().contains("chi_max"));
 }
 
@@ -248,7 +259,8 @@ fn trunc_svd_chi_max_zero_rejected() {
 #[test]
 fn svd_rank2_reconstruction() {
     let bs = sample_u1_rank2();
-    let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 1).unwrap();
+    let (u, sv, vt) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
     // Structure checks
     assert_eq!(u.rank(), 2);
     assert_eq!(*u.flux(), U1Sector(0));
@@ -268,7 +280,8 @@ fn svd_rank2_reconstruction() {
 #[test]
 fn svd_rank3_fused_sectors() {
     let bs = sample_u1_rank3();
-    let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 2).unwrap();
+    let (u, sv, vt) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 2, ExecPolicy::Sequential).unwrap();
     assert_eq!(u.rank(), 3);
     assert_eq!(*u.flux(), U1Sector(0));
     assert_eq!(vt.rank(), 2);
@@ -281,7 +294,8 @@ fn svd_rank3_fused_sectors() {
 #[test]
 fn svd_nonzero_flux() {
     let bs = sample_u1_nonzero_flux();
-    let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 1).unwrap();
+    let (u, sv, vt) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
     assert_eq!(*u.flux(), U1Sector(0));
     assert_eq!(*vt.flux(), U1Sector(1));
     assert_eq!(sv.values.len(), 1);
@@ -298,7 +312,14 @@ fn trunc_svd_chi_max() {
         chi_max: Some(3),
         target_trunc_err: None,
     };
-    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
     assert_eq!(total_kept, 3);
     assert!(trunc_err > 0.0);
@@ -312,8 +333,14 @@ fn trunc_svd_no_truncation() {
         chi_max: Some(100),
         target_trunc_err: None,
     };
-    let (_, sv, _, trunc_err) =
-        trunc_svd_block_sparse(&backend(), &sample_u1_rank2(), 1, &params).unwrap();
+    let (_, sv, _, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &sample_u1_rank2(),
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
     assert_eq!(total_kept, 5);
     assert!(trunc_err.abs() < 1e-15);
@@ -323,7 +350,8 @@ fn trunc_svd_no_truncation() {
 #[test]
 fn qr_rank2_reconstruction() {
     let bs = sample_u1_rank2();
-    let (q, r) = qr_block_sparse(&backend(), &bs, 1).unwrap();
+    let (q, r) =
+        qr_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
     assert_eq!(q.rank(), 2);
     assert_eq!(*q.flux(), U1Sector(0));
     assert_eq!(r.rank(), 2);
@@ -334,7 +362,13 @@ fn qr_rank2_reconstruction() {
 #[test]
 fn qr_orthogonality() {
     let ord = order();
-    let (q, _) = qr_block_sparse(&backend(), &sample_u1_rank2(), 1).unwrap();
+    let (q, _) = qr_block_sparse_with_policy_dense(
+        &backend(),
+        &sample_u1_rank2(),
+        1,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let q_groups = compute_fused_sector_groups(&q, 1);
     for g in &q_groups {
         let q_mat = assemble_sector_matrix(&q, g, ord);
@@ -362,7 +396,8 @@ fn qr_orthogonality() {
 #[test]
 fn lq_rank2_reconstruction() {
     let bs = sample_u1_rank2();
-    let (l, q) = lq_block_sparse(&backend(), &bs, 1).unwrap();
+    let (l, q) =
+        lq_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
     assert_eq!(l.rank(), 2);
     assert_eq!(*l.flux(), U1Sector(0));
     assert_eq!(q.rank(), 2);
@@ -373,7 +408,13 @@ fn lq_rank2_reconstruction() {
 #[test]
 fn lq_orthogonality() {
     let ord = order();
-    let (_, q) = lq_block_sparse(&backend(), &sample_u1_rank2(), 1).unwrap();
+    let (_, q) = lq_block_sparse_with_policy_dense(
+        &backend(),
+        &sample_u1_rank2(),
+        1,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let q_groups = compute_fused_sector_groups(&q, 1);
     for g in &q_groups {
         let q_mat = assemble_sector_matrix(&q, g, ord);
@@ -402,7 +443,8 @@ fn lq_orthogonality() {
 fn trunc_svd_exact_truncation_error() {
     let bs = sample_known_svs();
     // Verify SVs are exactly [3, 2, 1, 1]
-    let (_, sv_full, _) = svd_block_sparse(&backend(), &bs, 1).unwrap();
+    let (_, sv_full, _) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
     let mut all_sv: Vec<f64> = sv_full
         .values
         .iter()
@@ -418,7 +460,14 @@ fn trunc_svd_exact_truncation_error() {
         chi_max: Some(2),
         target_trunc_err: None,
     };
-    let (_, _, _, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let (_, _, _, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     // trunc_err = sqrt(1² + 1²) = sqrt(2)
     let expected_err = 2.0_f64.sqrt();
     assert!(
@@ -436,7 +485,14 @@ fn trunc_svd_target_err_exact_count() {
         chi_max: None,
         target_trunc_err: Some(1.1),
     };
-    let (_, sv, _, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let (_, sv, _, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
     assert_eq!(total_kept, 3, "should discard exactly 1 SV");
     assert!(
@@ -454,7 +510,14 @@ fn trunc_svd_target_err_boundary() {
         chi_max: None,
         target_trunc_err: Some(1.0),
     };
-    let (_, sv, _, _) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let (_, sv, _, _) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
     assert_eq!(
         total_kept, 3,
@@ -471,7 +534,14 @@ fn trunc_svd_zero_sector_bond_structure() {
         chi_max: Some(1),
         target_trunc_err: None,
     };
-    let (u, sv, vt, _) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let (u, sv, vt, _) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
 
     // Only sector 1 survives in SVD output
     assert_eq!(sv.values.len(), 1);
@@ -499,7 +569,8 @@ fn trunc_svd_zero_sector_bond_structure() {
 #[test]
 fn svd_rank4_multi_tuple_reconstruction() {
     let bs = sample_rank4_multi_tuple();
-    let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 2).unwrap();
+    let (u, sv, vt) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 2, ExecPolicy::Sequential).unwrap();
     assert_eq!(u.rank(), 3);
     assert_eq!(vt.rank(), 3);
     verify_svd_reconstruction(&bs, &u, &sv, &vt, 2, order());
@@ -508,7 +579,8 @@ fn svd_rank4_multi_tuple_reconstruction() {
 #[test]
 fn qr_rank4_multi_tuple_reconstruction() {
     let bs = sample_rank4_multi_tuple();
-    let (q, r) = qr_block_sparse(&backend(), &bs, 2).unwrap();
+    let (q, r) =
+        qr_block_sparse_with_policy_dense(&backend(), &bs, 2, ExecPolicy::Sequential).unwrap();
     assert_eq!(q.rank(), 3);
     assert_eq!(r.rank(), 3);
     verify_two_factor_reconstruction(&bs, &q, &r, 2, order());
@@ -517,7 +589,8 @@ fn qr_rank4_multi_tuple_reconstruction() {
 #[test]
 fn lq_rank4_multi_tuple_reconstruction() {
     let bs = sample_rank4_multi_tuple();
-    let (l, q) = lq_block_sparse(&backend(), &bs, 2).unwrap();
+    let (l, q) =
+        lq_block_sparse_with_policy_dense(&backend(), &bs, 2, ExecPolicy::Sequential).unwrap();
     assert_eq!(l.rank(), 3);
     assert_eq!(q.rank(), 3);
     verify_two_factor_reconstruction(&bs, &l, &q, 2, order());
@@ -530,7 +603,14 @@ fn trunc_svd_rank4_multi_tuple_reconstruction() {
         chi_max: Some(2),
         target_trunc_err: None,
     };
-    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 2, &params).unwrap();
+    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        2,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
     assert_eq!(total_kept, 2);
     assert!(trunc_err > 0.0);
@@ -571,7 +651,8 @@ fn svd_z2_reconstruction() {
     {
         *v = (i + 9) as f64;
     }
-    let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 1).unwrap();
+    let (u, sv, vt) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
     assert_eq!(*u.flux(), Z2Sector::new(0));
     assert_eq!(*vt.flux(), Z2Sector::new(0));
     assert_eq!(sv.values.len(), 2);
@@ -584,7 +665,8 @@ fn svd_empty_tensor() {
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1));
-    let (u, sv, vt) = svd_block_sparse(&backend(), &bs, 1).unwrap();
+    let (u, sv, vt) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
     assert_eq!(sv.values.len(), 0);
     assert_eq!(u.num_blocks(), 0);
     assert_eq!(vt.num_blocks(), 0);
@@ -599,7 +681,14 @@ fn trunc_svd_empty_tensor_with_target_err() {
         chi_max: None,
         target_trunc_err: Some(0.1),
     };
-    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse(&backend(), &bs, 1, &params).unwrap();
+    let (u, sv, vt, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     assert_eq!(sv.values.len(), 0);
     assert_eq!(u.num_blocks(), 0);
     assert_eq!(vt.num_blocks(), 0);

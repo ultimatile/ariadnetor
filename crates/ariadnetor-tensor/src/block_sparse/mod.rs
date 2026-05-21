@@ -19,11 +19,13 @@ use aligned_vec::{AVec, ConstAlign};
 use crate::sector::Sector;
 
 mod layout;
+mod qn_index;
 mod scalar_ops;
 mod storage;
 mod tensor_data;
 
 pub use layout::BlockSparseLayout;
+pub use qn_index::QNIndex;
 pub use storage::BlockSparseStorage;
 pub use tensor_data::BlockSparseTensorData;
 
@@ -48,86 +50,6 @@ impl Direction {
             Direction::Out => sector.clone(),
             Direction::In => sector.dual(),
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// QNIndex
-// ---------------------------------------------------------------------------
-
-/// Quantum-number index for one tensor leg.
-///
-/// Maps each sector to a block dimension, with a direction for flux computation.
-///
-/// # Invariants (enforced by constructor)
-///
-/// - `blocks` is sorted by sector (`Ord`)
-/// - No duplicate sectors
-/// - Every block dimension is > 0
-#[derive(Clone, Debug)]
-pub struct QNIndex<S: Sector> {
-    /// Sector → block dimension pairs, sorted by sector, no duplicates.
-    blocks: Vec<(S, usize)>,
-    /// Leg direction.
-    direction: Direction,
-}
-
-impl<S: Sector> QNIndex<S> {
-    /// Create a new QN index.
-    ///
-    /// `blocks` is sorted by sector. Panics if any block dimension is zero
-    /// or if duplicate sectors are present.
-    pub fn new(mut blocks: Vec<(S, usize)>, direction: Direction) -> Self {
-        blocks.sort_by(|a, b| a.0.cmp(&b.0));
-
-        for (i, (sector, dim)) in blocks.iter().enumerate() {
-            assert!(
-                *dim > 0,
-                "QNIndex: block dimension must be > 0 for sector {sector:?}"
-            );
-            if i > 0 {
-                assert!(
-                    blocks[i - 1].0 != *sector,
-                    "QNIndex: duplicate sector {sector:?}"
-                );
-            }
-        }
-
-        Self { blocks, direction }
-    }
-
-    /// Sector–dimension pairs (sorted by sector).
-    pub fn blocks(&self) -> &[(S, usize)] {
-        &self.blocks
-    }
-
-    /// Leg direction.
-    pub fn direction(&self) -> Direction {
-        self.direction
-    }
-
-    /// Number of distinct sectors (blocks) in this index.
-    pub fn num_blocks(&self) -> usize {
-        self.blocks.len()
-    }
-
-    /// Total dimension (sum of all block dimensions).
-    pub fn total_dim(&self) -> usize {
-        self.blocks.iter().map(|(_, d)| d).sum()
-    }
-
-    /// Block dimension for a given block index.
-    ///
-    /// Panics if `idx >= self.num_blocks()`.
-    pub fn block_dim(&self, idx: usize) -> usize {
-        self.blocks[idx].1
-    }
-
-    /// Sector for a given block index.
-    ///
-    /// Panics if `idx >= self.num_blocks()`.
-    pub fn sector(&self, idx: usize) -> &S {
-        &self.blocks[idx].0
     }
 }
 
@@ -543,6 +465,56 @@ impl<T, S: Sector> BlockSparse<T, S> {
             flux,
             shape,
         }
+    }
+
+    /// Construct from an already-aligned storage Arc and pre-validated
+    /// block metadata.
+    ///
+    /// Internal kernel bridge for
+    /// [`BlockSparseTensorData::as_block_sparse`](crate::BlockSparseTensorData::as_block_sparse).
+    /// All structural invariants must already hold — no enumeration or
+    /// validation runs here. Pub for cross-crate access; not
+    /// user-facing.
+    pub fn from_storage_arc(
+        data: Arc<AVec<T, ConstAlign<64>>>,
+        blocks: Vec<BlockMeta>,
+        block_index: HashMap<BlockCoord, usize>,
+        indices: Vec<QNIndex<S>>,
+        flux: S,
+        shape: Vec<usize>,
+    ) -> Self {
+        Self {
+            data,
+            blocks,
+            block_index,
+            indices,
+            flux,
+            shape,
+        }
+    }
+
+    /// Move into a [`BlockSparseTensorData<T, S>`](crate::BlockSparseTensorData) by
+    /// stealing the storage Arc and supplying the missing memory order.
+    ///
+    /// The legacy `BlockSparse` predates the per-tensor order field; the
+    /// caller — typically a linalg pub-API output wrapper that knows
+    /// the active backend's [`preferred_order`](arnet_core::backend::ComputeBackend::preferred_order)
+    /// — supplies `order` to complete the joined-form layout. Pub for
+    /// cross-crate kernel-output wrapping; not user-facing.
+    pub fn into_tensor_data(
+        self,
+        order: arnet_core::backend::MemoryOrder,
+    ) -> crate::BlockSparseTensorData<T, S> {
+        let storage = crate::BlockSparseStorage::from_arc(self.data);
+        let layout = crate::BlockSparseLayout::from_parts(
+            self.blocks,
+            self.block_index,
+            self.indices,
+            self.flux,
+            self.shape,
+            order,
+        );
+        crate::TensorData::new(storage, layout)
     }
 
     /// Mutable data slice for a block identified by coordinate (CoW).

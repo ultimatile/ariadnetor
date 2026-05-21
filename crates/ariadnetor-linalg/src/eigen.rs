@@ -1,16 +1,20 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
+use crate::tensor_bridge::{wrap_dense, wrap_dense_as};
 use arnet_tensor::reorder;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
-/// - Eigenvalues: `Dense<T::Real>` with shape `[n]`, sorted ascending
-/// - Eigenvectors: `Dense<T>` with shape `[n, n]`, columns are eigenvectors
-pub type EighResult<T> = (Dense<<T as Scalar>::Real>, Dense<T>);
+/// - Eigenvalues: `DenseTensor<T::Real, B>` with shape `[n]`, sorted ascending
+/// - Eigenvectors: `DenseTensor<T, B>` with shape `[n, n]`, columns are eigenvectors
+pub type EighResult<T, B> = (DenseTensor<<T as Scalar>::Real, B>, DenseTensor<T, B>);
+
+/// Internal kernel form of [`EighResult`] operating on legacy `Dense<T>`.
+pub(crate) type EighResultDense<T> = (Dense<<T as Scalar>::Real>, Dense<T>);
 
 /// Compute self-adjoint eigenvalue decomposition of a tensor reshaped as a square matrix.
 ///
@@ -20,8 +24,7 @@ pub type EighResult<T> = (Dense<<T as Scalar>::Real>, Dense<T>);
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend
-/// * `tensor` - Input tensor (must reshape to a square matrix)
+/// * `tensor` - Input tensor (backend flows from the tensor)
 /// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
 ///
 /// # Returns
@@ -33,30 +36,59 @@ pub type EighResult<T> = (Dense<<T as Scalar>::Real>, Dense<T>);
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
-pub fn eigh<T: Scalar>(
+pub fn eigh<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+    nrow: usize,
+) -> Result<EighResult<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let (w, v) = eigh_dense(tensor.backend(), &dense, nrow)?;
+    Ok((
+        wrap_dense_as(w, backend_arc.clone()),
+        wrap_dense(v, backend_arc),
+    ))
+}
+
+/// Internal kernel for [`eigh`] on legacy `Dense<T>`.
+pub(crate) fn eigh_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
-) -> Result<EighResult<T>, LinalgError> {
+) -> Result<EighResultDense<T>, LinalgError> {
     let n = if nrow == 0 || nrow >= tensor.rank() {
         0
     } else {
         tensor.shape()[..nrow].iter().product()
     };
     let policy = backend.par_for_eigh(n);
-    eigh_with_policy(backend, tensor, nrow, policy)
+    eigh_with_policy_dense(backend, tensor, nrow, policy)
 }
 
 /// Self-adjoint eigenvalue decomposition with caller-specified execution policy.
 ///
 /// Expert-layer counterpart of [`eigh`]; the default wrapper consults
 /// `backend.par_for_eigh`, while this entry point takes `policy` directly.
-pub fn eigh_with_policy<T: Scalar>(
+pub fn eigh_with_policy<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<EighResult<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let (w, v) = eigh_with_policy_dense(tensor.backend(), &dense, nrow, policy)?;
+    Ok((
+        wrap_dense_as(w, backend_arc.clone()),
+        wrap_dense(v, backend_arc),
+    ))
+}
+
+/// Internal kernel for [`eigh_with_policy`] on legacy `Dense<T>`.
+pub(crate) fn eigh_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<EighResult<T>, LinalgError> {
+) -> Result<EighResultDense<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -107,7 +139,6 @@ pub fn eigh_with_policy<T: Scalar>(
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend
 /// * `tensor` - Input tensor (must reshape to a square matrix)
 /// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
 ///
@@ -119,20 +150,25 @@ pub fn eigh_with_policy<T: Scalar>(
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
-pub fn eigvalsh<T: Scalar>(
-    backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+pub fn eigvalsh<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
     nrow: usize,
-) -> Result<Dense<T::Real>, LinalgError> {
-    let (w, _v) = eigh(backend, tensor, nrow)?;
+) -> Result<DenseTensor<T::Real, B>, LinalgError> {
+    let (w, _v) = eigh(tensor, nrow)?;
     Ok(w)
 }
 
 /// Result of a general eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
-/// - Eigenvalues: `Dense<T::Complex>` with shape `[n]`, complex
-/// - Eigenvectors: `Dense<T::Complex>` with shape `[n, n]`, complex, columns are right eigenvectors
-pub type EigResult<T> = (Dense<<T as Scalar>::Complex>, Dense<<T as Scalar>::Complex>);
+/// - Eigenvalues: `DenseTensor<T::Complex, B>` with shape `[n]`, complex
+/// - Eigenvectors: `DenseTensor<T::Complex, B>` with shape `[n, n]`, complex, columns are right eigenvectors
+pub type EigResult<T, B> = (
+    DenseTensor<<T as Scalar>::Complex, B>,
+    DenseTensor<<T as Scalar>::Complex, B>,
+);
+
+/// Internal kernel form of [`EigResult`] operating on legacy `Dense<T>`.
+pub(crate) type EigResultDense<T> = (Dense<<T as Scalar>::Complex>, Dense<<T as Scalar>::Complex>);
 
 /// Compute general eigenvalue decomposition of a tensor reshaped as a square matrix.
 ///
@@ -142,7 +178,6 @@ pub type EigResult<T> = (Dense<<T as Scalar>::Complex>, Dense<<T as Scalar>::Com
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend
 /// * `tensor` - Input tensor (must reshape to a square matrix)
 /// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
 ///
@@ -155,30 +190,59 @@ pub type EigResult<T> = (Dense<<T as Scalar>::Complex>, Dense<<T as Scalar>::Com
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
-pub fn eig<T: Scalar>(
+pub fn eig<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+    nrow: usize,
+) -> Result<EigResult<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let (w, v) = eig_dense(tensor.backend(), &dense, nrow)?;
+    Ok((
+        wrap_dense_as(w, backend_arc.clone()),
+        wrap_dense_as(v, backend_arc),
+    ))
+}
+
+/// Internal kernel for [`eig`] on legacy `Dense<T>`.
+pub(crate) fn eig_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
-) -> Result<EigResult<T>, LinalgError> {
+) -> Result<EigResultDense<T>, LinalgError> {
     let n = if nrow == 0 || nrow >= tensor.rank() {
         0
     } else {
         tensor.shape()[..nrow].iter().product()
     };
     let policy = backend.par_for_eig(n);
-    eig_with_policy(backend, tensor, nrow, policy)
+    eig_with_policy_dense(backend, tensor, nrow, policy)
 }
 
 /// General eigenvalue decomposition with caller-specified execution policy.
 ///
 /// Expert-layer counterpart of [`eig`]; the default wrapper consults
 /// `backend.par_for_eig`, while this entry point takes `policy` directly.
-pub fn eig_with_policy<T: Scalar>(
+pub fn eig_with_policy<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<EigResult<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let (w, v) = eig_with_policy_dense(tensor.backend(), &dense, nrow, policy)?;
+    Ok((
+        wrap_dense_as(w, backend_arc.clone()),
+        wrap_dense_as(v, backend_arc),
+    ))
+}
+
+/// Internal kernel for [`eig_with_policy`] on legacy `Dense<T>`.
+pub(crate) fn eig_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<EigResult<T>, LinalgError> {
+) -> Result<EigResultDense<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -228,7 +292,6 @@ pub fn eig_with_policy<T: Scalar>(
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend
 /// * `tensor` - Input tensor (must reshape to a square matrix)
 /// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
 ///
@@ -240,11 +303,10 @@ pub fn eig_with_policy<T: Scalar>(
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
-pub fn eigvals<T: Scalar>(
-    backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+pub fn eigvals<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
     nrow: usize,
-) -> Result<Dense<T::Complex>, LinalgError> {
-    let (w, _v) = eig(backend, tensor, nrow)?;
+) -> Result<DenseTensor<T::Complex, B>, LinalgError> {
+    let (w, _v) = eig(tensor, nrow)?;
     Ok(w)
 }

@@ -1,7 +1,7 @@
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector, Z2Sector};
 
-use super::permute_block_sparse;
+use super::permute_block_sparse_dense;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
@@ -38,7 +38,7 @@ fn sample_u1_rank3() -> BlockSparse<f64, U1Sector> {
 #[test]
 fn identity_permutation_is_clone() {
     let bs = sample_u1_rank3();
-    let result = permute_block_sparse(&backend(), &bs, &[0, 1, 2]).unwrap();
+    let result = permute_block_sparse_dense(&backend(), &bs, &[0, 1, 2]).unwrap();
     assert_eq!(result.shape(), bs.shape());
     for meta in bs.block_metas() {
         let orig = bs.block_data(&meta.coord).unwrap();
@@ -64,7 +64,7 @@ fn transpose_rank2() {
     let d = bs.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
     d.copy_from_slice(&[5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0]);
 
-    let result = permute_block_sparse(&backend(), &bs, &[1, 0]).unwrap();
+    let result = permute_block_sparse_dense(&backend(), &bs, &[1, 0]).unwrap();
 
     // Shape should be transposed
     assert_eq!(result.shape(), &[5, 5]); // same total dims, swapped
@@ -74,7 +74,7 @@ fn transpose_rank2() {
     // Block (0,0) in result = transpose of original (0,0): [[1,3],[2,4]]
     // Verify via double transpose (roundtrip), since the exact layout
     // depends on the backend's preferred memory order.
-    let double = permute_block_sparse(&backend(), &result, &[1, 0]).unwrap();
+    let double = permute_block_sparse_dense(&backend(), &result, &[1, 0]).unwrap();
     for meta in bs.block_metas() {
         let orig = bs.block_data(&meta.coord).unwrap();
         let roundtrip = double.block_data(&meta.coord).unwrap();
@@ -90,9 +90,9 @@ fn transpose_rank2() {
 fn cyclic_permutation_rank3() {
     let bs = sample_u1_rank3();
     // perm = [1, 2, 0]: new[0]=old[1], new[1]=old[2], new[2]=old[0]
-    let p1 = permute_block_sparse(&backend(), &bs, &[1, 2, 0]).unwrap();
-    let p2 = permute_block_sparse(&backend(), &p1, &[1, 2, 0]).unwrap();
-    let p3 = permute_block_sparse(&backend(), &p2, &[1, 2, 0]).unwrap();
+    let p1 = permute_block_sparse_dense(&backend(), &bs, &[1, 2, 0]).unwrap();
+    let p2 = permute_block_sparse_dense(&backend(), &p1, &[1, 2, 0]).unwrap();
+    let p3 = permute_block_sparse_dense(&backend(), &p2, &[1, 2, 0]).unwrap();
 
     // Three cyclic permutations should return to original
     assert_eq!(p3.shape(), bs.shape());
@@ -116,7 +116,7 @@ fn cyclic_permutation_rank3() {
 #[test]
 fn permute_preserves_flux() {
     let bs = sample_u1_rank3();
-    let result = permute_block_sparse(&backend(), &bs, &[2, 0, 1]).unwrap();
+    let result = permute_block_sparse_dense(&backend(), &bs, &[2, 0, 1]).unwrap();
     assert_eq!(result.flux(), bs.flux());
     // All blocks should satisfy flux conservation
     for meta in result.block_metas() {
@@ -135,7 +135,7 @@ fn permute_preserves_flux() {
 #[test]
 fn perm_wrong_length() {
     let bs = sample_u1_rank3();
-    let result = permute_block_sparse(&backend(), &bs, &[0, 1]);
+    let result = permute_block_sparse_dense(&backend(), &bs, &[0, 1]);
     assert!(result.is_err());
     assert!(format!("{}", result.err().unwrap()).contains("perm length"));
 }
@@ -143,7 +143,7 @@ fn perm_wrong_length() {
 #[test]
 fn perm_out_of_range() {
     let bs = sample_u1_rank3();
-    let result = permute_block_sparse(&backend(), &bs, &[0, 1, 5]);
+    let result = permute_block_sparse_dense(&backend(), &bs, &[0, 1, 5]);
     assert!(result.is_err());
     assert!(format!("{}", result.err().unwrap()).contains("out of range"));
 }
@@ -151,7 +151,7 @@ fn perm_out_of_range() {
 #[test]
 fn perm_duplicate() {
     let bs = sample_u1_rank3();
-    let result = permute_block_sparse(&backend(), &bs, &[0, 1, 1]);
+    let result = permute_block_sparse_dense(&backend(), &bs, &[0, 1, 1]);
     assert!(result.is_err());
     assert!(format!("{}", result.err().unwrap()).contains("duplicate"));
 }
@@ -176,8 +176,8 @@ fn permute_z2_rank2() {
         *v = (i + 1) as f64;
     }
 
-    let transposed = permute_block_sparse(&backend(), &bs, &[1, 0]).unwrap();
-    let double = permute_block_sparse(&backend(), &transposed, &[1, 0]).unwrap();
+    let transposed = permute_block_sparse_dense(&backend(), &bs, &[1, 0]).unwrap();
+    let double = permute_block_sparse_dense(&backend(), &transposed, &[1, 0]).unwrap();
 
     for meta in bs.block_metas() {
         let orig = bs.block_data(&meta.coord).unwrap();

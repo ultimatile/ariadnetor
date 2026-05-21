@@ -9,10 +9,12 @@ use std::collections::HashMap;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_tensor::BlockSparse;
+use arnet_tensor::BlockSparseTensor;
 use arnet_tensor::Sector;
 
 use crate::block_sparse_decomp::BlockSingularValues;
 use crate::error::LinalgError;
+use crate::tensor_bridge::wrap_block_sparse;
 
 /// Scale each slice along `axis` by per-sector diagonal weights.
 ///
@@ -27,7 +29,25 @@ use crate::error::LinalgError;
 /// Returns an error if `axis` is out of range, a block's sector is missing
 /// from `weights`, or the weight vector length doesn't match the block
 /// dimension at `axis`.
-pub fn diagonal_scale_block_sparse<T, S>(
+pub fn diagonal_scale_block_sparse<T, S, B>(
+    tensor: &BlockSparseTensor<T, S, B>,
+    weights: &BlockSingularValues<T::Real, S>,
+    axis: usize,
+) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    let backend_arc = tensor.backend_arc().clone();
+    let order = tensor.data().layout().order();
+    let bsp = tensor.data().as_block_sparse();
+    let result = diagonal_scale_block_sparse_dense(tensor.backend(), &bsp, weights, axis)?;
+    Ok(wrap_block_sparse(result, backend_arc, order))
+}
+
+/// Internal kernel for [`diagonal_scale_block_sparse`] on legacy `BlockSparse<T, S>`.
+pub(crate) fn diagonal_scale_block_sparse_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparse<T, S>,
     weights: &BlockSingularValues<T::Real, S>,

@@ -1,8 +1,9 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
 
 use crate::error::LinalgError;
+use crate::tensor_bridge::wrap_dense;
 use arnet_tensor::reorder;
 
 /// Solve the linear system AX = B via LU decomposition.
@@ -13,8 +14,7 @@ use arnet_tensor::reorder;
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend
-/// * `a` - Coefficient tensor (must reshape to n x n square matrix)
+/// * `a` - Coefficient tensor (must reshape to n x n square matrix; backend flows from here)
 /// * `b` - Right-hand side tensor (must have n rows when reshaped)
 /// * `nrow_a` - Number of leading axes to group as rows for A
 ///
@@ -26,15 +26,28 @@ use arnet_tensor::reorder;
 ///
 /// Returns `LinalgError` if `nrow_a` is out of range, the matrix A is non-square,
 /// dimensions are incompatible, or the backend fails.
-pub fn solve<T: Scalar>(
+pub fn solve<T: Scalar, B: ComputeBackend>(
+    a: &DenseTensor<T, B>,
+    b: &DenseTensor<T, B>,
+    nrow_a: usize,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = a.backend_arc().clone();
+    let a_dense = a.data().as_dense();
+    let b_dense = b.data().as_dense();
+    let result = solve_dense(a.backend(), &a_dense, &b_dense, nrow_a)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`solve`] on legacy `Dense<T>`.
+pub(crate) fn solve_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     a: &Dense<T>,
     b: &Dense<T>,
     nrow_a: usize,
 ) -> Result<Dense<T>, LinalgError> {
-    // Extract key dims for par_for_solve; full validation occurs in solve_with_policy.
+    // Extract key dims for par_for_solve; full validation occurs in solve_with_policy_dense.
     // If nrow_a is out of range, use a placeholder key — policy_by_n is defined for any
-    // input, and solve_with_policy will return the descriptive error.
+    // input, and solve_with_policy_dense will return the descriptive error.
     let (m, nrhs) = if nrow_a == 0 || nrow_a >= a.rank() {
         (0, 0)
     } else {
@@ -43,14 +56,28 @@ pub fn solve<T: Scalar>(
         (m, nrhs)
     };
     let policy = backend.par_for_solve(m, nrhs);
-    solve_with_policy(backend, a, b, nrow_a, policy)
+    solve_with_policy_dense(backend, a, b, nrow_a, policy)
 }
 
 /// Linear solve with caller-specified execution policy.
 ///
 /// Expert-layer counterpart of [`solve`]; the default wrapper consults
 /// `backend.par_for_solve`, while this entry point takes `policy` directly.
-pub fn solve_with_policy<T: Scalar>(
+pub fn solve_with_policy<T: Scalar, B: ComputeBackend>(
+    a: &DenseTensor<T, B>,
+    b: &DenseTensor<T, B>,
+    nrow_a: usize,
+    policy: ExecPolicy,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = a.backend_arc().clone();
+    let a_dense = a.data().as_dense();
+    let b_dense = b.data().as_dense();
+    let result = solve_with_policy_dense(a.backend(), &a_dense, &b_dense, nrow_a, policy)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`solve_with_policy`] on legacy `Dense<T>`.
+pub(crate) fn solve_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     a: &Dense<T>,
     b: &Dense<T>,
@@ -130,8 +157,7 @@ pub fn solve_with_policy<T: Scalar>(
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend
-/// * `tensor` - Input tensor (must reshape to a square matrix)
+/// * `tensor` - Input tensor (must reshape to a square matrix; backend flows from here)
 /// * `nrow` - Number of leading axes to group as rows (must be in `1..rank`)
 ///
 /// # Returns
@@ -142,7 +168,18 @@ pub fn solve_with_policy<T: Scalar>(
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// singular, or the backend fails.
-pub fn inverse<T: Scalar>(
+pub fn inverse<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+    nrow: usize,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let result = inverse_dense(tensor.backend(), &dense, nrow)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`inverse`] on legacy `Dense<T>`.
+pub(crate) fn inverse_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     nrow: usize,
@@ -178,7 +215,7 @@ pub fn inverse<T: Scalar>(
     let a_flat_rm = Dense::new(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
     let a_flat = reorder(&a_flat_rm, MemoryOrder::RowMajor, order);
 
-    let result = solve(backend, &a_flat, &identity, 1)?;
+    let result = solve_dense(backend, &a_flat, &identity, 1)?;
 
     // solve() returns preferred_order data. RM intermediate for axis-split,
     // then back to preferred_order.

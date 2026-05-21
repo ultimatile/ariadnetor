@@ -10,12 +10,13 @@ use std::collections::{HashMap, HashSet};
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, normalize_to};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor, normalize_to};
 
-use crate::contract::contract;
+use crate::contract::contract_dense;
 use crate::error::LinalgError;
-use crate::scalar_ops::trace;
-use crate::transpose::transpose;
+use crate::scalar_ops::trace_dense;
+use crate::tensor_bridge::wrap_dense;
+use crate::transpose::transpose_dense;
 use arnet_tensor::reorder;
 
 /// Execute an Einstein summation over N tensors.
@@ -44,7 +45,25 @@ use arnet_tensor::reorder;
 ///
 /// Returns `LinalgError` if notation is invalid, tensor count mismatches,
 /// or any sub-operation fails.
-pub fn einsum<T: Scalar>(
+pub fn einsum<T: Scalar, B: ComputeBackend>(
+    tensors: &[&DenseTensor<T, B>],
+    notation: &str,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    if tensors.is_empty() {
+        return Err(LinalgError::InvalidArgument(
+            "einsum requires at least 1 input".to_string(),
+        ));
+    }
+    let backend_arc = tensors[0].backend_arc().clone();
+    let backend = tensors[0].backend();
+    let dense_views: Vec<Dense<T>> = tensors.iter().map(|t| t.data().as_dense()).collect();
+    let dense_refs: Vec<&Dense<T>> = dense_views.iter().collect();
+    let result = einsum_dense(backend, &dense_refs, notation)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`einsum`] on legacy `Dense<T>` slices.
+pub(crate) fn einsum_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensors: &[&Dense<T>],
     notation: &str,
@@ -88,7 +107,7 @@ fn einsum_pair<T: Scalar>(
 
     if plan.batch.is_empty() {
         // Pure contraction -- delegate to contract() (GEMM path)
-        return contract(backend, lhs, rhs, notation);
+        return contract_dense(backend, lhs, rhs, notation);
     }
 
     // Compute dimension sizes for each category
@@ -135,13 +154,13 @@ fn hadamard<T: Scalar>(
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_ordered = if let Some(perm) = lhs_perm {
-        transpose(backend, lhs, &perm)?
+        transpose_dense(backend, lhs, &perm)?
     } else {
         lhs.clone()
     };
 
     let rhs_ordered = if let Some(perm) = rhs_perm {
-        transpose(backend, rhs, &perm)?
+        transpose_dense(backend, rhs, &perm)?
     } else {
         rhs.clone()
     };
@@ -197,13 +216,13 @@ fn batched_contract<T: Scalar>(
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
-        transpose(backend, lhs, &perm)?
+        transpose_dense(backend, lhs, &perm)?
     } else {
         lhs.clone()
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
-        transpose(backend, rhs, &perm)?
+        transpose_dense(backend, rhs, &perm)?
     } else {
         rhs.clone()
     };
@@ -270,7 +289,7 @@ fn batched_contract<T: Scalar>(
             order,
         );
 
-        let slice_result = contract(
+        let slice_result = contract_dense(
             backend,
             &lhs_slice_preferred,
             &rhs_slice_preferred,
@@ -363,7 +382,7 @@ fn reorder_batched_output<T: Scalar>(
     actual.extend(free_rhs);
 
     match compute_permutation(&actual, out) {
-        Some(perm) => transpose(backend, &result, &perm),
+        Some(perm) => transpose_dense(backend, &result, &perm),
         None => Ok(result),
     }
 }
@@ -513,7 +532,7 @@ fn einsum_single<T: Scalar>(
     let traced = if trace_pairs.is_empty() {
         tensor.clone()
     } else {
-        let result_rm = trace(tensor, &trace_pairs)?;
+        let result_rm = trace_dense(tensor, &trace_pairs)?;
         reorder(&result_rm, MemoryOrder::RowMajor, order)
     };
 
@@ -543,6 +562,6 @@ fn einsum_single<T: Scalar>(
     if is_identity {
         Ok(traced)
     } else {
-        transpose(backend, &traced, &perm)
+        transpose_dense(backend, &traced, &perm)
     }
 }

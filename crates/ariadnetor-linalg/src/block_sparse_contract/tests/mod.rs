@@ -56,7 +56,17 @@ fn to_order(data: &[f64], shape: &[usize]) -> Vec<f64> {
 fn error_on_length_mismatch() {
     let idx = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let a = BlockSparse::<f64, U1Sector>::zeros(vec![idx.clone(), idx.clone()], U1Sector(0));
-    assert!(contract_block_sparse(&b(), &a, &a, &[0], &[0, 1]).is_err());
+    assert!(
+        contract_block_sparse_with_policy_dense(
+            &b(),
+            &a,
+            &a,
+            &[0],
+            &[0, 1],
+            ExecPolicy::Sequential
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -64,7 +74,10 @@ fn error_on_out_of_range() {
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let a = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
-    assert!(contract_block_sparse(&b(), &a, &a, &[5], &[0]).is_err());
+    assert!(
+        contract_block_sparse_with_policy_dense(&b(), &a, &a, &[5], &[0], ExecPolicy::Sequential)
+            .is_err()
+    );
 }
 
 #[test]
@@ -73,7 +86,17 @@ fn error_on_duplicate_axis() {
     let in_ = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let a =
         BlockSparse::<f64, U1Sector>::zeros(vec![out.clone(), out, in_.clone(), in_], U1Sector(0));
-    assert!(contract_block_sparse(&b(), &a, &a, &[0, 0], &[2, 3]).is_err());
+    assert!(
+        contract_block_sparse_with_policy_dense(
+            &b(),
+            &a,
+            &a,
+            &[0, 0],
+            &[2, 3],
+            ExecPolicy::Sequential
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -83,7 +106,10 @@ fn error_on_same_direction() {
     let a = BlockSparse::<f64, U1Sector>::zeros(vec![out.clone(), in_.clone()], U1Sector(0));
     let c = BlockSparse::<f64, U1Sector>::zeros(vec![out, in_], U1Sector(0));
     // axis 0 (Out) vs axis 0 (Out) → same direction
-    assert!(contract_block_sparse(&b(), &a, &c, &[0], &[0]).is_err());
+    assert!(
+        contract_block_sparse_with_policy_dense(&b(), &a, &c, &[0], &[0], ExecPolicy::Sequential)
+            .is_err()
+    );
 }
 
 #[test]
@@ -98,7 +124,10 @@ fn error_on_sector_mismatch() {
         vec![b_row, QNIndex::new(vec![(U1Sector(1), 2)], Direction::In)],
         U1Sector(0),
     );
-    assert!(contract_block_sparse(&b(), &a, &c, &[1], &[0]).is_err());
+    assert!(
+        contract_block_sparse_with_policy_dense(&b(), &a, &c, &[1], &[0], ExecPolicy::Sequential)
+            .is_err()
+    );
 }
 
 #[test]
@@ -113,7 +142,10 @@ fn error_on_dim_mismatch() {
         vec![b_row, QNIndex::new(vec![(U1Sector(0), 3)], Direction::In)],
         U1Sector(0),
     );
-    assert!(contract_block_sparse(&b(), &a, &c, &[1], &[0]).is_err());
+    assert!(
+        contract_block_sparse_with_policy_dense(&b(), &a, &c, &[1], &[0], ExecPolicy::Sequential)
+            .is_err()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -135,8 +167,10 @@ fn rank2_single_block_matmul() {
         .unwrap()
         .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
 
-    match contract_block_sparse(&b(), &a, &c, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(out) => {
+    match contract_block_sparse_with_policy_dense(&b(), &a, &c, &[1], &[0], ExecPolicy::Sequential)
+        .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(out) => {
             let d = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
             // [[1,2],[3,4]] × [[5,6],[7,8]] = [[19,22],[43,50]]
             let expected = to_order(&[19.0, 22.0, 43.0, 50.0], &[2, 2]);
@@ -170,8 +204,10 @@ fn rank2_multi_block_matmul() {
         .unwrap()
         .copy_from_slice(&[10.0]);
 
-    match contract_block_sparse(&b(), &a, &c, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(out) => {
+    match contract_block_sparse_with_policy_dense(&b(), &a, &c, &[1], &[0], ExecPolicy::Sequential)
+        .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(out) => {
             // Block (0,0): [[1,2],[3,4]]×[[6,7],[8,9]] = [[22,25],[50,57]]
             let e00 = to_order(&[22.0, 25.0, 50.0, 57.0], &[2, 2]);
             let d00 = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
@@ -210,8 +246,10 @@ fn rank2_nonzero_flux() {
         .for_each(|v| *v = 1.0);
 
     // Contract A axis 1 (In) with B axis 0 (Out)
-    match contract_block_sparse(&b(), &a, &c, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(out) => {
+    match contract_block_sparse_with_policy_dense(&b(), &a, &c, &[1], &[0], ExecPolicy::Sequential)
+        .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(out) => {
             assert_eq!(out.flux(), &U1Sector(0)); // 1 + (-1) = 0
             // Output block (1,1): 3×3, each element = 4 (inner product of 4 ones)
             let d11 = out.block_data(&BlockCoord(vec![1, 1])).unwrap();
@@ -246,8 +284,17 @@ fn full_contraction_scalar() {
 
     // axes_lhs=[0,1], axes_rhs=[1,0] so Out↔In pairing is correct
     // Σ_{i,j} A[i,j] * B[j,i] = 1*5+2*7+3*6+4*8 = 5+14+18+32 = 69
-    match contract_block_sparse(&b(), &a, &c, &[0, 1], &[1, 0]).unwrap() {
-        BlockSparseContractResult::Scalar(s) => assert!((s - 69.0).abs() < 1e-10),
+    match contract_block_sparse_with_policy_dense(
+        &b(),
+        &a,
+        &c,
+        &[0, 1],
+        &[1, 0],
+        ExecPolicy::Sequential,
+    )
+    .unwrap()
+    {
+        BlockSparseContractResultBsp::Scalar(s) => assert!((s - 69.0).abs() < 1e-10),
         _ => panic!("expected scalar"),
     }
 }
@@ -262,8 +309,17 @@ fn full_contraction_nonidentity_flux_gives_zero() {
 
     let c = BlockSparse::<f64, U1Sector>::zeros(vec![shared, shared_in], U1Sector(1));
     // flux_A=0 fuse flux_B=1 = 1 ≠ identity → zero
-    match contract_block_sparse(&b(), &a, &c, &[0, 1], &[1, 0]).unwrap() {
-        BlockSparseContractResult::Scalar(s) => assert_eq!(s, 0.0),
+    match contract_block_sparse_with_policy_dense(
+        &b(),
+        &a,
+        &c,
+        &[0, 1],
+        &[1, 0],
+        ExecPolicy::Sequential,
+    )
+    .unwrap()
+    {
+        BlockSparseContractResultBsp::Scalar(s) => assert_eq!(s, 0.0),
         _ => panic!("expected scalar"),
     }
 }
@@ -303,8 +359,17 @@ fn accumulation_multiple_pairs_to_same_block() {
         .copy_from_slice(&[7.0, 8.0]);
 
     // Contract A[1,2] with B[0,1]: both pairs go to output (0,0)
-    match contract_block_sparse(&b(), &a, &c, &[1, 2], &[0, 1]).unwrap() {
-        BlockSparseContractResult::Tensor(out) => {
+    match contract_block_sparse_with_policy_dense(
+        &b(),
+        &a,
+        &c,
+        &[1, 2],
+        &[0, 1],
+        ExecPolicy::Sequential,
+    )
+    .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(out) => {
             assert_eq!(out.num_blocks(), 1);
             let d = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
             // C = [[1],[2]]×[[3,4]] + [[5],[6]]×[[7,8]]
@@ -347,8 +412,10 @@ fn contraction_with_axis_transpose() {
         .copy_from_slice(&to_order(&b_rm, &[3, 2]));
 
     // Contract A axis 0 (Out) with B axis 1 (In)
-    match contract_block_sparse(&b(), &a, &c, &[0], &[1]).unwrap() {
-        BlockSparseContractResult::Tensor(out) => {
+    match contract_block_sparse_with_policy_dense(&b(), &a, &c, &[0], &[1], ExecPolicy::Sequential)
+        .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(out) => {
             assert_eq!(out.rank(), 3); // [a1, a2, b0]
             let d = out.block_data(&BlockCoord(vec![0, 0, 0])).unwrap();
             assert_eq!(d.len(), 18); // 3×2×3
@@ -387,8 +454,17 @@ fn full_contraction_identity_perm() {
         .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
 
     // Σ A[i,j]*B[i,j] = 1*5 + 2*6 + 3*7 + 4*8 = 70
-    match contract_block_sparse(&b(), &a, &c, &[0, 1], &[0, 1]).unwrap() {
-        BlockSparseContractResult::Scalar(s) => {
+    match contract_block_sparse_with_policy_dense(
+        &b(),
+        &a,
+        &c,
+        &[0, 1],
+        &[0, 1],
+        ExecPolicy::Sequential,
+    )
+    .unwrap()
+    {
+        BlockSparseContractResultBsp::Scalar(s) => {
             assert!((s - 70.0).abs() < 1e-10, "expected 70, got {s}");
         }
         _ => panic!("expected scalar"),
@@ -418,8 +494,17 @@ fn full_contraction_identity_perm_multi_block() {
         .copy_from_slice(&[4.0]);
 
     // Block (0,0): 1*2+2*0+3*0+4*3 = 14. Block (1,1): 5*4 = 20. Total = 34.
-    match contract_block_sparse(&b(), &a, &c, &[0, 1], &[0, 1]).unwrap() {
-        BlockSparseContractResult::Scalar(s) => {
+    match contract_block_sparse_with_policy_dense(
+        &b(),
+        &a,
+        &c,
+        &[0, 1],
+        &[0, 1],
+        ExecPolicy::Sequential,
+    )
+    .unwrap()
+    {
+        BlockSparseContractResultBsp::Scalar(s) => {
             assert!((s - 34.0).abs() < 1e-10, "expected 34, got {s}");
         }
         _ => panic!("expected scalar"),
@@ -446,8 +531,10 @@ fn contraction_rank2_with_rank1() {
         .unwrap()
         .copy_from_slice(&[1.0, 0.0, 1.0]); // rank-1: order doesn't matter
 
-    match contract_block_sparse(&b(), &a, &v, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(out) => {
+    match contract_block_sparse_with_policy_dense(&b(), &a, &v, &[1], &[0], ExecPolicy::Sequential)
+        .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(out) => {
             assert_eq!(out.rank(), 1);
             let d = out.block_data(&BlockCoord(vec![0])).unwrap();
             // [[1,2,3],[4,5,6]] × [1,0,1] = [1+0+3, 4+0+6] = [4, 10]
@@ -490,8 +577,10 @@ fn z2_rank2_matmul() {
         .unwrap()
         .copy_from_slice(&[3.0]);
 
-    match contract_block_sparse(&b(), &a, &c, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(out) => {
+    match contract_block_sparse_with_policy_dense(&b(), &a, &c, &[1], &[0], ExecPolicy::Sequential)
+        .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(out) => {
             // (0,0): [[1,2],[3,4]]×2I = [[2,4],[6,8]]
             let e00 = to_order(&[2.0, 4.0, 6.0, 8.0], &[2, 2]);
             let d00 = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
@@ -528,16 +617,34 @@ fn contract_permuted_axes_rank2() {
     let a2 = a.clone();
 
     // Standard: contract [1],[0] → A × A (matmul)
-    let standard = match contract_block_sparse(&b(), &a, &a2, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(t) => t,
+    let standard = match contract_block_sparse_with_policy_dense(
+        &b(),
+        &a,
+        &a2,
+        &[1],
+        &[0],
+        ExecPolicy::Sequential,
+    )
+    .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
 
     // Permuted: contract [0],[1] → A^T × A^T
     // a_{ij} b_{ki} -> c_{jk}: sum over i.
     // c_{jk} = sum_i a_{ij} b_{ki} = (A^T A^T)_{jk}
-    let permuted = match contract_block_sparse(&b(), &a, &a2, &[0], &[1]).unwrap() {
-        BlockSparseContractResult::Tensor(t) => t,
+    let permuted = match contract_block_sparse_with_policy_dense(
+        &b(),
+        &a,
+        &a2,
+        &[0],
+        &[1],
+        ExecPolicy::Sequential,
+    )
+    .unwrap()
+    {
+        BlockSparseContractResultBsp::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
 

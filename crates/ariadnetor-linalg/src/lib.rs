@@ -47,6 +47,7 @@ mod error;
 mod expm;
 mod scalar_ops;
 mod solve;
+mod tensor_bridge;
 mod transpose;
 
 #[cfg(test)]

@@ -66,9 +66,10 @@ impl<S: Sector> BlockSparseLayout<S> {
     ///
     /// Used by joined-level constructors that already have the
     /// structure on hand; caller is responsible for the same
-    /// invariants enforced by [`new`](Self::new).
-    #[cfg(test)]
-    pub(crate) fn from_parts(
+    /// invariants enforced by [`new`](Self::new). Pub for cross-crate
+    /// access from `arnet-linalg`'s kernel-output wrapping; not
+    /// user-facing.
+    pub fn from_parts(
         blocks: Vec<BlockMeta>,
         block_index: HashMap<BlockCoord, usize>,
         indices: Vec<QNIndex<S>>,

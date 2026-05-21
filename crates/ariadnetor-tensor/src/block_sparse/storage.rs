@@ -81,6 +81,28 @@ impl<T> BlockSparseStorage<T> {
     pub(crate) fn arc_mut(&mut self) -> &mut Arc<AVec<T, ConstAlign<64>>> {
         &mut self.data
     }
+
+    /// Cheap O(1) clone of the underlying storage Arc.
+    ///
+    /// Internal kernel bridge for
+    /// [`BlockSparseTensorData::as_block_sparse`](crate::BlockSparseTensorData::as_block_sparse)
+    /// so the legacy [`BlockSparse<T, S>`](crate::BlockSparse) view can
+    /// share the same aligned buffer without copying. Pub for
+    /// cross-crate access; not a user-facing accessor.
+    pub fn arc_clone(&self) -> Arc<AVec<T, ConstAlign<64>>> {
+        Arc::clone(&self.data)
+    }
+
+    /// Construct directly from an already-aligned storage Arc.
+    ///
+    /// Internal kernel counterpart to [`arc_clone`](Self::arc_clone),
+    /// used to move ownership of the buffer from
+    /// [`BlockSparse<T, S>`](crate::BlockSparse) into a
+    /// `BlockSparseTensorData` without a copy. Pub for cross-crate
+    /// access; not a user-facing constructor.
+    pub fn from_arc(data: Arc<AVec<T, ConstAlign<64>>>) -> Self {
+        Self { data }
+    }
 }
 
 impl<T> Storage for BlockSparseStorage<T> {
