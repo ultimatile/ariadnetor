@@ -85,7 +85,6 @@ fn test_spin_half_sz_complex_f64() {
 #[test]
 fn test_spin_half_commutation() {
     // [S+, S-] = 2*Sz
-    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let sp = SpinHalf.sp::<f64>();
     let sm = SpinHalf.sm::<f64>();
     let sz = SpinHalf.sz::<f64>();
@@ -184,7 +183,6 @@ fn test_qubit_proj1_f64() {
 
 #[test]
 fn test_qubit_x_squared_is_identity() {
-    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let x = Qubit.x::<f64>();
     let x2 = arnet::contract(&x, &x, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
@@ -197,7 +195,6 @@ fn test_qubit_x_squared_is_identity() {
 
 #[test]
 fn test_qubit_hadamard_squared_is_identity() {
-    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let h = Qubit.h::<f64>();
     let h2 = arnet::contract(&h, &h, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();

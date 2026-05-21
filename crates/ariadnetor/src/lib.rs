@@ -19,12 +19,13 @@ pub use arnet_tensor::{BlockSparseTensor, DenseTensor, Tensor};
 
 // Storage / Layout building blocks. Required by downstream crates that
 // parameterize their own generic containers (e.g. `Mps<St, L, B>`) over
-// the joined `Tensor<St, L, B>` type. Legacy `Dense` / `BlockSparse`
+// the joined `Tensor<St, L, B>` type. The legacy `Dense` / `BlockSparse`
 // representations and the `TensorData<St, L>` joined-data aliases are
-// intentionally not re-exported here — consumers should only see the
-// joined `Tensor` surface. `TensorData` stays `pub` in `arnet-tensor`
-// for crates that need cross-crate kernel access; per the #262 plan
-// such crates do not consume the umbrella.
+// intentionally not re-exported here — umbrella consumers should only
+// see the joined `Tensor` surface. `TensorData` stays `pub` in
+// `arnet-tensor` for crates that perform cross-crate kernel access;
+// such crates depend on `arnet-tensor` directly rather than the
+// umbrella.
 pub use arnet_tensor::{
     BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage,
     Direction, QNIndex, Sector, Storage, StorageFor, TensorLayout, U1Sector, Z2Sector,

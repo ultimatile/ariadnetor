@@ -4,9 +4,8 @@
 //! used in tensor network algorithms (DMRG, TDVP, TEBD, etc.).
 //!
 //! Sits above the umbrella `arnet` crate (which is itself the tensor
-//! library after the #262 redo), so algorithm crates such as
-//! `arnet-algorithms` consume `arnet-mps` directly rather than
-//! re-routing through the umbrella.
+//! library), so algorithm crates such as `arnet-algorithms` consume
+//! `arnet-mps` directly rather than re-routing through the umbrella.
 //!
 //! # Index convention
 //!

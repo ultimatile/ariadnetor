@@ -107,7 +107,6 @@ fn test_qubit_y_complex_signs() {
 fn test_qubit_y_squared_is_identity_complex() {
     // Y^2 = I — catches sign-flip mutants in both (0,1) and (1,0)
     use arnet::Complex;
-    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let y = Qubit.y::<Complex<f64>>();
     let y2 = arnet::contract(&y, &y, "ij,jk->ik").unwrap();
     let id = Qubit.id::<Complex<f64>>();
@@ -140,7 +139,6 @@ fn test_qubit_z_exact_diagonal() {
 #[test]
 fn test_qubit_z_squared_is_identity() {
     // Z^2 = I — catches sign flip on (1,1)
-    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let z = Qubit.z::<f64>();
     let z2 = arnet::contract(&z, &z, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
@@ -175,7 +173,6 @@ fn test_qubit_h_exact_signs() {
 #[test]
 fn test_qubit_h_is_unitary() {
     // H^T H = I for real Hadamard — catches any wrong sign
-    // (backend no longer needed for the post-#262 `arnet::contract` signature)
     let h = Qubit.h::<f64>();
     let hth = arnet::contract(&h, &h, "ab,ac->bc").unwrap();
     for i in 0..2 {

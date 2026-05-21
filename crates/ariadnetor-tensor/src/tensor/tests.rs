@@ -159,3 +159,74 @@ fn block_sparse_tensor_alias_resolves_and_basics_work() {
     assert_eq!(t.shape(), &[5, 5]);
     assert_eq!(t.rank(), 2);
 }
+
+#[test]
+fn dense_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
+    use arnet_core::backend::MemoryOrder;
+    use arnet_native::NativeBackend;
+
+    let data: Vec<f64> = (0..6).map(|i| i as f64).collect();
+    let backend = NativeBackend::shared();
+    let t = DenseTensor::<f64>::from_raw_parts(
+        data.clone(),
+        vec![2, 3],
+        MemoryOrder::RowMajor,
+        backend,
+    );
+
+    assert_eq!(t.shape(), &[2, 3]);
+    // Layout's order reflects the explicit argument, not the backend
+    // (the joined Tier 1 check that orders agree is a downstream
+    // concern, not enforced at the joined constructor).
+    assert_eq!(t.data().layout().order(), MemoryOrder::RowMajor);
+    assert_eq!(t.data_slice(), data.as_slice());
+}
+
+#[test]
+fn block_sparse_tensor_zeros_with_backend_uses_backend_order() {
+    use crate::{Direction, U1Sector};
+    use arnet_core::backend::ComputeBackend;
+    use arnet_native::NativeBackend;
+
+    let idx = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
+    let backend = NativeBackend::shared();
+    let expected_order = backend.preferred_order();
+    let t = BlockSparseTensor::<f64, U1Sector>::zeros_with_backend(
+        vec![idx.clone(), idx],
+        U1Sector(0),
+        backend,
+    );
+
+    assert_eq!(t.rank(), 2);
+    assert_eq!(t.data().layout().order(), expected_order);
+}
+
+#[test]
+fn dense_tensor_conj_real_path_is_identity_and_shares_backend() {
+    use std::sync::Arc;
+
+    let mut t = DenseTensor::<f64>::zeros(vec![3, 3]);
+    t.fill(2.5);
+    let c = t.conj();
+
+    assert_eq!(c.shape(), t.shape());
+    assert_eq!(c.data_slice(), t.data_slice());
+    assert!(Arc::ptr_eq(t.backend_arc(), c.backend_arc()));
+}
+
+#[test]
+fn block_sparse_tensor_dagger_is_involutive() {
+    use crate::{Direction, U1Sector};
+
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+    let t = BlockSparseTensor::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+
+    let t_dd = t.dagger().dagger();
+
+    assert_eq!(t_dd.shape(), t.shape());
+    assert_eq!(t_dd.flux(), t.flux());
+    for (a, b) in t.indices().iter().zip(t_dd.indices().iter()) {
+        assert_eq!(a.direction(), b.direction());
+    }
+}

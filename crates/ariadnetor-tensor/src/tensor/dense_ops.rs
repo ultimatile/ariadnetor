@@ -239,4 +239,15 @@ where
         let n = clone.normalize();
         (clone, n)
     }
+
+    /// Element-wise complex conjugate. Result shares the input's
+    /// backend `Arc`. Symmetric with [`BlockSparseTensor::conj`].
+    pub fn conj(&self) -> Self {
+        let legacy = self.data.as_dense();
+        let conj = legacy.conj();
+        Self {
+            data: conj.into_tensor_data(),
+            backend: std::sync::Arc::clone(&self.backend),
+        }
+    }
 }

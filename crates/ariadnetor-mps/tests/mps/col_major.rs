@@ -1,13 +1,11 @@
 //! Column-major MPS integration tests.
 //!
-//! Post-#262 redo the Tier 1 ordering invariant requires every site's
-//! `layout().order()` to match the chain's `backend.preferred_order()`;
+//! The Tier 1 ordering invariant requires every site's
+//! `layout().order()` to equal the chain's `backend.preferred_order()`.
 //! NativeBackend's preferred order is ColumnMajor, so all dense MPS
-//! sites are necessarily column-major. The "row-major variant" the
-//! pre-redo version of this file used as a comparison anchor no longer
-//! exists as a constructible state — these tests now only check that
-//! the canonicalize / inner / truncate / apply / braket end-to-end
-//! paths hold on the column-major MPS.
+//! sites are necessarily column-major; the tests below cover the
+//! end-to-end canonicalize / inner / truncate / apply / braket paths
+//! on that column-major chain.
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{self as mps, CanonicalForm, TensorChain, TruncSvdParams, TruncateParams};

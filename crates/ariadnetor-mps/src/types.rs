@@ -4,9 +4,10 @@
 //! tensors plus a cached `Arc<B>` backend. The Tier 1 ordering
 //! invariant — every site's `layout().order()` matches
 //! `backend.preferred_order()` — is enforced by the constructors
-//! below via the crate-private [`LayoutOrderCheck`] trait, so
-//! downstream linalg kernels never have to defensively align site
-//! memory order.
+//! below via the doc-hidden [`LayoutOrderCheck`] trait (`pub` so the
+//! `where`-bound on the constructor impl is satisfiable from
+//! downstream crates without naming the trait), so downstream linalg
+//! kernels never have to defensively align site memory order.
 
 use std::sync::Arc;
 
@@ -244,9 +245,9 @@ fn assert_sites_match_backend_order<St, L, B>(
             "{ctx}: site {i} layout order ({got:?}) does not match backend.preferred_order() ({expected:?})",
         );
         // The site's cached backend Arc need not be `Arc::ptr_eq` with the
-        // chain backend (per the #262 plan), but its preferred_order must
-        // agree — otherwise linalg kernels invoked via the site's backend
-        // would assume a layout different from the one the chain enforced.
+        // chain backend, but its preferred_order must agree — otherwise
+        // linalg kernels invoked via the site's backend would assume a
+        // layout different from the one the chain enforced.
         let site_backend_order = s.backend().preferred_order();
         assert_eq!(
             site_backend_order, expected,

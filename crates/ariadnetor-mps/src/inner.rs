@@ -10,7 +10,6 @@ use arnet::{
 use num_traits::{Float, One};
 
 use super::chain::TensorChain;
-use super::internal_helpers::dense_conj;
 use super::types::{CanonicalForm, Mpo, Mps};
 
 /// Compute the inner product ⟨ψ|φ⟩ of two MPS via the transfer matrix method.
@@ -40,7 +39,7 @@ where
         DenseTensor::from_raw_parts(vec![T::one()], vec![1, 1], order, Arc::clone(&backend_arc));
 
     for j in 0..n {
-        let psi_j = dense_conj(psi.site(j));
+        let psi_j = psi.site(j).conj();
         let phi_j = phi.site(j);
 
         // env(a,b) × conj(ψ)(a,d,c) → temp(b,d,c)
@@ -104,7 +103,7 @@ where
     );
 
     for j in 0..n {
-        let psi_j = dense_conj(psi.site(j)); // bra: (ψ_L, d_bra, ψ_R)
+        let psi_j = psi.site(j).conj(); // bra: (ψ_L, d_bra, ψ_R)
         let a_j = op.site(j); // operator: (A_L, d_ket, d_bra, A_R)
         let phi_j = phi.site(j); // ket: (φ_L, d_ket, φ_R)
 
