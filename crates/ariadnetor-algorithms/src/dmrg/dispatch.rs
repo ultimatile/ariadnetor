@@ -114,17 +114,13 @@ where
         direction: SweepDirection,
     ) -> Result<AbsorbedStep<DenseStorage<T>, Self, B>, LinalgError> {
         let bond_dim = result.s.shape()[0];
-        // Materialize the singular-value vector into the scalar type
-        // expected by `diagonal_scale`. The `s` tensor's data slice
-        // is the descending vector ready to consume.
-        let s_vec: Vec<T::Real> = result.s.data_slice().to_vec();
         let (site_i, site_ip1) = match direction {
             SweepDirection::LeftToRight => {
-                let s_vt = diagonal_scale(&result.vt, &s_vec, 0)?;
+                let s_vt = diagonal_scale(&result.vt, result.s.data_slice(), 0)?;
                 (result.u, s_vt)
             }
             SweepDirection::RightToLeft => {
-                let u_s = diagonal_scale(&result.u, &s_vec, 2)?;
+                let u_s = diagonal_scale(&result.u, result.s.data_slice(), 2)?;
                 (u_s, result.vt)
             }
         };

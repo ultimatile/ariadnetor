@@ -372,7 +372,6 @@ fn heff_lanczos_eigvalue_matches_eigh() {
     let site = 1;
     let heff = make_heff(&envs, &mps, &mpo, site);
     let h_dense = build_heff_dense(&heff);
-    let _backend = NativeBackend::shared();
     let (eigvals, _) = eigh(&h_dense, 1).expect("eigh");
     let reference = eigvals.data_slice()[0];
 
@@ -427,7 +426,6 @@ fn heff_svd_split_is_canonical() {
     )
     .expect("step");
 
-    let _backend = NativeBackend::shared();
     // U^T U: contract `[chi_l, d, chi_new]` with itself, summing the
     // (chi_l, d) axes → Identity on the chi_new axis.
     let utu = contract(&result.u, &result.u, "abc,abd->cd").expect("U^T U");
@@ -504,7 +502,6 @@ fn heff_svd_reconstruction_round_trips() {
     // Reconstruct U · diag(S) · Vt and verify it is a valid 2-site
     // block of the original eigenvector (re-running Lanczos with
     // the same seed is deterministic, so we can compare exactly).
-    let _backend = NativeBackend::shared();
     let us = diagonal_scale(&result.u, result.s.data_slice(), 2).expect("U·diag(S)");
     let recon = contract(&us, &result.vt, "aik,kjb->aijb").expect("U·S·Vt");
 

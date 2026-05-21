@@ -62,11 +62,10 @@ where
         Arc::clone(&backend_arc),
     );
     let out_order = out.backend().preferred_order();
-    let metas: Vec<_> = t.block_metas().to_vec();
-    for meta in &metas {
+    for meta in t.block_metas() {
         let old_coord = &meta.coord;
         let new_coord = BlockCoord(vec![old_coord.0[2], old_coord.0[1], old_coord.0[0]]);
-        let old_data = t.block_data(old_coord).expect("allocated block").to_vec();
+        let old_data = t.block_data(old_coord).expect("allocated block");
         let old_shape = t.block_shape(old_coord).expect("block shape");
         let new_shape = vec![old_shape[2], old_shape[1], old_shape[0]];
         let new_block = out

@@ -79,7 +79,7 @@ pub enum DmrgHeffError {
         expected: MemoryOrder,
         actual: MemoryOrder,
     },
-    /// An underlying `arnet_linalg` call (currently the truncated
+    /// An underlying `arnet` linalg call (currently the truncated
     /// SVD) failed. The matvec body itself is shape-validated up
     /// front and never reaches this branch.
     Contract(LinalgError),

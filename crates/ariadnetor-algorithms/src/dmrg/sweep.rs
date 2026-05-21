@@ -190,8 +190,8 @@ pub enum DmrgSweepError {
         site: usize,
         source: DmrgEnvError,
     },
-    /// The post-step S-absorb (`arnet_linalg::diagonal_scale` for
-    /// Dense or `diagonal_scale_block_sparse` for BlockSparse)
+    /// The post-step S-absorb (`arnet::diagonal_scale` for
+    /// Dense or `arnet::diagonal_scale_block_sparse` for BlockSparse)
     /// failed. Carries the same `(sweep, direction, site)`
     /// breadcrumbs as `Step` / `Env` so the caller can pin down
     /// where the failure occurred without having to walk the
