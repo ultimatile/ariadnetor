@@ -255,7 +255,8 @@ fn bsp_heff_complex_path() {
         mps.site(0),
         mps.site(1),
         backend,
-    );
+    )
+    .expect("operands share backend preferred_order by construction");
 
     let dim = bsp_heff.dim();
     let mut h_data = vec![Complex::new(0.0, 0.0); dim * dim];

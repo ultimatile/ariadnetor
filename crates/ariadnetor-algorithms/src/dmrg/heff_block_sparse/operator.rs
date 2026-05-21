@@ -17,6 +17,7 @@ use arnet::{
     Scalar, Sector, contract_block_sparse,
 };
 
+use super::super::heff_error::DmrgHeffError;
 use crate::krylov::LinearOp;
 
 /// Effective Hamiltonian operator for the BlockSparse 2-site DMRG
@@ -53,6 +54,19 @@ where
     /// Construct from env / MPO references plus the surrounding MPS
     /// sites (used only to derive the psi template's indices and
     /// flux).
+    ///
+    /// Asserts that the four contracted operands (`left`, `w_i`,
+    /// `w_ip1`, `right`) share a common `backend().preferred_order()`,
+    /// matching the `backend` argument's `preferred_order()`. The
+    /// matvec body's `contract_block_sparse` calls take their output
+    /// layout from the first operand and the layout of every
+    /// intermediate must match the backend's preferred order; a
+    /// mixed-order operand set would put an intermediate into a
+    /// non-preferred order and trip the
+    /// `assert_bsp_layout_order_matches_backend` debug_assert at the
+    /// next contract entry. The MPS sites (`mps_i`, `mps_ip1`) are
+    /// used only to derive the psi template; their order is checked
+    /// at the public step entry's Tier 2 site-scan, not here.
     pub fn new(
         left: &'a BlockSparseTensor<T, S, B>,
         w_i: &'a BlockSparseTensor<T, S, B>,
@@ -61,13 +75,30 @@ where
         mps_i: &BlockSparseTensor<T, S, B>,
         mps_ip1: &BlockSparseTensor<T, S, B>,
         backend: Arc<B>,
-    ) -> Self {
+    ) -> Result<Self, DmrgHeffError> {
         debug_assert_eq!(left.rank(), 3, "left.rank == 3");
         debug_assert_eq!(right.rank(), 3, "right.rank == 3");
         debug_assert_eq!(w_i.rank(), 4, "W[i].rank == 4");
         debug_assert_eq!(w_ip1.rank(), 4, "W[i+1].rank == 4");
         debug_assert_eq!(mps_i.rank(), 3, "MPS[i].rank == 3");
         debug_assert_eq!(mps_ip1.rank(), 3, "MPS[i+1].rank == 3");
+
+        let expected = backend.preferred_order();
+        for (operand, tensor) in [
+            ("left_env", left),
+            ("w_i", w_i),
+            ("w_ip1", w_ip1),
+            ("right_env", right),
+        ] {
+            let actual = tensor.backend().preferred_order();
+            if actual != expected {
+                return Err(DmrgHeffError::OrderMismatch {
+                    operand,
+                    expected,
+                    actual,
+                });
+            }
+        }
 
         let psi_indices = vec![
             mps_i.indices()[0].clone(),
@@ -91,7 +122,7 @@ where
         block_offsets.push(running);
         let dim = running;
 
-        Self {
+        Ok(Self {
             left,
             w_i,
             w_ip1,
@@ -101,7 +132,7 @@ where
             psi_flux,
             dim,
             backend,
-        }
+        })
     }
 
     /// Length of the flat vector the matvec consumes / produces.

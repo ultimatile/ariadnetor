@@ -242,6 +242,23 @@ where
         return Err(DmrgHeffError::InvalidSite { site, n_sites });
     }
 
+    let chain_backend: Arc<B> = mps.backend_arc().clone();
+    assert_eq!(
+        chain_backend.preferred_order(),
+        mpo.backend().preferred_order(),
+        "dmrg_2site_step: mps/mpo backend preferred_order mismatch",
+    );
+    <arnet::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
+        &chain_backend,
+        mps.sites(),
+        "dmrg_2site_step.mps",
+    );
+    <arnet::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
+        &chain_backend,
+        mpo.sites(),
+        "dmrg_2site_step.mpo",
+    );
+
     validate_eigensolver_params(eigensolver)
         .map_err(|detail| DmrgHeffError::InvalidEigensolverParams { detail })?;
     if crate::numeric::try_real_from_f64::<T>(eigensolver_tol(eigensolver)).is_none() {

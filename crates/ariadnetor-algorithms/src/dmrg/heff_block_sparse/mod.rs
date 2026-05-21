@@ -132,7 +132,7 @@ where
         v.mps_i,
         v.mps_ip1,
         Arc::clone(&v.backend),
-    );
+    )?;
     let dim = heff.dim();
     if dim == 0 {
         // Per-axis `total_dim() >= 1` checks in `validate_inputs`

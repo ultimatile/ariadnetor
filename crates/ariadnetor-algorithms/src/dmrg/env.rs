@@ -127,6 +127,23 @@ pub trait DmrgEnvOps<T: Scalar>: TensorLayout + Sized {
     /// `arnet_mps::MpsOps::Storage` association).
     type Storage: Storage + StorageFor<Self>;
 
+    /// Tier 2 site-iteration scan. Asserts that the chain's backend
+    /// `preferred_order()` agrees with every site's `layout().order()`
+    /// AND every site's cached backend `preferred_order()`. Called at
+    /// every DMRG public entry that consumes a chain
+    /// ([`DmrgEnvs::build`], [`DmrgEnvs::advance_left`],
+    /// [`DmrgEnvs::advance_right`], and the 2-site step entries via
+    /// [`super::dispatch::DmrgOps`]). Concrete impls call
+    /// `site.data().layout().order()`, which is only nameable on a
+    /// concrete `TensorLayout` (not on the generic `L: TensorLayout`
+    /// bound), so the scan lives here rather than in the generic
+    /// `DmrgEnvs` impl.
+    fn assert_chain_order<B: ComputeBackend>(
+        chain_backend: &Arc<B>,
+        sites: &[Tensor<Self::Storage, Self, B>],
+        ctx: &str,
+    );
+
     /// Build the trivial L boundary tensor sitting just left of site 0.
     fn trivial_left_boundary<B: ComputeBackend>(
         backend: &Arc<B>,
@@ -167,6 +184,26 @@ pub trait DmrgEnvOps<T: Scalar>: TensorLayout + Sized {
 
 impl<T: Scalar> DmrgEnvOps<T> for DenseLayout {
     type Storage = DenseStorage<T>;
+
+    fn assert_chain_order<B: ComputeBackend>(
+        chain_backend: &Arc<B>,
+        sites: &[Tensor<Self::Storage, Self, B>],
+        ctx: &str,
+    ) {
+        let expected = chain_backend.preferred_order();
+        for (i, site) in sites.iter().enumerate() {
+            let got = site.data().layout().order();
+            assert_eq!(
+                got, expected,
+                "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
+            );
+            let site_backend_order = site.backend().preferred_order();
+            assert_eq!(
+                site_backend_order, expected,
+                "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) != chain backend preferred_order ({expected:?})",
+            );
+        }
+    }
 
     fn trivial_left_boundary<B: ComputeBackend>(
         backend: &Arc<B>,
@@ -286,6 +323,13 @@ where
         }
 
         let backend: Arc<B> = mps.backend_arc().clone();
+        assert_eq!(
+            backend.preferred_order(),
+            mpo.backend().preferred_order(),
+            "DmrgEnvs::build: mps/mpo backend preferred_order mismatch",
+        );
+        <L as DmrgEnvOps<T>>::assert_chain_order(&backend, mps.sites(), "DmrgEnvs::build.mps");
+        <L as DmrgEnvOps<T>>::assert_chain_order(&backend, mpo.sites(), "DmrgEnvs::build.mpo");
         let mut left: Vec<Option<Tensor<St, L, B>>> = (0..=n_sites).map(|_| None).collect();
         let mut right: Vec<Option<Tensor<St, L, B>>> = (0..=n_sites).map(|_| None).collect();
 
@@ -372,6 +416,26 @@ where
                 mpo: mpo.len(),
             });
         }
+        assert_eq!(
+            self.backend.preferred_order(),
+            mps.backend().preferred_order(),
+            "DmrgEnvs::advance_left: envs/mps backend preferred_order mismatch",
+        );
+        assert_eq!(
+            self.backend.preferred_order(),
+            mpo.backend().preferred_order(),
+            "DmrgEnvs::advance_left: envs/mpo backend preferred_order mismatch",
+        );
+        <L as DmrgEnvOps<T>>::assert_chain_order(
+            &self.backend,
+            mps.sites(),
+            "DmrgEnvs::advance_left.mps",
+        );
+        <L as DmrgEnvOps<T>>::assert_chain_order(
+            &self.backend,
+            mpo.sites(),
+            "DmrgEnvs::advance_left.mpo",
+        );
         let prev = match &self.left[i] {
             Some(t) => t,
             None => {
@@ -413,6 +477,26 @@ where
                 mpo: mpo.len(),
             });
         }
+        assert_eq!(
+            self.backend.preferred_order(),
+            mps.backend().preferred_order(),
+            "DmrgEnvs::advance_right: envs/mps backend preferred_order mismatch",
+        );
+        assert_eq!(
+            self.backend.preferred_order(),
+            mpo.backend().preferred_order(),
+            "DmrgEnvs::advance_right: envs/mpo backend preferred_order mismatch",
+        );
+        <L as DmrgEnvOps<T>>::assert_chain_order(
+            &self.backend,
+            mps.sites(),
+            "DmrgEnvs::advance_right.mps",
+        );
+        <L as DmrgEnvOps<T>>::assert_chain_order(
+            &self.backend,
+            mpo.sites(),
+            "DmrgEnvs::advance_right.mpo",
+        );
         let prev = match &self.right[j + 1] {
             Some(t) => t,
             None => {

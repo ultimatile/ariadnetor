@@ -300,6 +300,24 @@ where
         return Err(DmrgSweepError::TooFewSites { n_sites });
     }
 
+    // ---- Tier 2: backend preferred_order across operands --------
+    assert_eq!(
+        mps.backend().preferred_order(),
+        mpo.backend().preferred_order(),
+        "sweep_2site: mps/mpo backend preferred_order mismatch",
+    );
+    let chain_backend_arc: Arc<B> = mps.backend_arc().clone();
+    <L as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
+        &chain_backend_arc,
+        mps.sites(),
+        "sweep_2site.mps",
+    );
+    <L as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
+        &chain_backend_arc,
+        mpo.sites(),
+        "sweep_2site.mpo",
+    );
+
     // ---- Param validation ---------------------------------------
     validate_params(params)?;
     // Casts may fail when the storage's real scalar type

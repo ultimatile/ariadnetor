@@ -50,7 +50,8 @@ fn bsp_heff_matvec_matches_dense_oracle() {
         mps.site(0),
         mps.site(1),
         backend.clone(),
-    );
+    )
+    .expect("operands share backend preferred_order by construction");
 
     let left_d = densify_bsp_f64(envs.left(0).expect("left"));
     let right_d = densify_bsp_f64(envs.right(2).expect("right"));
@@ -118,7 +119,8 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
         mps.site(site),
         mps.site(site + 1),
         backend.clone(),
-    );
+    )
+    .expect("operands share backend preferred_order by construction");
 
     let right_total_dim = envs.right(site + 2).expect("right").shape()[0];
     assert!(
@@ -199,7 +201,8 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
         mps.site(0),
         mps.site(1),
         backend.clone(),
-    );
+    )
+    .expect("operands share backend preferred_order by construction");
     let dim = bsp_heff.dim();
     assert!(
         dim >= 2,

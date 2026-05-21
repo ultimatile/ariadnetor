@@ -19,7 +19,7 @@ use std::sync::Arc;
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage,
     BlockSparseTensor, ComputeBackend, Direction, LinalgError, MemoryOrder, QNIndex, Scalar,
-    Sector, contract_block_sparse, flat_index,
+    Sector, Tensor, contract_block_sparse, flat_index,
 };
 
 use super::env::{DmrgEnvError, DmrgEnvOps};
@@ -147,6 +147,26 @@ where
     S: Sector,
 {
     type Storage = BlockSparseStorage<T>;
+
+    fn assert_chain_order<B: ComputeBackend>(
+        chain_backend: &Arc<B>,
+        sites: &[Tensor<Self::Storage, Self, B>],
+        ctx: &str,
+    ) {
+        let expected = chain_backend.preferred_order();
+        for (i, site) in sites.iter().enumerate() {
+            let got = site.data().layout().order();
+            assert_eq!(
+                got, expected,
+                "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
+            );
+            let site_backend_order = site.backend().preferred_order();
+            assert_eq!(
+                site_backend_order, expected,
+                "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) != chain backend preferred_order ({expected:?})",
+            );
+        }
+    }
 
     fn trivial_left_boundary<B: ComputeBackend>(
         backend: &Arc<B>,

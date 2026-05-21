@@ -7,7 +7,7 @@
 //! Dense `heff.rs` under the per-file size cap as the operator + the
 //! ARPACK arm grow.
 
-use arnet::LinalgError;
+use arnet::{LinalgError, MemoryOrder};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::ArpackError;
@@ -61,6 +61,22 @@ pub enum DmrgHeffError {
         site: usize,
         field: &'static str,
         detail: String,
+    },
+    /// The `preferred_order()` of the BlockSparse 2-site step's
+    /// operands disagrees. Surfaced by
+    /// [`super::heff_block_sparse::EffectiveHamiltonian2SiteBlockSparse::new`]
+    /// before any contract runs so the `apply` body's `.expect`
+    /// calls cannot fire on a mixed-order operand set. `operand`
+    /// names which of the four contracted operands (`"w_i"`,
+    /// `"w_ip1"`, `"right_env"`) diverged from `left_env` (taken as
+    /// the reference). The MPS sites passed to `new` are
+    /// template-derivation-only and not asserted here; PR-level
+    /// Tier 2 at the step entry guarantees they share the chain
+    /// `preferred_order` already.
+    OrderMismatch {
+        operand: &'static str,
+        expected: MemoryOrder,
+        actual: MemoryOrder,
     },
     /// An underlying `arnet_linalg` call (currently the truncated
     /// SVD) failed. The matvec body itself is shape-validated up
@@ -121,6 +137,15 @@ impl std::fmt::Display for DmrgHeffError {
                 field,
                 detail,
             } => write!(f, "QN mismatch at site {site}, {field}: {detail}"),
+            DmrgHeffError::OrderMismatch {
+                operand,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "BlockSparse heff operand `{operand}` has preferred_order {actual:?}, \
+                 expected {expected:?} (taken from `left_env`)"
+            ),
             DmrgHeffError::Contract(_) => {
                 write!(f, "linalg failure during two-site DMRG step")
             }
