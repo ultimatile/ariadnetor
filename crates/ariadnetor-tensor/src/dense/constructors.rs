@@ -16,11 +16,19 @@ impl<T> Dense<T> {
     /// [`DenseTensorData::as_dense`](crate::DenseTensorData::as_dense))
     /// can satisfy the alignment invariant without a copy. Pub for
     /// cross-crate access from `arnet-linalg`; not user-facing.
+    #[doc(hidden)]
     pub fn from_storage_arc(
-        data: Arc<AVec<T, ConstAlign<64>>>,
+        data: Arc<AVec<T, Align64>>,
         shape: Vec<usize>,
         order: MemoryOrder,
     ) -> Self {
+        debug_assert_eq!(
+            data.len(),
+            shape.iter().product::<usize>(),
+            "Dense::from_storage_arc: data length {} doesn't match shape product {:?}",
+            data.len(),
+            shape,
+        );
         Self { data, shape, order }
     }
 
@@ -31,6 +39,7 @@ impl<T> Dense<T> {
     /// `dense.into_tensor_data()` produces a `DenseTensorData` that
     /// shares the same aligned buffer, no copy. Pub for cross-crate
     /// kernel-output wrapping; not user-facing.
+    #[doc(hidden)]
     pub fn into_tensor_data(self) -> crate::DenseTensorData<T> {
         let storage = crate::DenseStorage::from_arc(self.data);
         let layout = crate::DenseLayout::new(self.shape, self.order);

@@ -91,6 +91,7 @@ impl<T> DenseStorage<T> {
     /// so the legacy [`Dense<T>`](crate::Dense) view can share the
     /// same aligned buffer without copying. Pub for cross-crate access
     /// from `arnet-linalg`; not a user-facing accessor.
+    #[doc(hidden)]
     pub fn arc_clone(&self) -> Arc<AVec<T, Align64>> {
         Arc::clone(&self.data)
     }
@@ -101,6 +102,7 @@ impl<T> DenseStorage<T> {
     /// used by [`Dense::into_tensor_data`](crate::Dense::into_tensor_data)
     /// to move ownership of the buffer without a copy. Pub for
     /// cross-crate access; not a user-facing constructor.
+    #[doc(hidden)]
     pub fn from_arc(data: Arc<AVec<T, Align64>>) -> Self {
         Self { data }
     }

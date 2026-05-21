@@ -89,6 +89,7 @@ impl<T> BlockSparseStorage<T> {
     /// so the legacy [`BlockSparse<T, S>`](crate::BlockSparse) view can
     /// share the same aligned buffer without copying. Pub for
     /// cross-crate access; not a user-facing accessor.
+    #[doc(hidden)]
     pub fn arc_clone(&self) -> Arc<AVec<T, ConstAlign<64>>> {
         Arc::clone(&self.data)
     }
@@ -100,6 +101,7 @@ impl<T> BlockSparseStorage<T> {
     /// [`BlockSparse<T, S>`](crate::BlockSparse) into a
     /// `BlockSparseTensorData` without a copy. Pub for cross-crate
     /// access; not a user-facing constructor.
+    #[doc(hidden)]
     pub fn from_arc(data: Arc<AVec<T, ConstAlign<64>>>) -> Self {
         Self { data }
     }

@@ -475,6 +475,7 @@ impl<T, S: Sector> BlockSparse<T, S> {
     /// All structural invariants must already hold — no enumeration or
     /// validation runs here. Pub for cross-crate access; not
     /// user-facing.
+    #[doc(hidden)]
     pub fn from_storage_arc(
         data: Arc<AVec<T, ConstAlign<64>>>,
         blocks: Vec<BlockMeta>,
@@ -483,6 +484,16 @@ impl<T, S: Sector> BlockSparse<T, S> {
         flux: S,
         shape: Vec<usize>,
     ) -> Self {
+        debug_assert_eq!(
+            blocks.len(),
+            block_index.len(),
+            "BlockSparse::from_storage_arc: blocks/block_index length mismatch"
+        );
+        debug_assert_eq!(
+            data.len(),
+            blocks.iter().map(|b| b.size).sum::<usize>(),
+            "BlockSparse::from_storage_arc: data length doesn't match block sizes",
+        );
         Self {
             data,
             blocks,
@@ -501,6 +512,7 @@ impl<T, S: Sector> BlockSparse<T, S> {
     /// the active backend's [`preferred_order`](arnet_core::backend::ComputeBackend::preferred_order)
     /// — supplies `order` to complete the joined-form layout. Pub for
     /// cross-crate kernel-output wrapping; not user-facing.
+    #[doc(hidden)]
     pub fn into_tensor_data(
         self,
         order: arnet_core::backend::MemoryOrder,
