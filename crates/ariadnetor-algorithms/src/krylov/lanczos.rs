@@ -1,32 +1,38 @@
 //! Lanczos iteration for the smallest eigenvalue / eigenvector
 //! of a Hermitian linear operator, with full reorthogonalization.
 
-use arnet_core::Scalar;
-use arnet_core::backend::MemoryOrder;
-use arnet_linalg::{eigh, linear_combine, norm, normalize};
-use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, reorder};
+use std::sync::Arc;
+
+use arnet::{
+    ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine, norm,
+    normalize,
+};
 use num_traits::{Float, One, Zero};
-use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+
+use super::lanczos_kernels::{
+    inner, random_unit_vector, solve_tridiagonal_smallest, sub_complex_axpy, sub_real_axpy,
+    sub_two_real_axpy,
+};
 
 /// A Hermitian linear operator on a flat vector of length `dim`.
 ///
 /// The Lanczos solver only ever needs to apply the operator to a
 /// vector — it never inspects matrix elements directly. Closures of
-/// type `Fn(&Dense<T>) -> Dense<T>` automatically implement this
-/// trait via the blanket impl.
-pub trait LinearOp<T: Scalar> {
-    fn apply(&self, v: &Dense<T>) -> Dense<T>;
+/// type `Fn(&DenseTensor<T, B>) -> DenseTensor<T, B>` automatically
+/// implement this trait via the blanket impl.
+pub trait LinearOp<T: Scalar, B: ComputeBackend = NativeBackend> {
+    fn apply(&self, v: &DenseTensor<T, B>) -> DenseTensor<T, B>;
 }
 
-impl<T, F> LinearOp<T> for F
+impl<T, B, F> LinearOp<T, B> for F
 where
     T: Scalar,
-    F: Fn(&Dense<T>) -> Dense<T>,
+    B: ComputeBackend,
+    F: Fn(&DenseTensor<T, B>) -> DenseTensor<T, B>,
 {
-    fn apply(&self, v: &Dense<T>) -> Dense<T> {
+    fn apply(&self, v: &DenseTensor<T, B>) -> DenseTensor<T, B> {
         self(v)
     }
 }
@@ -65,7 +71,7 @@ pub struct LanczosResult<T: Scalar> {
     /// Smallest eigenvalue.
     pub eigenvalue: T::Real,
     /// Corresponding (unit-norm) eigenvector of length `dim`.
-    pub eigenvector: Dense<T>,
+    pub eigenvector: DenseTensor<T>,
     /// Number of Lanczos iterations actually run.
     pub iters: usize,
     /// True residual `|| H v - lambda v ||_2` of the returned pair.
@@ -105,7 +111,7 @@ where
     // and need the inner real type to coincide with T::Real itself. This holds
     // for all valid `Scalar` impls (f32, f64, Complex<f32>, Complex<f64>).
     T::Real: Scalar<Real = T::Real>,
-    Op: LinearOp<T>,
+    Op: LinearOp<T, NativeBackend>,
 {
     assert!(dim >= 1, "lanczos: dim must be >= 1");
     assert!(params.max_iter >= 1, "lanczos: max_iter must be >= 1");
@@ -115,7 +121,7 @@ where
         params.tol,
     );
     let max_iter = params.max_iter.min(dim);
-    let backend = NativeBackend::shared();
+    let backend_arc: Arc<NativeBackend> = NativeBackend::shared();
 
     let tol_real: T::Real =
         crate::numeric::try_real_from_f64::<T>(params.tol).unwrap_or_else(|| {
@@ -139,14 +145,18 @@ where
     };
     let v0 = random_unit_vector::<T>(dim, &mut rng);
 
-    let mut basis: Vec<Dense<T>> = vec![v0];
+    let mut basis: Vec<DenseTensor<T>> = vec![v0];
     let mut alphas: Vec<T::Real> = Vec::new();
     let mut betas: Vec<T::Real> = Vec::new();
 
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
-    let mut converged_z: Dense<T::Real> =
-        Dense::new(vec![T::Real::one()], vec![1], MemoryOrder::ColumnMajor);
+    let mut converged_z: DenseTensor<T::Real> = DenseTensor::from_raw_parts(
+        vec![T::Real::one()],
+        vec![1],
+        MemoryOrder::ColumnMajor,
+        Arc::clone(&backend_arc),
+    );
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -164,7 +174,7 @@ where
         let mut w = if w_raw.order() == v_j.order() {
             w_raw
         } else {
-            reorder(&w_raw, w_raw.order(), v_j.order())
+            w_raw.reordered(v_j.order())
         };
 
         // alpha_j = Re<v_j, H v_j>; the imaginary part is zero up to
@@ -195,12 +205,12 @@ where
 
         // Solve current tridiagonal eigenproblem of size m = j + 1.
         let m = j + 1;
-        let (lambda, z) = solve_tridiagonal_smallest::<T>(&backend, &alphas, &betas, m);
+        let (lambda, z) = solve_tridiagonal_smallest::<T>(&alphas, &betas, m);
         converged_lambda = lambda;
         converged_z = z;
 
         // Convergence: residual estimate = beta_j * |z[m-1]|.
-        let z_last = Float::abs(converged_z.data()[m - 1]);
+        let z_last = Float::abs(converged_z.data_slice()[m - 1]);
         let residual_estimate = beta * z_last;
 
         if residual_estimate <= tol_real {
@@ -230,16 +240,22 @@ where
             break;
         }
         let inv = T::Real::one() / beta;
-        let v_next_data: Vec<T> = w.data().iter().map(|&x| x.scale_real(inv)).collect();
-        basis.push(Dense::new(v_next_data, vec![dim], w.order()));
+        let w_order = w.order();
+        let v_next_data: Vec<T> = w.data_slice().iter().map(|&x| x.scale_real(inv)).collect();
+        basis.push(DenseTensor::from_raw_parts(
+            v_next_data,
+            vec![dim],
+            w_order,
+            Arc::clone(&backend_arc),
+        ));
         betas.push(beta);
     }
 
     // Reconstruct the Ritz vector psi = sum_k z[k] v_k.
     let m = converged_z.len();
-    let basis_refs: Vec<&Dense<T>> = basis.iter().take(m).collect();
+    let basis_refs: Vec<&DenseTensor<T>> = basis.iter().take(m).collect();
     let coefs: Vec<T> = converged_z
-        .data()
+        .data_slice()
         .iter()
         .map(|&zk| T::from_real_imag(zk, T::Real::zero()))
         .collect();
@@ -259,7 +275,7 @@ where
     let h_psi = if h_psi_raw.order() == psi.order() {
         h_psi_raw
     } else {
-        reorder(&h_psi_raw, h_psi_raw.order(), psi.order())
+        h_psi_raw.reordered(psi.order())
     };
     let lambda_t = T::from_real_imag(converged_lambda, T::Real::zero());
     let neg_lambda = lambda_t.scale_real(-T::Real::one());
@@ -279,273 +295,5 @@ where
         iters,
         residual,
         converged,
-    }
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/// Hermitian inner product `<a, b> = sum_i conj(a_i) * b_i`.
-fn inner<T: Scalar>(a: &Dense<T>, b: &Dense<T>) -> T {
-    a.data()
-        .iter()
-        .zip(b.data().iter())
-        .fold(T::zero(), |acc, (&x, &y)| acc + x.conj() * y)
-}
-
-/// Compute `w - alpha * v` where alpha is real.
-fn sub_real_axpy<T: Scalar>(w: &Dense<T>, alpha: T::Real, v: &Dense<T>) -> Dense<T> {
-    let neg_alpha = -alpha;
-    let data: Vec<T> = w
-        .data()
-        .iter()
-        .zip(v.data().iter())
-        .map(|(&wi, &vi)| wi + vi.scale_real(neg_alpha))
-        .collect();
-    Dense::new(data, w.shape().to_vec(), w.order())
-}
-
-/// Compute `w - alpha * v - beta * u` where alpha, beta are real.
-fn sub_two_real_axpy<T: Scalar>(
-    w: &Dense<T>,
-    alpha: T::Real,
-    v: &Dense<T>,
-    beta: T::Real,
-    u: &Dense<T>,
-) -> Dense<T> {
-    let neg_alpha = -alpha;
-    let neg_beta = -beta;
-    let data: Vec<T> = w
-        .data()
-        .iter()
-        .zip(v.data().iter())
-        .zip(u.data().iter())
-        .map(|((&wi, &vi), &ui)| wi + vi.scale_real(neg_alpha) + ui.scale_real(neg_beta))
-        .collect();
-    Dense::new(data, w.shape().to_vec(), w.order())
-}
-
-/// Compute `w - gamma * v` where gamma is the (possibly complex) scalar T.
-fn sub_complex_axpy<T: Scalar>(w: &Dense<T>, gamma: T, v: &Dense<T>) -> Dense<T> {
-    let neg_gamma = gamma.scale_real(-T::Real::one());
-    let data: Vec<T> = w
-        .data()
-        .iter()
-        .zip(v.data().iter())
-        .map(|(&wi, &vi)| wi + neg_gamma * vi)
-        .collect();
-    Dense::new(data, w.shape().to_vec(), w.order())
-}
-
-/// Draw a unit-norm random vector by sampling each component independently
-/// from the uniform distribution on (−0.5, 0.5) and normalizing. The same
-/// helper covers real and complex `T`: the imaginary part is dropped for
-/// real scalars (see [`Scalar::from_real_imag`]).
-fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Dense<T> {
-    let mut data: Vec<T> = (0..dim)
-        .map(|_| {
-            let re_f64: f64 = rng.random_range(-0.5..0.5);
-            let im_f64: f64 = rng.random_range(-0.5..0.5);
-            // Random samples drawn from `(-0.5, 0.5)` are always
-            // representable in any `Scalar::Real` (`f32`/`f64`), so
-            // `try_real_from_f64` will not return `None` here.
-            let re = crate::numeric::try_real_from_f64::<T>(re_f64)
-                .expect("uniform [-0.5, 0.5) sample fits in Scalar::Real");
-            let im = crate::numeric::try_real_from_f64::<T>(im_f64)
-                .expect("uniform [-0.5, 0.5) sample fits in Scalar::Real");
-            T::from_real_imag(re, im)
-        })
-        .collect();
-    // Probability of all components sampling to exactly zero is on the order
-    // of `2^(-53*dim)` for f64 — astronomical for any reasonable `dim`, but
-    // not strictly impossible. Substitute a deterministic non-zero vector so
-    // the subsequent `normalize` cannot panic.
-    if data.iter().all(|x| x.abs() == T::Real::zero()) {
-        data[0] = T::one();
-    }
-    let v = Dense::new(data, vec![dim], MemoryOrder::ColumnMajor);
-    let (normalized, _) = normalize(&v);
-    normalized
-}
-
-/// Smallest eigenpair of the symmetric tridiagonal matrix of dimension `m`
-/// formed from `alphas[0..m]` (diagonal) and `betas[0..m-1]` (off-diagonal).
-///
-/// The eigenvector is returned as a length-`m` vector in the Lanczos basis.
-fn solve_tridiagonal_smallest<T>(
-    backend: &NativeBackend,
-    alphas: &[T::Real],
-    betas: &[T::Real],
-    m: usize,
-) -> (T::Real, Dense<T::Real>)
-where
-    T: Scalar,
-    T::Real: Scalar<Real = T::Real>,
-{
-    if m == 1 {
-        return (
-            alphas[0],
-            Dense::new(vec![T::Real::one()], vec![1], MemoryOrder::ColumnMajor),
-        );
-    }
-    // Build the m×m matrix in column-major order to match
-    // `NativeBackend::preferred_order()`. For column-major, the (i, j) entry
-    // lives at index `i + m * j`.
-    let mut data = vec![T::Real::zero(); m * m];
-    for i in 0..m {
-        data[i + m * i] = alphas[i];
-        if i + 1 < m {
-            data[(i + 1) + m * i] = betas[i];
-            data[i + m * (i + 1)] = betas[i];
-        }
-    }
-    let matrix = Dense::new(data, vec![m, m], MemoryOrder::ColumnMajor);
-    let (eigvals, eigvecs) = eigh(backend, &matrix, 1).expect("tridiagonal eigh");
-    let lambda = eigvals.data()[0];
-    // First column of eigvecs (column-major) holds the eigenvector for the
-    // smallest eigenvalue: indices 0..m.
-    let z_data = eigvecs.data()[0..m].to_vec();
-    (
-        lambda,
-        Dense::new(z_data, vec![m], MemoryOrder::ColumnMajor),
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    //! Direct unit tests for the private helpers `sub_real_axpy`,
-    //! `sub_two_real_axpy`, and `random_unit_vector`. These helpers feed the
-    //! Lanczos recurrence and the initial-vector draw; sign or branch
-    //! mutations inside them are absorbed downstream (the recurrence by full
-    //! reorthogonalization, the random helper by normalization), so they
-    //! cannot be killed end-to-end. Pinning each helper against an exact
-    //! hand-computed or RNG-replicated reference closes that gap.
-    use super::*;
-    use num_complex::Complex;
-
-    fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
-        crate::numeric::try_real_from_f64::<T>(x)
-            .expect("test value must be representable in T::Real")
-    }
-
-    fn dense_from_real<T: Scalar>(values: &[f64]) -> Dense<T> {
-        let data: Vec<T> = values
-            .iter()
-            .map(|&x| T::from_real_imag(real_from_f64::<T>(x), T::Real::zero()))
-            .collect();
-        Dense::new(data, vec![values.len()], MemoryOrder::ColumnMajor)
-    }
-
-    fn assert_dense_close<T>(got: &Dense<T>, expected: &Dense<T>, tol: T::Real)
-    where
-        T: Scalar + std::fmt::Debug,
-        T::Real: std::fmt::Debug,
-    {
-        assert_eq!(got.shape(), expected.shape());
-        let neg_one = T::Real::zero() - T::Real::one();
-        for (i, (&g, &e)) in got.data().iter().zip(expected.data().iter()).enumerate() {
-            let diff = Scalar::abs(g + e.scale_real(neg_one));
-            assert!(
-                diff <= tol,
-                "mismatch at index {i}: got = {g:?}, expected = {e:?}, diff = {diff:?}",
-            );
-        }
-    }
-
-    fn check_sub_real_axpy<T>()
-    where
-        T: Scalar + std::fmt::Debug,
-        T::Real: std::fmt::Debug,
-    {
-        let w = dense_from_real::<T>(&[10.0, 20.0, 30.0]);
-        let v = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
-        let alpha = real_from_f64::<T>(2.0);
-        // w - alpha v = [10-2, 20-4, 30-6] = [8, 16, 24]
-        let expected = dense_from_real::<T>(&[8.0, 16.0, 24.0]);
-        let result = sub_real_axpy(&w, alpha, &v);
-        assert_dense_close::<T>(&result, &expected, real_from_f64::<T>(1e-12));
-    }
-
-    #[test]
-    fn sub_real_axpy_subtracts_alpha_v_for_real_and_complex() {
-        check_sub_real_axpy::<f64>();
-        check_sub_real_axpy::<Complex<f64>>();
-    }
-
-    fn check_sub_two_real_axpy<T>()
-    where
-        T: Scalar + std::fmt::Debug,
-        T::Real: std::fmt::Debug,
-    {
-        let w = dense_from_real::<T>(&[10.0, 20.0]);
-        let v = dense_from_real::<T>(&[1.0, 2.0]);
-        let u = dense_from_real::<T>(&[4.0, 5.0]);
-        let alpha = real_from_f64::<T>(2.0);
-        let beta = real_from_f64::<T>(3.0);
-        // w - 2 v - 3 u = [10-2-12, 20-4-15] = [-4, 1]
-        let expected = dense_from_real::<T>(&[-4.0, 1.0]);
-        let result = sub_two_real_axpy(&w, alpha, &v, beta, &u);
-        assert_dense_close::<T>(&result, &expected, real_from_f64::<T>(1e-12));
-    }
-
-    #[test]
-    fn sub_two_real_axpy_subtracts_alpha_v_and_beta_u_for_real_and_complex() {
-        check_sub_two_real_axpy::<f64>();
-        check_sub_two_real_axpy::<Complex<f64>>();
-    }
-
-    fn check_random_unit_vector_matches_unaltered_path<T>()
-    where
-        T: Scalar + std::fmt::Debug,
-        T::Real: std::fmt::Debug,
-    {
-        // Production helper consumes one re-sample and one im-sample per
-        // element regardless of T. Reconstruct the un-overwritten path with
-        // the same RNG consumption order so we compare against a vector that
-        // could only be produced when the all-zero retry branch is NOT taken.
-        // The mutation `== → !=` flips that branch into "always take", which
-        // would overwrite data[0] = T::one() before normalization and produce
-        // a different vector here.
-        let dim = 4;
-        let seed = 42_u64;
-
-        let mut rng = StdRng::seed_from_u64(seed);
-        let observed = random_unit_vector::<T>(dim, &mut rng);
-
-        let mut rng = StdRng::seed_from_u64(seed);
-        let raw: Vec<T> = (0..dim)
-            .map(|_| {
-                let re_f64: f64 = rng.random_range(-0.5..0.5);
-                let im_f64: f64 = rng.random_range(-0.5..0.5);
-                T::from_real_imag(real_from_f64::<T>(re_f64), real_from_f64::<T>(im_f64))
-            })
-            .collect();
-        let raw_norm = raw
-            .iter()
-            .map(|&x| {
-                let a = Scalar::abs(x);
-                a * a
-            })
-            .fold(T::Real::zero(), |acc, x| acc + x)
-            .sqrt();
-        // The seed is chosen so the random draw is non-zero, exercising the
-        // un-overwritten code path. If raw_norm collapses (RNG semantics change
-        // or seed swap), surface that explicitly rather than NaN-mismatching.
-        assert!(
-            raw_norm > T::Real::zero(),
-            "test seed must produce a non-zero sample so the un-overwritten path is exercised",
-        );
-        let inv_norm = T::Real::one() / raw_norm;
-        let expected_data: Vec<T> = raw.iter().map(|&x| x.scale_real(inv_norm)).collect();
-        let expected = Dense::new(expected_data, vec![dim], MemoryOrder::ColumnMajor);
-
-        assert_dense_close::<T>(&observed, &expected, real_from_f64::<T>(1e-12));
-    }
-
-    #[test]
-    fn random_unit_vector_matches_unaltered_path_for_real_and_complex() {
-        check_random_unit_vector_matches_unaltered_path::<f64>();
-        check_random_unit_vector_matches_unaltered_path::<Complex<f64>>();
     }
 }

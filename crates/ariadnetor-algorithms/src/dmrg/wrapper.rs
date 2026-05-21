@@ -50,9 +50,8 @@
 //! [`DmrgSweepError`] are unreachable through the wrapper but kept
 //! visible as defense-in-depth.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_mps::{Mpo, Mps, TensorChain, canonicalize};
+use arnet::{ComputeBackend, Scalar};
+use arnet_mps::{Mpo, Mps, MpsOps, TensorChain, canonicalize};
 
 use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvs};
@@ -130,14 +129,16 @@ impl From<DmrgSweepError> for DmrgError {
 /// [`DmrgError::Env`] on environment-build failure, and
 /// [`DmrgError::Sweep`] on driver failure.
 #[allow(clippy::type_complexity)]
-pub fn dmrg_2site<R, B>(
-    mpo: &Mpo<R, B>,
-    psi0: &Mps<R, B>,
+pub fn dmrg_2site<T, L, B>(
+    mpo: &Mpo<<L as MpsOps<T>>::Storage, L, B>,
+    psi0: &Mps<<L as MpsOps<T>>::Storage, L, B>,
     params: &DmrgSweepParams,
-) -> Result<(DmrgResult<<R::Elem as Scalar>::Real>, Mps<R, B>), DmrgError>
+) -> Result<(DmrgResult<T::Real>, Mps<<L as MpsOps<T>>::Storage, L, B>), DmrgError>
 where
-    R: DmrgOps + Clone,
-    <R::Elem as Scalar>::Real: Scalar<Real = <R::Elem as Scalar>::Real>,
+    T: Scalar,
+    T::Real: Scalar<Real = T::Real>,
+    L: DmrgOps<T, B> + Clone,
+    <L as MpsOps<T>>::Storage: Clone,
     B: ComputeBackend + Clone,
 {
     if psi0.len() == 0 {
@@ -151,8 +152,8 @@ where
     }
 
     let mut psi = psi0.clone();
-    canonicalize(&mut psi, 0);
-    let mut envs = DmrgEnvs::build(&psi, mpo)?;
-    let result = sweep_2site(&mut envs, &mut psi, mpo, params)?;
+    canonicalize::<T, L, B, _>(&mut psi, 0);
+    let mut envs = DmrgEnvs::<<L as MpsOps<T>>::Storage, L, B>::build::<T>(&psi, mpo)?;
+    let result = sweep_2site::<T, L, B>(&mut envs, &mut psi, mpo, params)?;
     Ok((result, psi))
 }

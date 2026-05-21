@@ -6,8 +6,7 @@
 //! right-canonical pair via truncated SVD.
 //!
 //! Axis convention (consistent with [`super::env`] and the
-//! `arnet_mps::inner` braket family — `braket_dense` for [`Dense<T>`],
-//! `braket_bsp` for `BlockSparse<T, S>`):
+//! `arnet_mps::inner` braket family):
 //!
 //! - Env tensor `(top-bra-bond, W-bond, bot-ket-bond)` with bra = ket
 //!   = psi for ground-state DMRG.
@@ -18,22 +17,21 @@
 //!   physical legs occupying the inner axes.
 //!
 //! [`EffectiveHamiltonian2Site`] borrows the env / MPO references and
-//! implements [`LinearOp`] so the local matvec can drive either
-//! Krylov solver in [`crate::krylov`] without materializing `H_eff`
-//! as a dense matrix. [`dmrg_2site_step`] dispatches over
-//! [`super::LocalEigensolverParams`] to that solver and then through
-//! `arnet_linalg::trunc_svd`, returning the U / S / Vt factors
-//! separately so callers (e.g. the sweep driver) can decide which
-//! direction absorbs S.
+//! implements [`LinearOp<T, NativeBackend>`] so the local matvec can
+//! drive either Krylov solver in [`crate::krylov`] (which keep their
+//! 1-D basis vectors in `NativeBackend`) without materializing
+//! `H_eff` as a dense matrix. The implementation rebinds Krylov-side
+//! inputs / outputs across the backend `Arc` boundary so the
+//! contracts over the chain backend `B` retain that backend's
+//! `Arc` provenance for downstream linalg dispatch.
 
 use std::sync::Arc;
 
-use arnet_core::backend::ComputeBackend;
-use arnet_core::{MemoryOrder, Scalar};
-use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
+use arnet::{
+    ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, TruncSvdParams, contract,
+    trunc_svd,
+};
 use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, reorder};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -47,14 +45,13 @@ use super::solver::{
 
 /// Effective Hamiltonian operator for the 2-site DMRG block at sites
 /// `(i, i+1)`. Built once per local update and consumed by the
-/// selected local eigensolver via [`LinearOp`] — Lanczos by default,
-/// ARPACK behind the `arpack` feature.
+/// selected local eigensolver via [`LinearOp`].
 #[derive(Debug, Clone)]
 pub struct EffectiveHamiltonian2Site<'a, T: Scalar, B: ComputeBackend = NativeBackend> {
-    left: &'a Dense<T>,
-    w_i: &'a Dense<T>,
-    w_ip1: &'a Dense<T>,
-    right: &'a Dense<T>,
+    left: &'a DenseTensor<T, B>,
+    w_i: &'a DenseTensor<T, B>,
+    w_ip1: &'a DenseTensor<T, B>,
+    right: &'a DenseTensor<T, B>,
     chi_l: usize,
     d_i: usize,
     d_ip1: usize,
@@ -65,32 +62,18 @@ pub struct EffectiveHamiltonian2Site<'a, T: Scalar, B: ComputeBackend = NativeBa
 impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
     /// Construct directly from env / MPO references plus the bond
     /// dimensions.
-    ///
-    /// Validates the shapes / bond dimensions in debug builds via
-    /// `debug_assert!` so callers that bypass the standard
-    /// [`dmrg_2site_step`] entry point still catch obvious mismatches
-    /// in tests. Release builds skip the asserts and trust the
-    /// caller; the matvec body uses `.expect` and would panic on
-    /// genuinely inconsistent shapes — `dmrg_2site_step` performs
-    /// the same validation up front via fallible `Result` returns.
-    ///
-    /// Exposed so callers that want to drive a different solver
-    /// (e.g., ARPACK behind the feature gate) can build the operator
-    /// manually instead of going through `dmrg_2site_step`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        left: &'a Dense<T>,
-        w_i: &'a Dense<T>,
-        w_ip1: &'a Dense<T>,
-        right: &'a Dense<T>,
+        left: &'a DenseTensor<T, B>,
+        w_i: &'a DenseTensor<T, B>,
+        w_ip1: &'a DenseTensor<T, B>,
+        right: &'a DenseTensor<T, B>,
         chi_l: usize,
         d_i: usize,
         d_ip1: usize,
         chi_r: usize,
         backend: Arc<B>,
     ) -> Self {
-        // Rank checks first so a malformed tensor surfaces a useful
-        // assertion message rather than panicking on `shape()[N]`.
         debug_assert_eq!(left.shape().len(), 3, "left.rank == 3");
         debug_assert_eq!(right.shape().len(), 3, "right.rank == 3");
         debug_assert_eq!(w_i.shape().len(), 4, "W[i].rank == 4");
@@ -128,149 +111,125 @@ impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
     }
 
     /// Linear-operator vector dimension.
-    ///
-    /// Matches `chi_l * d_i * d_{i+1} * chi_r` — the size of the
-    /// flattened 2-site block.
     pub fn dim(&self) -> usize {
         self.chi_l * self.d_i * self.d_ip1 * self.chi_r
     }
 
-    /// Left bond dimension `chi_l` (the first axis of the 2-site
-    /// block).
     pub fn chi_l(&self) -> usize {
         self.chi_l
     }
 
-    /// Physical dimension at site `i`.
     pub fn d_i(&self) -> usize {
         self.d_i
     }
 
-    /// Physical dimension at site `i + 1`.
     pub fn d_ip1(&self) -> usize {
         self.d_ip1
     }
 
-    /// Right bond dimension `chi_r` (the last axis of the 2-site
-    /// block).
     pub fn chi_r(&self) -> usize {
         self.chi_r
     }
 }
 
-impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T> for EffectiveHamiltonian2Site<'a, T, B> {
-    fn apply(&self, v: &Dense<T>) -> Dense<T> {
-        // Shapes are pre-validated by `dmrg_2site_step` before this
-        // operator is constructed, so the contractions cannot fail.
-        let psi = v.reshape(vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
-        let backend = &*self.backend;
+impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T, NativeBackend>
+    for EffectiveHamiltonian2Site<'a, T, B>
+{
+    fn apply(&self, v: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+        // Rebind the Krylov-side `NativeBackend`-typed vector to the
+        // chain backend so the matvec body can dispatch contracts
+        // through the chain backend. The output is rebound back to
+        // `NativeBackend` for the Krylov body's downstream
+        // `linear_combine` / `normalize` calls.
+        let v_b = rebind::<T, NativeBackend, B>(v, &self.backend);
+        let psi = reshape_dense(&v_b, vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
 
-        // left[a,b,c] · psi[c,i,j,f] -> tmp1[a,b,i,j,f]
-        let tmp1 = contract(backend, self.left, &psi, "abc,cijf->abijf")
+        let tmp1 = contract(self.left, &psi, "abc,cijf->abijf")
             .expect("heff matvec step 1: shape pre-validated");
-        // tmp1[a,b,i,j,f] · W[i][b,i,s,m] -> tmp2[a,s,m,j,f]
-        let tmp2 = contract(backend, &tmp1, self.w_i, "abijf,bism->asmjf")
+        let tmp2 = contract(&tmp1, self.w_i, "abijf,bism->asmjf")
             .expect("heff matvec step 2: shape pre-validated");
-        // tmp2[a,s,m,j,f] · W[i+1][m,j,t,g] -> tmp3[a,s,t,g,f]
-        let tmp3 = contract(backend, &tmp2, self.w_ip1, "asmjf,mjtg->astgf")
+        let tmp3 = contract(&tmp2, self.w_ip1, "asmjf,mjtg->astgf")
             .expect("heff matvec step 3: shape pre-validated");
-        // tmp3[a,s,t,g,f] · right[h,g,f] -> out[a,s,t,h]
-        let out = contract(backend, &tmp3, self.right, "astgf,hgf->asth")
+        let out = contract(&tmp3, self.right, "astgf,hgf->asth")
             .expect("heff matvec step 4: shape pre-validated");
 
-        out.reshape(vec![self.dim()])
+        let out_flat = reshape_dense(&out, vec![self.dim()]);
+        let native: Arc<NativeBackend> = NativeBackend::shared();
+        rebind::<T, B, NativeBackend>(&out_flat, &native)
     }
 }
 
-/// Result of a single 2-site DMRG step: the smallest local
-/// eigenpair plus the truncated-SVD split of its eigenvector.
-///
-/// `u` and `vt` are returned **separately from `s`**. This function
-/// does not pick a sweep direction; the caller absorbs `s` into
-/// whichever side moves.
+/// Reshape a `DenseTensor` to a new shape, preserving memory order and
+/// backend. The flat data is copied because the joined `DenseTensor`
+/// surface does not expose a zero-copy reshape (the legacy
+/// `Dense::reshape` is not reachable through the umbrella).
+fn reshape_dense<T, B>(t: &DenseTensor<T, B>, new_shape: Vec<usize>) -> DenseTensor<T, B>
+where
+    T: Scalar,
+    B: ComputeBackend,
+{
+    let new_total: usize = new_shape.iter().product();
+    assert_eq!(
+        t.len(),
+        new_total,
+        "reshape_dense: total elements must match ({} vs {new_total})",
+        t.len()
+    );
+    DenseTensor::from_raw_parts(
+        t.data_slice().to_vec(),
+        new_shape,
+        t.order(),
+        Arc::clone(t.backend_arc()),
+    )
+}
+
+/// Rebind a `DenseTensor<T, From>` onto a different backend `Arc`,
+/// copying the flat buffer + preserving shape + memory order.
+fn rebind<T, From, To>(t: &DenseTensor<T, From>, backend: &Arc<To>) -> DenseTensor<T, To>
+where
+    T: Scalar,
+    From: ComputeBackend,
+    To: ComputeBackend,
+{
+    DenseTensor::from_raw_parts(
+        t.data_slice().to_vec(),
+        t.shape().to_vec(),
+        t.order(),
+        Arc::clone(backend),
+    )
+}
+
+/// Result of a single 2-site DMRG step.
 #[derive(Debug, Clone)]
-pub struct TwoSiteStepResult<T: Scalar> {
+pub struct TwoSiteStepResult<T: Scalar, B: ComputeBackend = NativeBackend> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
-    /// `true` iff the local eigensolver succeeded — Lanczos by its
-    /// absolute true-residual test against `LanczosParams::tol`,
-    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
-    /// return from `arpack_smallest`). The two arms intentionally
-    /// disagree on what they call "converged": Lanczos uses the
-    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
-    /// On `false`, callers receive the best-effort eigenpair plus
-    /// its split — they decide whether to accept it, retry with
-    /// looser params, or abort.
     pub converged: bool,
     /// Left singular vectors, shape `[chi_l, d_i, chi_new]`.
-    /// Left-canonical at axes `(chi_l, d_i)` — i.e. `U^† U =
-    /// I_{chi_new}`.
-    pub u: Dense<T>,
+    pub u: DenseTensor<T, B>,
     /// Singular values, shape `[chi_new]`, descending.
-    pub s: Dense<T::Real>,
+    pub s: DenseTensor<T::Real, B>,
     /// Right singular vectors, shape `[chi_new, d_{i+1}, chi_r]`.
-    /// Right-canonical at axes `(d_{i+1}, chi_r)` — i.e. `Vt Vt^† =
-    /// I_{chi_new}`.
-    pub vt: Dense<T>,
+    pub vt: DenseTensor<T, B>,
     /// Frobenius norm of the discarded singular values.
     pub trunc_err: T::Real,
 }
 
 /// Run a single 2-site DMRG step at sites `(site, site+1)`.
-///
-/// Reads `envs.left(site)` and `envs.right(site + 2)`. Builds the
-/// local effective Hamiltonian, drives the selected local
-/// eigensolver (per [`LocalEigensolverParams`] — Lanczos by default,
-/// ARPACK behind the `arpack` feature) to the smallest eigenpair,
-/// then splits the optimized two-site block via
-/// `arnet_linalg::trunc_svd` with `nrow = 2` (grouping `(chi_l,
-/// d_i)` as rows). The function does **not** mutate the envs or
-/// the MPS — caller (sweep driver) advances the envs separately.
-///
-/// # Errors
-///
-/// - [`DmrgHeffError::InvalidSite`] if `site + 1 >= n_sites` (the
-///   `+1` is computed via `saturating_sub` so `site = usize::MAX`
-///   does not overflow).
-/// - [`DmrgHeffError::LengthMismatch`] if MPS / MPO / envs disagree.
-/// - [`DmrgHeffError::StaleEnv`] if `left(site)` or `right(site +
-///   2)` is `None`.
-/// - [`DmrgHeffError::ShapeMismatch`] if any tensor rank, bond, or
-///   physical dimension reached by the matvec does not match its
-///   neighbours, or if a dimension is zero (the local-eigensolver
-///   `dim` precondition and `contract` both reject zero-length
-///   axes).
-/// - [`DmrgHeffError::InvalidEigensolverParams`] if the selected
-///   eigensolver variant's params violate their preconditions
-///   (e.g. `max_iter == 0`, non-finite tol, Lanczos tol < 0,
-///   ARPACK tol <= 0). These would otherwise trip the underlying
-///   solver's internal asserts / upstream errors.
-/// - [`DmrgHeffError::Contract`] propagates an underlying linalg
-///   failure from the truncated SVD step.
-///
-/// Backend / allocation failures during the matvec body itself
-/// (`LinalgError::Backend` from a downstream GEMM / transpose) still
-/// propagate as a panic. Closing that path requires making the
-/// Krylov [`crate::krylov::LinearOp`] trait fallible, which is a
-/// cross-cutting change deferred to a later phase; the standard
-/// preconditions for `contract` are validated at the entry, so this
-/// branch is only reachable on genuine backend / allocation
-/// failures rather than user input.
 pub fn dmrg_2site_step<T, B>(
-    envs: &DmrgEnvs<Dense<T>, B>,
-    mps: &Mps<Dense<T>, B>,
-    mpo: &Mpo<Dense<T>, B>,
+    envs: &DmrgEnvs<arnet::DenseStorage<T>, arnet::DenseLayout, B>,
+    mps: &Mps<arnet::DenseStorage<T>, arnet::DenseLayout, B>,
+    mpo: &Mpo<arnet::DenseStorage<T>, arnet::DenseLayout, B>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
-) -> Result<TwoSiteStepResult<T>, DmrgHeffError>
+) -> Result<TwoSiteStepResult<T, B>, DmrgHeffError>
 where
     T: DmrgScalar,
     T::Real: Scalar<Real = T::Real>,
     B: ComputeBackend,
 {
-    // ---- Length / index validation ------------------------------
     let n_sites = envs.n_sites();
     if mps.len() != n_sites || mpo.len() != n_sites {
         return Err(DmrgHeffError::LengthMismatch {
@@ -279,20 +238,10 @@ where
             envs: n_sites,
         });
     }
-    // Use saturating_sub so `site = usize::MAX` does not overflow the
-    // `site + 1` check. `n_sites < 2` (valid 2-site step requires at
-    // least 2 sites) collapses to "every site is invalid" thanks to
-    // saturating_sub returning 0.
     if site >= n_sites.saturating_sub(1) {
         return Err(DmrgHeffError::InvalidSite { site, n_sites });
     }
 
-    // ---- Local-eigensolver params sanity ------------------------
-    // Mirrors the underlying solver's internal asserts / upstream
-    // errors so callers see `Err`, not a panic. The structural
-    // checks (max_iter, tol-finite, tol-sign) are factored into
-    // `validate_eigensolver_params`; the `T::Real` representability
-    // check stays here because it depends on the storage element.
     validate_eigensolver_params(eigensolver)
         .map_err(|detail| DmrgHeffError::InvalidEigensolverParams { detail })?;
     if crate::numeric::try_real_from_f64::<T>(eigensolver_tol(eigensolver)).is_none() {
@@ -301,7 +250,6 @@ where
         });
     }
 
-    // ---- Env slot Some-check ------------------------------------
     let left = envs.left(site).ok_or(DmrgHeffError::StaleEnv {
         side: "left",
         index: site,
@@ -310,14 +258,11 @@ where
         side: "right",
         index: site + 2,
     })?;
-    let w_i = mpo.storage(site);
-    let w_ip1 = mpo.storage(site + 1);
-    let mps_i = mps.storage(site);
-    let mps_ip1 = mps.storage(site + 1);
+    let w_i = mpo.site(site);
+    let w_ip1 = mpo.site(site + 1);
+    let mps_i = mps.site(site);
+    let mps_ip1 = mps.site(site + 1);
 
-    // ---- Rank checks first (must precede any `shape()[N]` access)
-    // so an unexpectedly-ranked tensor surfaces a `ShapeMismatch`
-    // instead of an out-of-bounds panic.
     let backend: Arc<B> = mps.backend_arc().clone();
     let check_eq =
         |expected: usize, actual: usize, field: &'static str| -> Result<(), DmrgHeffError> {
@@ -352,18 +297,11 @@ where
     check_eq(3, mps_i.shape().len(), "MPS[i].rank")?;
     check_eq(3, mps_ip1.shape().len(), "MPS[i+1].rank")?;
 
-    // ---- Shape derivation + cross-check -------------------------
-    // env shape (top-bra, W, bot-ket) with bra=ket → both bond axes share dim.
     let chi_l = left.shape()[0];
     let chi_r = right.shape()[0];
     let d_i = mps_i.shape()[1];
     let d_ip1 = mps_ip1.shape()[1];
 
-    // Reject zero-sized bond / physical dims explicitly. The local
-    // eigensolver asserts `dim >= 1` (Lanczos panics, ARPACK rejects
-    // with `InvalidParam`) and contract refuses zero-length axes, so
-    // surface this here as `ShapeMismatch { expected: 1, .. }`
-    // instead of letting it reach the operator.
     check_at_least(1, chi_l, "chi_l (left bond)")?;
     check_at_least(1, chi_r, "chi_r (right bond)")?;
     check_at_least(1, d_i, "d_i (MPS[i] physical)")?;
@@ -372,13 +310,6 @@ where
     check_at_least(1, w_i.shape()[3], "W[i].W_r (= W_mid)")?;
     check_at_least(1, w_ip1.shape()[3], "W[i+1].W_r")?;
 
-    // Pin all the bond / physical dimensions reached into during the
-    // matvec. These run unconditionally (release builds included) so
-    // the matvec body's `.expect("shape pre-validated")` calls cannot
-    // fire on dimension mismatches. The validation also covers the
-    // bra-physical (axis 2) leg of each MPO site, which would
-    // otherwise propagate silently through `apply` if `axis 1 ==
-    // axis 2` happened to differ.
     check_eq(
         left.shape()[2],
         mps_i.shape()[0],
@@ -427,9 +358,11 @@ where
         Arc::clone(&backend),
     );
 
-    // ---- Drive the local eigensolver ----------------------------
     let dim = heff.dim();
-    let (eigenvalue, eigenvector, iters, converged, residual) = match eigensolver {
+    // Lanczos/ARPACK return `DenseTensor<T, NativeBackend>`; rebind
+    // the eigenvector to the chain backend before SVD so the result
+    // tensors carry the chain backend's `Arc`.
+    let (eigenvalue, eigenvector_native, iters, converged, residual) = match eigensolver {
         LocalEigensolverParams::Lanczos(p) => {
             let lan = lanczos_smallest::<T, _>(&heff, dim, p);
             (
@@ -443,19 +376,6 @@ where
         #[cfg(feature = "arpack")]
         LocalEigensolverParams::Arpack(p) => {
             let res = arpack_smallest::<T, _>(&heff, dim, p)?;
-            // For step-level convergence, treat any `Ok` return from
-            // ARPACK as success: ARPACK has met its relative-tol
-            // stopping criterion. `ArpackResult.converged` is a
-            // stricter *absolute*-tol divergence indicator (true iff
-            // `residual <= tol` with `tol` interpreted in absolute
-            // units), and is structurally hard to satisfy at tight
-            // `tol` even on successful runs because ARPACK's internal
-            // criterion is `residual <= tol * |lambda|`. Propagating
-            // it as the step-level flag would prevent
-            // `DmrgResult.converged = true` for ARPACK-backed sweeps
-            // even when the energy has stabilized; the absolute
-            // residual is still surfaced via `residual` for callers
-            // that want it.
             (
                 res.eigenvalue,
                 res.eigenvector,
@@ -465,22 +385,20 @@ where
             )
         }
     };
+    let eigenvector = rebind::<T, NativeBackend, B>(&eigenvector_native, &backend);
 
-    // ---- Truncated SVD split ------------------------------------
-    let psi_4d = eigenvector.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
-    let (u_2d, s, vt_2d, trunc_err) = trunc_svd(&*backend, &psi_4d, 2, trunc)?;
+    let psi_4d = reshape_dense(&eigenvector, vec![chi_l, d_i, d_ip1, chi_r]);
+    let (u_2d, s, vt_2d, trunc_err) = trunc_svd(&psi_4d, 2, trunc)?;
 
     let chi_new = u_2d.shape()[1];
     debug_assert_eq!(vt_2d.shape()[0], chi_new, "U/Vt new bond dim agreement");
 
     let order = backend.preferred_order();
     let rm = MemoryOrder::RowMajor;
-    let reshape_to_3d = |t_2d: Dense<T>, new_shape: Vec<usize>| -> Dense<T> {
-        // 2D backend-order → RM → multi-dim split → backend-order.
-        // Mirrors the pattern in `arnet_mps::truncate::truncate_dense`.
-        let rm_view = reorder(&t_2d, order, rm);
-        let multi = rm_view.reshape(new_shape);
-        reorder(&multi, rm, order)
+    let reshape_to_3d = |t_2d: DenseTensor<T, B>, new_shape: Vec<usize>| -> DenseTensor<T, B> {
+        let rm_view = t_2d.reordered(rm);
+        let multi = reshape_dense(&rm_view, new_shape);
+        multi.reordered(order)
     };
     let u = reshape_to_3d(u_2d, vec![chi_l, d_i, chi_new]);
     let vt = reshape_to_3d(vt_2d, vec![chi_new, d_ip1, chi_r]);

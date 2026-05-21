@@ -40,11 +40,11 @@ pub use operator::EffectiveHamiltonian2SiteBlockSparse;
 
 use std::sync::Arc;
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse};
+use arnet::{
+    BlockSingularValues, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend,
+    NativeBackend, Scalar, Sector, TruncSvdParams, trunc_svd_block_sparse,
+};
 use arnet_mps::{Mpo, Mps};
-use arnet_tensor::{BlockSparse, Sector};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -65,28 +65,21 @@ use super::solver::{DmrgScalar, LocalEigensolverParams};
 ///
 /// `Debug` is not derived because `BlockSparse: !Debug`; tests that
 /// need to inspect the result destructure its fields directly.
-pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
+pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector, B: ComputeBackend = NativeBackend> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
-    /// `true` iff the local eigensolver succeeded — Lanczos by its
-    /// absolute true-residual test against `LanczosParams::tol`,
-    /// ARPACK by its relative-tol stopping criterion (i.e. `Ok`
-    /// return from `arpack_smallest`). The two arms intentionally
-    /// disagree on what they call "converged": Lanczos uses the
-    /// absolute residual; ARPACK uses `residual <= tol * |lambda|`.
-    /// On `false`, the caller still receives the best-effort
-    /// eigenpair plus its split.
+    /// `true` iff the local eigensolver succeeded.
     pub converged: bool,
     /// Left singular vectors. Legs `[chi_l, d_i, bond(In)]`,
     /// `flux = identity()`. Left-canonical at axes `(chi_l, d_i)`.
-    pub u: BlockSparse<T, S>,
+    pub u: BlockSparseTensor<T, S, B>,
     /// Singular values per fused sector (descending within each
     /// sector).
     pub s: BlockSingularValues<<T as Scalar>::Real, S>,
     /// Right singular vectors. Legs `[bond(Out), d_{i+1}, chi_r]`,
     /// `flux = psi_flux`. Right-canonical at axes `(d_{i+1}, chi_r)`.
-    pub vt: BlockSparse<T, S>,
+    pub vt: BlockSparseTensor<T, S, B>,
     /// Frobenius norm of the discarded singular values.
     pub trunc_err: T::Real,
 }
@@ -116,13 +109,13 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
 ///   property, env-template-compatibility property, and identity-flux
 ///   precondition is validated up front.
 pub fn dmrg_2site_step_block_sparse<T, S, B>(
-    envs: &DmrgEnvs<BlockSparse<T, S>, B>,
-    mps: &Mps<BlockSparse<T, S>, B>,
-    mpo: &Mpo<BlockSparse<T, S>, B>,
+    envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mps: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mpo: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
-) -> Result<TwoSiteStepResultBlockSparse<T, S>, DmrgHeffError>
+) -> Result<TwoSiteStepResultBlockSparse<T, S, B>, DmrgHeffError>
 where
     T: DmrgScalar,
     T::Real: Scalar<Real = T::Real>,
@@ -198,11 +191,11 @@ where
     };
 
     let psi_4d = operator::scatter_flat_to_template(
-        eigenvector.data(),
+        eigenvector.data_slice(),
         &heff.psi_template,
         &heff.block_offsets,
     );
-    let (u, s, vt, trunc_err) = trunc_svd_block_sparse(&*v.backend, &psi_4d, 2, trunc)?;
+    let (u, s, vt, trunc_err) = trunc_svd_block_sparse(&psi_4d, 2, trunc)?;
 
     Ok(TwoSiteStepResultBlockSparse {
         eigenvalue,

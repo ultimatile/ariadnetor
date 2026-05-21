@@ -15,10 +15,9 @@
 //! cost — they will be eliminated once `LinearOp` grows a
 //! slice-in-place variant.
 
-use arnet_core::Scalar;
-use arnet_core::backend::MemoryOrder;
-use arnet_linalg::{linear_combine, norm, normalize};
-use arnet_tensor::{Dense, reorder};
+use std::sync::Arc;
+
+use arnet::{DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine, norm, normalize};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 
@@ -73,7 +72,7 @@ pub struct ArpackResult<T: Scalar> {
     /// zero by construction.
     pub eigenvalue: T::Real,
     /// Corresponding eigenvector of length `dim`, unit-normalized.
-    pub eigenvector: Dense<T>,
+    pub eigenvector: DenseTensor<T>,
     /// Number of restart iterations performed (ARPACK's `iparam[2]`
     /// writeback).
     pub iters: usize,
@@ -268,7 +267,7 @@ pub fn arpack_smallest<T, Op>(
 where
     T: ArpackScalar,
     T::Real: Scalar<Real = T::Real>,
-    Op: LinearOp<T>,
+    Op: LinearOp<T, NativeBackend>,
 {
     assert!(dim >= 1, "arpack_smallest: dim must be >= 1");
     if !params.tol.is_finite() || params.tol <= 0.0 {
@@ -277,6 +276,8 @@ where
         ));
     }
 
+    let backend_arc: Arc<NativeBackend> = NativeBackend::shared();
+
     // Drive ARPACK with a closure that adapts ARPACK's slice-in /
     // slice-out matvec interface to the `LinearOp` Dense-in / Dense-
     // out interface. Two `Vec` allocations per matvec is a known cost
@@ -284,20 +285,30 @@ where
     let solution = T::solve(
         dim,
         &mut |x_slice, y_slice| {
-            let x_dense = Dense::new(x_slice.to_vec(), vec![dim], MemoryOrder::ColumnMajor);
+            let x_dense = DenseTensor::from_raw_parts(
+                x_slice.to_vec(),
+                vec![dim],
+                MemoryOrder::ColumnMajor,
+                Arc::clone(&backend_arc),
+            );
             let y_dense = op.apply(&x_dense);
             assert_eq!(
                 y_dense.shape(),
                 &[dim],
                 "LinearOp::apply must return a rank-1 tensor of shape [dim]",
             );
-            y_slice.copy_from_slice(y_dense.data());
+            y_slice.copy_from_slice(y_dense.data_slice());
         },
         params,
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let eigenvector = Dense::new(solution.eigenvector, vec![dim], MemoryOrder::ColumnMajor);
+    let eigenvector = DenseTensor::from_raw_parts(
+        solution.eigenvector,
+        vec![dim],
+        MemoryOrder::ColumnMajor,
+        Arc::clone(&backend_arc),
+    );
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
     let (eigenvector, _) = normalize(&eigenvector);
@@ -316,7 +327,7 @@ where
     let h_psi = if h_psi_raw.order() == eigenvector.order() {
         h_psi_raw
     } else {
-        reorder(&h_psi_raw, h_psi_raw.order(), eigenvector.order())
+        h_psi_raw.reordered(eigenvector.order())
     };
     let lambda_t = T::from_real_imag(eigenvalue, T::Real::zero());
     let neg_lambda = lambda_t.scale_real(-T::Real::one());

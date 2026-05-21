@@ -12,10 +12,11 @@
 
 use std::sync::Arc;
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
+use arnet::{
+    BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend, QNIndex, Scalar,
+    Sector,
+};
 use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_tensor::{BlockSparse, QNIndex, Sector};
 
 use super::super::env::DmrgEnvs;
 use super::super::heff_error::DmrgHeffError;
@@ -25,19 +26,19 @@ use super::super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eig
 /// (the entry point in `mod.rs`) so it can build the Heff and drive
 /// the local eigensolver without re-deriving anything.
 pub(super) struct ValidatedInputs<'a, T: Scalar, S: Sector, B: ComputeBackend> {
-    pub left: &'a BlockSparse<T, S>,
-    pub right: &'a BlockSparse<T, S>,
-    pub w_i: &'a BlockSparse<T, S>,
-    pub w_ip1: &'a BlockSparse<T, S>,
-    pub mps_i: &'a BlockSparse<T, S>,
-    pub mps_ip1: &'a BlockSparse<T, S>,
+    pub left: &'a BlockSparseTensor<T, S, B>,
+    pub right: &'a BlockSparseTensor<T, S, B>,
+    pub w_i: &'a BlockSparseTensor<T, S, B>,
+    pub w_ip1: &'a BlockSparseTensor<T, S, B>,
+    pub mps_i: &'a BlockSparseTensor<T, S, B>,
+    pub mps_ip1: &'a BlockSparseTensor<T, S, B>,
     pub backend: Arc<B>,
 }
 
 pub(super) fn validate_inputs<'a, T, S, B>(
-    envs: &'a DmrgEnvs<BlockSparse<T, S>, B>,
-    mps: &'a Mps<BlockSparse<T, S>, B>,
-    mpo: &'a Mpo<BlockSparse<T, S>, B>,
+    envs: &'a DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mps: &'a Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    mpo: &'a Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
 ) -> Result<ValidatedInputs<'a, T, S, B>, DmrgHeffError>
@@ -74,10 +75,10 @@ where
         side: "right",
         index: site + 2,
     })?;
-    let w_i = mpo.storage(site);
-    let w_ip1 = mpo.storage(site + 1);
-    let mps_i = mps.storage(site);
-    let mps_ip1 = mps.storage(site + 1);
+    let w_i = mpo.site(site);
+    let w_ip1 = mpo.site(site + 1);
+    let mps_i = mps.site(site);
+    let mps_ip1 = mps.site(site + 1);
     let backend: Arc<B> = mps.backend_arc().clone();
 
     let check_eq =
