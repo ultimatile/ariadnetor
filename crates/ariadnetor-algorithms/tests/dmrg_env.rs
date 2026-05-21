@@ -4,12 +4,13 @@
 //! product-state MPS or random-but-seeded). The env contract is
 //! pinned via cross-check against `arnet_mps::braket` ground truth.
 
+use std::sync::Arc;
+
 use approx::assert_abs_diff_eq;
+use arnet::contract;
+use arnet::{ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use arnet_linalg::contract;
 use arnet_mps::{Mpo, Mps, TensorChain, braket};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -18,41 +19,58 @@ use arnet_tensor::{ComputeBackendTensorExt, Dense};
 /// Tiny MPS fixture: 4-site, physical dim d=2, all bond dim 1 (i.e. a
 /// product state of single complex amplitudes per site). Each site
 /// stores `[1, 0]` so the state is |0000⟩.
-fn product_state_mps(n: usize) -> Mps<Dense<f64>> {
+fn product_state_mps(n: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
-        .map(|_| backend.make_tensor(vec![1.0_f64, 0.0], vec![1, 2, 1]))
+    let storages: Vec<DenseTensor<f64>> = (0..n)
+        .map(|_| {
+            DenseTensor::from_raw_parts(
+                vec![1.0_f64, 0.0],
+                vec![1, 2, 1],
+                backend.preferred_order(),
+                Arc::clone(&backend),
+            )
+        })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 /// Identity MPO for d=2, n sites — every site is the rank-4 tensor
 /// W[1, d_ket, d_bra, 1] with `W[0,k,k,0] = 1`, off-diagonal 0.
 /// `<psi|H|psi> = <psi|psi> = 1` for any normalized MPS.
-fn identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
+fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            backend.make_tensor(data, vec![1, d, d, 1])
+            DenseTensor::from_raw_parts(
+                data,
+                vec![1, d, d, 1],
+                backend.preferred_order(),
+                Arc::clone(&backend),
+            )
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 /// Random-but-seeded MPS for the cross-check tests. All bonds are
 /// `chi`, physical `d`. Edge sites still have rank 3 with the outer
 /// bond dim 1.
-fn random_mps_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_f64(
+    n: usize,
+    d: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
@@ -60,21 +78,26 @@ fn random_mps_f64(n: usize, d: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> 
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::Rng::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            backend.make_tensor(data, vec![l, d, r])
+            DenseTensor::from_raw_parts(
+                data,
+                vec![l, d, r],
+                backend.preferred_order(),
+                Arc::clone(&backend),
+            )
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 /// Random-but-seeded MPO for the cross-check tests. All MPO bonds
 /// are `w`, physical `d`. Edge sites have outer bond dim 1.
-fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<Dense<f64>> {
+fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { w };
             let r = if i + 1 == n { 1 } else { w };
@@ -82,10 +105,15 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<Dense<f64>> {
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::Rng::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            backend.make_tensor(data, vec![l, d, d, r])
+            DenseTensor::from_raw_parts(
+                data,
+                vec![l, d, d, r],
+                backend.preferred_order(),
+                Arc::clone(&backend),
+            )
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(storages)
 }
 
 /// Fold an L env forward by absorbing sites `0..upto`. Stand-alone
@@ -93,26 +121,29 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<Dense<f64>> {
 /// compute `left[upto]` independently and pair it with the existing
 /// `env.right(upto)` produced by `build()`.
 fn fold_left_to_boundary(
-    mps: &Mps<Dense<f64>>,
-    mpo: &Mpo<Dense<f64>>,
-    initial: &Dense<f64>,
+    mps: &Mps<DenseStorage<f64>, DenseLayout>,
+    mpo: &Mpo<DenseStorage<f64>, DenseLayout>,
+    initial: &DenseTensor<f64>,
     upto: usize,
-) -> Dense<f64> {
-    let backend = NativeBackend::shared();
+) -> DenseTensor<f64> {
     let mut env = initial.clone();
     for i in 0..upto {
-        let bra = mps.storage(i).conj();
-        let t1 = contract(&*backend, &env, &bra, "abc,ade->bcde").expect("step 1");
-        let t2 = contract(&*backend, &t1, mpo.storage(i), "bcde,bfdg->cefg").expect("step 2");
-        env = contract(&*backend, &t2, mps.storage(i), "cefg,cfh->egh").expect("step 3");
+        let bra = mps.site(i).conj();
+        let t1 = contract(&env, &bra, "abc,ade->bcde").expect("step 1");
+        let t2 = contract(&t1, mpo.site(i), "bcde,bfdg->cefg").expect("step 2");
+        env = contract(&t2, mps.site(i), "cefg,cfh->egh").expect("step 3");
     }
     env
 }
 
 /// Fold an L env all the way through the chain to a 1×1×1 scalar.
-fn fold_left_to_scalar(mps: &Mps<Dense<f64>>, mpo: &Mpo<Dense<f64>>, initial: &Dense<f64>) -> f64 {
+fn fold_left_to_scalar(
+    mps: &Mps<DenseStorage<f64>, DenseLayout>,
+    mpo: &Mpo<DenseStorage<f64>, DenseLayout>,
+    initial: &DenseTensor<f64>,
+) -> f64 {
     let env = fold_left_to_boundary(mps, mpo, initial, mps.len());
-    env.data()[0]
+    env.data_slice()[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -132,8 +163,8 @@ fn env_boundaries_are_trivial() {
 
     assert_eq!(l0.shape(), &[1, 1, 1]);
     assert_eq!(rn.shape(), &[1, 1, 1]);
-    assert_abs_diff_eq!(l0.data()[0], 1.0, epsilon = 1e-12);
-    assert_abs_diff_eq!(rn.data()[0], 1.0, epsilon = 1e-12);
+    assert_abs_diff_eq!(l0.data_slice()[0], 1.0, epsilon = 1e-12);
+    assert_abs_diff_eq!(rn.data_slice()[0], 1.0, epsilon = 1e-12);
 }
 
 // ---------------------------------------------------------------------------
@@ -192,9 +223,9 @@ fn env_decomposition_holds_at_every_interior_boundary() {
             "boundary {j}: shape mismatch"
         );
         let scalar: f64 = l_at_j
-            .data()
+            .data_slice()
             .iter()
-            .zip(r_at_j.data().iter())
+            .zip(r_at_j.data_slice().iter())
             .map(|(a, b)| a * b)
             .sum();
         assert_abs_diff_eq!(scalar, reference, epsilon = 1e-9);
@@ -261,7 +292,11 @@ fn env_advance_left_at_right_edge_preserves_boundary() {
         .right(n)
         .expect("right(N) must remain Some after edge advance");
     assert_eq!(rn_after.shape(), rn_before.shape());
-    assert_abs_diff_eq!(rn_after.data()[0], rn_before.data()[0], epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        rn_after.data_slice()[0],
+        rn_before.data_slice()[0],
+        epsilon = 1e-12
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -285,7 +320,11 @@ fn env_advance_right_at_left_edge_preserves_boundary() {
         .left(0)
         .expect("left(0) must remain Some after edge advance");
     assert_eq!(l0_after.shape(), l0_before.shape());
-    assert_abs_diff_eq!(l0_after.data()[0], l0_before.data()[0], epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        l0_after.data_slice()[0],
+        l0_before.data_slice()[0],
+        epsilon = 1e-12
+    );
 }
 
 // ---------------------------------------------------------------------------

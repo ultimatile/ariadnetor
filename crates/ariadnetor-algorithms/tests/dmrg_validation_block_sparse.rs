@@ -18,14 +18,15 @@
 //!
 //! Test-internal helpers; no public API additions.
 
+use std::sync::Arc;
+
+use arnet::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend,
+    DenseTensor, Direction, NativeBackend, QNIndex, Sector, TruncSvdParams, U1Sector, eigh,
+};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
-use arnet_native::NativeBackend;
-use arnet_tensor::{
-    BlockCoord, BlockSparse, ComputeBackendTensorExt, Dense, Direction, QNIndex, Sector, U1Sector,
-};
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -59,7 +60,7 @@ fn write_offdiag(h: &mut [f64], dim: usize, b_out: usize, b_in: usize, value: f6
 // validation file is self-contained.
 // ---------------------------------------------------------------------------
 
-fn heisenberg_ed_dense_f64(n: usize, j: f64) -> Dense<f64> {
+fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
     let backend = NativeBackend::shared();
     let dim = 1usize << n;
     let mut data = vec![0.0_f64; dim * dim];
@@ -80,13 +81,22 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> Dense<f64> {
             }
         }
     }
-    backend.make_tensor(data, vec![dim, dim])
+    DenseTensor::from_raw_parts(
+        data,
+        vec![dim, dim],
+        backend.preferred_order(),
+        Arc::clone(&backend),
+    )
 }
 
-fn dense_min_eig_f64(h: &Dense<f64>) -> f64 {
-    let backend = NativeBackend::shared();
-    let (eigvals, _v) = eigh(&*backend, h, 1).expect("eigh");
-    eigvals.data().iter().copied().fold(f64::INFINITY, f64::min)
+fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
+    let _backend = NativeBackend::shared();
+    let (eigvals, _v) = eigh(h, 1).expect("eigh");
+    eigvals
+        .data_slice()
+        .iter()
+        .copied()
+        .fold(f64::INFINITY, f64::min)
 }
 
 // ---------------------------------------------------------------------------
@@ -147,14 +157,17 @@ fn flat_within_phys1(d_l: usize, chan_l: usize, chan_r: usize) -> usize {
     chan_l + d_l * chan_r
 }
 
-fn heisenberg_mpo_bsp_f64(n: usize, j: f64) -> Mpo<BlockSparse<f64, U1Sector>> {
+fn heisenberg_mpo_bsp_f64(
+    n: usize,
+    j: f64,
+) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     assert!(n >= 2, "heisenberg_mpo_bsp_f64 requires n >= 2");
-    let mut sites: Vec<BlockSparse<f64, U1Sector>> = Vec::with_capacity(n);
+    let mut sites: Vec<BlockSparseTensor<f64, U1Sector>> = Vec::with_capacity(n);
 
     // ---- Site 0: W_l = trivial, W_r = bond5 ----
     // Acts as "identity-finished" (Dense row 4) projected to a single
     // W_l channel.
-    let mut w0 = BlockSparse::<f64, U1Sector>::zeros(
+    let mut w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial1(), Direction::Out),
             QNIndex::new(phys2(), Direction::In),
@@ -189,7 +202,7 @@ fn heisenberg_mpo_bsp_f64(n: usize, j: f64) -> Mpo<BlockSparse<f64, U1Sector>> {
 
     // ---- Bulk sites (1 ..= n-2): W_l = bond5, W_r = bond5 ----
     for _ in 1..n - 1 {
-        let mut w = BlockSparse::<f64, U1Sector>::zeros(
+        let mut w = BlockSparseTensor::<f64, U1Sector>::zeros(
             vec![
                 QNIndex::new(bond5(), Direction::Out),
                 QNIndex::new(phys2(), Direction::In),
@@ -235,7 +248,7 @@ fn heisenberg_mpo_bsp_f64(n: usize, j: f64) -> Mpo<BlockSparse<f64, U1Sector>> {
     }
 
     // ---- Site n-1: W_l = bond5, W_r = trivial ----
-    let mut wn = BlockSparse::<f64, U1Sector>::zeros(
+    let mut wn = BlockSparseTensor::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(bond5(), Direction::Out),
             QNIndex::new(phys2(), Direction::In),
@@ -263,7 +276,7 @@ fn heisenberg_mpo_bsp_f64(n: usize, j: f64) -> Mpo<BlockSparse<f64, U1Sector>> {
 
     sites.push(wn);
 
-    Mpo::from_storages(sites)
+    Mpo::from_sites(sites)
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +286,7 @@ fn heisenberg_mpo_bsp_f64(n: usize, j: f64) -> Mpo<BlockSparse<f64, U1Sector>> {
 // `total_charge`. Internal bond carries the full ladder of sectors
 // `0 ..= total_charge` so any partial-sum-of-bits-equals-q at
 // site-cumulative-charge q has a non-empty allocation. Block
-// fills use uniform `[-0.5, 0.5)` per-entry; `BlockSparse::zeros`
+// fills use uniform `[-0.5, 0.5)` per-entry; `BlockSparseTensor::zeros`
 // enforces fusion-legality so only allowed coords are written. The
 // site is then handed to `canonicalize(_, 0)` to land in
 // `Mixed { center: 0 }` form.
@@ -284,7 +297,7 @@ fn random_mps_bsp_center_zero_f64(
     chi_internal: usize,
     total_charge: i32,
     seed: u64,
-) -> Mps<BlockSparse<f64, U1Sector>> {
+) -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     assert!(n >= 2, "random_mps_bsp_center_zero_f64 requires n >= 2");
     assert!(
         total_charge >= 0 && (total_charge as usize) <= n,
@@ -301,7 +314,7 @@ fn random_mps_bsp_center_zero_f64(
         .map(|q| (U1Sector(q), chi_internal))
         .collect();
 
-    let mut storages: Vec<BlockSparse<f64, U1Sector>> = Vec::with_capacity(n);
+    let mut storages: Vec<BlockSparseTensor<f64, U1Sector>> = Vec::with_capacity(n);
 
     for site in 0..n {
         let left_legs: Vec<(U1Sector, usize)> = if site == 0 {
@@ -320,7 +333,7 @@ fn random_mps_bsp_center_zero_f64(
             U1Sector::identity()
         };
 
-        let mut s = BlockSparse::<f64, U1Sector>::zeros(
+        let mut s = BlockSparseTensor::<f64, U1Sector>::zeros(
             vec![
                 QNIndex::new(left_legs, Direction::Out),
                 QNIndex::new(phys2(), Direction::Out),
@@ -341,8 +354,8 @@ fn random_mps_bsp_center_zero_f64(
         storages.push(s);
     }
 
-    let mut mps = Mps::from_storages(storages);
-    canonicalize::<BlockSparse<f64, U1Sector>, _>(&mut mps, 0);
+    let mut mps = Mps::from_sites(storages);
+    canonicalize(&mut mps, 0);
     assert_eq!(
         *mps.canonical_form(),
         CanonicalForm::Mixed { center: 0 },
@@ -385,7 +398,7 @@ fn validation_params_bsp(chi_max: usize, lanczos_seed: u64) -> DmrgSweepParams {
 #[allow(clippy::too_many_arguments)]
 fn run_validation_bsp(
     name: &str,
-    mpo: Mpo<BlockSparse<f64, U1Sector>>,
+    mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
     e_ed: f64,
     chi_max: usize,
     chi_internal: usize,

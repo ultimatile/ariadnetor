@@ -12,14 +12,15 @@
 //! at `J = 1`) so the solver-comparison fixture matches what existing
 //! correctness tests pin down.
 
+use std::sync::Arc;
+
+use arnet::TruncSvdParams;
+use arnet::{ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
 #[cfg(feature = "arpack")]
 use arnet_algorithms::krylov::ArpackParams;
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::Rng;
 use rand::SeedableRng;
@@ -59,7 +60,7 @@ fn build_mpo_site_f64(
     w_l_dim: usize,
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
-) -> Dense<f64> {
+) -> DenseTensor<f64> {
     let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
@@ -71,10 +72,15 @@ fn build_mpo_site_f64(
             }
         }
     }
-    backend.make_tensor(data, vec![w_l_dim, D, D, w_r_dim])
+    DenseTensor::from_raw_parts(
+        data,
+        vec![w_l_dim, D, D, w_r_dim],
+        backend.preferred_order(),
+        Arc::clone(&backend),
+    )
 }
 
-fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
+fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 2, "heisenberg_mpo_f64 requires n >= 2");
     let mut sites = Vec::with_capacity(n);
 
@@ -117,22 +123,27 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<Dense<f64>> {
         ],
     ));
 
-    Mpo::from_storages(sites)
+    Mpo::from_sites(sites)
 }
 
-fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<Dense<f64>> {
+fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<Dense<f64>> = (0..n)
+    let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
             let l = if i == 0 { 1 } else { chi };
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            backend.make_tensor(data, vec![l, D, r])
+            DenseTensor::from_raw_parts(
+                data,
+                vec![l, D, r],
+                backend.preferred_order(),
+                Arc::clone(&backend),
+            )
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(storages)
 }
 
 // ---------------------------------------------------------------------------

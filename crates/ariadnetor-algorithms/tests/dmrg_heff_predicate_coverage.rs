@@ -5,56 +5,52 @@
 //! the minimum needed to drive the predicate paths — no oracles or
 //! cross-checks.
 
+use std::sync::Arc;
+
+use arnet::{
+    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams,
+};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
 
-fn product_state_mps(n: usize, d: usize) -> Mps<Dense<f64>> {
-    let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
+    let backend: Arc<NativeBackend> = NativeBackend::shared();
+    let order = backend.preferred_order();
+    let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            backend.make_tensor(data, vec![1, d, 1])
+            DenseTensor::from_raw_parts(data, vec![1, d, 1], order, Arc::clone(&backend))
         })
         .collect();
-    Mps::from_storages(storages)
+    Mps::from_sites(sites)
 }
 
-fn identity_mpo(n: usize, d: usize) -> Mpo<Dense<f64>> {
-    let backend = NativeBackend::shared();
-    let storages: Vec<Dense<f64>> = (0..n)
+fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
+    let backend: Arc<NativeBackend> = NativeBackend::shared();
+    let order = backend.preferred_order();
+    let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            backend.make_tensor(data, vec![1, d, d, 1])
+            DenseTensor::from_raw_parts(data, vec![1, d, d, 1], order, Arc::clone(&backend))
         })
         .collect();
-    Mpo::from_storages(storages)
+    Mpo::from_sites(sites)
 }
 
-// The length predicate is `mps.len() != n_sites || mpo.len() != n_sites`.
-// Symmetric mismatch (both wrong) does not distinguish `||` from `&&`.
-// The asymmetric configurations below pin the variant by binding the
-// `mps` and `mpo` values reported in the `LengthMismatch` error.
-//
-// The boundary `params.tol < 0.0` accepts `tol = 0.0`. Mutating to `<=`
-// rejects it; mutating to `==` also rejects it. Asserting that
-// `tol = 0.0` does not surface the `tol must be non-negative` detail
-// distinguishes those mutants. The peer `<→>` mutation is killed by
-// the existing `bad_neg_params` (`tol = -1.0`) test in `dmrg_heff.rs`.
 #[test]
 fn heff_2site_step_asymmetric_length_and_zero_tol() {
     let n = 4;
     let d = 2;
     let mps_4 = product_state_mps(n, d);
     let mpo_4 = identity_mpo(n, d);
-    let envs_4 = DmrgEnvs::build(&mps_4, &mpo_4).expect("build envs n=4");
+    let envs_4 =
+        DmrgEnvs::<DenseStorage<f64>, DenseLayout, NativeBackend>::build::<f64>(&mps_4, &mpo_4)
+            .expect("build envs n=4");
 
     let mps_3 = product_state_mps(3, d);
     let mpo_3 = identity_mpo(3, d);
