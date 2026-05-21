@@ -229,10 +229,10 @@ where
 ///
 /// ```rust,ignore
 /// use arnet_linalg::trace;
-/// use arnet_tensor::{DenseTensor, MemoryOrder};
+/// use arnet_tensor::DenseTensor;
 ///
-/// // Matrix trace: tr([[1,2],[3,4]]) = 1 + 4 = 5
-/// let mat = DenseTensor::from_data(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+/// // Matrix trace: tr(I_2) = 2 (eye preserves the active backend's preferred order)
+/// let mat = DenseTensor::<f64>::eye(2);
 /// let result = trace(&mat, &[(0, 1)]).unwrap();
 /// assert_eq!(result.shape(), &[1]);
 /// ```
@@ -442,8 +442,9 @@ pub(crate) fn diag_dense<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, Linal
 ///
 /// ```rust,ignore
 /// use arnet_linalg::diagonal_scale;
-/// use arnet_tensor::{DenseTensor, MemoryOrder};
+/// use arnet_tensor::DenseTensor;
 ///
+/// let m = DenseTensor::<f64>::ones(vec![2, 3]);
 /// let scaled = diagonal_scale(&m, &[1.0, 2.0, 3.0], 1).unwrap();
 /// ```
 pub fn diagonal_scale<T, S, B>(

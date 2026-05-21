@@ -8,20 +8,24 @@ use crate::tensor_bridge::wrap_dense;
 use crate::transpose::transpose_dense;
 use arnet_tensor::{normalize_to, reorder};
 
-/// Contract two tensors using Einstein summation notation with the provided backend.
+/// Contract two tensors using Einstein summation notation.
 ///
 /// Performs a pure tensor contraction: all shared indices between the two inputs
 /// must be contracted (summed over). Batch indices (shared but not contracted)
 /// are not supported — use [`crate::einsum::einsum`] for expressions with batch
 /// or Hadamard patterns.
 ///
-/// Output is returned in `backend.preferred_order()`, consistent with
-/// decomposition functions.
+/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
+/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
+/// (`Arc::ptr_eq(lhs.backend_arc(), rhs.backend_arc())`); a mismatch silently
+/// runs on `lhs`'s backend and labels the output with `lhs`'s backend, which
+/// is wrong for backends carrying state. Output is returned in
+/// `lhs.backend().preferred_order()`, consistent with decomposition functions.
 ///
 /// # Arguments
 ///
-/// * `lhs` - Left-hand side tensor (backend flows from the tensor)
-/// * `rhs` - Right-hand side tensor
+/// * `lhs` - Left-hand side tensor (backend authority)
+/// * `rhs` - Right-hand side tensor (must share `lhs`'s backend Arc)
 /// * `notation` - Einstein summation notation (e.g., "ik,kj->ij")
 ///
 /// # Errors

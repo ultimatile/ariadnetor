@@ -26,19 +26,23 @@ use arnet_tensor::reorder;
 /// - **2 inputs**: delegates to [`einsum_pair`] (handles pure contraction, Hadamard, batched)
 /// - **N inputs** (N > 2): sequential left-to-right pairwise contraction via [`einsum_pair`]
 ///
+/// The backend is taken from `tensors[0]` and the result is wrapped against
+/// `tensors[0]`'s backend Arc. Callers must ensure all inputs share the same
+/// backend Arc; a mismatch silently runs on `tensors[0]`'s backend and labels
+/// the output with `tensors[0]`'s backend, which is wrong for backends
+/// carrying state.
+///
 /// # Examples
 ///
 /// ```rust,ignore
 /// use arnet_linalg::einsum;
-/// use arnet_native::NativeBackend;
 ///
-/// let backend = NativeBackend::new();
 /// // Matrix multiplication
-/// let c = einsum(&backend, &[&a, &b], "ij,jk->ik")?;
+/// let c = einsum(&[&a, &b], "ij,jk->ik")?;
 /// // 3-tensor chain
-/// let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il")?;
+/// let d = einsum(&[&a, &b, &c], "ij,jk,kl->il")?;
 /// // Trace
-/// let t = einsum(&backend, &[&m], "ii->")?;
+/// let t = einsum(&[&m], "ii->")?;
 /// ```
 ///
 /// # Errors

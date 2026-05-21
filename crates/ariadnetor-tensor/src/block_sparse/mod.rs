@@ -490,6 +490,11 @@ impl<T, S: Sector> BlockSparse<T, S> {
             "BlockSparse::from_storage_arc: blocks/block_index length mismatch"
         );
         debug_assert_eq!(
+            shape.len(),
+            indices.len(),
+            "BlockSparse::from_storage_arc: shape rank doesn't match indices rank",
+        );
+        debug_assert_eq!(
             data.len(),
             blocks.iter().map(|b| b.size).sum::<usize>(),
             "BlockSparse::from_storage_arc: data length doesn't match block sizes",
