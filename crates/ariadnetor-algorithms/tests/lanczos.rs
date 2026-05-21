@@ -4,8 +4,6 @@
 //! the solver via a closure that does a matrix-vector product, and
 //! compare against `arnet::eigh` ground truth.
 
-use std::sync::Arc;
-
 use approx::assert_abs_diff_eq;
 use arnet::{DenseTensor, MemoryOrder, NativeBackend, Scalar, eigh};
 use arnet_algorithms::krylov::{LanczosParams, lanczos_smallest};
@@ -87,10 +85,6 @@ fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
     let (eigvals, _) = eigh(h, 1).expect("eigh");
     eigvals.data_slice()[0]
 }
-
-// `Arc` brought in for tests that wire backend handles into custom helpers.
-#[allow(dead_code)]
-fn _arc_marker<T>(_: Arc<T>) {}
 
 // ---------------------------------------------------------------------------
 // Real symmetric tests

@@ -295,7 +295,6 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
 }
 
 fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
-    let _backend = NativeBackend::shared();
     let (eigvals, _v) = eigh(h, 1).expect("eigh");
     eigvals
         .data_slice()

@@ -2,7 +2,7 @@
 //!
 //! Strategy: build a small dense Hermitian matrix, drive
 //! `arpack_smallest` via a closure, compare the eigenvalue against
-//! `arnet_linalg::eigh` ground truth and the eigenvector against the
+//! `arnet::eigh` ground truth and the eigenvector against the
 //! eigenpair contract `||H psi - lambda psi|| ≈ 0`.
 
 #![cfg(feature = "arpack")]
@@ -82,7 +82,6 @@ fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>
 }
 
 fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
-    let _backend = NativeBackend::shared();
     let (eigvals, _) = eigh(h, 1).expect("eigh");
     eigvals.data_slice()[0]
 }
