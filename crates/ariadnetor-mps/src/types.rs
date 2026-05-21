@@ -3,15 +3,16 @@
 //! `Mps` / `Mpo` store a `Vec<Tensor<St, L, B>>` of joined-form site
 //! tensors plus a cached `Arc<B>` backend. The Tier 1 ordering
 //! invariant — every site's `layout().order()` matches
-//! `backend.preferred_order()` — is enforced by the per-flavor
-//! constructors below, so downstream linalg kernels never have to
-//! defensively align site memory order.
+//! `backend.preferred_order()` — is enforced by the constructors
+//! below via the crate-private [`LayoutOrderCheck`] trait, so
+//! downstream linalg kernels never have to defensively align site
+//! memory order.
 
 use std::sync::Arc;
 
 use arnet::{
-    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage,
-    NativeBackend, Scalar, Sector, Tensor, TruncSvdParams,
+    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, MemoryOrder,
+    NativeBackend, Scalar, Sector, Storage, StorageFor, Tensor, TensorLayout, TruncSvdParams,
 };
 
 /// Canonical form of a tensor chain.
@@ -32,11 +33,6 @@ pub enum CanonicalForm {
 }
 
 /// How singular values are distributed during truncation sweeps.
-///
-/// `Right` (default) and `Left` both produce mixed-canonical form after the
-/// three-sweep truncation. They differ in which intermediate tensors carry S,
-/// but the final isometry structure is the same. `Both` distributes √S to
-/// both sides, so the result is not mixed-canonical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SvdAbsorb {
     /// S stays at the current site (against sweep direction).
@@ -52,13 +48,8 @@ pub enum SvdAbsorb {
 /// Parameters for MPS/MPO truncation.
 #[derive(Debug, Clone)]
 pub struct TruncateParams {
-    /// SVD truncation parameters (chi_max, target_trunc_err).
     pub svd: TruncSvdParams,
-    /// How to absorb singular values at each step.
     pub absorb: SvdAbsorb,
-    /// Target orthogonality center for auto-canonicalization.
-    /// Used when the chain is not already in Mixed canonical form.
-    /// Defaults to 0 if None.
     pub center: Option<usize>,
 }
 
@@ -87,20 +78,15 @@ pub enum ApplyMethod {
 /// Result of a truncation operation.
 #[derive(Debug, Clone)]
 pub struct TruncResult<T: Scalar> {
-    /// Total truncation error (Frobenius norm of discarded SVs).
     pub error: T::Real,
 }
 
 /// Internal data container for MPS/MPO tensor chains.
-///
-/// Holds the joined-form site tensors, a shared backend, and canonical
-/// form state. This type is `pub(crate)` — users interact through
-/// `Mps` / `Mpo` newtypes and the `TensorChain` trait.
 #[derive(Debug, Clone)]
 pub(crate) struct TensorChainData<St, L, B>
 where
-    St: arnet::Storage + arnet::StorageFor<L>,
-    L: arnet::TensorLayout,
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
     B: ComputeBackend,
 {
     pub(crate) sites: Vec<Tensor<St, L, B>>,
@@ -109,56 +95,73 @@ where
 }
 
 /// Matrix Product State — rank-3 tensor chain.
-///
-/// Each site tensor has shape `(χ_L, d, χ_R)`:
-/// - mode 0: left bond dimension
-/// - mode 1: physical dimension
-/// - mode 2: right bond dimension
-///
-/// Edge tensors use dummy bonds (dim 1) to maintain rank 3.
 #[derive(Debug, Clone)]
 pub struct Mps<St, L, B = NativeBackend>(pub(crate) TensorChainData<St, L, B>)
 where
-    St: arnet::Storage + arnet::StorageFor<L>,
-    L: arnet::TensorLayout,
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
     B: ComputeBackend;
 
 /// Matrix Product Operator — rank-4 tensor chain.
-///
-/// Each site tensor has shape `(χ_L, d_ket, d_bra, χ_R)`:
-/// - mode 0: left bond dimension
-/// - mode 1: ket physical dimension
-/// - mode 2: bra physical dimension
-/// - mode 3: right bond dimension
-///
-/// Edge tensors use dummy bonds (dim 1) to maintain rank 4.
 #[derive(Debug, Clone)]
 pub struct Mpo<St, L, B = NativeBackend>(pub(crate) TensorChainData<St, L, B>)
 where
-    St: arnet::Storage + arnet::StorageFor<L>,
-    L: arnet::TensorLayout,
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
     B: ComputeBackend;
 
 // ============================================================================
-// Dense Mps/Mpo constructors with Tier 1 order assertions
+// Per-flavor order accessor (crate-private)
 //
-// The order check is per-flavor because `TensorLayout` does not expose
-// `order()` (only shape / storage_extent). Concrete `DenseLayout` and
-// `BlockSparseLayout<S>` impls have the accessor, so the assertion
-// lives in their dedicated impl blocks.
+// `TensorLayout` doesn't expose `order()` (only shape / storage_extent),
+// so the Tier 1 order assertion routes through this trait. One impl per
+// concrete (Storage, Layout) flavor exposes the order accessor that the
+// generic constructor below uses to verify per-site order against the
+// backend's preferred order.
 // ============================================================================
 
-impl<T: Scalar, B: ComputeBackend> Mps<DenseStorage<T>, DenseLayout, B> {
-    /// Create a Dense MPS from sites. The backend is derived from
-    /// `sites[0]`'s cached backend Arc, and every site's order must
-    /// already match that backend's preferred order.
+#[doc(hidden)]
+pub trait LayoutOrderCheck<L>
+where
+    L: TensorLayout,
+{
+    fn site_order(layout: &L) -> MemoryOrder;
+}
+
+impl<T: Scalar> LayoutOrderCheck<DenseLayout> for DenseStorage<T> {
+    fn site_order(layout: &DenseLayout) -> MemoryOrder {
+        layout.order()
+    }
+}
+
+impl<T: Scalar, S: Sector> LayoutOrderCheck<BlockSparseLayout<S>> for BlockSparseStorage<T> {
+    fn site_order(layout: &BlockSparseLayout<S>) -> MemoryOrder {
+        layout.order()
+    }
+}
+
+// ============================================================================
+// Generic constructors (Mps / Mpo). The order check is performed via
+// `LayoutOrderCheck`, so calls like `Mps::from_sites(sites)` resolve
+// uniquely without turbofish at the call site.
+// ============================================================================
+
+impl<St, L, B> Mps<St, L, B>
+where
+    St: Storage + StorageFor<L> + LayoutOrderCheck<L>,
+    L: TensorLayout,
+    B: ComputeBackend,
+{
+    /// Create an MPS from sites. The backend is derived from `sites[0]`'s
+    /// cached backend Arc, and every site's order must match that
+    /// backend's preferred order.
     ///
     /// # Panics
     ///
     /// Panics if `sites` is empty (use [`empty`](Self::empty) instead)
     /// or if any site's `layout().order()` differs from the derived
     /// backend's `preferred_order()`.
-    pub fn from_sites(sites: Vec<Tensor<DenseStorage<T>, DenseLayout, B>>) -> Self {
+    pub fn from_sites(sites: Vec<Tensor<St, L, B>>) -> Self {
         assert!(
             !sites.is_empty(),
             "Mps::from_sites: pass at least one site, or use Mps::empty(backend) for an empty chain",
@@ -167,18 +170,10 @@ impl<T: Scalar, B: ComputeBackend> Mps<DenseStorage<T>, DenseLayout, B> {
         Self::with_backend(sites, backend)
     }
 
-    /// Create a Dense MPS from sites with an explicit backend (allows
-    /// empty chains).
-    ///
-    /// # Panics
-    ///
-    /// Panics if any site's `layout().order()` differs from
-    /// `backend.preferred_order()`.
-    pub fn with_backend(
-        sites: Vec<Tensor<DenseStorage<T>, DenseLayout, B>>,
-        backend: Arc<B>,
-    ) -> Self {
-        assert_dense_sites_match_backend_order(&sites, &backend, "Mps::with_backend");
+    /// Create an MPS from sites with an explicit backend (allows empty
+    /// chains).
+    pub fn with_backend(sites: Vec<Tensor<St, L, B>>, backend: Arc<B>) -> Self {
+        assert_sites_match_backend_order::<St, L, B>(&sites, &backend, "Mps::with_backend");
         Self(TensorChainData {
             sites,
             backend,
@@ -186,7 +181,7 @@ impl<T: Scalar, B: ComputeBackend> Mps<DenseStorage<T>, DenseLayout, B> {
         })
     }
 
-    /// Create an empty Dense MPS anchored on the given backend.
+    /// Create an empty MPS anchored on the given backend.
     pub fn empty(backend: Arc<B>) -> Self {
         Self(TensorChainData {
             sites: Vec::new(),
@@ -196,10 +191,14 @@ impl<T: Scalar, B: ComputeBackend> Mps<DenseStorage<T>, DenseLayout, B> {
     }
 }
 
-impl<T: Scalar, B: ComputeBackend> Mpo<DenseStorage<T>, DenseLayout, B> {
-    /// Create a Dense MPO from sites. See [`Mps::from_sites`] for
-    /// semantics.
-    pub fn from_sites(sites: Vec<Tensor<DenseStorage<T>, DenseLayout, B>>) -> Self {
+impl<St, L, B> Mpo<St, L, B>
+where
+    St: Storage + StorageFor<L> + LayoutOrderCheck<L>,
+    L: TensorLayout,
+    B: ComputeBackend,
+{
+    /// Create an MPO from sites. See [`Mps::from_sites`] for semantics.
+    pub fn from_sites(sites: Vec<Tensor<St, L, B>>) -> Self {
         assert!(
             !sites.is_empty(),
             "Mpo::from_sites: pass at least one site, or use Mpo::empty(backend) for an empty chain",
@@ -208,12 +207,9 @@ impl<T: Scalar, B: ComputeBackend> Mpo<DenseStorage<T>, DenseLayout, B> {
         Self::with_backend(sites, backend)
     }
 
-    /// Create a Dense MPO from sites with an explicit backend.
-    pub fn with_backend(
-        sites: Vec<Tensor<DenseStorage<T>, DenseLayout, B>>,
-        backend: Arc<B>,
-    ) -> Self {
-        assert_dense_sites_match_backend_order(&sites, &backend, "Mpo::with_backend");
+    /// Create an MPO from sites with an explicit backend.
+    pub fn with_backend(sites: Vec<Tensor<St, L, B>>, backend: Arc<B>) -> Self {
+        assert_sites_match_backend_order::<St, L, B>(&sites, &backend, "Mpo::with_backend");
         Self(TensorChainData {
             sites,
             backend,
@@ -221,7 +217,7 @@ impl<T: Scalar, B: ComputeBackend> Mpo<DenseStorage<T>, DenseLayout, B> {
         })
     }
 
-    /// Create an empty Dense MPO anchored on the given backend.
+    /// Create an empty MPO anchored on the given backend.
     pub fn empty(backend: Arc<B>) -> Self {
         Self(TensorChainData {
             sites: Vec::new(),
@@ -231,105 +227,18 @@ impl<T: Scalar, B: ComputeBackend> Mpo<DenseStorage<T>, DenseLayout, B> {
     }
 }
 
-// ============================================================================
-// BlockSparse Mps/Mpo constructors with Tier 1 order assertions
-// ============================================================================
-
-impl<T: Scalar, S: Sector, B: ComputeBackend> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> {
-    /// Create a BlockSparse MPS from sites.
-    pub fn from_sites(sites: Vec<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>>) -> Self {
-        assert!(
-            !sites.is_empty(),
-            "Mps::from_sites: pass at least one site, or use Mps::empty(backend) for an empty chain",
-        );
-        let backend = Arc::clone(sites[0].backend_arc());
-        Self::with_backend(sites, backend)
-    }
-
-    /// Create a BlockSparse MPS with an explicit backend.
-    pub fn with_backend(
-        sites: Vec<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>>,
-        backend: Arc<B>,
-    ) -> Self {
-        assert_bsp_sites_match_backend_order(&sites, &backend, "Mps::with_backend");
-        Self(TensorChainData {
-            sites,
-            backend,
-            canonical_form: CanonicalForm::Unknown,
-        })
-    }
-
-    /// Create an empty BlockSparse MPS anchored on the given backend.
-    pub fn empty(backend: Arc<B>) -> Self {
-        Self(TensorChainData {
-            sites: Vec::new(),
-            backend,
-            canonical_form: CanonicalForm::Unknown,
-        })
-    }
-}
-
-impl<T: Scalar, S: Sector, B: ComputeBackend> Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B> {
-    /// Create a BlockSparse MPO from sites.
-    pub fn from_sites(sites: Vec<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>>) -> Self {
-        assert!(
-            !sites.is_empty(),
-            "Mpo::from_sites: pass at least one site, or use Mpo::empty(backend) for an empty chain",
-        );
-        let backend = Arc::clone(sites[0].backend_arc());
-        Self::with_backend(sites, backend)
-    }
-
-    /// Create a BlockSparse MPO with an explicit backend.
-    pub fn with_backend(
-        sites: Vec<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>>,
-        backend: Arc<B>,
-    ) -> Self {
-        assert_bsp_sites_match_backend_order(&sites, &backend, "Mpo::with_backend");
-        Self(TensorChainData {
-            sites,
-            backend,
-            canonical_form: CanonicalForm::Unknown,
-        })
-    }
-
-    /// Create an empty BlockSparse MPO anchored on the given backend.
-    pub fn empty(backend: Arc<B>) -> Self {
-        Self(TensorChainData {
-            sites: Vec::new(),
-            backend,
-            canonical_form: CanonicalForm::Unknown,
-        })
-    }
-}
-
-// ============================================================================
-// Tier 1 helpers — per-site order check against the chain's backend.
-// ============================================================================
-
-fn assert_dense_sites_match_backend_order<T: Scalar, B: ComputeBackend>(
-    sites: &[Tensor<DenseStorage<T>, DenseLayout, B>],
+fn assert_sites_match_backend_order<St, L, B>(
+    sites: &[Tensor<St, L, B>],
     backend: &Arc<B>,
     ctx: &str,
-) {
+) where
+    St: Storage + StorageFor<L> + LayoutOrderCheck<L>,
+    L: TensorLayout,
+    B: ComputeBackend,
+{
     let expected = backend.preferred_order();
     for (i, s) in sites.iter().enumerate() {
-        let got = s.data().layout().order();
-        assert_eq!(
-            got, expected,
-            "{ctx}: site {i} layout order ({got:?}) does not match backend.preferred_order() ({expected:?})",
-        );
-    }
-}
-
-fn assert_bsp_sites_match_backend_order<T: Scalar, S: Sector, B: ComputeBackend>(
-    sites: &[Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>],
-    backend: &Arc<B>,
-    ctx: &str,
-) {
-    let expected = backend.preferred_order();
-    for (i, s) in sites.iter().enumerate() {
-        let got = s.data().layout().order();
+        let got = St::site_order(s.data().layout());
         assert_eq!(
             got, expected,
             "{ctx}: site {i} layout order ({got:?}) does not match backend.preferred_order() ({expected:?})",

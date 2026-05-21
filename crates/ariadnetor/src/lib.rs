@@ -29,7 +29,9 @@ pub use arnet_tensor::{
 };
 
 // Re-export from ariadnetor-core
-pub use arnet_core::{ComputeBackend, ContractionError, EinsumExpr, LabelId, MemoryOrder, Scalar};
+pub use arnet_core::{
+    Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, MemoryOrder, Scalar,
+};
 
 // High-level free functions (backend extracted from Tensor)
 pub use ops::{

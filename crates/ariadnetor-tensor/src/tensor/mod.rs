@@ -27,6 +27,8 @@ use crate::{
 
 mod dense_ops;
 
+mod block_sparse_ops;
+
 #[cfg(test)]
 mod tests;
 
