@@ -9,7 +9,7 @@
 use arnet_core::backend::ExecPolicy;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
 
-use super::super::{contract_block_sparse, contract_block_sparse_with_policy};
+use super::super::contract_block_sparse_with_policy_dense;
 use super::to_order;
 use crate::test_util::RecordingBackend;
 
@@ -37,7 +37,9 @@ fn multi_sector_pair() -> (BlockSparse<f64, U1Sector>, BlockSparse<f64, U1Sector
 fn contract_default_forwards_sequential_per_sector_gemm() {
     let rec = RecordingBackend::new();
     let (a, c) = multi_sector_pair();
-    let _ = contract_block_sparse(&rec, &a, &c, &[1], &[0]).unwrap();
+    let _ =
+        contract_block_sparse_with_policy_dense(&rec, &a, &c, &[1], &[0], ExecPolicy::Sequential)
+            .unwrap();
     let policies = rec.gemm_recorded();
     assert!(
         !policies.is_empty(),
@@ -56,8 +58,9 @@ fn contract_default_forwards_sequential_per_sector_gemm() {
 fn contract_with_policy_forwards_parallel_per_sector_gemm() {
     let rec = RecordingBackend::new();
     let (a, c) = multi_sector_pair();
-    let _ = contract_block_sparse_with_policy(&rec, &a, &c, &[1], &[0], ExecPolicy::Parallel(0))
-        .unwrap();
+    let _ =
+        contract_block_sparse_with_policy_dense(&rec, &a, &c, &[1], &[0], ExecPolicy::Parallel(0))
+            .unwrap();
     let policies = rec.gemm_recorded();
     assert!(
         !policies.is_empty(),
@@ -76,8 +79,9 @@ fn contract_with_policy_forwards_parallel_per_sector_gemm() {
 fn contract_with_policy_reaches_every_sector_gemm() {
     let rec = RecordingBackend::new();
     let (a, c) = multi_sector_pair();
-    let _ = contract_block_sparse_with_policy(&rec, &a, &c, &[1], &[0], ExecPolicy::Parallel(0))
-        .unwrap();
+    let _ =
+        contract_block_sparse_with_policy_dense(&rec, &a, &c, &[1], &[0], ExecPolicy::Parallel(0))
+            .unwrap();
     // Two distinct block pairs — (0,0)×(0,0) and (1,1)×(1,1) — produce two GEMMs.
     assert_eq!(
         rec.gemm_recorded().len(),

@@ -66,9 +66,11 @@ impl<S: Sector> BlockSparseLayout<S> {
     ///
     /// Used by joined-level constructors that already have the
     /// structure on hand; caller is responsible for the same
-    /// invariants enforced by [`new`](Self::new).
-    #[cfg(test)]
-    pub(crate) fn from_parts(
+    /// invariants enforced by [`new`](Self::new). Pub for cross-crate
+    /// access from `arnet-linalg`'s kernel-output wrapping; not
+    /// user-facing.
+    #[doc(hidden)]
+    pub fn from_parts(
         blocks: Vec<BlockMeta>,
         block_index: HashMap<BlockCoord, usize>,
         indices: Vec<QNIndex<S>>,
@@ -76,6 +78,16 @@ impl<S: Sector> BlockSparseLayout<S> {
         shape: Vec<usize>,
         order: MemoryOrder,
     ) -> Self {
+        debug_assert_eq!(
+            blocks.len(),
+            block_index.len(),
+            "BlockSparseLayout::from_parts: blocks/block_index length mismatch"
+        );
+        debug_assert_eq!(
+            shape.len(),
+            indices.len(),
+            "BlockSparseLayout::from_parts: shape rank doesn't match indices rank"
+        );
         let storage_extent = blocks.iter().map(|b| b.size).sum();
         Self {
             blocks,

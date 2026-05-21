@@ -15,12 +15,14 @@ pub(crate) mod fused_sector;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
 use arnet_tensor::BlockSparse;
+use arnet_tensor::BlockSparseTensor;
 use arnet_tensor::Dense;
 use arnet_tensor::Sector;
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
+use crate::tensor_bridge::wrap_block_sparse;
 use arnet_tensor::reorder;
 use fused_sector::*;
 
@@ -55,14 +57,29 @@ impl<R, S: Sector> BlockSingularValues<R, S> {
 }
 
 /// Result of a block-sparse SVD: `(U, S, Vt)`.
-pub type BlockSparseSvdResult<T, S> = (
+pub type BlockSparseSvdResult<T, S, B> = (
+    BlockSparseTensor<T, S, B>,
+    BlockSingularValues<<T as Scalar>::Real, S>,
+    BlockSparseTensor<T, S, B>,
+);
+
+/// Internal kernel form of [`BlockSparseSvdResult`] on legacy `BlockSparse<T, S>`.
+pub(crate) type BlockSparseSvdResultBsp<T, S> = (
     BlockSparse<T, S>,
     BlockSingularValues<<T as Scalar>::Real, S>,
     BlockSparse<T, S>,
 );
 
 /// Result of a truncated block-sparse SVD: `(U, S, Vt, trunc_err)`.
-pub type BlockSparseTruncSvdResult<T, S> = (
+pub type BlockSparseTruncSvdResult<T, S, B> = (
+    BlockSparseTensor<T, S, B>,
+    BlockSingularValues<<T as Scalar>::Real, S>,
+    BlockSparseTensor<T, S, B>,
+    <T as Scalar>::Real,
+);
+
+/// Internal kernel form of [`BlockSparseTruncSvdResult`] on legacy `BlockSparse<T, S>`.
+pub(crate) type BlockSparseTruncSvdResultBsp<T, S> = (
     BlockSparse<T, S>,
     BlockSingularValues<<T as Scalar>::Real, S>,
     BlockSparse<T, S>,
@@ -70,7 +87,10 @@ pub type BlockSparseTruncSvdResult<T, S> = (
 );
 
 /// Result of a block-sparse QR or LQ decomposition.
-pub type BlockSparseQrResult<T, S> = (BlockSparse<T, S>, BlockSparse<T, S>);
+pub type BlockSparseQrResult<T, S, B> = (BlockSparseTensor<T, S, B>, BlockSparseTensor<T, S, B>);
+
+/// Internal kernel form of [`BlockSparseQrResult`] on legacy `BlockSparse<T, S>`.
+pub(crate) type BlockSparseQrResultBsp<T, S> = (BlockSparse<T, S>, BlockSparse<T, S>);
 
 // ---------------------------------------------------------------------------
 // Public API -- SVD
@@ -82,12 +102,11 @@ pub type BlockSparseQrResult<T, S> = (BlockSparse<T, S>, BlockSparse<T, S>);
 /// - `U`: legs = `[left_legs..., bond(In)]`, `flux = identity()`
 /// - `S`: singular values per fused sector (descending within each sector)
 /// - `Vt`: legs = `[bond(Out), right_legs...]`, `flux = original_flux`
-pub fn svd_block_sparse<T: Scalar, S: Sector>(
-    backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+pub fn svd_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
-) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
-    svd_block_sparse_with_policy(backend, tensor, nrow, ExecPolicy::Sequential)
+) -> Result<BlockSparseSvdResult<T, S, B>, LinalgError> {
+    svd_block_sparse_with_policy(tensor, nrow, ExecPolicy::Sequential)
 }
 
 /// Block-sparse SVD with caller-specified execution policy for per-sector
@@ -97,12 +116,30 @@ pub fn svd_block_sparse<T: Scalar, S: Sector>(
 /// hardcodes `ExecPolicy::Sequential` (conservative for the typical
 /// small-sector pattern and compatible with future outer parallelism);
 /// this entry point lets a caller opt a large-sector case into `Parallel`.
-pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector>(
+pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<BlockSparseSvdResult<T, S, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
+    let order = tensor.backend().preferred_order();
+    let bsp = tensor.data().as_block_sparse();
+    let (u, s, vt) = svd_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
+    Ok((
+        wrap_block_sparse(u, backend_arc.clone(), order),
+        s,
+        wrap_block_sparse(vt, backend_arc, order),
+    ))
+}
+
+/// Internal kernel for [`svd_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparse<T, S>,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
+) -> Result<BlockSparseSvdResultBsp<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
@@ -115,7 +152,7 @@ pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector>(
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
         let dense = Dense::new(matrix, vec![group.m, group.n], order);
-        let (u, s, vt) = crate::decomposition::svd_with_policy(backend, &dense, 1, policy)?;
+        let (u, s, vt) = crate::decomposition::svd_with_policy_dense(backend, &dense, 1, policy)?;
         k_per_sector.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
         s_values.push((group.sector.clone(), s.data().to_vec()));
@@ -155,13 +192,12 @@ pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector>(
 ///
 /// Returns `(U, S, Vt, trunc_err)` where `trunc_err` is the Frobenius norm
 /// of discarded singular values.
-pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
-    backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+pub fn trunc_svd_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
     params: &TruncSvdParams,
-) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
-    trunc_svd_block_sparse_with_policy(backend, tensor, nrow, params, ExecPolicy::Sequential)
+) -> Result<BlockSparseTruncSvdResult<T, S, B>, LinalgError> {
+    trunc_svd_block_sparse_with_policy(tensor, nrow, params, ExecPolicy::Sequential)
 }
 
 /// Truncated block-sparse SVD with caller-specified execution policy for
@@ -169,13 +205,34 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector>(
 ///
 /// Expert-layer counterpart of [`trunc_svd_block_sparse`]; the default wrapper
 /// hardcodes `ExecPolicy::Sequential`.
-pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector>(
+pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
+    nrow: usize,
+    params: &TruncSvdParams,
+    policy: ExecPolicy,
+) -> Result<BlockSparseTruncSvdResult<T, S, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
+    let order = tensor.backend().preferred_order();
+    let bsp = tensor.data().as_block_sparse();
+    let (u, s, vt, err) =
+        trunc_svd_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, params, policy)?;
+    Ok((
+        wrap_block_sparse(u, backend_arc.clone(), order),
+        s,
+        wrap_block_sparse(vt, backend_arc, order),
+        err,
+    ))
+}
+
+/// Internal kernel for [`trunc_svd_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparse<T, S>,
     nrow: usize,
     params: &TruncSvdParams,
     policy: ExecPolicy,
-) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
+) -> Result<BlockSparseTruncSvdResultBsp<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
@@ -189,7 +246,7 @@ pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector>(
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
         let dense = Dense::new(matrix, vec![group.m, group.n], order);
-        let (u, s, vt) = crate::decomposition::svd_with_policy(backend, &dense, 1, policy)?;
+        let (u, s, vt) = crate::decomposition::svd_with_policy_dense(backend, &dense, 1, policy)?;
         k_full.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
         all_s.push(s.data().to_vec());
@@ -266,12 +323,11 @@ pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector>(
 /// Returns `(Q, R)` where:
 /// - `Q`: legs = `[left_legs..., bond(In)]`, `flux = identity()`
 /// - `R`: legs = `[bond(Out), right_legs...]`, `flux = original_flux`
-pub fn qr_block_sparse<T: Scalar, S: Sector>(
-    backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+pub fn qr_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
-) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
-    qr_block_sparse_with_policy(backend, tensor, nrow, ExecPolicy::Sequential)
+) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
+    qr_block_sparse_with_policy(tensor, nrow, ExecPolicy::Sequential)
 }
 
 /// Block-sparse QR with caller-specified execution policy for per-sector
@@ -279,18 +335,35 @@ pub fn qr_block_sparse<T: Scalar, S: Sector>(
 ///
 /// Expert-layer counterpart of [`qr_block_sparse`]; the default wrapper
 /// hardcodes `ExecPolicy::Sequential`.
-pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector>(
+pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
+    let order = tensor.backend().preferred_order();
+    let bsp = tensor.data().as_block_sparse();
+    let (q, r) = qr_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
+    Ok((
+        wrap_block_sparse(q, backend_arc.clone(), order),
+        wrap_block_sparse(r, backend_arc, order),
+    ))
+}
+
+/// Internal kernel for [`qr_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+pub(crate) fn qr_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparse<T, S>,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
+) -> Result<BlockSparseQrResultBsp<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
     let (q_mats, r_mats, k_per) =
         decompose_per_sector(&groups, tensor, nrow, backend, order, |b, d| {
-            crate::decomposition::qr_with_policy(b, d, 1, policy)
+            crate::decomposition::qr_with_policy_dense(b, d, 1, policy)
                 .map(|(q, r)| (to_vec_in_order(&q, order), to_vec_in_order(&r, order)))
         })?;
     let q = build_left_tensor(&groups, &q_mats, &k_per, tensor.indices(), nrow, order);
@@ -311,12 +384,11 @@ pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector>(
 /// Returns `(L, Q)` where:
 /// - `L`: legs = `[left_legs..., bond(In)]`, `flux = identity()`
 /// - `Q`: legs = `[bond(Out), right_legs...]`, `flux = original_flux`
-pub fn lq_block_sparse<T: Scalar, S: Sector>(
-    backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+pub fn lq_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
-) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
-    lq_block_sparse_with_policy(backend, tensor, nrow, ExecPolicy::Sequential)
+) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
+    lq_block_sparse_with_policy(tensor, nrow, ExecPolicy::Sequential)
 }
 
 /// Block-sparse LQ with caller-specified execution policy for per-sector
@@ -324,18 +396,35 @@ pub fn lq_block_sparse<T: Scalar, S: Sector>(
 ///
 /// Expert-layer counterpart of [`lq_block_sparse`]; the default wrapper
 /// hardcodes `ExecPolicy::Sequential`.
-pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector>(
+pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+    tensor: &BlockSparseTensor<T, S, B>,
+    nrow: usize,
+    policy: ExecPolicy,
+) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
+    let order = tensor.backend().preferred_order();
+    let bsp = tensor.data().as_block_sparse();
+    let (l, q) = lq_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
+    Ok((
+        wrap_block_sparse(l, backend_arc.clone(), order),
+        wrap_block_sparse(q, backend_arc, order),
+    ))
+}
+
+/// Internal kernel for [`lq_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+pub(crate) fn lq_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparse<T, S>,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
+) -> Result<BlockSparseQrResultBsp<T, S>, LinalgError> {
     validate_nrow(tensor.rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
     let (l_mats, q_mats, k_per) =
         decompose_per_sector(&groups, tensor, nrow, backend, order, |b, d| {
-            crate::decomposition::lq_with_policy(b, d, 1, policy)
+            crate::decomposition::lq_with_policy_dense(b, d, 1, policy)
                 .map(|(l, q)| (to_vec_in_order(&l, order), to_vec_in_order(&q, order)))
         })?;
     let l = build_left_tensor(&groups, &l_mats, &k_per, tensor.indices(), nrow, order);

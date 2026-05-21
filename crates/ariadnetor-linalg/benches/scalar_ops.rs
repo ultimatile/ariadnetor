@@ -1,6 +1,6 @@
 use arnet_linalg::{diagonal_scale, linear_combine, norm, normalize, scale, trace};
 use arnet_native::NativeBackend;
-use arnet_tensor::Dense;
+use arnet_tensor::DenseTensor;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 
@@ -51,8 +51,8 @@ fn shapes_square() -> Vec<TensorShape> {
     ]
 }
 
-fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
-    Dense::random(shape, &mut rng())
+fn random_tensor(shape: Vec<usize>) -> DenseTensor<f64, NativeBackend> {
+    DenseTensor::random(shape, &mut rng())
 }
 
 // ==========================================================================
@@ -204,7 +204,6 @@ fn bench_trace(c: &mut Criterion) {
 
 fn bench_diagonal_scale(c: &mut Criterion) {
     let mut group = c.benchmark_group("linalg_diagonal_scale");
-    let backend = NativeBackend::new();
 
     // Scale axis 0 (rows) of a square matrix
     for s in &shapes_square() {
@@ -214,7 +213,7 @@ fn bench_diagonal_scale(c: &mut Criterion) {
             BenchmarkId::new("axis0", s.label),
             &(&tensor, &weights),
             |b, (t, w)| {
-                b.iter_with_large_drop(|| diagonal_scale(&backend, t, w, 0).unwrap());
+                b.iter_with_large_drop(|| diagonal_scale(t, w, 0).unwrap());
             },
         );
     }
@@ -227,7 +226,7 @@ fn bench_diagonal_scale(c: &mut Criterion) {
             BenchmarkId::new("axis1", s.label),
             &(&tensor, &weights),
             |b, (t, w)| {
-                b.iter_with_large_drop(|| diagonal_scale(&backend, t, w, 1).unwrap());
+                b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
             },
         );
     }
@@ -239,7 +238,7 @@ fn bench_diagonal_scale(c: &mut Criterion) {
         BenchmarkId::new("axis1", "64x4x64"),
         &(&tensor, &weights),
         |b, (t, w)| {
-            b.iter_with_large_drop(|| diagonal_scale(&backend, t, w, 1).unwrap());
+            b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
         },
     );
 

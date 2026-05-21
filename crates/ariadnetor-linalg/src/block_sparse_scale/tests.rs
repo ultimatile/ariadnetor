@@ -2,11 +2,18 @@ use arnet_native::NativeBackend;
 use arnet_tensor::U1Sector;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
 
-use crate::block_sparse_contract::{BlockSparseContractResult, contract_block_sparse};
-use crate::block_sparse_decomp::BlockSingularValues;
-use crate::{TruncSvdParams, svd_block_sparse, trunc_svd_block_sparse};
+use arnet_core::backend::ExecPolicy;
 
-use super::diagonal_scale_block_sparse;
+use crate::TruncSvdParams;
+use crate::block_sparse_contract::{
+    BlockSparseContractResultBsp, contract_block_sparse_with_policy_dense,
+};
+use crate::block_sparse_decomp::{
+    BlockSingularValues, svd_block_sparse_with_policy_dense,
+    trunc_svd_block_sparse_with_policy_dense,
+};
+
+use super::diagonal_scale_block_sparse_dense;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
@@ -31,10 +38,18 @@ fn contract_uv(
     vt: &BlockSparse<f64, U1Sector>,
 ) -> BlockSparse<f64, U1Sector> {
     // Contract over bond axis: U's last axis with Vt's first axis.
-    let result = contract_block_sparse(&backend(), u, vt, &[u.rank() - 1], &[0]).unwrap();
+    let result = contract_block_sparse_with_policy_dense(
+        &backend(),
+        u,
+        vt,
+        &[u.rank() - 1],
+        &[0],
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     match result {
-        BlockSparseContractResult::Tensor(t) => t,
-        BlockSparseContractResult::Scalar(_) => panic!("expected tensor, got scalar"),
+        BlockSparseContractResultBsp::Tensor(t) => t,
+        BlockSparseContractResultBsp::Scalar(_) => panic!("expected tensor, got scalar"),
     }
 }
 
@@ -67,7 +82,7 @@ fn assert_bs_approx(a: &BlockSparse<f64, U1Sector>, b: &BlockSparse<f64, U1Secto
 fn scale_vt_axis0() {
     // SVD → scale Vt at axis 0 (bond) by S → verify U·(S·Vt) ≈ original.
     let bs = sample_u1_rank2();
-    let (u, sv, vt, _) = trunc_svd_block_sparse(
+    let (u, sv, vt, _) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
         1,
@@ -75,10 +90,11 @@ fn scale_vt_axis0() {
             chi_max: None,
             target_trunc_err: None,
         },
+        ExecPolicy::Sequential,
     )
     .unwrap();
 
-    let svt = diagonal_scale_block_sparse(&backend(), &vt, &sv, 0).unwrap();
+    let svt = diagonal_scale_block_sparse_dense(&backend(), &vt, &sv, 0).unwrap();
     let recon = contract_uv(&u, &svt);
     assert_bs_approx(&recon, &bs, 1e-10);
 }
@@ -87,7 +103,7 @@ fn scale_vt_axis0() {
 fn scale_u_axis_last() {
     // SVD → scale U at last axis (bond) by S → verify (U·S)·Vt ≈ original.
     let bs = sample_u1_rank2();
-    let (u, sv, vt, _) = trunc_svd_block_sparse(
+    let (u, sv, vt, _) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
         1,
@@ -95,10 +111,11 @@ fn scale_u_axis_last() {
             chi_max: None,
             target_trunc_err: None,
         },
+        ExecPolicy::Sequential,
     )
     .unwrap();
 
-    let us = diagonal_scale_block_sparse(&backend(), &u, &sv, u.rank() - 1).unwrap();
+    let us = diagonal_scale_block_sparse_dense(&backend(), &u, &sv, u.rank() - 1).unwrap();
     let recon = contract_uv(&us, &vt);
     assert_bs_approx(&recon, &bs, 1e-10);
 }
@@ -107,7 +124,7 @@ fn scale_u_axis_last() {
 fn scale_sqrt_via_map() {
     // map(sqrt) on weights → scale both U and Vt → (U·√S)·(√S·Vt) ≈ original.
     let bs = sample_u1_rank2();
-    let (u, sv, vt, _) = trunc_svd_block_sparse(
+    let (u, sv, vt, _) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
         1,
@@ -115,12 +132,14 @@ fn scale_sqrt_via_map() {
             chi_max: None,
             target_trunc_err: None,
         },
+        ExecPolicy::Sequential,
     )
     .unwrap();
 
     let sqrt_sv = sv.map(|v| v.sqrt());
-    let u_scaled = diagonal_scale_block_sparse(&backend(), &u, &sqrt_sv, u.rank() - 1).unwrap();
-    let vt_scaled = diagonal_scale_block_sparse(&backend(), &vt, &sqrt_sv, 0).unwrap();
+    let u_scaled =
+        diagonal_scale_block_sparse_dense(&backend(), &u, &sqrt_sv, u.rank() - 1).unwrap();
+    let vt_scaled = diagonal_scale_block_sparse_dense(&backend(), &vt, &sqrt_sv, 0).unwrap();
     let recon = contract_uv(&u_scaled, &vt_scaled);
     assert_bs_approx(&recon, &bs, 1e-10);
 }
@@ -129,10 +148,11 @@ fn scale_sqrt_via_map() {
 fn scale_identity_weights() {
     // All weights 1.0 → tensor unchanged.
     let bs = sample_u1_rank2();
-    let (_, sv, vt) = svd_block_sparse(&backend(), &bs, 1).unwrap();
+    let (_, sv, vt) =
+        svd_block_sparse_with_policy_dense(&backend(), &bs, 1, ExecPolicy::Sequential).unwrap();
 
     let ones = sv.map(|_| 1.0_f64);
-    let vt_scaled = diagonal_scale_block_sparse(&backend(), &vt, &ones, 0).unwrap();
+    let vt_scaled = diagonal_scale_block_sparse_dense(&backend(), &vt, &ones, 0).unwrap();
 
     for meta in vt.block_metas() {
         let orig = vt.block_data(&meta.coord).unwrap();
@@ -153,7 +173,7 @@ fn scale_axis_out_of_range() {
     let weights = BlockSingularValues {
         values: vec![(U1Sector(0), vec![1.0])],
     };
-    let result = diagonal_scale_block_sparse(&backend(), &bs, &weights, 5);
+    let result = diagonal_scale_block_sparse_dense(&backend(), &bs, &weights, 5);
     assert!(result.is_err());
     let err = result.err().unwrap();
     assert!(
@@ -166,7 +186,7 @@ fn scale_axis_out_of_range() {
 fn scale_trunc_svd_reconstruction() {
     // Truncated SVD with chi_max=2, then S·Vt, verify reconstruction.
     let bs = sample_u1_rank2();
-    let (u, sv, vt, _err) = trunc_svd_block_sparse(
+    let (u, sv, vt, _err) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
         1,
@@ -174,10 +194,11 @@ fn scale_trunc_svd_reconstruction() {
             chi_max: Some(2),
             target_trunc_err: None,
         },
+        ExecPolicy::Sequential,
     )
     .unwrap();
 
-    let svt = diagonal_scale_block_sparse(&backend(), &vt, &sv, 0).unwrap();
+    let svt = diagonal_scale_block_sparse_dense(&backend(), &vt, &sv, 0).unwrap();
     assert_eq!(svt.rank(), vt.rank());
     assert_eq!(svt.shape(), vt.shape());
 
@@ -217,7 +238,7 @@ fn scale_rank3_middle_axis_element_values() {
         values: vec![(U1Sector(0), vec![2.0, 3.0, 5.0])],
     };
 
-    let scaled = diagonal_scale_block_sparse(&backend(), &bs, &weights, 1).unwrap();
+    let scaled = diagonal_scale_block_sparse_dense(&backend(), &bs, &weights, 1).unwrap();
     let out = scaled.block_data(&BlockCoord(vec![0, 0, 0])).unwrap();
 
     // NativeBackend uses ColumnMajor: shape (2, 3, 4), axis=1.
@@ -290,7 +311,7 @@ fn rowmajor_branch_distinguishes_inner_stride_at_non_trailing_axis() {
         values: vec![(U1Sector(0), vec![1.0, 2.0, 3.0])],
     };
 
-    let scaled = diagonal_scale_block_sparse(&backend, &tensor, &weights, 1).unwrap();
+    let scaled = diagonal_scale_block_sparse_dense(&backend, &tensor, &weights, 1).unwrap();
     let data = scaled.block_data(&coord).unwrap();
 
     // RowMajor: flat[i, j, k] = i * 12 + j * 4 + k. Expected scaled value is

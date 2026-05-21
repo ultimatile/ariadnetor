@@ -2,17 +2,20 @@
 
 use arnet_linalg::einsum;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
     let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
-    arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
+    let cm = arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(cm.into_tensor_data(), NativeBackend::shared())
 }
 
 /// Convert column-major Dense back to row-major so `.get()` returns correct values.
-fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
-    arnet_tensor::reorder(tensor, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor)
+fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+    let dense = tensor.data().as_dense();
+    let rm = arnet_tensor::reorder(&dense, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+    DenseTensor::with_backend(rm.into_tensor_data(), NativeBackend::shared())
 }
 
 // ============================================================================
@@ -21,10 +24,9 @@ fn to_rm<T: Clone>(tensor: &Dense<T>) -> Dense<T> {
 
 #[test]
 fn test_einsum_transpose_2d() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let b = to_rm(&einsum(&backend, &[&a], "ij->ji").unwrap());
+    let b = to_rm(&einsum(&[&a], "ij->ji").unwrap());
 
     assert_eq!(b.shape(), &[3, 2]);
     assert_eq!(b.get(&[0, 0]), 1.0);
@@ -37,11 +39,10 @@ fn test_einsum_transpose_2d() {
 
 #[test]
 fn test_einsum_permutation_3d() {
-    let backend = NativeBackend::new();
     let data: Vec<f64> = (1..=24).map(|x| x as f64).collect();
     let a = cm(data, vec![2, 3, 4]);
 
-    let b = einsum(&backend, &[&a], "ijk->kji").unwrap();
+    let b = einsum(&[&a], "ijk->kji").unwrap();
     let a_rm = to_rm(&a);
     let b_rm = to_rm(&b);
 
@@ -53,13 +54,12 @@ fn test_einsum_permutation_3d() {
 
 #[test]
 fn test_einsum_identity_permutation() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let b = einsum(&backend, &[&a], "ij->ij").unwrap();
+    let b = einsum(&[&a], "ij->ij").unwrap();
 
     assert_eq!(b.shape(), &[2, 2]);
-    assert_eq!(b.data(), a.data());
+    assert_eq!(b.data_slice(), a.data_slice());
 }
 
 // ============================================================================
@@ -68,21 +68,19 @@ fn test_einsum_identity_permutation() {
 
 #[test]
 fn test_einsum_full_trace() {
-    let backend = NativeBackend::new();
     let a = cm(
         vec![1.0_f64, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0],
         vec![3, 3],
     );
 
-    let b = einsum(&backend, &[&a], "ii->").unwrap();
+    let b = einsum(&[&a], "ii->").unwrap();
 
     assert_eq!(b.shape(), &[1]);
-    assert_eq!(b.data()[0], 6.0);
+    assert_eq!(b.data_slice()[0], 6.0);
 }
 
 #[test]
 fn test_einsum_partial_trace() {
-    let backend = NativeBackend::new();
     let a = cm(
         vec![
             1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
@@ -90,13 +88,13 @@ fn test_einsum_partial_trace() {
         vec![2, 2, 3],
     );
 
-    let b = einsum(&backend, &[&a], "iij->j").unwrap();
+    let b = einsum(&[&a], "iij->j").unwrap();
 
     assert_eq!(b.shape(), &[3]);
     // B[j] = A[0,0,j] + A[1,1,j] = (1+10, 2+11, 3+12) = (11, 13, 15)
-    assert_eq!(b.data()[0], 11.0);
-    assert_eq!(b.data()[1], 13.0);
-    assert_eq!(b.data()[2], 15.0);
+    assert_eq!(b.data_slice()[0], 11.0);
+    assert_eq!(b.data_slice()[1], 13.0);
+    assert_eq!(b.data_slice()[2], 15.0);
 }
 
 // ============================================================================
@@ -105,11 +103,10 @@ fn test_einsum_partial_trace() {
 
 #[test]
 fn test_einsum_trace_then_transpose() {
-    let backend = NativeBackend::new();
     let data: Vec<f64> = (1..=12).map(|x| x as f64).collect();
     let a = cm(data, vec![2, 3, 2]);
 
-    let b = einsum(&backend, &[&a], "iji->j").unwrap();
+    let b = einsum(&[&a], "iji->j").unwrap();
 
     assert_eq!(b.shape(), &[3]);
     // B[j] = A[0,j,0] + A[1,j,1]
@@ -117,18 +114,17 @@ fn test_einsum_trace_then_transpose() {
     let b0 = a_rm.get(&[0, 0, 0]) + a_rm.get(&[1, 0, 1]);
     let b1 = a_rm.get(&[0, 1, 0]) + a_rm.get(&[1, 1, 1]);
     let b2 = a_rm.get(&[0, 2, 0]) + a_rm.get(&[1, 2, 1]);
-    assert!((b.data()[0] - b0).abs() < 1e-10);
-    assert!((b.data()[1] - b1).abs() < 1e-10);
-    assert!((b.data()[2] - b2).abs() < 1e-10);
+    assert!((b.data_slice()[0] - b0).abs() < 1e-10);
+    assert!((b.data_slice()[1] - b1).abs() < 1e-10);
+    assert!((b.data_slice()[2] - b2).abs() < 1e-10);
 }
 
 #[test]
 fn test_einsum_trace_and_permute() {
-    let backend = NativeBackend::new();
     let data: Vec<f64> = (1..=48).map(|x| x as f64).collect();
     let a = cm(data, vec![2, 3, 4, 2]);
 
-    let b = to_rm(&einsum(&backend, &[&a], "ijki->kj").unwrap());
+    let b = to_rm(&einsum(&[&a], "ijki->kj").unwrap());
     let a_rm = to_rm(&a);
 
     assert_eq!(b.shape(), &[4, 3]);
@@ -146,11 +142,10 @@ fn test_einsum_trace_and_permute() {
 
 #[test]
 fn test_einsum_two_input_matmul() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let c = to_rm(&einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap());
+    let c = to_rm(&einsum(&[&a, &b], "ij,jk->ik").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
     assert_eq!(c.get(&[0, 0]), 19.0);
@@ -165,85 +160,80 @@ fn test_einsum_two_input_matmul() {
 
 #[test]
 fn test_einsum_3_tensor_chain() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let b = cm((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
     let c = cm((1..=8).map(|x| x as f64).collect(), vec![4, 2]);
 
-    let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il").unwrap();
+    let d = einsum(&[&a, &b, &c], "ij,jk,kl->il").unwrap();
 
     assert_eq!(d.shape(), &[2, 2]);
 
     // Verify against manual 2-step contraction (both in CM, compare data directly)
     use arnet_linalg::contract;
-    let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
-    let expected = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
+    let ab = contract(&a, &b, "ij,jk->ik").unwrap();
+    let expected = contract(&ab, &c, "ik,kl->il").unwrap();
     for i in 0..d.len() {
-        assert!((d.data()[i] - expected.data()[i]).abs() < 1e-10);
+        assert!((d.data_slice()[i] - expected.data_slice()[i]).abs() < 1e-10);
     }
 }
 
 #[test]
 fn test_einsum_3_tensor_implicit_output() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
     let c = cm(vec![1.0_f64, 0.0, 0.0, 1.0], vec![2, 2]);
 
-    let d = einsum(&backend, &[&a, &b, &c], "ij,jk,kl").unwrap();
-    let d_explicit = einsum(&backend, &[&a, &b, &c], "ij,jk,kl->il").unwrap();
+    let d = einsum(&[&a, &b, &c], "ij,jk,kl").unwrap();
+    let d_explicit = einsum(&[&a, &b, &c], "ij,jk,kl->il").unwrap();
 
     assert_eq!(d.shape(), d_explicit.shape());
     // Compare data arrays directly (both in same CM layout)
     for i in 0..d.len() {
-        assert!((d.data()[i] - d_explicit.data()[i]).abs() < 1e-10);
+        assert!((d.data_slice()[i] - d_explicit.data_slice()[i]).abs() < 1e-10);
     }
 }
 
 #[test]
 fn test_einsum_4_tensor_chain() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
     let c = cm(vec![1.0_f64, 0.0, 0.0, 1.0], vec![2, 2]);
     let d = cm(vec![2.0_f64, 1.0, 1.0, 2.0], vec![2, 2]);
 
-    let result = einsum(&backend, &[&a, &b, &c, &d], "ij,jk,kl,lm->im").unwrap();
+    let result = einsum(&[&a, &b, &c, &d], "ij,jk,kl,lm->im").unwrap();
 
     assert_eq!(result.shape(), &[2, 2]);
 
     // Verify against sequential contraction (both in CM, compare data directly)
     use arnet_linalg::contract;
-    let ab = contract(&backend, &a, &b, "ij,jk->ik").unwrap();
-    let abc = contract(&backend, &ab, &c, "ik,kl->il").unwrap();
-    let expected = contract(&backend, &abc, &d, "il,lm->im").unwrap();
+    let ab = contract(&a, &b, "ij,jk->ik").unwrap();
+    let abc = contract(&ab, &c, "ik,kl->il").unwrap();
+    let expected = contract(&abc, &d, "il,lm->im").unwrap();
     for i in 0..result.len() {
-        assert!((result.data()[i] - expected.data()[i]).abs() < 1e-10);
+        assert!((result.data_slice()[i] - expected.data_slice()[i]).abs() < 1e-10);
     }
 }
 
 #[test]
 fn test_einsum_3_tensor_trace_of_product() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
     let c = cm(vec![1.0_f64, 0.0, 0.0, 1.0], vec![2, 2]);
 
-    let result = einsum(&backend, &[&a, &b, &c], "ij,jk,ki->").unwrap();
+    let result = einsum(&[&a, &b, &c], "ij,jk,ki->").unwrap();
 
     assert_eq!(result.shape(), &[1]);
 
     // A·B = [[19,22],[43,50]], A·B·C = [[19,22],[43,50]], tr = 19+50 = 69
-    assert_eq!(result.data()[0], 69.0);
+    assert_eq!(result.data_slice()[0], 69.0);
 }
 
 #[test]
 fn test_einsum_2_tensor_hadamard() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![2.0_f64, 3.0, 4.0, 5.0], vec![2, 2]);
 
-    let c = to_rm(&einsum(&backend, &[&a, &b], "ij,ij->ij").unwrap());
+    let c = to_rm(&einsum(&[&a, &b], "ij,ij->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
     assert_eq!(c.get(&[0, 0]), 2.0);
@@ -258,28 +248,25 @@ fn test_einsum_2_tensor_hadamard() {
 
 #[test]
 fn test_einsum_wrong_tensor_count() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let result = einsum(&backend, &[&a], "ij,jk->ik");
+    let result = einsum(&[&a], "ij,jk->ik");
     assert!(result.is_err());
 }
 
 #[test]
 fn test_einsum_rank_mismatch() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let result = einsum(&backend, &[&a], "ijk->kji");
+    let result = einsum(&[&a], "ijk->kji");
     assert!(result.is_err());
 }
 
 #[test]
 fn test_einsum_diagonal_extraction_unsupported() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let result = einsum(&backend, &[&a], "ii->i");
+    let result = einsum(&[&a], "ii->i");
     assert!(result.is_err());
     let err = format!("{:?}", result.unwrap_err());
     assert!(err.contains("diagonal extraction"));
@@ -287,10 +274,9 @@ fn test_einsum_diagonal_extraction_unsupported() {
 
 #[test]
 fn test_einsum_reduction_unsupported() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let result = einsum(&backend, &[&a], "ij->i");
+    let result = einsum(&[&a], "ij->i");
     assert!(result.is_err());
     let err = format!("{:?}", result.unwrap_err());
     assert!(err.contains("reduction"));
@@ -302,12 +288,11 @@ fn test_einsum_reduction_unsupported() {
 
 #[test]
 fn test_einsum_output_reorder_matmul() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let normal = to_rm(&einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap());
-    let swapped = to_rm(&einsum(&backend, &[&a, &b], "ij,jk->ki").unwrap());
+    let normal = to_rm(&einsum(&[&a, &b], "ij,jk->ik").unwrap());
+    let swapped = to_rm(&einsum(&[&a, &b], "ij,jk->ki").unwrap());
 
     assert_eq!(swapped.shape(), &[2, 2]);
     for i in 0..2 {
@@ -319,12 +304,11 @@ fn test_einsum_output_reorder_matmul() {
 
 #[test]
 fn test_einsum_output_reorder_rectangular() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let b = cm((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
 
-    let normal = to_rm(&einsum(&backend, &[&a, &b], "ij,jk->ik").unwrap());
-    let swapped = to_rm(&einsum(&backend, &[&a, &b], "ij,jk->ki").unwrap());
+    let normal = to_rm(&einsum(&[&a, &b], "ij,jk->ik").unwrap());
+    let swapped = to_rm(&einsum(&[&a, &b], "ij,jk->ki").unwrap());
 
     assert_eq!(normal.shape(), &[2, 4]);
     assert_eq!(swapped.shape(), &[4, 2]);
@@ -342,7 +326,6 @@ fn test_einsum_output_reorder_rectangular() {
 
 #[test]
 fn test_einsum_batched_matmul() {
-    let backend = NativeBackend::new();
     let a = cm(
         vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         vec![2, 2, 2],
@@ -352,7 +335,7 @@ fn test_einsum_batched_matmul() {
         vec![2, 2, 2],
     );
 
-    let normal = to_rm(&einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap());
+    let normal = to_rm(&einsum(&[&a, &b], "bik,bkj->bij").unwrap());
 
     assert_eq!(normal.shape(), &[2, 2, 2]);
     // Batch 0: [[1,2],[3,4]] × I = [[1,2],[3,4]]
@@ -369,7 +352,6 @@ fn test_einsum_batched_matmul() {
 
 #[test]
 fn test_einsum_batched_output_reorder_bji() {
-    let backend = NativeBackend::new();
     let a = cm(
         vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         vec![2, 2, 2],
@@ -379,8 +361,8 @@ fn test_einsum_batched_output_reorder_bji() {
         vec![2, 2, 2],
     );
 
-    let normal = to_rm(&einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap());
-    let swapped = to_rm(&einsum(&backend, &[&a, &b], "bik,bkj->bji").unwrap());
+    let normal = to_rm(&einsum(&[&a, &b], "bik,bkj->bij").unwrap());
+    let swapped = to_rm(&einsum(&[&a, &b], "bik,bkj->bji").unwrap());
 
     assert_eq!(swapped.shape(), &[2, 2, 2]);
     for batch in 0..2 {
@@ -394,7 +376,6 @@ fn test_einsum_batched_output_reorder_bji() {
 
 #[test]
 fn test_einsum_batched_output_reorder_jbi() {
-    let backend = NativeBackend::new();
     let a = cm(
         vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         vec![2, 2, 2],
@@ -404,8 +385,8 @@ fn test_einsum_batched_output_reorder_jbi() {
         vec![2, 2, 2],
     );
 
-    let normal = to_rm(&einsum(&backend, &[&a, &b], "bik,bkj->bij").unwrap());
-    let reordered = to_rm(&einsum(&backend, &[&a, &b], "bik,bkj->jbi").unwrap());
+    let normal = to_rm(&einsum(&[&a, &b], "bik,bkj->bij").unwrap());
+    let reordered = to_rm(&einsum(&[&a, &b], "bik,bkj->jbi").unwrap());
 
     assert_eq!(reordered.shape(), &[2, 2, 2]);
     for batch in 0..2 {
@@ -419,12 +400,11 @@ fn test_einsum_batched_output_reorder_jbi() {
 
 #[test]
 fn test_einsum_multi_with_intermediate_batch() {
-    let backend = NativeBackend::new();
     let t1 = cm((1..=12).map(|x| x as f64).collect(), vec![2, 2, 3]);
     let t2 = cm((1..=18).map(|x| x as f64).collect(), vec![2, 3, 3]);
     let t3 = cm((1..=6).map(|x| x as f64).collect(), vec![2, 3]);
 
-    let result = to_rm(&einsum(&backend, &[&t1, &t2, &t3], "aij,ajk,ak->ai").unwrap());
+    let result = to_rm(&einsum(&[&t1, &t2, &t3], "aij,ajk,ak->ai").unwrap());
     let t1_rm = to_rm(&t1);
     let t2_rm = to_rm(&t2);
     let t3_rm = to_rm(&t3);
@@ -449,26 +429,24 @@ fn test_einsum_multi_with_intermediate_batch() {
 
 #[test]
 fn test_einsum_batched_scalar_reduction() {
-    let backend = NativeBackend::new();
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let result = einsum(&backend, &[&a, &b], "bi,bi->b").unwrap();
+    let result = einsum(&[&a, &b], "bi,bi->b").unwrap();
 
     assert_eq!(result.shape(), &[2]);
     // Batch 0: 1*5 + 2*6 = 17
-    assert_eq!(result.data()[0], 17.0);
+    assert_eq!(result.data_slice()[0], 17.0);
     // Batch 1: 3*7 + 4*8 = 53
-    assert_eq!(result.data()[1], 53.0);
+    assert_eq!(result.data_slice()[1], 53.0);
 }
 
 #[test]
 fn test_einsum_batched_multi_contracted_different_order() {
-    let backend = NativeBackend::new();
     let a = cm((1..=24).map(|x| x as f64).collect(), vec![2, 2, 3, 2]);
     let b_tensor = cm((1..=24).map(|x| x as f64).collect(), vec![2, 2, 3, 2]);
 
-    let result = to_rm(&einsum(&backend, &[&a, &b_tensor], "bkli,bjlk->bij").unwrap());
+    let result = to_rm(&einsum(&[&a, &b_tensor], "bkli,bjlk->bij").unwrap());
     let a_rm = to_rm(&a);
     let b_rm = to_rm(&b_tensor);
 

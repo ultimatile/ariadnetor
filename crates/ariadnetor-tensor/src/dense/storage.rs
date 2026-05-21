@@ -83,6 +83,29 @@ impl<T> DenseStorage<T> {
     {
         Arc::make_mut(&mut self.data).as_mut_ptr()
     }
+
+    /// Cheap O(1) clone of the underlying storage Arc.
+    ///
+    /// Internal kernel bridge for
+    /// [`DenseTensorData::as_dense`](crate::DenseTensorData::as_dense)
+    /// so the legacy [`Dense<T>`](crate::Dense) view can share the
+    /// same aligned buffer without copying. Pub for cross-crate access
+    /// from `arnet-linalg`; not a user-facing accessor.
+    #[doc(hidden)]
+    pub fn arc_clone(&self) -> Arc<AVec<T, Align64>> {
+        Arc::clone(&self.data)
+    }
+
+    /// Construct directly from an already-aligned storage Arc.
+    ///
+    /// Internal kernel counterpart to [`arc_clone`](Self::arc_clone),
+    /// used by [`Dense::into_tensor_data`](crate::Dense::into_tensor_data)
+    /// to move ownership of the buffer without a copy. Pub for
+    /// cross-crate access; not a user-facing constructor.
+    #[doc(hidden)]
+    pub fn from_arc(data: Arc<AVec<T, Align64>>) -> Self {
+        Self { data }
+    }
 }
 
 impl<T> Storage for DenseStorage<T> {

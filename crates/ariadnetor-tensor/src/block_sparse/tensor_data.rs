@@ -172,6 +172,27 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     }
 }
 
+impl<T, S: Sector> BlockSparseTensorData<T, S> {
+    /// Cheap O(1) `BlockSparse<T, S>` view that shares the underlying
+    /// storage Arc and clones the block metadata.
+    ///
+    /// Bridges the joined-form `BlockSparseTensorData` into the legacy
+    /// [`BlockSparse<T, S>`](crate::BlockSparse) representation that
+    /// internal linalg kernels still operate on. The memory `order`
+    /// recorded on the layout is dropped because the legacy
+    /// `BlockSparse` type predates the per-tensor order field.
+    pub fn as_block_sparse(&self) -> super::BlockSparse<T, S> {
+        super::BlockSparse::from_storage_arc(
+            self.storage().arc_clone(),
+            self.layout().block_metas().to_vec(),
+            self.layout().block_index().clone(),
+            self.layout().indices().to_vec(),
+            self.layout().flux().clone(),
+            self.layout().shape().to_vec(),
+        )
+    }
+}
+
 impl<T, S: Sector> BlockSparseTensorData<T, S>
 where
     T: arnet_core::Scalar,

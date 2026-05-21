@@ -52,4 +52,18 @@ impl<T> DenseTensorData<T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Cheap O(1) `Dense<T>` view that shares the underlying storage Arc.
+    ///
+    /// Bridges the joined-form TensorData into the legacy
+    /// [`Dense<T>`](crate::Dense) representation that internal linalg
+    /// kernels still operate on. Cloning the Arc avoids the bulk copy
+    /// the umbrella crate's earlier `bridge_in` used.
+    pub fn as_dense(&self) -> crate::Dense<T> {
+        crate::Dense::from_storage_arc(
+            self.storage().arc_clone(),
+            self.shape().to_vec(),
+            self.order(),
+        )
+    }
 }

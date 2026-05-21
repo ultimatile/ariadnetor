@@ -69,9 +69,17 @@ fn lhs_non_prefix_axes_pin_physical_transpose_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse(&b(), &lhs, &rhs, &[1, 0], &[0, 1]).unwrap();
+    let result = contract_block_sparse_with_policy_dense(
+        &b(),
+        &lhs,
+        &rhs,
+        &[1, 0],
+        &[0, 1],
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let out = match result {
-        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResultBsp::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
 
@@ -118,9 +126,17 @@ fn lhs_prefix_axes_pin_trans_flag_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse(&b(), &lhs, &rhs, &[0, 1], &[0, 1]).unwrap();
+    let result = contract_block_sparse_with_policy_dense(
+        &b(),
+        &lhs,
+        &rhs,
+        &[0, 1],
+        &[0, 1],
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let out = match result {
-        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResultBsp::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
 
@@ -166,9 +182,17 @@ fn rhs_non_prefix_axes_pin_physical_transpose_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse(&b(), &lhs, &rhs, &[1, 2], &[2, 1]).unwrap();
+    let result = contract_block_sparse_with_policy_dense(
+        &b(),
+        &lhs,
+        &rhs,
+        &[1, 2],
+        &[2, 1],
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let out = match result {
-        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResultBsp::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
 
@@ -212,9 +236,17 @@ fn rhs_suffix_axes_pin_trans_flag_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse(&b(), &lhs, &rhs, &[1, 2], &[1, 2]).unwrap();
+    let result = contract_block_sparse_with_policy_dense(
+        &b(),
+        &lhs,
+        &rhs,
+        &[1, 2],
+        &[1, 2],
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     let out = match result {
-        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResultBsp::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
 

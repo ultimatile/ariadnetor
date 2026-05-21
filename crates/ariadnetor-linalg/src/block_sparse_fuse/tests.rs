@@ -3,9 +3,9 @@ use arnet_native::NativeBackend;
 use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector, Z2Sector};
 
 use super::copy_fused_block;
-use crate::contract_block_sparse;
-use crate::fuse_legs_block_sparse;
-use crate::permute_block_sparse;
+use crate::block_sparse_contract::contract_block_sparse_with_policy_dense;
+use crate::block_sparse_fuse::fuse_legs_block_sparse_dense;
+use crate::block_sparse_permute::permute_block_sparse_dense;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
@@ -51,7 +51,7 @@ fn sample_u1_rank3() -> BlockSparse<f64, U1Sector> {
 #[test]
 fn fuse_rank2_to_rank1() {
     let bs = sample_u1_rank2();
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::Out).unwrap();
 
     assert_eq!(fused.rank(), 1);
     // Full Kronecker product: (0,0)→sector 0 dim 4, (0,1)→sector -1 dim 6,
@@ -71,7 +71,7 @@ fn fuse_rank2_to_rank1() {
 #[test]
 fn fuse_leading_axes_rank3() {
     let bs = sample_u1_rank3();
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::Out).unwrap();
 
     assert_eq!(fused.rank(), 2);
     // The output should have [fused_01, original_2] structure
@@ -119,7 +119,7 @@ fn fuse_tuple_offset_is_lexicographic() {
         .copy_from_slice(&[40.0, 50.0, 60.0]);
 
     // Fuse axes (0,1) with Out direction
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::Out).unwrap();
 
     assert_eq!(fused.rank(), 2);
     // Fused sector 0 (Out) has dim=2 (tuple (0,0) dim=1 + tuple (1,1) dim=1)
@@ -160,7 +160,7 @@ fn fuse_tuple_offset_is_lexicographic() {
 #[test]
 fn fuse_trailing_axes_rank3() {
     let bs = sample_u1_rank3();
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 1, 2, Direction::In).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 1, 2, Direction::In).unwrap();
 
     assert_eq!(fused.rank(), 2);
     assert_eq!(fused.indices()[0].direction(), Direction::Out);
@@ -190,7 +190,7 @@ fn fuse_data_matches_dense_reshape_single_sector() {
         .unwrap()
         .copy_from_slice(&data);
 
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::Out).unwrap();
 
     // Single sector → fused is rank-1 with dim 12
     assert_eq!(fused.shape(), &[12]);
@@ -208,8 +208,8 @@ fn fuse_data_matches_dense_reshape_single_sector() {
 fn fuse_with_in_direction_u1() {
     // U1 is non-self-dual: dual(1) = -1. This tests the sector→block_index lookup.
     let bs = sample_u1_rank2();
-    let fused_out = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
-    let fused_in = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::In).unwrap();
+    let fused_out = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+    let fused_in = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::In).unwrap();
 
     // Both should have the same shape (same total dims)
     assert_eq!(fused_out.shape(), fused_in.shape());
@@ -251,16 +251,16 @@ fn apply_scenario_fuse_rank5_to_rank3() {
         .copy_from_slice(&data);
 
     // Permute: [0, 3, 1, 2, 4]
-    let permuted = permute_block_sparse(&backend(), &bs, &[0, 3, 1, 2, 4]).unwrap();
+    let permuted = permute_block_sparse_dense(&backend(), &bs, &[0, 3, 1, 2, 4]).unwrap();
     assert_eq!(permuted.shape(), &[1, 3, 2, 1, 3]);
 
     // Fuse (0,1) → left bond
-    let fused1 = fuse_legs_block_sparse(&backend(), &permuted, 0, 2, Direction::Out).unwrap();
+    let fused1 = fuse_legs_block_sparse_dense(&backend(), &permuted, 0, 2, Direction::Out).unwrap();
     assert_eq!(fused1.rank(), 4);
     assert_eq!(fused1.shape(), &[3, 2, 1, 3]);
 
     // Fuse (2,3) → right bond
-    let fused2 = fuse_legs_block_sparse(&backend(), &fused1, 2, 2, Direction::In).unwrap();
+    let fused2 = fuse_legs_block_sparse_dense(&backend(), &fused1, 2, 2, Direction::In).unwrap();
     assert_eq!(fused2.rank(), 3);
     assert_eq!(fused2.shape(), &[3, 2, 3]);
 
@@ -311,17 +311,25 @@ fn apply_scenario_multi_sector() {
     }
 
     // Contract W and A over d_ket: W axis 1, A axis 1
-    let contracted = contract_block_sparse(&backend(), &w, &a, &[1], &[1]).unwrap();
+    let contracted = contract_block_sparse_with_policy_dense(
+        &backend(),
+        &w,
+        &a,
+        &[1],
+        &[1],
+        arnet_core::backend::ExecPolicy::Sequential,
+    )
+    .unwrap();
     let result = match contracted {
-        crate::BlockSparseContractResult::Tensor(t) => t,
+        crate::block_sparse_contract::BlockSparseContractResultBsp::Tensor(t) => t,
         _ => panic!("expected tensor"),
     };
     assert_eq!(result.rank(), 5); // [w_L, d_bra, w_R, chi_L, chi_R]
 
     // Permute → fuse → fuse
-    let permuted = permute_block_sparse(&backend(), &result, &[0, 3, 1, 2, 4]).unwrap();
-    let fused1 = fuse_legs_block_sparse(&backend(), &permuted, 0, 2, Direction::Out).unwrap();
-    let fused2 = fuse_legs_block_sparse(&backend(), &fused1, 2, 2, Direction::In).unwrap();
+    let permuted = permute_block_sparse_dense(&backend(), &result, &[0, 3, 1, 2, 4]).unwrap();
+    let fused1 = fuse_legs_block_sparse_dense(&backend(), &permuted, 0, 2, Direction::Out).unwrap();
+    let fused2 = fuse_legs_block_sparse_dense(&backend(), &fused1, 2, 2, Direction::In).unwrap();
 
     assert_eq!(fused2.rank(), 3);
     // Verify flux conservation
@@ -358,7 +366,7 @@ fn fuse_z2_rank2() {
     let d = bs.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
     d.copy_from_slice(&[5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0]);
 
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::Out).unwrap();
 
     // Z2: (0,0)→0 dim 4, (0,1)→1 dim 6, (1,0)→1 dim 6, (1,1)→0 dim 9
     // Sectors: {0: 13, 1: 12}. Total = 25.
@@ -384,7 +392,7 @@ fn fuse_nonzero_flux() {
         }
     }
 
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 0, 2, Direction::Out).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 2, Direction::Out).unwrap();
     assert_eq!(fused.rank(), 2);
     assert_eq!(fused.flux(), &U1Sector(1));
     for meta in fused.block_metas() {
@@ -426,8 +434,10 @@ fn fused_qnindex_independent_of_stored_blocks() {
     );
 
     // Fuse axes (0,1): both should produce the same fused QNIndex
-    let fused_many = fuse_legs_block_sparse(&backend(), &bs_many, 0, 2, Direction::Out).unwrap();
-    let fused_few = fuse_legs_block_sparse(&backend(), &bs_few, 0, 2, Direction::Out).unwrap();
+    let fused_many =
+        fuse_legs_block_sparse_dense(&backend(), &bs_many, 0, 2, Direction::Out).unwrap();
+    let fused_few =
+        fuse_legs_block_sparse_dense(&backend(), &bs_few, 0, 2, Direction::Out).unwrap();
 
     let qi_many = fused_many.indices()[0].blocks();
     let qi_few = fused_few.indices()[0].blocks();
@@ -467,7 +477,7 @@ fn fuse_trailing_axes_with_nontrivial_leading() {
         .copy_from_slice(&[30.0, 40.0]);
 
     // Fuse axes (1, 2) with Out direction
-    let fused = fuse_legs_block_sparse(&backend(), &bs, 1, 2, Direction::Out).unwrap();
+    let fused = fuse_legs_block_sparse_dense(&backend(), &bs, 1, 2, Direction::Out).unwrap();
     assert_eq!(fused.rank(), 2);
 
     // Output block for fused sector 0: shape [2 (leading), 2 (fused_dim)].
@@ -540,7 +550,7 @@ fn copy_fused_block_row_major_fused_gt_1() {
 #[test]
 fn fuse_count_less_than_2() {
     let bs = sample_u1_rank2();
-    let result = fuse_legs_block_sparse(&backend(), &bs, 0, 1, Direction::Out);
+    let result = fuse_legs_block_sparse_dense(&backend(), &bs, 0, 1, Direction::Out);
     assert!(result.is_err());
     assert!(format!("{}", result.err().unwrap()).contains("count"));
 }
@@ -548,7 +558,7 @@ fn fuse_count_less_than_2() {
 #[test]
 fn fuse_out_of_range() {
     let bs = sample_u1_rank2();
-    let result = fuse_legs_block_sparse(&backend(), &bs, 1, 2, Direction::Out);
+    let result = fuse_legs_block_sparse_dense(&backend(), &bs, 1, 2, Direction::Out);
     assert!(result.is_err());
     assert!(format!("{}", result.err().unwrap()).contains("out of range"));
 }

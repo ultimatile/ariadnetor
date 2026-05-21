@@ -1,10 +1,11 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::Dense;
+use arnet_tensor::{Dense, DenseTensor};
 use num_traits::{Float, One, Zero};
 use std::ops::{Add, Mul};
 
 use crate::error::LinalgError;
+use crate::tensor_bridge::{wrap_dense, wrap_dense_as};
 use arnet_tensor::{flat_index, normalize_to};
 
 /// Scale tensor by a scalar factor (out-of-place).
@@ -15,12 +16,24 @@ use arnet_tensor::{flat_index, normalize_to};
 ///
 /// ```rust,ignore
 /// use arnet_linalg::scale;
-/// use arnet_tensor::Dense;
+/// use arnet_tensor::DenseTensor;
 ///
-/// let tensor = Dense::<f64>::ones(vec![2, 3]);
+/// let tensor = DenseTensor::<f64>::ones(vec![2, 3]);
 /// let scaled = scale(&tensor, 2.5);
 /// ```
-pub fn scale<T>(tensor: &Dense<T>, factor: T) -> Dense<T>
+pub fn scale<T, B>(tensor: &DenseTensor<T, B>, factor: T) -> DenseTensor<T, B>
+where
+    T: Clone + Mul<Output = T>,
+    B: ComputeBackend,
+{
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let result = scale_dense(&dense, factor);
+    wrap_dense(result, backend_arc)
+}
+
+/// Internal kernel for [`scale`] operating on the legacy `Dense<T>` form.
+pub(crate) fn scale_dense<T>(tensor: &Dense<T>, factor: T) -> Dense<T>
 where
     T: Clone + Mul<Output = T>,
 {
@@ -40,13 +53,19 @@ where
 ///
 /// ```rust,ignore
 /// use arnet_linalg::norm;
-/// use arnet_tensor::Dense;
+/// use arnet_tensor::DenseTensor;
 ///
-/// let tensor = Dense::<f64>::ones(vec![2, 2]);
+/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
 /// let n = norm(&tensor);
 /// assert!((n - 2.0).abs() < 1e-10);
 /// ```
-pub fn norm<T: Scalar>(tensor: &Dense<T>) -> T::Real {
+pub fn norm<T: Scalar, B: ComputeBackend>(tensor: &DenseTensor<T, B>) -> T::Real {
+    let dense = tensor.data().as_dense();
+    norm_dense(&dense)
+}
+
+/// Internal kernel for [`norm`] operating on the legacy `Dense<T>` form.
+pub(crate) fn norm_dense<T: Scalar>(tensor: &Dense<T>) -> T::Real {
     let sum_sq = tensor
         .iter()
         .map(|&x| {
@@ -66,14 +85,24 @@ pub fn norm<T: Scalar>(tensor: &Dense<T>) -> T::Real {
 ///
 /// ```rust,ignore
 /// use arnet_linalg::normalize;
-/// use arnet_tensor::Dense;
+/// use arnet_tensor::DenseTensor;
 ///
-/// let tensor = Dense::<f64>::ones(vec![2, 2]);
+/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
 /// let (normalized, n) = normalize(&tensor);
 /// assert!((n - 2.0).abs() < 1e-10);
 /// ```
-pub fn normalize<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
-    let n = norm(tensor);
+pub fn normalize<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+) -> (DenseTensor<T, B>, T::Real) {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let (result, n) = normalize_dense(&dense);
+    (wrap_dense(result, backend_arc), n)
+}
+
+/// Internal kernel for [`normalize`] operating on the legacy `Dense<T>` form.
+pub(crate) fn normalize_dense<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
+    let n = norm_dense(tensor);
     assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
     let inv_norm = T::Real::one() / n;
     let data: Vec<T> = tensor
@@ -86,7 +115,10 @@ pub fn normalize<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
 
 /// Linear combination of tensors: sum coefs[i] * tensors[i].
 ///
-/// All tensors must have the same shape.
+/// All tensors must have the same shape. The result is wrapped against
+/// `tensors[0]`'s backend Arc; callers must ensure every input shares the
+/// same backend Arc (a mismatch silently labels the output with the first
+/// tensor's backend, which is wrong for backends carrying state).
 ///
 /// # Errors
 ///
@@ -97,15 +129,41 @@ pub fn normalize<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
 ///
 /// ```rust,ignore
 /// use arnet_linalg::linear_combine;
-/// use arnet_tensor::Dense;
+/// use arnet_tensor::DenseTensor;
 ///
-/// let a = Dense::<f64>::constant(vec![2, 2], 1.0);
-/// let b = Dense::<f64>::constant(vec![2, 2], 2.0);
+/// let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+/// let b = DenseTensor::<f64>::constant(vec![2, 2], 2.0);
 ///
 /// // 2*a + 3*b = 2*1 + 3*2 = 8
 /// let result = linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
 /// ```
-pub fn linear_combine<T>(tensors: &[&Dense<T>], coefs: &[T]) -> Result<Dense<T>, LinalgError>
+pub fn linear_combine<T, B>(
+    tensors: &[&DenseTensor<T, B>],
+    coefs: &[T],
+) -> Result<DenseTensor<T, B>, LinalgError>
+where
+    T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
+    B: ComputeBackend,
+{
+    if tensors.is_empty() {
+        return Err(LinalgError::InvalidArgument(
+            "Cannot combine empty tensor list".to_string(),
+        ));
+    }
+    let backend_arc = tensors[0].backend_arc().clone();
+    // Materialize Dense views; they hold Arcs into the same buffers so
+    // this is O(N) Arc-clones rather than O(N) data copies.
+    let dense_views: Vec<Dense<T>> = tensors.iter().map(|t| t.data().as_dense()).collect();
+    let dense_refs: Vec<&Dense<T>> = dense_views.iter().collect();
+    let result = linear_combine_dense(&dense_refs, coefs)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`linear_combine`] operating on legacy `Dense<T>` slices.
+pub(crate) fn linear_combine_dense<T>(
+    tensors: &[&Dense<T>],
+    coefs: &[T],
+) -> Result<Dense<T>, LinalgError>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
@@ -174,15 +232,25 @@ where
 ///
 /// ```rust,ignore
 /// use arnet_linalg::trace;
-/// use arnet_tensor::{Dense, MemoryOrder};
+/// use arnet_tensor::DenseTensor;
 ///
-/// // Matrix trace: tr([[1,2],[3,4]]) = 1 + 4 = 5
-/// let mat = Dense::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+/// // Matrix trace: tr(I_2) = 2 (eye preserves the active backend's preferred order)
+/// let mat = DenseTensor::<f64>::eye(2);
 /// let result = trace(&mat, &[(0, 1)]).unwrap();
 /// assert_eq!(result.shape(), &[1]);
-/// assert_eq!(result.data()[0], 5.0);
 /// ```
-pub fn trace<T: Scalar>(
+pub fn trace<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+    pairs: &[(usize, usize)],
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let result = trace_dense(&dense, pairs)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`trace`] operating on the legacy `Dense<T>` form.
+pub(crate) fn trace_dense<T: Scalar>(
     tensor: &Dense<T>,
     pairs: &[(usize, usize)],
 ) -> Result<Dense<T>, LinalgError> {
@@ -314,7 +382,17 @@ pub(crate) fn decode_coords(mut flat: usize, shape: &[usize], coords: &mut [usiz
 ///
 /// Returns an error if the input is a non-square matrix (rank 2 with mismatched dimensions)
 /// or has rank > 2.
-pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
+pub fn diag<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let result = diag_dense(&dense)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`diag`] operating on the legacy `Dense<T>` form.
+pub(crate) fn diag_dense<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
     let shape = tensor.shape();
     match shape.len() {
         1 => {
@@ -367,18 +445,29 @@ pub fn diag<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
 ///
 /// ```rust,ignore
 /// use arnet_linalg::diagonal_scale;
-/// use arnet_native::NativeBackend;
-/// use arnet_tensor::{Dense, MemoryOrder};
+/// use arnet_tensor::DenseTensor;
 ///
-/// let backend = NativeBackend::new();
-/// let m = Dense::new(
-///     vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
-///     vec![2, 3],
-///     MemoryOrder::ColumnMajor,
-/// );
-/// let scaled = diagonal_scale(&backend, &m, &[1.0, 2.0, 3.0], 1).unwrap();
+/// let m = DenseTensor::<f64>::ones(vec![2, 3]);
+/// let scaled = diagonal_scale(&m, &[1.0, 2.0, 3.0], 1).unwrap();
 /// ```
-pub fn diagonal_scale<T, S>(
+pub fn diagonal_scale<T, S, B>(
+    tensor: &DenseTensor<T, B>,
+    weights: &[S],
+    axis: usize,
+) -> Result<DenseTensor<T, B>, LinalgError>
+where
+    T: Clone + Mul<S, Output = T> + 'static,
+    S: Clone,
+    B: ComputeBackend,
+{
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let result = diagonal_scale_dense(tensor.backend(), &dense, weights, axis)?;
+    Ok(wrap_dense_as(result, backend_arc))
+}
+
+/// Internal kernel for [`diagonal_scale`] operating on the legacy `Dense<T>` form.
+pub(crate) fn diagonal_scale_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     weights: &[S],
