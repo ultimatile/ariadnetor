@@ -366,10 +366,14 @@ where
     /// without gap or overlap, blocks sorted by coordinate.
     /// `data.len() == sum(blocks.size)` is checked by `TensorData::new`.
     ///
-    /// The resulting tensor's layout `order()` is the supplied `order`,
-    /// not the backend's preferred order — callers are responsible for
-    /// choosing an `order` compatible with the operations they intend
-    /// to dispatch.
+    /// # Panics
+    ///
+    /// Panics if `order != backend.preferred_order()`. Block-sparse
+    /// kernels (`contract_block_sparse`, `svd_block_sparse`, etc.) read
+    /// the per-sector packed buffer under the backend's preferred order
+    /// and have no internal reorder step; a mismatch here would yield
+    /// silently wrong output. This is the same Tier 1 invariant the
+    /// `Mps` / `Mpo` constructors enforce on their sites.
     pub fn from_raw_parts(
         data: Vec<T>,
         blocks: Vec<BlockMeta>,
@@ -379,6 +383,13 @@ where
         order: arnet_core::backend::MemoryOrder,
         backend: Arc<B>,
     ) -> Self {
+        assert_eq!(
+            order,
+            backend.preferred_order(),
+            "BlockSparseTensor::from_raw_parts: layout order {:?} != backend preferred_order {:?} (Tier 1 invariant; block-sparse kernels do not reorder)",
+            order,
+            backend.preferred_order(),
+        );
         let block_index: HashMap<BlockCoord, usize> = blocks
             .iter()
             .enumerate()

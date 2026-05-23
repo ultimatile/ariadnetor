@@ -186,7 +186,7 @@ fn dense_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
 fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
     use crate::block_sparse::BlockMeta;
     use crate::{Direction, U1Sector};
-    use arnet_core::backend::{ComputeBackend, MemoryOrder};
+    use arnet_core::backend::ComputeBackend;
     use arnet_native::NativeBackend;
     use std::sync::Arc;
 
@@ -207,7 +207,7 @@ fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
     ];
     let data = vec![1.0_f64, 2.0_f64];
     let backend = NativeBackend::shared();
-    let order = MemoryOrder::RowMajor;
+    let order = backend.preferred_order();
     let t = BlockSparseTensor::<f64, U1Sector>::from_raw_parts(
         data,
         blocks,
@@ -219,11 +219,7 @@ fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
     );
 
     assert_eq!(t.shape(), &[2, 2]);
-    // Layout's order reflects the explicit argument, not the backend's
-    // preferred order — the joined Tier 1 check that orders agree is a
-    // downstream concern, not enforced at the joined constructor.
     assert_eq!(t.data().layout().order(), order);
-    assert_eq!(t.backend().preferred_order(), MemoryOrder::ColumnMajor);
     assert_eq!(
         t.block_data(&BlockCoord(vec![0, 0]))
             .expect("block (0,0) present"),
@@ -237,6 +233,38 @@ fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
     // block_index derived internally — block_data lookup proves the
     // coord→index mapping was built consistently with the blocks vec.
     assert!(Arc::ptr_eq(t.backend_arc(), &backend));
+}
+
+#[test]
+#[should_panic(expected = "BlockSparseTensor::from_raw_parts")]
+fn block_sparse_tensor_from_raw_parts_panics_on_order_mismatch() {
+    use crate::block_sparse::BlockMeta;
+    use crate::{Direction, U1Sector};
+    use arnet_core::backend::{ComputeBackend, MemoryOrder};
+    use arnet_native::NativeBackend;
+    use std::sync::Arc;
+
+    let row = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let blocks = vec![BlockMeta {
+        coord: BlockCoord(vec![0, 0]),
+        offset: 0,
+        size: 1,
+    }];
+    let backend = NativeBackend::shared();
+    let wrong_order = match backend.preferred_order() {
+        MemoryOrder::ColumnMajor => MemoryOrder::RowMajor,
+        MemoryOrder::RowMajor => MemoryOrder::ColumnMajor,
+    };
+    let _ = BlockSparseTensor::<f64, U1Sector>::from_raw_parts(
+        vec![1.0],
+        blocks,
+        vec![row, col],
+        U1Sector(0),
+        vec![2, 2],
+        wrong_order,
+        Arc::clone(&backend),
+    );
 }
 
 #[test]
