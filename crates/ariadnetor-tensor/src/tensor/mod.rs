@@ -200,6 +200,26 @@ where
     }
 }
 
+impl<T, B> Tensor<DenseStorage<T>, DenseLayout, B>
+where
+    T: Clone + Zero,
+    B: ComputeBackend,
+{
+    /// Create a zero-filled `DenseTensor` anchored on an explicit
+    /// backend. The layout's memory order is taken from the backend's
+    /// preferred order so dispatch paths that require per-tensor
+    /// preferred-order alignment find it satisfied at construction.
+    ///
+    /// Mirror of [`BlockSparseTensor::zeros_with_backend`] for the
+    /// dense storage half.
+    pub fn zeros_with_backend(shape: Vec<usize>, backend: Arc<B>) -> Self {
+        let order = backend.preferred_order();
+        let len: usize = shape.iter().product();
+        let td = DenseTensorData::from_raw_parts(vec![T::zero(); len], shape, order);
+        Self::with_backend(td, backend)
+    }
+}
+
 // ============================================================================
 // Dense-specific constructors with the NativeBackend pin
 //

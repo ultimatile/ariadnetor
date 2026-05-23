@@ -49,7 +49,7 @@ Backend-agnostic core abstractions: `Scalar` trait, `LabelId`, `EinsumExpr`, `Co
 User-facing tensor types with Arc-based Copy-on-Write storage.
 
 - `Tensor<St, L, B>` — joins a `TensorData<St, L>` storage / layout bundle with an `Arc<B>` compute backend.
-- `DenseTensor<T, B = NativeBackend>` — dense `Tensor` alias. Constructors: `zeros`, `ones`, `constant`, `eye`, `random`, `from_raw_parts`. Methods: `conj`, `scale`, `norm`, `normalize`, `reordered`, `order`, `shape`, etc.
+- `DenseTensor<T, B = NativeBackend>` — dense `Tensor` alias. Constructors: `zeros`, `ones`, `constant`, `eye`, `random`, `zeros_with_backend`, `from_raw_parts`. Methods: `conj`, `scale`, `norm`, `normalize`, `reordered`, `order`, `shape`, etc.
 - `BlockSparseTensor<T, S, B = NativeBackend>` — block-sparse `Tensor` alias with abelian symmetry. Constructors: `zeros`, `zeros_with_backend`, `random`, `from_block_fn`, `from_raw_parts`. Methods: `dagger`, `conj`, `norm`, `order`, `block_data`, `flux`, `indices`.
 - `Sector` trait — abelian symmetry sector algebra (fuse, identity, dual). Implementations: `U1Sector`, `Z2Sector`, tuple products.
 - `QNIndex<S>` — quantum-number index: maps sectors to block dimensions with direction (`In` / `Out`).

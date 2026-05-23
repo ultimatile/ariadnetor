@@ -268,6 +268,20 @@ fn block_sparse_tensor_from_raw_parts_panics_on_order_mismatch() {
 }
 
 #[test]
+fn dense_tensor_zeros_with_backend_uses_backend_order() {
+    use arnet_core::backend::ComputeBackend;
+    use arnet_native::NativeBackend;
+
+    let backend = NativeBackend::shared();
+    let expected_order = backend.preferred_order();
+    let t = DenseTensor::<f64>::zeros_with_backend(vec![2, 3], backend);
+
+    assert_eq!(t.shape(), &[2, 3]);
+    assert_eq!(t.data().layout().order(), expected_order);
+    assert!(t.data_slice().iter().all(|&x| x == 0.0));
+}
+
+#[test]
 fn block_sparse_tensor_zeros_with_backend_uses_backend_order() {
     use crate::{Direction, U1Sector};
     use arnet_core::backend::ComputeBackend;
