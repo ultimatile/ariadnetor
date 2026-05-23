@@ -2,17 +2,15 @@
 //!
 //! Strategy: build a small dense Hermitian matrix, drive
 //! `arpack_smallest` via a closure, compare the eigenvalue against
-//! `arnet_linalg::eigh` ground truth and the eigenvector against the
+//! `arnet::eigh` ground truth and the eigenvector against the
 //! eigenpair contract `||H psi - lambda psi|| ≈ 0`.
 
 #![cfg(feature = "arpack")]
 
 use approx::assert_abs_diff_eq;
+use arnet::Scalar;
+use arnet::{DenseTensor, MemoryOrder, NativeBackend, eigh, norm};
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
-use arnet_core::Scalar;
-use arnet_linalg::{eigh, norm};
-use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
 use num_complex::Complex;
 use num_traits::{Float, NumCast, One, Zero};
 use rand::SeedableRng;
@@ -23,9 +21,9 @@ use rand::rngs::StdRng;
 // ---------------------------------------------------------------------------
 
 /// Hermitian matrix-vector product `H v`. Column-major storage.
-fn matvec_cm<T: Scalar>(h: &Dense<T>, n: usize, v: &Dense<T>) -> Dense<T> {
-    let h_data = h.data();
-    let v_data = v.data();
+fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> DenseTensor<T> {
+    let h_data = h.data_slice();
+    let v_data = v.data_slice();
     let mut out = vec![T::zero(); n];
     for j in 0..n {
         let vj = v_data[j];
@@ -33,14 +31,19 @@ fn matvec_cm<T: Scalar>(h: &Dense<T>, n: usize, v: &Dense<T>) -> Dense<T> {
             *out_i = *out_i + h_data[i + n * j] * vj;
         }
     }
-    Dense::new(out, vec![n], MemoryOrder::ColumnMajor)
+    DenseTensor::from_raw_parts(
+        out,
+        vec![n],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    )
 }
 
-fn random_hermitian_f64(n: usize, seed: u64) -> Dense<f64> {
+fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensor<f64> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let a = Dense::<f64>::random(vec![n, n], &mut rng);
+    let a = DenseTensor::<f64>::random(vec![n, n], &mut rng);
     let mut data = vec![0.0_f64; n * n];
-    let a_data = a.data();
+    let a_data = a.data_slice();
     for i in 0..n {
         for j in 0..n {
             let aij = a_data[i + n * j];
@@ -48,15 +51,20 @@ fn random_hermitian_f64(n: usize, seed: u64) -> Dense<f64> {
             data[i + n * j] = 0.5 * (aij + aji);
         }
     }
-    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
+    DenseTensor::from_raw_parts(
+        data,
+        vec![n, n],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    )
 }
 
-fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
+fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let real = Dense::<f64>::random(vec![n, n], &mut rng);
-    let imag = Dense::<f64>::random(vec![n, n], &mut rng);
-    let r = real.data();
-    let im = imag.data();
+    let real = DenseTensor::<f64>::random(vec![n, n], &mut rng);
+    let imag = DenseTensor::<f64>::random(vec![n, n], &mut rng);
+    let r = real.data_slice();
+    let im = imag.data_slice();
     let mut data = vec![Complex::new(0.0, 0.0); n * n];
     for i in 0..n {
         for j in 0..n {
@@ -65,13 +73,17 @@ fn random_hermitian_complex_f64(n: usize, seed: u64) -> Dense<Complex<f64>> {
             data[i + n * j] = (aij + aji.conj()) * 0.5;
         }
     }
-    Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor)
+    DenseTensor::from_raw_parts(
+        data,
+        vec![n, n],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    )
 }
 
-fn eigh_smallest<T: Scalar>(h: &Dense<T>) -> T::Real {
-    let backend = NativeBackend::shared();
-    let (eigvals, _) = eigh(&*backend, h, 1).expect("eigh");
-    eigvals.data()[0]
+fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
+    let (eigvals, _) = eigh(h, 1).expect("eigh");
+    eigvals.data_slice()[0]
 }
 
 /// Diagonal-spectrum smallest-eigenpair check, generic over the scalar type.
@@ -90,10 +102,15 @@ where
         let v: T::Real = NumCast::from(diag_re[i]).unwrap();
         data[i + n * i] = T::from_real_imag(v, real_zero);
     }
-    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
+    let h = DenseTensor::from_raw_parts(
+        data,
+        vec![n, n],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    );
 
     let result = arpack_smallest::<T, _>(
-        &|v: &Dense<T>| matvec_cm(&h, n, v),
+        &|v: &DenseTensor<T>| matvec_cm(&h, n, v),
         n,
         &ArpackParams {
             tol: 1e-6,
@@ -187,10 +204,15 @@ fn arpack_diagonal_f64_returns_smallest() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
+    let h = DenseTensor::from_raw_parts(
+        data,
+        vec![n, n],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    );
 
     let result = arpack_smallest::<f64, _>(
-        &|v: &Dense<f64>| matvec_cm(&h, n, v),
+        &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
         n,
         &ArpackParams {
             tol: 1e-10,
@@ -226,7 +248,7 @@ fn arpack_random_symmetric_f64_matches_eigh() {
         let lambda_ref = eigh_smallest(&h);
 
         let result = arpack_smallest::<f64, _>(
-            &|v: &Dense<f64>| matvec_cm(&h, n, v),
+            &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
             n,
             &ArpackParams {
                 tol: 1e-10,
@@ -265,7 +287,7 @@ fn arpack_complex_hermitian_matches_eigh() {
     let lambda_ref = eigh_smallest(&h);
 
     let result = arpack_smallest::<Complex<f64>, _>(
-        &|v: &Dense<Complex<f64>>| matvec_cm(&h, n, v),
+        &|v: &DenseTensor<Complex<f64>>| matvec_cm(&h, n, v),
         n,
         &ArpackParams {
             tol: 1e-10,
@@ -306,7 +328,7 @@ fn arpack_converged_flag_reflects_absolute_tol() {
     let h = random_hermitian_f64(n, 0xBAD_C0DE);
 
     let result = arpack_smallest::<f64, _>(
-        &|v: &Dense<f64>| matvec_cm(&h, n, v),
+        &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
         n,
         &ArpackParams {
             tol: 1e-15,
@@ -420,7 +442,7 @@ fn arpack_rejects_invalid_tol() {
     ];
     for (label, tol) in bad_tols {
         let result = arpack_smallest::<f64, _>(
-            &|_v: &Dense<f64>| {
+            &|_v: &DenseTensor<f64>| {
                 unreachable!("matvec must not run when tol = {label} is rejected up-front")
             },
             n,
@@ -453,10 +475,15 @@ fn arpack_max_iter_too_small_surfaces_max_iter_reached() {
             data[i + n * (i + 1)] = -1.0;
         }
     }
-    let h = Dense::new(data, vec![n, n], MemoryOrder::ColumnMajor);
+    let h = DenseTensor::from_raw_parts(
+        data,
+        vec![n, n],
+        MemoryOrder::ColumnMajor,
+        NativeBackend::shared(),
+    );
 
     let result = arpack_smallest::<f64, _>(
-        &|v: &Dense<f64>| matvec_cm(&h, n, v),
+        &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
         n,
         &ArpackParams {
             tol: 1e-15,

@@ -9,16 +9,19 @@
 
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_tensor::{
-    BlockCoord, BlockSparse, Dense, Direction, MemoryOrder, QNIndex, Sector, U1Sector, reorder,
+use std::sync::Arc;
+
+use arnet::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
+    DenseStorage, DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, Sector, U1Sector,
 };
 
 /// Run `DmrgEnvs::build` and assert it returns an error. Equivalent to
 /// `Result::expect_err`, but doesn't require `BlockSparse: Debug`
 /// (which is not derived upstream).
 fn expect_build_err(
-    mps: &Mps<BlockSparse<f64, U1Sector>>,
-    mpo: &Mpo<BlockSparse<f64, U1Sector>>,
+    mps: &Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+    mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
 ) -> DmrgEnvError {
     match DmrgEnvs::build(mps, mpo) {
         Ok(_) => panic!("expected DmrgEnvs::build to error"),
@@ -27,11 +30,11 @@ fn expect_build_err(
 }
 
 // ---------------------------------------------------------------------------
-// Densify helper — convert a BlockSparse<f64, U1Sector> into a row-major
-// Dense<f64> by scattering each allowed block into its global offset.
+// Densify helper — convert a BlockSparseTensor<f64, U1Sector> into a row-major
+// DenseTensor<f64> by scattering each allowed block into its global offset.
 // ---------------------------------------------------------------------------
 
-fn densify_bsp(bsp: &BlockSparse<f64, U1Sector>) -> Dense<f64> {
+fn densify_bsp(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
     let global_dims: Vec<usize> = bsp.shape().to_vec();
     let total: usize = global_dims.iter().product();
     let mut out = vec![0.0_f64; total];
@@ -93,11 +96,16 @@ fn densify_bsp(bsp: &BlockSparse<f64, U1Sector>) -> Dense<f64> {
     // The scatter loop above writes `out` in row-major order; declare
     // the storage's `order` to match so the subsequent `reorder`'s
     // `from` argument is consistent with the storage authority.
-    let rm = Dense::new(out, global_dims, MemoryOrder::RowMajor);
+    let rm = DenseTensor::from_raw_parts(
+        out,
+        global_dims,
+        MemoryOrder::RowMajor,
+        NativeBackend::shared(),
+    );
     // The NativeBackend's preferred order is ColumnMajor; all Dense
     // tensors flowing through `contract` must be CM. Reorder once
     // before handing back.
-    reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)
+    rm.reordered(MemoryOrder::ColumnMajor)
 }
 
 // ---------------------------------------------------------------------------
@@ -111,11 +119,11 @@ fn make_u1_mps_site(
     phys: Vec<(U1Sector, usize)>,
     right: Vec<(U1Sector, usize)>,
     counter: &mut f64,
-) -> BlockSparse<f64, U1Sector> {
+) -> BlockSparseTensor<f64, U1Sector> {
     let l = QNIndex::new(left, Direction::Out);
     let p = QNIndex::new(phys, Direction::Out);
     let r = QNIndex::new(right, Direction::In);
-    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![l, p, r], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![l, p, r], U1Sector(0));
     let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
     for coord in coords {
         let data = site.block_data_mut(&coord).expect("allowed block");
@@ -127,7 +135,7 @@ fn make_u1_mps_site(
     site
 }
 
-fn make_4site_u1_mps_local() -> Mps<BlockSparse<f64, U1Sector>> {
+fn make_4site_u1_mps_local() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let mut counter: f64 = 0.1;
     let site0 = make_u1_mps_site(
         vec![(U1Sector(0), 1)],
@@ -153,7 +161,7 @@ fn make_4site_u1_mps_local() -> Mps<BlockSparse<f64, U1Sector>> {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    Mps::from_storages(vec![site0, site1, site2, site3])
+    Mps::from_sites(vec![site0, site1, site2, site3])
 }
 
 // ---------------------------------------------------------------------------
@@ -166,12 +174,12 @@ fn make_u1_mpo_site(
     w_left: Vec<(U1Sector, usize)>,
     w_right: Vec<(U1Sector, usize)>,
     counter: &mut f64,
-) -> BlockSparse<f64, U1Sector> {
+) -> BlockSparseTensor<f64, U1Sector> {
     let w_l = QNIndex::new(w_left, Direction::Out);
     let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
     let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let w_r = QNIndex::new(w_right, Direction::In);
-    let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0));
     let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
     for coord in coords {
         let data = site.block_data_mut(&coord).expect("allowed block");
@@ -183,7 +191,7 @@ fn make_u1_mpo_site(
     site
 }
 
-fn make_4site_u1_mpo_local() -> Mpo<BlockSparse<f64, U1Sector>> {
+fn make_4site_u1_mpo_local() -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     // Bulk W bond `{(-1):1, 0:1, +1:1}` — ≥ 2 sectors with a negative charge.
     let mut counter: f64 = 0.7;
     let site0 = make_u1_mpo_site(
@@ -206,7 +214,7 @@ fn make_4site_u1_mpo_local() -> Mpo<BlockSparse<f64, U1Sector>> {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    Mpo::from_storages(vec![site0, site1, site2, site3])
+    Mpo::from_sites(vec![site0, site1, site2, site3])
 }
 
 // ---------------------------------------------------------------------------
@@ -214,24 +222,26 @@ fn make_4site_u1_mpo_local() -> Mpo<BlockSparse<f64, U1Sector>> {
 // the same DmrgEnvs::build call exercises the Dense oracle path.
 // ---------------------------------------------------------------------------
 
-fn densify_mps(mps: &Mps<BlockSparse<f64, U1Sector>>) -> Mps<Dense<f64>> {
-    let storages: Vec<Dense<f64>> = (0..mps.len())
-        .map(|i| densify_bsp(mps.storage(i)))
-        .collect();
-    Mps::from_storages(storages)
+fn densify_mps(
+    mps: &Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
+    let storages: Vec<DenseTensor<f64>> =
+        (0..mps.len()).map(|i| densify_bsp(mps.site(i))).collect();
+    Mps::from_sites(storages)
 }
 
-fn densify_mpo(mpo: &Mpo<BlockSparse<f64, U1Sector>>) -> Mpo<Dense<f64>> {
-    let storages: Vec<Dense<f64>> = (0..mpo.len())
-        .map(|i| densify_bsp(mpo.storage(i)))
-        .collect();
-    Mpo::from_storages(storages)
+fn densify_mpo(
+    mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+) -> Mpo<DenseStorage<f64>, DenseLayout> {
+    let storages: Vec<DenseTensor<f64>> =
+        (0..mpo.len()).map(|i| densify_bsp(mpo.site(i))).collect();
+    Mpo::from_sites(storages)
 }
 
-fn assert_dense_close(a: &Dense<f64>, b: &Dense<f64>, tol: f64, label: &str) {
+fn assert_dense_close(a: &DenseTensor<f64>, b: &DenseTensor<f64>, tol: f64, label: &str) {
     assert_eq!(a.shape(), b.shape(), "{label}: shape mismatch");
-    let av = a.data();
-    let bv = b.data();
+    let av = a.data_slice();
+    let bv = b.data_slice();
     for (k, (x, y)) in av.iter().zip(bv.iter()).enumerate() {
         let diff = (*x - *y).abs();
         assert!(
@@ -349,7 +359,8 @@ fn bsp_envs_n2_edge_case() {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    let mps_bsp: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![mps_site0, mps_site1]);
+    let mps_bsp: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![mps_site0, mps_site1]);
 
     let mut counter = 0.7_f64;
     let mpo_site0 = make_u1_mpo_site(
@@ -362,7 +373,8 @@ fn bsp_envs_n2_edge_case() {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    let mpo_bsp: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(vec![mpo_site0, mpo_site1]);
+    let mpo_bsp: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mpo::from_sites(vec![mpo_site0, mpo_site1]);
 
     let mps_dense = densify_mps(&mps_bsp);
     let mpo_dense = densify_mpo(&mpo_bsp);
@@ -439,18 +451,19 @@ fn bsp_envs_error_paths_qn_mismatch() {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    let mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![mps_site0, mps_site1]);
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![mps_site0, mps_site1]);
 
     // MPO ket sector-set differs from MPS phys.
     let make_mismatched_mpo_site =
-        |ket_sectors: Vec<(U1Sector, usize)>| -> BlockSparse<f64, U1Sector> {
+        |ket_sectors: Vec<(U1Sector, usize)>| -> BlockSparseTensor<f64, U1Sector> {
             let w_l = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
             let ket = QNIndex::new(ket_sectors, Direction::In);
             let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(2), 1)], Direction::Out);
             let w_r = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-            BlockSparse::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0))
+            BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0))
         };
-    let mpo: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(vec![
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> = Mpo::from_sites(vec![
         make_mismatched_mpo_site(vec![(U1Sector(0), 1), (U1Sector(2), 1)]),
         make_mismatched_mpo_site(vec![(U1Sector(0), 1), (U1Sector(2), 1)]),
     ]);
@@ -467,11 +480,11 @@ fn bsp_envs_error_paths_direction_mismatch() {
     // MPS phys leg deliberately Direction::In (instead of Out): inside
     // extend_right_step step 2 the contracted pair `(site.phys, MPO.ket)`
     // collapses to `(In, In)` and contract_block_sparse rejects it.
-    let make_bad_mps_site = || -> BlockSparse<f64, U1Sector> {
+    let make_bad_mps_site = || -> BlockSparseTensor<f64, U1Sector> {
         let l = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
         let p = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
         let r = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-        let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![l, p, r], U1Sector(0));
+        let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![l, p, r], U1Sector(0));
         let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
         for coord in coords {
             let data = site.block_data_mut(&coord).unwrap();
@@ -481,15 +494,16 @@ fn bsp_envs_error_paths_direction_mismatch() {
         }
         site
     };
-    let mps: Mps<BlockSparse<f64, U1Sector>> =
-        Mps::from_storages(vec![make_bad_mps_site(), make_bad_mps_site()]);
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![make_bad_mps_site(), make_bad_mps_site()]);
 
-    let make_mpo_site = || -> BlockSparse<f64, U1Sector> {
+    let make_mpo_site = || -> BlockSparseTensor<f64, U1Sector> {
         let w_l = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
         let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
         let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
         let w_r = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-        let mut site = BlockSparse::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0));
+        let mut site =
+            BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0));
         let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
         for coord in coords {
             let data = site.block_data_mut(&coord).unwrap();
@@ -499,8 +513,8 @@ fn bsp_envs_error_paths_direction_mismatch() {
         }
         site
     };
-    let mpo: Mpo<BlockSparse<f64, U1Sector>> =
-        Mpo::from_storages(vec![make_mpo_site(), make_mpo_site()]);
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mpo::from_sites(vec![make_mpo_site(), make_mpo_site()]);
 
     let err = expect_build_err(&mps, &mpo);
     assert!(
@@ -525,12 +539,14 @@ fn bsp_envs_error_paths_malformed_left_edge() {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    let mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![mps_site0, mps_site1]);
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![mps_site0, mps_site1]);
 
     let mut counter = 0.7_f64;
     let mpo_site0 = make_u1_mpo_site(vec![(U1Sector(0), 1)], vec![(U1Sector(0), 1)], &mut counter);
     let mpo_site1 = make_u1_mpo_site(vec![(U1Sector(0), 1)], vec![(U1Sector(0), 1)], &mut counter);
-    let mpo: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(vec![mpo_site0, mpo_site1]);
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mpo::from_sites(vec![mpo_site0, mpo_site1]);
 
     let err = expect_build_err(&mps, &mpo);
     match err {
@@ -555,7 +571,8 @@ fn bsp_envs_error_paths_malformed_right_edge() {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    let mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![mps_site0, mps_site1]);
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![mps_site0, mps_site1]);
 
     let mut counter = 0.7_f64;
     let mpo_site0 = make_u1_mpo_site(vec![(U1Sector(0), 1)], vec![(U1Sector(0), 1)], &mut counter);
@@ -565,7 +582,8 @@ fn bsp_envs_error_paths_malformed_right_edge() {
         vec![(U1Sector(0), 1), (U1Sector(1), 1)],
         &mut counter,
     );
-    let mpo: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(vec![mpo_site0, mpo_site1]);
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mpo::from_sites(vec![mpo_site0, mpo_site1]);
 
     let err = expect_build_err(&mps, &mpo);
     match err {
@@ -594,17 +612,18 @@ fn bsp_envs_error_paths_flux_disallowed_boundary() {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    let mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![mps_site0, mps_site1]);
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![mps_site0, mps_site1]);
 
     // MPO with charged left edge — single-sector but sector ≠ identity.
-    let make_charged_left_mpo_site = || -> BlockSparse<f64, U1Sector> {
+    let make_charged_left_mpo_site = || -> BlockSparseTensor<f64, U1Sector> {
         let w_l = QNIndex::new(vec![(U1Sector(1), 1)], Direction::Out);
         let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
         let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
         let w_r = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-        BlockSparse::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0))
+        BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0))
     };
-    let mpo: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(vec![
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> = Mpo::from_sites(vec![
         make_charged_left_mpo_site(),
         make_charged_left_mpo_site(),
     ]);
@@ -634,13 +653,15 @@ fn bsp_envs_error_paths_length() {
         vec![(U1Sector(0), 1)],
         &mut counter,
     );
-    let mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(vec![mps_site0, mps_site1]);
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![mps_site0, mps_site1]);
 
     let mut counter = 0.7_f64;
-    let mpo_storages: Vec<BlockSparse<f64, U1Sector>> = (0..3)
+    let mpo_storages: Vec<BlockSparseTensor<f64, U1Sector>> = (0..3)
         .map(|_| make_u1_mpo_site(vec![(U1Sector(0), 1)], vec![(U1Sector(0), 1)], &mut counter))
         .collect();
-    let mpo: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(mpo_storages);
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mpo::from_sites(mpo_storages);
 
     let err = expect_build_err(&mps, &mpo);
     match err {
@@ -655,8 +676,11 @@ fn bsp_envs_error_paths_length() {
 #[test]
 fn bsp_envs_error_paths_empty_chain() {
     // An empty BlockSparse MPS / MPO triggers EmptyChain.
-    let mps: Mps<BlockSparse<f64, U1Sector>> = Mps::from_storages(Vec::new());
-    let mpo: Mpo<BlockSparse<f64, U1Sector>> = Mpo::from_storages(Vec::new());
+    let backend = NativeBackend::shared();
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::empty(Arc::clone(&backend));
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mpo::empty(Arc::clone(&backend));
     let err = expect_build_err(&mps, &mpo);
     assert!(
         matches!(err, DmrgEnvError::EmptyChain),

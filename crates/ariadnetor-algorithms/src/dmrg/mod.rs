@@ -1,7 +1,7 @@
 //! DMRG (Density Matrix Renormalization Group) algorithm primitives.
 //!
 //! Exposes the environment-tensor data structure ([`DmrgEnvs`],
-//! generic over a [`DmrgEnvOps`]-implementing storage type so the
+//! generic over a [`DmrgEnvOps`]-implementing layout type so the
 //! same struct serves Dense and BlockSparse chains), the local
 //! 2-site update step in two parallel forms — [`dmrg_2site_step`]
 //! for the Dense path and [`dmrg_2site_step_block_sparse`] for the
@@ -9,7 +9,7 @@
 //! drive — Lanczos by default, ARPACK behind the `arpack` feature —
 //! via the Dense Krylov family through a flat-buffer adapter on
 //! the BlockSparse path, plus a truncated-SVD split) — and a single
-//! storage-generic 2-site sweep driver [`sweep_2site`] dispatched
+//! layout-generic 2-site sweep driver [`sweep_2site`] dispatched
 //! over [`DmrgOps`] so one call site covers both the Dense and
 //! BlockSparse / U(1) paths. The driver shares `DmrgSweepParams`,
 //! `DmrgSweepError`, `DmrgResult`, `DmrgSweepRecord`,
