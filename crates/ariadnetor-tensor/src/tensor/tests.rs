@@ -183,6 +183,63 @@ fn dense_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
 }
 
 #[test]
+fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
+    use crate::block_sparse::BlockMeta;
+    use crate::{Direction, U1Sector};
+    use arnet_core::backend::{ComputeBackend, MemoryOrder};
+    use arnet_native::NativeBackend;
+    use std::sync::Arc;
+
+    // 2x2 diagonal: blocks at (0,0) and (1,1), one element each.
+    let row = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
+    let blocks = vec![
+        BlockMeta {
+            coord: BlockCoord(vec![0, 0]),
+            offset: 0,
+            size: 1,
+        },
+        BlockMeta {
+            coord: BlockCoord(vec![1, 1]),
+            offset: 1,
+            size: 1,
+        },
+    ];
+    let data = vec![1.0_f64, 2.0_f64];
+    let backend = NativeBackend::shared();
+    let order = MemoryOrder::RowMajor;
+    let t = BlockSparseTensor::<f64, U1Sector>::from_raw_parts(
+        data,
+        blocks,
+        vec![row, col],
+        U1Sector(0),
+        vec![2, 2],
+        order,
+        Arc::clone(&backend),
+    );
+
+    assert_eq!(t.shape(), &[2, 2]);
+    // Layout's order reflects the explicit argument, not the backend's
+    // preferred order — the joined Tier 1 check that orders agree is a
+    // downstream concern, not enforced at the joined constructor.
+    assert_eq!(t.data().layout().order(), order);
+    assert_eq!(t.backend().preferred_order(), MemoryOrder::ColumnMajor);
+    assert_eq!(
+        t.block_data(&BlockCoord(vec![0, 0]))
+            .expect("block (0,0) present"),
+        &[1.0]
+    );
+    assert_eq!(
+        t.block_data(&BlockCoord(vec![1, 1]))
+            .expect("block (1,1) present"),
+        &[2.0]
+    );
+    // block_index derived internally — block_data lookup proves the
+    // coord→index mapping was built consistently with the blocks vec.
+    assert!(Arc::ptr_eq(t.backend_arc(), &backend));
+}
+
+#[test]
 fn block_sparse_tensor_zeros_with_backend_uses_backend_order() {
     use crate::{Direction, U1Sector};
     use arnet_core::backend::ComputeBackend;

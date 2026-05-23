@@ -1,6 +1,5 @@
 //! Convenience constructors and joined accessors for `BlockSparseTensorData<T, S>`.
 
-#[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,9 +7,7 @@ use aligned_vec::{AVec, ConstAlign};
 use arnet_core::backend::MemoryOrder;
 use num_traits::Zero;
 
-#[cfg(test)]
-use super::BlockMeta;
-use super::{BlockCoord, BlockSparseLayout, BlockSparseStorage, QNIndex};
+use super::{BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, QNIndex};
 use crate::{Sector, TensorData};
 
 /// Backend-less BlockSparse tensor bundle =
@@ -125,10 +122,9 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// blocks sorted by coordinate. The `TensorData::new` assertion
     /// will additionally check `data.len() == sum(blocks.size)`.
     ///
-    /// Test-only: no in-workspace consumer needs to bypass the
-    /// enumerating constructors at runtime; publicize when a real
-    /// deserialization or migration path materializes.
-    #[cfg(test)]
+    /// Internal kernel-output bridge. The joined-surface
+    /// `BlockSparseTensor::from_raw_parts` wraps this with an
+    /// explicit backend; direct callers stay inside `arnet-tensor`.
     pub(crate) fn from_raw_parts(
         data: Vec<T>,
         blocks: Vec<BlockMeta>,

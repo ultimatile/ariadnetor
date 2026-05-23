@@ -12,6 +12,7 @@
 //! [`NativeBackend`](arnet_native::NativeBackend), so CPU users can
 //! write `DenseTensor<f64>` without naming a backend.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -20,6 +21,7 @@ use arnet_core::backend::ComputeBackend;
 use arnet_native::NativeBackend;
 use num_traits::Zero;
 
+use crate::block_sparse::BlockMeta;
 use crate::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, DenseLayout,
     DenseStorage, DenseTensorData, QNIndex, Sector, Storage, StorageFor, TensorData, TensorLayout,
@@ -325,6 +327,63 @@ where
         let backend = NativeBackend::shared();
         let order = backend.preferred_order();
         let td = BlockSparseTensorData::from_block_fn(indices, flux, order, f);
+        Self::with_backend(td, backend)
+    }
+}
+
+// ============================================================================
+// BlockSparse generic-backend raw constructor
+//
+// Tensor-surface entry point for callers that need pre-validated raw
+// parts with an explicit memory order and backend. Symmetric with
+// `DenseTensor::from_raw_parts`; primary consumers are internal
+// kernel-output wrapping (block-sparse decomposition / matvec pipelines)
+// and tests that pin the Tier 1 rejection path with a fabricated layout.
+// ============================================================================
+
+impl<T, S, B> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
+where
+    T: Clone,
+    S: Sector,
+    B: ComputeBackend,
+{
+    /// Construct a BlockSparse tensor from pre-validated raw parts,
+    /// an explicit memory order, and an explicit backend `Arc`.
+    ///
+    /// `block_index` is derived from `blocks` internally to avoid the
+    /// duplication-mismatch risk of passing both. Caller is responsible
+    /// for the remaining invariants enforced by [`BlockSparseLayout::new`]:
+    /// sector conservation per block, coord uniqueness, packed offsets
+    /// without gap or overlap, blocks sorted by coordinate.
+    /// `data.len() == sum(blocks.size)` is checked by `TensorData::new`.
+    ///
+    /// The resulting tensor's layout `order()` is the supplied `order`,
+    /// not the backend's preferred order — callers are responsible for
+    /// choosing an `order` compatible with the operations they intend
+    /// to dispatch.
+    pub fn from_raw_parts(
+        data: Vec<T>,
+        blocks: Vec<BlockMeta>,
+        indices: Vec<QNIndex<S>>,
+        flux: S,
+        shape: Vec<usize>,
+        order: arnet_core::backend::MemoryOrder,
+        backend: Arc<B>,
+    ) -> Self {
+        let block_index: HashMap<BlockCoord, usize> = blocks
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (m.coord.clone(), i))
+            .collect();
+        let td = BlockSparseTensorData::from_raw_parts(
+            data,
+            blocks,
+            block_index,
+            indices,
+            flux,
+            shape,
+            order,
+        );
         Self::with_backend(td, backend)
     }
 }
