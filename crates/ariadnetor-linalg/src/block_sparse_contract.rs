@@ -67,6 +67,11 @@ pub fn contract_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
 /// cases and compatible with future outer parallelism); this entry point lets
 /// a caller opt a large-sector case into `Parallel`. The policy is forwarded
 /// to every per-sector GEMM descriptor.
+///
+/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
+/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
+/// Arc; a mismatch silently runs on `lhs`'s backend and labels the output
+/// with `lhs`'s backend, which is wrong for backends carrying state.
 pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     lhs: &BlockSparseTensor<T, S, B>,
     rhs: &BlockSparseTensor<T, S, B>,

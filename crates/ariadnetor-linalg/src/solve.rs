@@ -68,6 +68,11 @@ pub(crate) fn solve_dense<T: Scalar>(
 ///
 /// Expert-layer counterpart of [`solve`]; the default wrapper consults
 /// `backend.par_for_solve`, while this entry point takes `policy` directly.
+///
+/// The backend is taken from `a` and the result is wrapped against `a`'s
+/// backend Arc. Callers must ensure `a` and `b` share the same backend Arc;
+/// a mismatch silently runs on `a`'s backend and labels the output with `a`'s
+/// backend, which is wrong for backends carrying state.
 pub fn solve_with_policy<T: Scalar, B: ComputeBackend>(
     a: &DenseTensor<T, B>,
     b: &DenseTensor<T, B>,

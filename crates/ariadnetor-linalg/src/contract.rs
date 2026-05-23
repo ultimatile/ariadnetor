@@ -98,6 +98,12 @@ pub(crate) fn contract_dense<T: Scalar>(
 /// not a scope-wide thread budget — `Sequential` does not force the whole
 /// contraction sequential.
 ///
+/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
+/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
+/// (`Arc::ptr_eq(lhs.backend_arc(), rhs.backend_arc())`); a mismatch silently
+/// runs on `lhs`'s backend and labels the output with `lhs`'s backend, which
+/// is wrong for backends carrying state.
+///
 /// Expert-layer counterpart of [`contract`].
 pub fn contract_with_policy<T: Scalar, B: ComputeBackend>(
     lhs: &DenseTensor<T, B>,
