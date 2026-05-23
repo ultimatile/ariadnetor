@@ -118,12 +118,21 @@ where
         Self { data, backend }
     }
 
-    /// Reference to the joined [`TensorData`] bundle.
+    /// Internal escape hatch: reference to the joined [`TensorData`]
+    /// bundle.
+    ///
+    /// Intended for cross-crate kernel-access paths inside `arnet-linalg`
+    /// and `arnet-mps`; user code should reach for the inherent methods
+    /// on [`DenseTensor`] / [`BlockSparseTensor`] instead.
     pub fn data(&self) -> &TensorData<St, L> {
         &self.data
     }
 
-    /// Mutable reference to the joined [`TensorData`] bundle.
+    /// Internal escape hatch: mutable reference to the joined
+    /// [`TensorData`] bundle.
+    ///
+    /// Same audience as [`Tensor::data`] — cross-crate kernel paths
+    /// that need to mutate raw storage / layout state.
     pub fn data_mut(&mut self) -> &mut TensorData<St, L> {
         &mut self.data
     }

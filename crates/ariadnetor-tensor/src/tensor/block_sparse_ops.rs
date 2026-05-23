@@ -23,6 +23,15 @@ where
     S: Sector,
     B: ComputeBackend,
 {
+    /// Memory order this tensor's flat block data is laid out in.
+    ///
+    /// Mirror of `DenseTensor::order` — saves block-sparse callers
+    /// from reaching through `.data().layout().order()` for a basic
+    /// layout property.
+    pub fn order(&self) -> arnet_core::backend::MemoryOrder {
+        self.data.layout().order()
+    }
+
     /// Per-leg `QNIndex` metadata (one entry per axis).
     pub fn indices(&self) -> &[QNIndex<S>] {
         self.data.layout().indices()
