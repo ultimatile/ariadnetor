@@ -60,7 +60,7 @@ where
         let orig_shape = site.shape().to_vec();
         let order = chain.backend().preferred_order();
 
-        let (q, r) = qr(site, rank - 1).expect("QR decomposition failed during canonicalize");
+        let (q, r) = qr(site, rank - 1).expect("QR: validated by entry point");
 
         // Reshape Q from (m, k) back to (*orig[..rank-1], k). Convert to
         // RowMajor for correct axis-split semantics, then back to backend
@@ -98,7 +98,7 @@ where
         let orig_shape = site.shape().to_vec();
         let order = chain.backend().preferred_order();
 
-        let (l, q) = lq(site, 1).expect("LQ decomposition failed during canonicalize");
+        let (l, q) = lq(site, 1).expect("LQ: validated by entry point");
 
         let q_rm = q.reordered(MemoryOrder::RowMajor);
         let k = q_rm.shape()[0];
@@ -140,8 +140,8 @@ where
 
     let next_2d_rm = dense_reshape(&next_rm, vec![first, rest]);
     let next_2d = next_2d_rm.reordered(order);
-    let result_2d = contract(r, &next_2d, "ab,bc->ac")
-        .expect("R absorption into next site failed during canonicalize");
+    let result_2d =
+        contract(r, &next_2d, "ab,bc->ac").expect("R absorption: validated by entry point");
 
     let result_2d_rm = result_2d.reordered(MemoryOrder::RowMajor);
     let k = r.shape()[0];
@@ -165,8 +165,8 @@ where
 
     let prev_2d_rm = dense_reshape(&prev_rm, vec![rest, last]);
     let prev_2d = prev_2d_rm.reordered(order);
-    let result_2d = contract(&prev_2d, l, "ab,bc->ac")
-        .expect("L absorption into previous site failed during canonicalize");
+    let result_2d =
+        contract(&prev_2d, l, "ab,bc->ac").expect("L absorption: validated by entry point");
 
     let result_2d_rm = result_2d.reordered(MemoryOrder::RowMajor);
     let k = l.shape()[1];
@@ -235,7 +235,7 @@ where
     let (q, r) = {
         let site = chain.site(j);
         let rank = site.rank();
-        qr_block_sparse(site, rank - 1).expect("qr_block_sparse failed during canonicalize")
+        qr_block_sparse(site, rank - 1).expect("QR: validated by entry point")
     };
 
     *chain.site_mut(j) = q;
@@ -257,7 +257,7 @@ where
 {
     let (l, q) = {
         let site = chain.site(j);
-        lq_block_sparse(site, 1).expect("lq_block_sparse failed during canonicalize")
+        lq_block_sparse(site, 1).expect("LQ: validated by entry point")
     };
 
     *chain.site_mut(j) = q;
@@ -280,7 +280,7 @@ where
     B: ComputeBackend,
 {
     match contract_block_sparse(r, next, &[1], &[0])
-        .expect("R absorption into next site failed during canonicalize")
+        .expect("R absorption: validated by entry point")
     {
         BlockSparseContractResult::Tensor(t) => t,
         BlockSparseContractResult::Scalar(_) => {
@@ -300,7 +300,7 @@ where
 {
     let last = prev.rank() - 1;
     match contract_block_sparse(prev, l, &[last], &[0])
-        .expect("L absorption into previous site failed during canonicalize")
+        .expect("L absorption: validated by entry point")
     {
         BlockSparseContractResult::Tensor(t) => t,
         BlockSparseContractResult::Scalar(_) => {
