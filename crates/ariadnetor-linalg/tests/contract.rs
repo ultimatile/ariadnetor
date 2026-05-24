@@ -1,3 +1,4 @@
+use arnet_core::backend::ComputeBackend;
 use arnet_linalg::contract;
 use arnet_native::NativeBackend;
 use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
@@ -169,6 +170,13 @@ fn test_contract_output_memory_order() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let _c = contract(&a, &b, "ik,kj->ij").unwrap();
-    let _c_reordered = contract(&a, &b, "ik,kj->ji").unwrap();
+    let c = contract(&a, &b, "ik,kj->ij").unwrap();
+    let c_reordered = contract(&a, &b, "ik,kj->ji").unwrap();
+
+    // Pins the contract docstring: output is returned in `lhs.backend().preferred_order()`,
+    // independent of the einsum's output index permutation (`->ji` exercises non-trivial
+    // permutation; both calls must still land in the backend's preferred order).
+    let expected = a.backend().preferred_order();
+    assert_eq!(c.order(), expected);
+    assert_eq!(c_reordered.order(), expected);
 }
