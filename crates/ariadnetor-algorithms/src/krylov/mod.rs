@@ -12,6 +12,7 @@
 //! problem requires.
 
 mod lanczos;
+mod lanczos_kernels;
 
 #[cfg(feature = "arpack")]
 mod arpack;

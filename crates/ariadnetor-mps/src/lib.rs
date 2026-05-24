@@ -3,9 +3,9 @@
 //! Provides data structures and operations for tensor chains
 //! used in tensor network algorithms (DMRG, TDVP, TEBD, etc.).
 //!
-//! Sits between the low-level tensor / linalg crates and algorithm crates
-//! so that the latter can depend on the middle layer without consuming the
-//! umbrella `arnet` crate.
+//! Sits above the umbrella `arnet` crate (which is itself the tensor
+//! library), so algorithm crates such as `arnet-algorithms` consume
+//! `arnet-mps` directly rather than re-routing through the umbrella.
 //!
 //! # Index convention
 //!
@@ -17,6 +17,7 @@ mod canonicalize;
 mod chain;
 mod dispatch;
 mod inner;
+mod internal_helpers;
 mod site_ops;
 mod truncate;
 mod types;
@@ -31,5 +32,13 @@ pub use chain::TensorChain;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use types::{ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
+// `LayoutOrderCheck` is referenced in the `where` bounds of
+// `Mps`/`Mpo` constructors. Re-exporting it at the crate root makes
+// the bound reachable by downstream callers (so trait-resolution
+// diagnostics name a public path), while the `#[doc(hidden)]`
+// attribute on the trait definition keeps it out of rendered docs —
+// users never need to think about the sealed-dispatch mechanism.
+pub use types::LayoutOrderCheck;
+
 // Re-export TruncSvdParams for convenience
-pub use arnet_linalg::TruncSvdParams;
+pub use arnet::TruncSvdParams;

@@ -8,9 +8,10 @@ use approx::assert_abs_diff_eq;
 use arnet_mps::{
     self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
-use arnet_tensor::{Dense, MemoryOrder};
 
-use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
+use super::helpers::{
+    cm_dense_tensor, is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense,
+};
 
 // --------------------------------------------------------------------------
 // CanonicalForm::Left → center = n - 1
@@ -34,7 +35,7 @@ fn test_truncate_left_form_center_is_last_site() {
     let tol = 1e-10;
     for j in 0..3 {
         assert!(
-            is_left_canonical(mps.storage(j), tol),
+            is_left_canonical(mps.site(j), tol),
             "site {j} not left-canonical"
         );
     }
@@ -62,7 +63,7 @@ fn test_truncate_right_form_center_is_zero() {
     let tol = 1e-10;
     for j in 1..4 {
         assert!(
-            is_right_canonical(mps.storage(j), tol),
+            is_right_canonical(mps.site(j), tol),
             "site {j} not right-canonical"
         );
     }
@@ -175,7 +176,8 @@ fn test_truncate_absorb_both_state_preserved() {
     // Normalized overlap > 0.9
     let mut overlap = 0.0;
     for i in 0..dense_before.len() {
-        overlap += (dense_before.data()[i] / norm_before) * (dense_after.data()[i] / norm_after);
+        overlap += (dense_before.data_slice()[i] / norm_before)
+            * (dense_after.data_slice()[i] / norm_after);
     }
     assert!(overlap > 0.9, "overlap too low: {overlap}");
 }
@@ -225,12 +227,12 @@ fn test_truncate_absorb_right_isometry_structure() {
 
     let tol = 1e-10;
     assert!(
-        is_left_canonical(mps.storage(0), tol),
+        is_left_canonical(mps.site(0), tol),
         "site 0 not left-canonical"
     );
     for j in 2..4 {
         assert!(
-            is_right_canonical(mps.storage(j), tol),
+            is_right_canonical(mps.site(j), tol),
             "site {j} not right-canonical"
         );
     }
@@ -300,12 +302,8 @@ fn test_truncation_error_sqrt_of_sum_of_squares() {
 
 #[test]
 fn test_truncate_single_site_returns_zero_error() {
-    let storages = vec![Dense::new(
-        vec![3.0, 4.0],
-        vec![1, 2, 1],
-        MemoryOrder::ColumnMajor,
-    )];
-    let mut mps = Mps::from_storages(storages);
+    let storages = vec![cm_dense_tensor(vec![3.0, 4.0], vec![1, 2, 1])];
+    let mut mps = Mps::from_sites(storages);
     mps::canonicalize(&mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -420,8 +418,12 @@ fn test_truncation_error_matches_reconstruction_error() {
     let dense_after = mps_to_dense(&mps);
 
     // Pythagorean: ||A||² ≈ ||A_trunc||² + error²
-    let norm_sq_before = dense_before.data().iter().map(|&x| x * x).sum::<f64>();
-    let norm_sq_after = dense_after.data().iter().map(|&x| x * x).sum::<f64>();
+    let norm_sq_before = dense_before
+        .data_slice()
+        .iter()
+        .map(|&x| x * x)
+        .sum::<f64>();
+    let norm_sq_after = dense_after.data_slice().iter().map(|&x| x * x).sum::<f64>();
     let expected_err_sq = norm_sq_before - norm_sq_after;
 
     // Reported error² should be close to expected

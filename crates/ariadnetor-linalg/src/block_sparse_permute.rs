@@ -5,10 +5,11 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockCoord, BlockSparse, Sector};
+use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensor, Sector};
 
 use crate::block_sparse_contract::transpose_block_data;
 use crate::error::LinalgError;
+use crate::tensor_bridge::wrap_block_sparse;
 
 /// Permute the axes of a block-sparse tensor.
 ///
@@ -23,6 +24,24 @@ use crate::error::LinalgError;
 /// Returns `LinalgError::InvalidArgument` if `perm` is not a valid
 /// permutation of `0..tensor.rank()`.
 pub fn permute_block_sparse<T, S, B>(
+    tensor: &BlockSparseTensor<T, S, B>,
+    perm: &[usize],
+) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: ComputeBackend,
+{
+    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "permute_block_sparse");
+    let backend_arc = tensor.backend_arc().clone();
+    let order = tensor.backend().preferred_order();
+    let bsp = tensor.data().as_block_sparse();
+    let result = permute_block_sparse_dense(tensor.backend(), &bsp, perm)?;
+    Ok(wrap_block_sparse(result, backend_arc, order))
+}
+
+/// Internal kernel for [`permute_block_sparse`] on legacy `BlockSparse<T, S>`.
+pub(crate) fn permute_block_sparse_dense<T, S, B>(
     backend: &B,
     tensor: &BlockSparse<T, S>,
     perm: &[usize],

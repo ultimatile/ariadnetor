@@ -1,22 +1,23 @@
 //! MPO-MPS apply operation tests.
 
 use approx::assert_abs_diff_eq;
+use arnet::{DenseLayout, DenseStorage, DenseTensor};
 use arnet_mps::{
     self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
     TruncateParams,
 };
-use arnet_tensor::{Dense, MemoryOrder};
 
 use super::helpers::{
-    dense_basis_site, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+    cm_dense_tensor, dense_basis_site, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo,
+    mps_to_dense,
 };
 
 #[test]
 fn test_apply_identity_preserves_state() {
-    let psi = Mps::from_storages(vec![
-        Dense::new(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
-        Dense::new(vec![0.0, 1.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
-        Dense::new(vec![1.0, 0.0], vec![1, 2, 1], MemoryOrder::ColumnMajor),
+    let psi = Mps::from_sites(vec![
+        cm_dense_tensor(vec![1.0, 0.0], vec![1, 2, 1]),
+        cm_dense_tensor(vec![0.0, 1.0], vec![1, 2, 1]),
+        cm_dense_tensor(vec![1.0, 0.0], vec![1, 2, 1]),
     ]);
     let identity = make_identity_mpo(3, 2);
 
@@ -29,8 +30,8 @@ fn test_apply_identity_preserves_state() {
     let dense_result = mps_to_dense(&result);
     for i in 0..dense_orig.len() {
         assert_abs_diff_eq!(
-            dense_orig.data()[i],
-            dense_result.data()[i],
+            dense_orig.data_slice()[i],
+            dense_result.data_slice()[i],
             epsilon = 1e-12
         );
     }
@@ -40,30 +41,17 @@ fn test_apply_identity_preserves_state() {
 fn test_apply_increases_bond_dim() {
     // MPO with bond dim 2: doubles MPS bond dims
     let mpo_storages = vec![
-        Dense::new(
+        cm_dense_tensor(
             vec![1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0],
             vec![1, 2, 2, 2],
-            MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![2, 2, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2, 1]),
     ];
-    let mpo = Mpo::from_storages(mpo_storages);
+    let mpo = Mpo::from_sites(mpo_storages);
 
-    let psi = Mps::from_storages(vec![
-        Dense::new(
-            vec![1.0, 0.0, 0.5, 0.5],
-            vec![1, 2, 2],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            vec![1.0, 0.0, 0.0, 1.0],
-            vec![2, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+    let psi = Mps::from_sites(vec![
+        cm_dense_tensor(vec![1.0, 0.0, 0.5, 0.5], vec![1, 2, 2]),
+        cm_dense_tensor(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2, 1]),
     ]);
 
     let result = mps::apply(&mpo, &psi, None);
@@ -76,22 +64,10 @@ fn test_apply_increases_bond_dim() {
 
 #[test]
 fn test_apply_with_truncation() {
-    let psi = Mps::from_storages(vec![
-        Dense::new(
-            vec![1.0, 0.0, 0.5, 0.5],
-            vec![1, 2, 2],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![2, 2, 2],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            vec![1.0, 0.0, 0.0, 1.0],
-            vec![2, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+    let psi = Mps::from_sites(vec![
+        cm_dense_tensor(vec![1.0, 0.0, 0.5, 0.5], vec![1, 2, 2]),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2]),
+        cm_dense_tensor(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2, 1]),
     ]);
     let identity = make_identity_mpo(3, 2);
 
@@ -112,15 +88,10 @@ fn test_apply_with_truncation() {
 #[test]
 fn test_apply_sz_expectation() {
     // Apply Sz MPO to |0⟩, then compute ⟨0|Sz|0⟩ via inner product
-    let up = Mps::from_storages(vec![Dense::new(
-        vec![1.0, 0.0],
-        vec![1, 2, 1],
-        MemoryOrder::ColumnMajor,
-    )]);
-    let sz_mpo = Mpo::from_storages(vec![Dense::new(
+    let up = Mps::from_sites(vec![cm_dense_tensor(vec![1.0, 0.0], vec![1, 2, 1])]);
+    let sz_mpo = Mpo::from_sites(vec![cm_dense_tensor(
         vec![0.5, 0.0, 0.0, -0.5],
         vec![1, 2, 2, 1],
-        MemoryOrder::ColumnMajor,
     )]);
 
     let sz_psi = mps::apply(&sz_mpo, &up, None);
@@ -139,20 +110,12 @@ fn test_apply_dense_total_n_mpo_acts_as_total_particle_number_2site_eigenstate()
     // 2-site MPS in the total-N=1 subspace: ψ = 3|01⟩ + 8|10⟩.
     // Both basis vectors are N-eigenstates with eigenvalue 1, so
     // ⟨ψ|N|ψ⟩ = ⟨ψ|ψ⟩ = 9 + 64 = 73.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         // Site 0 shape (1, 2, 2): bond carries the basis label.
-        Dense::new(
-            vec![3.0, 0.0, 0.0, 8.0],
-            vec![1, 2, 2],
-            MemoryOrder::ColumnMajor,
-        ),
+        cm_dense_tensor(vec![3.0, 0.0, 0.0, 8.0], vec![1, 2, 2]),
         // Site 1 shape (2, 2, 1): bond=0 → phys=1 (|01⟩ branch),
         // bond=1 → phys=0 (|10⟩ branch).
-        Dense::new(
-            vec![0.0, 1.0, 1.0, 0.0],
-            vec![2, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+        cm_dense_tensor(vec![0.0, 1.0, 1.0, 0.0], vec![2, 2, 1]),
     ]);
     let n_op = make_total_n_dense_mpo(2);
 
@@ -169,7 +132,7 @@ fn test_apply_dense_total_n_mpo_3site_interior() {
     // 3-site basis state |010⟩: single particle at site 1, total N = 1.
     // Exercises one interior MPO site, where RowMajor and ColumnMajor
     // bond-fusion layouts disagree on the off-diagonal "I → n" entry.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         dense_basis_site(0),
         dense_basis_site(1),
         dense_basis_site(0),
@@ -188,7 +151,7 @@ fn test_apply_dense_total_n_mpo_3site_interior() {
 fn test_apply_dense_n_on_zero_state() {
     // |0000⟩ has total N = 0. Anchors the right-edge boundary
     // (bL=I → apply n_phys = 0 at charge 0) along the all-zero path.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         dense_basis_site(0),
         dense_basis_site(0),
         dense_basis_site(0),
@@ -210,7 +173,7 @@ fn test_apply_dense_n_eigenvalue_on_multi_particle_basis_state() {
     // simultaneously (sites 1 and 2). The total-N contraction sums over
     // FSM paths where the single I → n transition can fire at any site,
     // so the eigenvalue is collected from the occupied sites 0 and 2.
-    let psi = Mps::from_storages(vec![
+    let psi = Mps::from_sites(vec![
         dense_basis_site(1),
         dense_basis_site(0),
         dense_basis_site(1),
@@ -233,7 +196,7 @@ fn test_apply_dense_n_squared_via_composition() {
     // verifies that the result is a well-formed MPS the operator can
     // act on again — the algebraic eigenvalue identity acts as the
     // analytical anchor across the composition.
-    let psi = Mps::from_storages(vec![dense_basis_site(1), dense_basis_site(1)]);
+    let psi = Mps::from_sites(vec![dense_basis_site(1), dense_basis_site(1)]);
     let n_op = make_total_n_dense_mpo(2);
 
     let n_psi = mps::apply(&n_op, &psi, None);
@@ -263,50 +226,29 @@ fn test_apply_matches_expect() {
 // ===========================================================================
 
 /// 3-site MPS with bond dim 2 and physical dim 2. Deterministic content.
-fn make_3site_test_mps() -> Mps<Dense<f64>> {
-    Mps::from_storages(vec![
-        Dense::new(
-            vec![1.0, 0.0, 0.5, 0.5],
-            vec![1, 2, 2],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![2, 2, 2],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
-            vec![1.0, 0.0, 0.0, 1.0],
-            vec![2, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+fn make_3site_test_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
+    Mps::from_sites(vec![
+        cm_dense_tensor(vec![1.0, 0.0, 0.5, 0.5], vec![1, 2, 2]),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2]),
+        cm_dense_tensor(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2, 1]),
     ])
 }
 
 /// 3-site MPO with bond dim 2 and physical dim 2.
-fn make_3site_test_mpo() -> Mpo<Dense<f64>> {
-    Mpo::from_storages(vec![
-        Dense::new(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![1, 2, 2, 2],
-            MemoryOrder::ColumnMajor,
-        ),
-        Dense::new(
+fn make_3site_test_mpo() -> Mpo<DenseStorage<f64>, DenseLayout> {
+    Mpo::from_sites(vec![
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 2, 2]),
+        cm_dense_tensor(
             (1..=16).map(|i| i as f64 * 0.05).collect(),
             vec![2, 2, 2, 2],
-            MemoryOrder::ColumnMajor,
         ),
-        Dense::new(
-            (1..=8).map(|i| i as f64 * 0.1).collect(),
-            vec![2, 2, 2, 1],
-            MemoryOrder::ColumnMajor,
-        ),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2, 1]),
     ])
 }
 
-fn assert_dense_close(a: &Dense<f64>, b: &Dense<f64>, tol: f64) {
+fn assert_dense_close(a: &DenseTensor<f64>, b: &DenseTensor<f64>, tol: f64) {
     assert_eq!(a.shape(), b.shape(), "shape mismatch");
-    for (i, (x, y)) in a.data().iter().zip(b.data().iter()).enumerate() {
+    for (i, (x, y)) in a.data_slice().iter().zip(b.data_slice().iter()).enumerate() {
         let diff = (x - y).abs();
         assert!(diff < tol, "elem {i} mismatch: {x} vs {y} (diff {diff})");
     }

@@ -1,27 +1,26 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
-use arnet_tensor::{Dense, normalize_to};
+use arnet_tensor::{Dense, DenseTensor, normalize_to};
 
 use crate::error::LinalgError;
+use crate::tensor_bridge::wrap_dense;
 
-/// Transpose (permute axes) of a dense tensor using the provided backend.
+/// Transpose (permute axes) of a dense tensor.
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend for the transpose operation
-/// * `tensor` - Input tensor
+/// * `tensor` - Input tensor (backend flows from the tensor)
 /// * `perm` - Permutation of axes (e.g., `[1, 0]` transposes a 2D tensor)
 ///
 /// # Errors
 ///
 /// Returns `LinalgError` if the backend fails to execute the transpose.
-pub fn transpose<T: Scalar>(
-    backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+pub fn transpose<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
     perm: &[usize],
-) -> Result<Dense<T>, LinalgError> {
-    let policy = backend.par_for_transpose(tensor.shape());
-    transpose_with_policy(backend, tensor, perm, policy)
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let policy = tensor.backend().par_for_transpose(tensor.shape());
+    transpose_with_policy(tensor, perm, policy)
 }
 
 /// Conjugate transpose (permute axes + element-wise conjugation).
@@ -33,13 +32,12 @@ pub fn transpose<T: Scalar>(
 /// # Errors
 ///
 /// Returns `LinalgError` if the backend fails to execute the transpose.
-pub fn conjugate_transpose<T: Scalar>(
-    backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+pub fn conjugate_transpose<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
     perm: &[usize],
-) -> Result<Dense<T>, LinalgError> {
-    let policy = backend.par_for_transpose(tensor.shape());
-    conjugate_transpose_with_policy(backend, tensor, perm, policy)
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let policy = tensor.backend().par_for_transpose(tensor.shape());
+    conjugate_transpose_with_policy(tensor, perm, policy)
 }
 
 /// Transpose with caller-specified execution policy.
@@ -47,29 +45,61 @@ pub fn conjugate_transpose<T: Scalar>(
 /// Expert-layer counterpart of [`transpose`]; the default wrapper consults
 /// `backend.par_for_transpose`, while this entry point takes `policy`
 /// directly.
-pub fn transpose_with_policy<T: Scalar>(
-    backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+pub fn transpose_with_policy<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
     perm: &[usize],
     policy: ExecPolicy,
-) -> Result<Dense<T>, LinalgError> {
-    transpose_inner(backend, tensor, perm, false, policy)
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let result = transpose_inner(tensor.backend(), &dense, perm, false, policy)?;
+    Ok(wrap_dense(result, backend_arc))
 }
 
 /// Conjugate transpose with caller-specified execution policy.
 ///
 /// Expert-layer counterpart of [`conjugate_transpose`].
-pub fn conjugate_transpose_with_policy<T: Scalar>(
+pub fn conjugate_transpose_with_policy<T: Scalar, B: ComputeBackend>(
+    tensor: &DenseTensor<T, B>,
+    perm: &[usize],
+    policy: ExecPolicy,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = tensor.backend_arc().clone();
+    let dense = tensor.data().as_dense();
+    let result = transpose_inner(tensor.backend(), &dense, perm, true, policy)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Crate-internal kernel for [`transpose`] / [`transpose_with_policy`] on
+/// the legacy `Dense<T>` form. Self-tunes via `par_for_transpose` so other
+/// kernels (`contract`, `einsum`) can reuse the transpose without re-paying
+/// the wrap/unwrap cost.
+pub(crate) fn transpose_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     perm: &[usize],
-    policy: ExecPolicy,
 ) -> Result<Dense<T>, LinalgError> {
+    let policy = backend.par_for_transpose(tensor.shape());
+    transpose_inner(backend, tensor, perm, false, policy)
+}
+
+/// Crate-internal counterpart of [`transpose_dense`] that conjugates as
+/// it permutes.
+pub(crate) fn conjugate_transpose_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &Dense<T>,
+    perm: &[usize],
+) -> Result<Dense<T>, LinalgError> {
+    let policy = backend.par_for_transpose(tensor.shape());
     transpose_inner(backend, tensor, perm, true, policy)
 }
 
 /// Shared implementation for transpose and conjugate transpose.
-fn transpose_inner<T: Scalar>(
+///
+/// Crate-internal kernel: takes the legacy `Dense<T>` representation so
+/// callsites inside the crate (e.g. `contract`, `einsum`) can reuse the
+/// kernel without paying the wrap / unwrap cost twice.
+pub(crate) fn transpose_inner<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &Dense<T>,
     perm: &[usize],

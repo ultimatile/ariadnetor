@@ -20,24 +20,25 @@ use arnet_linalg::{
     eig_with_policy, eigh_with_policy, lq_with_policy, qr_with_policy, svd_with_policy,
 };
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
 
-fn random_dense(n: usize) -> Dense<f64> {
+fn random_dense(n: usize) -> DenseTensor<f64, NativeBackend> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    Dense::random(vec![n, n], &mut rng)
+    DenseTensor::random(vec![n, n], &mut rng)
 }
 
-fn random_symmetric(n: usize) -> Dense<f64> {
+fn random_symmetric(n: usize) -> DenseTensor<f64, NativeBackend> {
     // A + A^T yields a real symmetric matrix suitable for eigh.
     let a = random_dense(n);
-    let src = a.data();
+    let src = a.data_slice();
     let mut out = vec![0.0f64; n * n];
     for i in 0..n {
         for j in 0..n {
             out[i * n + j] = src[i * n + j] + src[j * n + i];
         }
     }
-    Dense::new(out, vec![n, n], MemoryOrder::ColumnMajor)
+    let d = Dense::new(out, vec![n, n], MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(d.into_tensor_data(), NativeBackend::shared())
 }
 
 fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
@@ -57,8 +58,8 @@ fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
 
 fn run_sweep<MF, OF>(label: &str, sizes: &[usize], make: MF, op: OF)
 where
-    MF: Fn(usize) -> Dense<f64>,
-    OF: Fn(&Dense<f64>, ExecPolicy),
+    MF: Fn(usize) -> DenseTensor<f64, NativeBackend>,
+    OF: Fn(&DenseTensor<f64, NativeBackend>, ExecPolicy),
 {
     eprintln!("\n=== {label} ===");
     eprintln!(
@@ -87,23 +88,22 @@ where
 }
 
 fn main() {
-    let backend = NativeBackend::new();
     let sizes = [16usize, 32, 64, 128, 256, 512, 1024];
 
     run_sweep("SVD (thin)", &sizes, random_dense, |m, policy| {
-        let _ = svd_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = svd_with_policy(m, 1, policy).unwrap();
     });
     run_sweep("QR", &sizes, random_dense, |m, policy| {
-        let _ = qr_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = qr_with_policy(m, 1, policy).unwrap();
     });
     run_sweep("LQ", &sizes, random_dense, |m, policy| {
-        let _ = lq_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = lq_with_policy(m, 1, policy).unwrap();
     });
     run_sweep("eigh (symmetric)", &sizes, random_symmetric, |m, policy| {
-        let _ = eigh_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = eigh_with_policy(m, 1, policy).unwrap();
     });
     run_sweep("eig (general)", &sizes, random_dense, |m, policy| {
-        let _ = eig_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = eig_with_policy(m, 1, policy).unwrap();
     });
 
     eprintln!(

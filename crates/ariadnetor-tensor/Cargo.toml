@@ -7,6 +7,11 @@ description = "Pure Rust tensor library with support for dense, sparse, and bloc
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
+# Default features off so dependents (arnet-linalg etc.) building with
+# `--no-default-features` reach the no-HPTT path through this crate's
+# transitive `arnet-native`. The constructors here only touch
+# `NativeBackend::{shared, preferred_order}` and do not require `hptt`.
+ariadnetor-native = { path = "../ariadnetor-native", default-features = false }
 aligned-vec = { workspace = true }
 anyhow = { workspace = true }
 num-complex = { workspace = true }

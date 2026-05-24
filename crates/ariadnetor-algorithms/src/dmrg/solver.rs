@@ -16,7 +16,7 @@
 //! and tolerance extraction so [`super::sweep::sweep_2site`] and the
 //! heff entry points don't drift.
 
-use arnet_core::Scalar;
+use arnet::Scalar;
 
 #[cfg(feature = "arpack")]
 use crate::krylov::ArpackParams;

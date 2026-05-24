@@ -16,13 +16,16 @@
 #[path = "dmrg_heff_block_sparse/fixtures.rs"]
 mod fixtures;
 
+use arnet::TruncSvdParams;
+use arnet::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
+    Sector, U1Sector,
+};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, norm};
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, Sector, U1Sector};
 use num_complex::Complex;
 
 use fixtures::{
@@ -56,18 +59,18 @@ fn standard_params(seed: u64) -> DmrgSweepParams {
 /// `from_storages` produces `Unknown`, so position the orthogonality
 /// center at 0 first, then build envs.
 fn setup_f64(
-    mps: &mut Mps<BlockSparse<f64, U1Sector>>,
-    mpo: &Mpo<BlockSparse<f64, U1Sector>>,
-) -> DmrgEnvs<BlockSparse<f64, U1Sector>> {
-    canonicalize::<BlockSparse<f64, U1Sector>, _>(mps, 0);
+    mps: &mut Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+    mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
+) -> DmrgEnvs<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
+    canonicalize(mps, 0);
     DmrgEnvs::build(mps, mpo).expect("envs build")
 }
 
 fn setup_c64(
-    mps: &mut Mps<BlockSparse<Complex<f64>, U1Sector>>,
-    mpo: &Mpo<BlockSparse<Complex<f64>, U1Sector>>,
-) -> DmrgEnvs<BlockSparse<Complex<f64>, U1Sector>> {
-    canonicalize::<BlockSparse<Complex<f64>, U1Sector>, _>(mps, 0);
+    mps: &mut Mps<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>>,
+    mpo: &Mpo<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>>,
+) -> DmrgEnvs<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>> {
+    canonicalize(mps, 0);
     DmrgEnvs::build(mps, mpo).expect("envs build")
 }
 
@@ -410,8 +413,8 @@ fn bsp_sweep_lanczos_nonconvergence_blocks_dmrg_convergence() {
 // T6 — TooFewSites and Step error propagation
 // ---------------------------------------------------------------------------
 
-type BspMpsF64 = Mps<BlockSparse<f64, U1Sector>>;
-type BspMpoF64 = Mpo<BlockSparse<f64, U1Sector>>;
+type BspMpsF64 = Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
+type BspMpoF64 = Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
 
 /// Build a 1-site BlockSparse MPS / MPO pair with trivial dim-1
 /// sectors so `DmrgEnvs::build` succeeds at n=1; the sweep must
@@ -419,7 +422,7 @@ type BspMpoF64 = Mpo<BlockSparse<f64, U1Sector>>;
 fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
     let trivial = vec![(U1Sector(0), 1)];
     let phys = vec![(U1Sector(0), 1)];
-    let mut mps_site = BlockSparse::<f64, U1Sector>::zeros(
+    let mut mps_site = BlockSparseTensor::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::Out),
@@ -430,7 +433,7 @@ fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
     mps_site
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("a")[0] = 1.0;
-    let mut mpo_site = BlockSparse::<f64, U1Sector>::zeros(
+    let mut mpo_site = BlockSparseTensor::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial.clone(), Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -443,8 +446,8 @@ fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
         .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
         .expect("b")[0] = 1.0;
     (
-        Mps::from_storages(vec![mps_site]),
-        Mpo::from_storages(vec![mpo_site]),
+        Mps::from_sites(vec![mps_site]),
+        Mpo::from_sites(vec![mpo_site]),
     )
 }
 
@@ -471,7 +474,7 @@ fn bsp_sweep_error_step_error_propagated() {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
-    let bad_w0 = BlockSparse::<f64, U1Sector>::zeros(
+    let bad_w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
         vec![
             QNIndex::new(trivial, Direction::Out),
             QNIndex::new(phys.clone(), Direction::In),
@@ -480,7 +483,7 @@ fn bsp_sweep_error_step_error_propagated() {
         ],
         U1Sector(2),
     );
-    let bad_mpo = Mpo::from_storages(vec![bad_w0, mpo_good.storage(1).clone()]);
+    let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
 
     let params = standard_params(0);
     let err = sweep_2site(&mut envs, &mut mps, &bad_mpo, &params).expect_err("err");
@@ -502,8 +505,8 @@ fn bsp_sweep_error_step_error_propagated() {
 // ---------------------------------------------------------------------------
 
 fn assert_bsp_close(
-    a: &BlockSparse<f64, U1Sector>,
-    b: &BlockSparse<f64, U1Sector>,
+    a: &BlockSparseTensor<f64, U1Sector>,
+    b: &BlockSparseTensor<f64, U1Sector>,
     eps: f64,
     ctx: &str,
 ) {

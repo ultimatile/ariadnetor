@@ -2,7 +2,7 @@
 //!
 //! [`dmrg_2site`] hides [`DmrgEnvs`] construction and canonical-form
 //! management from non-expert callers, layered on top of the
-//! storage-generic low-level driver [`super::sweep_2site`]. The
+//! layout-generic low-level driver [`super::sweep_2site`]. The
 //! low-level driver intentionally rejects MPS not in `Right` or
 //! `Mixed { center: 0 }` form so that a caller-supplied env is never
 //! silently invalidated by an internal canonicalize; this wrapper
@@ -19,16 +19,16 @@
 //!
 //! # Generic surface
 //!
-//! `dmrg_2site` is generic over `R: super::DmrgOps + Clone` and
-//! `B: ComputeBackend + Clone`, so the same entry point covers both
-//! the Dense (`R = Dense<T>`) and BlockSparse / U(1)
-//! (`R = BlockSparse<T, S>`) storage paths. The `Clone` bounds are
-//! required because `Mps<R, B>` is `Clone` only when both type
+//! `dmrg_2site` is generic over `L: super::DmrgOps<T, B> + Clone`
+//! and `B: ComputeBackend + Clone`, so the same entry point covers
+//! both the Dense (`L = DenseLayout`) and BlockSparse / U(1)
+//! (`L = BlockSparseLayout<S>`) paths. The `Clone` bounds are
+//! required because `Mps<St, L, B>` is `Clone` only when its type
 //! parameters are (the `#[derive(Clone)]` on `Mps` introduces an
 //! implicit `B: Clone` bound even though the backend is held behind
-//! `Arc`). Both storage types and `NativeBackend` satisfy `Clone`, so
-//! the bound is met for every concrete storage / backend in the
-//! workspace.
+//! `Arc`). Both concrete layouts and `NativeBackend` satisfy
+//! `Clone`, so the bound is met for every concrete layout / backend
+//! in the workspace.
 //!
 //! # Errors
 //!
@@ -50,9 +50,8 @@
 //! [`DmrgSweepError`] are unreachable through the wrapper but kept
 //! visible as defense-in-depth.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_mps::{Mpo, Mps, TensorChain, canonicalize};
+use arnet::{ComputeBackend, Scalar};
+use arnet_mps::{Mpo, Mps, MpsOps, TensorChain, canonicalize};
 
 use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvs};
@@ -130,14 +129,16 @@ impl From<DmrgSweepError> for DmrgError {
 /// [`DmrgError::Env`] on environment-build failure, and
 /// [`DmrgError::Sweep`] on driver failure.
 #[allow(clippy::type_complexity)]
-pub fn dmrg_2site<R, B>(
-    mpo: &Mpo<R, B>,
-    psi0: &Mps<R, B>,
+pub fn dmrg_2site<T, L, B>(
+    mpo: &Mpo<<L as MpsOps<T>>::Storage, L, B>,
+    psi0: &Mps<<L as MpsOps<T>>::Storage, L, B>,
     params: &DmrgSweepParams,
-) -> Result<(DmrgResult<<R::Elem as Scalar>::Real>, Mps<R, B>), DmrgError>
+) -> Result<(DmrgResult<T::Real>, Mps<<L as MpsOps<T>>::Storage, L, B>), DmrgError>
 where
-    R: DmrgOps + Clone,
-    <R::Elem as Scalar>::Real: Scalar<Real = <R::Elem as Scalar>::Real>,
+    T: Scalar,
+    T::Real: Scalar<Real = T::Real>,
+    L: DmrgOps<T, B> + Clone,
+    <L as MpsOps<T>>::Storage: Clone,
     B: ComputeBackend + Clone,
 {
     if psi0.len() == 0 {
@@ -151,8 +152,8 @@ where
     }
 
     let mut psi = psi0.clone();
-    canonicalize(&mut psi, 0);
-    let mut envs = DmrgEnvs::build(&psi, mpo)?;
-    let result = sweep_2site(&mut envs, &mut psi, mpo, params)?;
+    canonicalize::<T, L, B, _>(&mut psi, 0);
+    let mut envs = DmrgEnvs::<<L as MpsOps<T>>::Storage, L, B>::build::<T>(&psi, mpo)?;
+    let result = sweep_2site::<T, L, B>(&mut envs, &mut psi, mpo, params)?;
     Ok((result, psi))
 }

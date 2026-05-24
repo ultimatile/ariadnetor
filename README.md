@@ -9,21 +9,34 @@ Tensor network framework in Rust
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ariadnetor (arnet)  - High-level API                   │
-│    Tensor, Einsum, MPS/MPO                              │
-├──────────────────────────┬──────────────────────────────┤
-│  ariadnetor-linalg       │  ariadnetor-native           │
-│  (arnet_linalg)          │  (arnet_native)              │
-│  Backend-agnostic        │  NativeBackend:              │
-│  linear algebra API      │  faer + hptt-rs              │
-├──────────────────────────┴──────────────────────────────┤
-│  ariadnetor-tensor (arnet_tensor)  - Tensor Data        │
-│    Dense, BlockSparse, Sector, TensorRepr               │
+│  ariadnetor-algorithms (arnet_algorithms)               │
+│    DMRG, TEBD                                           │
 ├─────────────────────────────────────────────────────────┤
-│  ariadnetor-core (arnet_core)  - Core Abstractions      │
-│    Scalar, LabelId, ComputeBackend trait, EinsumExpr    │
+│  ariadnetor-mps (arnet_mps)                             │
+│    MPS/MPO chains, site ops, canonicalize, truncate     │
+├─────────────────────────────────────────────────────────┤
+│  ariadnetor (arnet) — tensor library umbrella           │
+│    Re-exports the layers below                          │
+├─────────────────────────────────────────────────────────┤
+│  ariadnetor-linalg (arnet_linalg)                       │
+│    Backend-agnostic linear algebra (&Tensor in / out)   │
+├─────────────────────────────────────────────────────────┤
+│  ariadnetor-tensor (arnet_tensor)                       │
+│    Tensor, DenseTensor, BlockSparseTensor, Sector       │
+├─────────────────────────────────────────────────────────┤
+│  ariadnetor-native (arnet_native)                       │
+│    NativeBackend: faer + hptt-rs                        │
+├─────────────────────────────────────────────────────────┤
+│  ariadnetor-core (arnet_core)                           │
+│    ComputeBackend trait, Scalar, MemoryOrder, EinsumExpr│
 └─────────────────────────────────────────────────────────┘
 ```
+
+Each layer depends only on the layers below it. `ariadnetor` (the
+umbrella) re-exports `core` + `native` + `tensor` + `linalg`, so most
+downstream code can consume the tensor library through a single `arnet`
+dependency. `ariadnetor-mps` and `ariadnetor-algorithms` sit above the
+umbrella as separate consumer crates.
 
 ## Workspace Structure
 
@@ -33,18 +46,19 @@ Backend-agnostic core abstractions: `Scalar` trait, `LabelId`, `EinsumExpr`, `Co
 
 ### `ariadnetor-tensor`
 
-Tensor data structures with Arc-based Copy-on-Write.
+User-facing tensor types with Arc-based Copy-on-Write storage.
 
-- `Dense<T>` — zeros, ones, constant, eye, from_data, random, reshape, permute, slice, expand, replace_slice, concatenate, stack, map, conj, to_complex, real, imag, scale, norm, normalize
-- `BlockSparse<T, S>` — Block-sparse tensor with abelian symmetry conservation. Stores only flux-allowed blocks in a flat aligned buffer
-- `Sector` trait — Abelian symmetry sector algebra (fuse, identity, dual). Implementations: `Z2Sector`, `U1Sector`, tuple products
-- `QNIndex<S>` — Quantum-number index: maps sectors to block dimensions with direction (In/Out)
-- `TensorRepr` — Common trait for tensor storage representations (`Dense`, `BlockSparse`)
-- `Tensor<T, B>` — Main API type: wraps storage + backend
+- `Tensor<St, L, B>` — joins a `TensorData<St, L>` storage / layout bundle with an `Arc<B>` compute backend.
+- `DenseTensor<T, B = NativeBackend>` — dense `Tensor` alias. Constructors: `zeros`, `ones`, `constant`, `eye`, `random`, `zeros_with_backend`, `from_raw_parts`. Methods: `conj`, `scale`, `norm`, `normalize`, `reordered`, `order`, `shape`, etc.
+- `BlockSparseTensor<T, S, B = NativeBackend>` — block-sparse `Tensor` alias with abelian symmetry. Constructors: `zeros`, `zeros_with_backend`, `random`, `from_block_fn`, `from_raw_parts`. Methods: `dagger`, `conj`, `norm`, `order`, `block_data`, `flux`, `indices`.
+- `Sector` trait — abelian symmetry sector algebra (fuse, identity, dual). Implementations: `U1Sector`, `Z2Sector`, tuple products.
+- `QNIndex<S>` — quantum-number index: maps sectors to block dimensions with direction (`In` / `Out`).
+
+`Dense<T>` / `BlockSparse<T, S>` are the underlying storage primitives kept `pub` for cross-crate kernel access; user code should reach for `DenseTensor` / `BlockSparseTensor` instead.
 
 ### `ariadnetor-linalg`
 
-Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
+Backend-agnostic linear algebra. Public functions take `&Tensor` and return `Tensor`; the backend flows from the tensor argument.
 
 - contract, transpose, einsum
 - scale, norm, normalize, linear_combine, trace, diag, diagonal_scale
@@ -56,28 +70,31 @@ Backend-agnostic linear algebra API (via `&impl ComputeBackend`).
 
 ### `ariadnetor-native`
 
-`NativeBackend`: faer + hptt-rs (f32, f64, `Complex<f32>`, `Complex<f64>`)
+`NativeBackend`: faer + hptt-rs (f32, f64, `Complex<f32>`, `Complex<f64>`).
 
 ### `ariadnetor`
 
-Main library crate (`arnet`). Re-exports + high-level API (`arnet::ops`).
+Umbrella crate (`arnet`). Re-exports `arnet_core`, `arnet_native`, `arnet_tensor`, and `arnet_linalg` so most downstream code can depend on a single crate. Does not re-export `arnet_mps` or `arnet_algorithms`; consumers of MPS / DMRG add those as separate dependencies.
 
-- `arnet::mps` — MPS/MPO tensor chains: canonicalize, truncate, inner product, braket, MPO application, site operators (SpinHalf, Qubit)
+### `ariadnetor-mps`
+
+MPS/MPO tensor chains (`arnet_mps`): `Mps` / `Mpo` constructors with per-chain order assertion, site accessors, `canonicalize`, `truncate`, `inner`, `braket`, `apply`, site operators (`SpinHalf`, `Qubit`). Add as a direct dependency.
+
+### `ariadnetor-algorithms`
+
+Tensor-network algorithms (`arnet_algorithms`): DMRG (`sweep_2site`, `DmrgEnvs`, effective-Hamiltonian solvers), Krylov internals (`lanczos`, optional `arpack` feature). Add as a direct dependency.
 
 ## Usage
 
 ```rust
-use arnet::{Dense, Tensor, contract, svd};
+use arnet::{DenseTensor, contract};
 
 // Create tensors
-let a = Tensor::<Dense<f64>>::zeros(vec![2, 3]);
-let b = Tensor::<Dense<f64>>::zeros(vec![3, 2]);
+let a = DenseTensor::<f64>::zeros(vec![2, 3]);
+let b = DenseTensor::<f64>::zeros(vec![3, 2]);
 
 // Tensor contraction
 let c = contract(&a, &b, "ij,jk->ik").unwrap();
-
-// SVD decomposition
-let (u, s, vt) = svd(&a, 1).unwrap();
 ```
 
 ## Building

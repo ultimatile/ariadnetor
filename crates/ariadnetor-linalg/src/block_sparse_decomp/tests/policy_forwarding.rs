@@ -32,15 +32,16 @@ fn assert_all_eq(got: &[ExecPolicy], want: ExecPolicy, op: &str) {
 #[test]
 fn svd_default_forwards_sequential() {
     let rec = RecordingBackend::new();
-    let _ = svd_block_sparse(&rec, &multi_sector(), 1).unwrap();
+    let _ = svd_block_sparse_with_policy_dense(&rec, &multi_sector(), 1, ExecPolicy::Sequential)
+        .unwrap();
     assert_all_eq(&rec.svd_recorded(), ExecPolicy::Sequential, "svd");
 }
 
 #[test]
 fn svd_with_policy_forwards_parallel() {
     let rec = RecordingBackend::new();
-    let _ =
-        svd_block_sparse_with_policy(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0)).unwrap();
+    let _ = svd_block_sparse_with_policy_dense(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0))
+        .unwrap();
     assert_all_eq(&rec.svd_recorded(), ExecPolicy::Parallel(0), "svd");
 }
 
@@ -53,7 +54,14 @@ fn trunc_svd_default_forwards_sequential() {
         chi_max: Some(3),
         target_trunc_err: None,
     };
-    let _ = trunc_svd_block_sparse(&rec, &multi_sector(), 1, &params).unwrap();
+    let _ = trunc_svd_block_sparse_with_policy_dense(
+        &rec,
+        &multi_sector(),
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
     assert_all_eq(&rec.svd_recorded(), ExecPolicy::Sequential, "trunc_svd");
 }
 
@@ -64,7 +72,7 @@ fn trunc_svd_with_policy_forwards_parallel() {
         chi_max: Some(3),
         target_trunc_err: None,
     };
-    let _ = trunc_svd_block_sparse_with_policy(
+    let _ = trunc_svd_block_sparse_with_policy_dense(
         &rec,
         &multi_sector(),
         1,
@@ -80,14 +88,16 @@ fn trunc_svd_with_policy_forwards_parallel() {
 #[test]
 fn qr_default_forwards_sequential() {
     let rec = RecordingBackend::new();
-    let _ = qr_block_sparse(&rec, &multi_sector(), 1).unwrap();
+    let _ = qr_block_sparse_with_policy_dense(&rec, &multi_sector(), 1, ExecPolicy::Sequential)
+        .unwrap();
     assert_all_eq(&rec.qr_recorded(), ExecPolicy::Sequential, "qr");
 }
 
 #[test]
 fn qr_with_policy_forwards_parallel() {
     let rec = RecordingBackend::new();
-    let _ = qr_block_sparse_with_policy(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0)).unwrap();
+    let _ = qr_block_sparse_with_policy_dense(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0))
+        .unwrap();
     assert_all_eq(&rec.qr_recorded(), ExecPolicy::Parallel(0), "qr");
 }
 
@@ -96,14 +106,16 @@ fn qr_with_policy_forwards_parallel() {
 #[test]
 fn lq_default_forwards_sequential() {
     let rec = RecordingBackend::new();
-    let _ = lq_block_sparse(&rec, &multi_sector(), 1).unwrap();
+    let _ = lq_block_sparse_with_policy_dense(&rec, &multi_sector(), 1, ExecPolicy::Sequential)
+        .unwrap();
     assert_all_eq(&rec.lq_recorded(), ExecPolicy::Sequential, "lq");
 }
 
 #[test]
 fn lq_with_policy_forwards_parallel() {
     let rec = RecordingBackend::new();
-    let _ = lq_block_sparse_with_policy(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0)).unwrap();
+    let _ = lq_block_sparse_with_policy_dense(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0))
+        .unwrap();
     assert_all_eq(&rec.lq_recorded(), ExecPolicy::Parallel(0), "lq");
 }
 
@@ -116,8 +128,8 @@ fn lq_with_policy_forwards_parallel() {
 #[test]
 fn with_policy_reaches_every_sector() {
     let rec = RecordingBackend::new();
-    let _ =
-        svd_block_sparse_with_policy(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0)).unwrap();
+    let _ = svd_block_sparse_with_policy_dense(&rec, &multi_sector(), 1, ExecPolicy::Parallel(0))
+        .unwrap();
     assert_eq!(
         rec.svd_recorded().len(),
         2,

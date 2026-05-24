@@ -1,67 +1,64 @@
 //! Column-major MPS integration tests.
+//!
+//! The Tier 1 ordering invariant requires every site's
+//! `layout().order()` to equal the chain's `backend.preferred_order()`.
+//! NativeBackend's preferred order is ColumnMajor, so all dense MPS
+//! sites are necessarily column-major; the tests below cover the
+//! end-to-end canonicalize / inner / truncate / apply / braket paths
+//! on that column-major chain.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain, TruncSvdParams, TruncateParams};
-use arnet_tensor::Dense;
+use arnet_mps::{self as mps, CanonicalForm, TensorChain, TruncSvdParams, TruncateParams};
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
 
-/// Identity pass-through: MPS data is already in the backend's preferred order.
-fn to_col_major(t: &Dense<f64>) -> Dense<f64> {
-    t.clone()
-}
-
-/// Build the same 4-site MPS as make_4site_mps but with column-major site tensors.
-fn make_4site_mps_col_major() -> Mps<Dense<f64>> {
-    let rm = make_4site_mps();
-    let storages: Vec<Dense<f64>> = (0..rm.len()).map(|j| to_col_major(rm.storage(j))).collect();
-    Mps::from_storages(storages)
-}
-
 #[test]
 fn test_col_major_canonicalize_preserves_state() {
-    let mps_rm = make_4site_mps();
-    let mut mps_cm = make_4site_mps_col_major();
+    let mps_ref = make_4site_mps();
+    let mut mps_cm = make_4site_mps();
 
-    let dense_before = mps_to_dense(&mps_rm);
+    let dense_before = mps_to_dense(&mps_ref);
 
     mps::canonicalize(&mut mps_cm, 1);
 
     let dense_after = mps_to_dense(&mps_cm);
-    for (a, b) in dense_before.data().iter().zip(dense_after.data().iter()) {
+    for (a, b) in dense_before
+        .data_slice()
+        .iter()
+        .zip(dense_after.data_slice().iter())
+    {
         assert_abs_diff_eq!(a, b, epsilon = 1e-10);
     }
 }
 
 #[test]
-fn test_col_major_inner_matches_row_major() {
-    let mps_rm = make_4site_mps();
-    let mps_cm = make_4site_mps_col_major();
+fn test_col_major_inner_self_consistent() {
+    let mps_ref = make_4site_mps();
+    let mps_cm = make_4site_mps();
 
-    let inner_rm = mps::inner(&mps_rm, &mps_rm);
+    let inner_ref = mps::inner(&mps_ref, &mps_ref);
     let inner_cm = mps::inner(&mps_cm, &mps_cm);
 
-    assert_abs_diff_eq!(inner_rm, inner_cm, epsilon = 1e-10);
+    assert_abs_diff_eq!(inner_ref, inner_cm, epsilon = 1e-10);
 }
 
 #[test]
 fn test_col_major_inner_cross() {
-    let mps_rm = make_4site_mps();
-    let mps_cm = make_4site_mps_col_major();
+    let mps_ref = make_4site_mps();
+    let mps_cm = make_4site_mps();
 
-    // ⟨rm|cm⟩ should equal ⟨rm|rm⟩ since they represent the same state
-    let inner_rr = mps::inner(&mps_rm, &mps_rm);
-    let inner_rc = mps::inner(&mps_rm, &mps_cm);
+    let inner_rr = mps::inner(&mps_ref, &mps_ref);
+    let inner_rc = mps::inner(&mps_ref, &mps_cm);
 
     assert_abs_diff_eq!(inner_rr, inner_rc, epsilon = 1e-10);
 }
 
 #[test]
 fn test_col_major_truncate_preserves_state() {
-    let mps_rm = make_4site_mps();
-    let mut mps_cm = make_4site_mps_col_major();
+    let mps_ref = make_4site_mps();
+    let mut mps_cm = make_4site_mps();
 
-    let norm_before = mps::norm(&mps_rm);
+    let norm_before = mps::norm(&mps_ref);
 
     mps::canonicalize(&mut mps_cm, 1);
     let params = TruncateParams::from(TruncSvdParams {
@@ -70,40 +67,40 @@ fn test_col_major_truncate_preserves_state() {
     });
     let result = mps::truncate(&mut mps_cm, &params);
 
-    // Truncation error should be small relative to norm
     assert!(
         result.error / norm_before < 0.5,
         "truncation error too large: {}",
-        result.error
+        result.error,
     );
 
-    // Inner product with original should be close to norm squared
-    let overlap = mps::inner(&mps_rm, &mps_cm);
+    let overlap = mps::inner(&mps_ref, &mps_cm);
     let norm_after = mps::norm(&mps_cm);
-    // Cauchy-Schwarz: |overlap| <= norm_before * norm_after
     assert!(overlap.abs() <= norm_before * norm_after + 1e-10);
     assert!(overlap.abs() > 0.0);
 }
 
 #[test]
 fn test_col_major_apply_identity() {
-    let mps_rm = make_4site_mps();
-    let mps_cm = make_4site_mps_col_major();
+    let mps_ref = make_4site_mps();
+    let mps_cm = make_4site_mps();
     let identity = make_identity_mpo(4, 2);
 
     let result = mps::apply(&identity, &mps_cm, None);
 
-    // Apply result sites are row-major, so compare with row-major reference
-    let dense_ref = mps_to_dense(&mps_rm);
+    let dense_ref = mps_to_dense(&mps_ref);
     let dense_result = mps_to_dense(&result);
-    for (a, b) in dense_ref.data().iter().zip(dense_result.data().iter()) {
+    for (a, b) in dense_ref
+        .data_slice()
+        .iter()
+        .zip(dense_result.data_slice().iter())
+    {
         assert_abs_diff_eq!(a, b, epsilon = 1e-10);
     }
 }
 
 #[test]
 fn test_col_major_apply_with_truncation() {
-    let mps_cm = make_4site_mps_col_major();
+    let mps_cm = make_4site_mps();
     let identity = make_identity_mpo(4, 2);
 
     let params = TruncateParams::from(TruncSvdParams {
@@ -112,7 +109,6 @@ fn test_col_major_apply_with_truncation() {
     });
     let result = mps::apply(&identity, &mps_cm, Some(&params));
 
-    // Bond dims should be capped
     for d in result.bond_dims() {
         assert!(d <= 3, "bond dim {d} exceeds chi_max=3");
     }
@@ -121,12 +117,12 @@ fn test_col_major_apply_with_truncation() {
 
 #[test]
 fn test_col_major_braket() {
-    let mps_rm = make_4site_mps();
-    let mps_cm = make_4site_mps_col_major();
+    let mps_ref = make_4site_mps();
+    let mps_cm = make_4site_mps();
     let identity = make_identity_mpo(4, 2);
 
-    let braket_rm = mps::braket(&mps_rm, &identity, &mps_rm);
+    let braket_ref = mps::braket(&mps_ref, &identity, &mps_ref);
     let braket_cm = mps::braket(&mps_cm, &identity, &mps_cm);
 
-    assert_abs_diff_eq!(braket_rm, braket_cm, epsilon = 1e-10);
+    assert_abs_diff_eq!(braket_ref, braket_cm, epsilon = 1e-10);
 }

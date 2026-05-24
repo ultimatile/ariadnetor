@@ -1,34 +1,51 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense};
+use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
 
 use crate::error::LinalgError;
-use crate::transpose::transpose;
+use crate::tensor_bridge::wrap_dense;
+use crate::transpose::transpose_dense;
 use arnet_tensor::{normalize_to, reorder};
 
-/// Contract two tensors using Einstein summation notation with the provided backend.
+/// Contract two tensors using Einstein summation notation.
 ///
 /// Performs a pure tensor contraction: all shared indices between the two inputs
 /// must be contracted (summed over). Batch indices (shared but not contracted)
 /// are not supported — use [`crate::einsum::einsum`] for expressions with batch
 /// or Hadamard patterns.
 ///
-/// Output is returned in `backend.preferred_order()`, consistent with
-/// decomposition functions.
+/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
+/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
+/// (`Arc::ptr_eq(lhs.backend_arc(), rhs.backend_arc())`); a mismatch silently
+/// runs on `lhs`'s backend and labels the output with `lhs`'s backend, which
+/// is wrong for backends carrying state. Output is returned in
+/// `lhs.backend().preferred_order()`, consistent with decomposition functions.
 ///
 /// # Arguments
 ///
-/// * `backend` - Compute backend for transpose and GEMM operations
-/// * `lhs` - Left-hand side tensor
-/// * `rhs` - Right-hand side tensor
+/// * `lhs` - Left-hand side tensor (backend authority)
+/// * `rhs` - Right-hand side tensor (must share `lhs`'s backend Arc)
 /// * `notation` - Einstein summation notation (e.g., "ik,kj->ij")
 ///
 /// # Errors
 ///
 /// Returns `LinalgError` if notation is invalid, dimensions mismatch,
 /// batch indices are present, or the backend fails to execute transpose/GEMM.
-pub fn contract<T: Scalar>(
+pub fn contract<T: Scalar, B: ComputeBackend>(
+    lhs: &DenseTensor<T, B>,
+    rhs: &DenseTensor<T, B>,
+    notation: &str,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = lhs.backend_arc().clone();
+    let lhs_dense = lhs.data().as_dense();
+    let rhs_dense = rhs.data().as_dense();
+    let result = contract_dense(lhs.backend(), &lhs_dense, &rhs_dense, notation)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`contract`] on the legacy `Dense<T>` form.
+pub(crate) fn contract_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &Dense<T>,
     rhs: &Dense<T>,
@@ -70,7 +87,7 @@ pub fn contract<T: Scalar>(
     };
 
     let policy = backend.par_for_gemm(m, n, k);
-    contract_with_policy(backend, lhs, rhs, notation, policy)
+    contract_with_policy_dense(backend, lhs, rhs, notation, policy)
 }
 
 /// Pure tensor contraction with caller-specified execution policy for the
@@ -81,8 +98,29 @@ pub fn contract<T: Scalar>(
 /// not a scope-wide thread budget — `Sequential` does not force the whole
 /// contraction sequential.
 ///
+/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
+/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
+/// (`Arc::ptr_eq(lhs.backend_arc(), rhs.backend_arc())`); a mismatch silently
+/// runs on `lhs`'s backend and labels the output with `lhs`'s backend, which
+/// is wrong for backends carrying state.
+///
 /// Expert-layer counterpart of [`contract`].
-pub fn contract_with_policy<T: Scalar>(
+pub fn contract_with_policy<T: Scalar, B: ComputeBackend>(
+    lhs: &DenseTensor<T, B>,
+    rhs: &DenseTensor<T, B>,
+    notation: &str,
+    policy: ExecPolicy,
+) -> Result<DenseTensor<T, B>, LinalgError> {
+    let backend_arc = lhs.backend_arc().clone();
+    let lhs_dense = lhs.data().as_dense();
+    let rhs_dense = rhs.data().as_dense();
+    let result =
+        contract_with_policy_dense(lhs.backend(), &lhs_dense, &rhs_dense, notation, policy)?;
+    Ok(wrap_dense(result, backend_arc))
+}
+
+/// Internal kernel for [`contract_with_policy`] on the legacy `Dense<T>` form.
+pub(crate) fn contract_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &Dense<T>,
     rhs: &Dense<T>,
@@ -125,13 +163,13 @@ pub fn contract_with_policy<T: Scalar>(
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
-        transpose(backend, lhs, &perm)?
+        transpose_dense(backend, lhs, &perm)?
     } else {
         lhs.clone()
     };
 
     let rhs_permuted = if let Some(perm) = rhs_perm {
-        transpose(backend, rhs, &perm)?
+        transpose_dense(backend, rhs, &perm)?
     } else {
         rhs.clone()
     };
@@ -258,7 +296,7 @@ fn reorder_output<T: Scalar>(
     actual.extend(&plan.free_rhs);
 
     match compute_permutation(&actual, out) {
-        Some(perm) => transpose(backend, &result, &perm),
+        Some(perm) => transpose_dense(backend, &result, &perm),
         None => Ok(result),
     }
 }
