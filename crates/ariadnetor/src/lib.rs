@@ -2,7 +2,7 @@
 //!
 //! `arnet` is the umbrella tensor library; it re-exports types and
 //! functions from the layers listed below into its own namespace.
-//! Each layer depends only on the ones above it in this list:
+//! Each layer depends only on the layers listed earlier:
 //!
 //! - [`arnet_core`] — backend-agnostic abstractions (`Scalar`,
 //!   `ComputeBackend`, `EinsumExpr`, `MemoryOrder`).
