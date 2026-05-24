@@ -1,4 +1,19 @@
-//! Ariadnetor: tensor network framework in Rust
+//! Ariadnetor: tensor network framework in Rust.
+//!
+//! `arnet` is the umbrella tensor library; it re-exports types and
+//! functions from the layers listed below into its own namespace.
+//! Each layer depends only on the layers listed earlier:
+//!
+//! - [`arnet_core`] — backend-agnostic abstractions (`Scalar`,
+//!   `ComputeBackend`, `EinsumExpr`, `MemoryOrder`).
+//! - [`arnet_native`] — `NativeBackend`: faer + hptt-rs.
+//! - [`arnet_tensor`] — user-facing `Tensor`, `DenseTensor`,
+//!   `BlockSparseTensor`, `Sector`, `QNIndex`.
+//! - [`arnet_linalg`] — backend-agnostic linear algebra over
+//!   `&Tensor` (contract, svd, qr, eigh, expm, …).
+//!
+//! `arnet_mps` and `arnet_algorithms` are *separate* consumer crates
+//! that build on this umbrella; they are not re-exported here.
 //!
 //! # Example
 //!
