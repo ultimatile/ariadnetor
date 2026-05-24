@@ -60,7 +60,8 @@ where
 
         // W(a,b,c,d) × A(e,b,f) → result(a,e,c,d,f)
         // = (w_L, χ_L, d_bra, w_R, χ_R)
-        let result = contract(w, a, "abcd,ebf->aecdf").expect("MPO-MPS contraction failed");
+        let result = contract(w, a, "abcd,ebf->aecdf")
+            .expect("MPO-MPS contraction: validated by entry point");
 
         let shape = result.shape();
         let w_l = shape[0];
@@ -141,8 +142,8 @@ where
     for j in 0..n {
         let w = op.site(j);
         let a = psi.site(j);
-        let local =
-            contract(w, a, "abcd,ebf->aecdf").expect("MPO-MPS contraction failed in apply_zipup");
+        let local = contract(w, a, "abcd,ebf->aecdf")
+            .expect("MPO-MPS contraction: validated by entry point");
         let s = local.shape();
         let (w_l, chi_l, d_bra, w_r, chi_r) = (s[0], s[1], s[2], s[3], s[4]);
         let local_rm = local.reordered(rm);
@@ -150,8 +151,7 @@ where
         let mut p = fused_rm.reordered(order);
 
         if let Some(c) = carry.as_ref() {
-            p = contract(c, &p, "ab,bcd->acd")
-                .expect("carry absorption failed in apply_zipup forward");
+            p = contract(c, &p, "ab,bcd->acd").expect("carry absorption: validated by entry point");
         }
 
         if j < n - 1 {
@@ -165,7 +165,7 @@ where
             };
 
             if !use_svd {
-                let (q, r) = qr(&p, 2).expect("QR failed in apply_zipup forward");
+                let (q, r) = qr(&p, 2).expect("QR: validated by entry point");
                 let k = q.shape()[1];
                 let q_rm = q.reordered(rm);
                 let q_multi_rm = dense_reshape(&q_rm, vec![left, d, k]);
@@ -178,7 +178,7 @@ where
                     target_trunc_err: cutoff,
                 };
                 let (u, s_vec, vt, _err) =
-                    trunc_svd(&p, 2, &svd_params).expect("trunc_svd failed in apply_zipup forward");
+                    trunc_svd(&p, 2, &svd_params).expect("trunc_svd: validated by entry point");
                 let k = u.shape()[1];
                 let u_rm = u.reordered(rm);
                 let u_multi_rm = dense_reshape(&u_rm, vec![left, d, k]);
@@ -186,7 +186,7 @@ where
                 tensors.push(u_site);
 
                 let svt = diagonal_scale(&vt, s_vec.data_slice(), 0)
-                    .expect("S·Vt scaling failed in apply_zipup forward");
+                    .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }
         } else {
@@ -207,8 +207,8 @@ where
         let p_shape = tensors[j].shape().to_vec();
         let (_left, d, right) = (p_shape[0], p_shape[1], p_shape[2]);
 
-        let (u, s_vec, vt, _err) = trunc_svd(&tensors[j], 1, &svd_params)
-            .expect("trunc_svd failed in apply_zipup backward");
+        let (u, s_vec, vt, _err) =
+            trunc_svd(&tensors[j], 1, &svd_params).expect("trunc_svd: validated by entry point");
         let chi = vt.shape()[0];
 
         let vt_rm = vt.reordered(rm);
@@ -216,9 +216,9 @@ where
         tensors[j] = vt_multi_rm.reordered(order);
 
         let us = diagonal_scale(&u, s_vec.data_slice(), 1)
-            .expect("U·S scaling failed in apply_zipup backward");
+            .expect("U·S scaling: validated by entry point");
         let new_prev = contract(&tensors[j - 1], &us, "abc,cd->abd")
-            .expect("US absorption failed in apply_zipup backward");
+            .expect("US absorption: validated by entry point");
         tensors[j - 1] = new_prev;
     }
 
@@ -274,23 +274,26 @@ where
 {
     // Contract over physical index (d_ket = W axis 1, d = A axis 1):
     // Output: [w_L, d_bra, w_R, χ_L, χ_R]
-    let contracted =
-        match contract_block_sparse(w, a, &[1], &[1]).expect("MPO-MPS contraction failed") {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("MPO-MPS contraction always produces a tensor")
-            }
-        };
+    let contracted = match contract_block_sparse(w, a, &[1], &[1])
+        .expect("MPO-MPS contraction: validated by entry point")
+    {
+        BlockSparseContractResult::Tensor(t) => t,
+        BlockSparseContractResult::Scalar(_) => {
+            unreachable!("MPO-MPS contraction always produces a tensor")
+        }
+    };
 
     // Permute to [w_L, χ_L, d_bra, w_R, χ_R].
-    let permuted = permute_block_sparse(&contracted, &[0, 3, 1, 2, 4]).expect("permute failed");
+    let permuted = permute_block_sparse(&contracted, &[0, 3, 1, 2, 4])
+        .expect("permute: validated by entry point");
 
     // Fuse left bond: (w_L, χ_L) → single Out leg.
-    let fused_left =
-        fuse_legs_block_sparse(&permuted, 0, 2, Direction::Out).expect("left bond fusion failed");
+    let fused_left = fuse_legs_block_sparse(&permuted, 0, 2, Direction::Out)
+        .expect("left bond fusion: validated by entry point");
 
     // Fuse right bond: (w_R, χ_R) → single In leg.
-    fuse_legs_block_sparse(&fused_left, 2, 2, Direction::In).expect("right bond fusion failed")
+    fuse_legs_block_sparse(&fused_left, 2, 2, Direction::In)
+        .expect("right bond fusion: validated by entry point")
 }
 
 /// Apply a BlockSparse MPO to a BlockSparse MPS via the zip-up algorithm.
@@ -337,7 +340,7 @@ where
 
         if let Some(c) = carry.as_ref() {
             p = match contract_block_sparse(c, &p, &[1], &[0])
-                .expect("carry absorption failed in apply_zipup_bsp forward")
+                .expect("carry absorption: validated by entry point")
             {
                 BlockSparseContractResult::Tensor(t) => t,
                 BlockSparseContractResult::Scalar(_) => {
@@ -354,7 +357,7 @@ where
             };
 
             if !use_svd {
-                let (q, r) = qr_block_sparse(&p, 2).expect("QR failed in apply_zipup_bsp forward");
+                let (q, r) = qr_block_sparse(&p, 2).expect("QR: validated by entry point");
                 tensors.push(q);
                 carry = Some(r);
             } else {
@@ -363,11 +366,11 @@ where
                     target_trunc_err: cutoff,
                 };
                 let (u, s_vec, vt, _err) = trunc_svd_block_sparse(&p, 2, &svd_params)
-                    .expect("trunc_svd failed in apply_zipup_bsp forward");
+                    .expect("trunc_svd: validated by entry point");
                 tensors.push(u);
 
                 let svt = diagonal_scale_block_sparse(&vt, &s_vec, 0)
-                    .expect("S·Vt scaling failed in apply_zipup_bsp forward");
+                    .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }
         } else {
@@ -388,15 +391,15 @@ where
     let svd_params = trunc_params.svd.clone();
     for j in (1..n).rev() {
         let (u, s_vec, vt, _err) = trunc_svd_block_sparse(&tensors[j], 1, &svd_params)
-            .expect("trunc_svd failed in apply_zipup_bsp backward");
+            .expect("trunc_svd: validated by entry point");
         tensors[j] = vt;
 
         let us = diagonal_scale_block_sparse(&u, &s_vec, 1)
-            .expect("U·S scaling failed in apply_zipup_bsp backward");
+            .expect("U·S scaling: validated by entry point");
 
         let prev_last_axis = tensors[j - 1].rank() - 1;
         let new_prev = match contract_block_sparse(&tensors[j - 1], &us, &[prev_last_axis], &[0])
-            .expect("US absorption failed in apply_zipup_bsp backward")
+            .expect("US absorption: validated by entry point")
         {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {
