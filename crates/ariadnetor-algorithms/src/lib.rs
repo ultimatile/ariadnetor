@@ -1,7 +1,8 @@
-//! Tensor-network algorithms built on top of Ariadnetor.
+//! Tensor-network algorithms. Currently provides DMRG and the Krylov
+//! solvers it relies on.
 //!
-//! This crate is the home for algorithms such as DMRG, TEBD, and
-//! TDVP — along with the supporting solvers they need.
+//! Builds on [`arnet`] for tensor operations and [`arnet_mps`] for
+//! MPS / MPO data structures.
 
 pub mod dmrg;
 pub mod krylov;

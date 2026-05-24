@@ -1,11 +1,7 @@
 //! Matrix Product State (MPS) and Matrix Product Operator (MPO) crate.
 //!
-//! Provides data structures and operations for tensor chains
-//! used in tensor network algorithms (DMRG, TDVP, TEBD, etc.).
-//!
-//! Sits above the umbrella `arnet` crate (which is itself the tensor
-//! library), so algorithm crates such as `arnet-algorithms` consume
-//! `arnet-mps` directly rather than re-routing through the umbrella.
+//! Builds on [`arnet`] for tensor storage and linalg. Consumed by
+//! `arnet_algorithms`.
 //!
 //! # Index convention
 //!
