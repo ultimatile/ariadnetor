@@ -303,7 +303,7 @@ where
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let eigenvector = DenseTensor::from_raw_parts(
+    let mut eigenvector = DenseTensor::from_raw_parts(
         solution.eigenvector,
         vec![dim],
         MemoryOrder::ColumnMajor,
@@ -311,7 +311,7 @@ where
     );
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
-    let (eigenvector, _) = eigenvector.normalized();
+    eigenvector.normalize();
 
     // True residual ||H psi - lambda psi||_2.
     let h_psi_raw = op.apply(&eigenvector);

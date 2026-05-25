@@ -114,9 +114,9 @@ pub(super) fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Den
         data[0] = T::one();
     }
     let backend = NativeBackend::shared();
-    let v = DenseTensor::from_raw_parts(data, vec![dim], MemoryOrder::ColumnMajor, backend);
-    let (normalized, _) = v.normalized();
-    normalized
+    let mut v = DenseTensor::from_raw_parts(data, vec![dim], MemoryOrder::ColumnMajor, backend);
+    v.normalize();
+    v
 }
 
 /// Smallest eigenpair of the symmetric tridiagonal matrix of

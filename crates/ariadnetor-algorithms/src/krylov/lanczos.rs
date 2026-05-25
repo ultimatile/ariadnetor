@@ -256,8 +256,8 @@ where
         .iter()
         .map(|&zk| T::from_real_imag(zk, T::Real::zero()))
         .collect();
-    let psi = linear_combine(&basis_refs, &coefs).expect("linear_combine on Lanczos basis");
-    let (psi, _) = psi.normalized();
+    let mut psi = linear_combine(&basis_refs, &coefs).expect("linear_combine on Lanczos basis");
+    psi.normalize();
 
     // True residual: ||H psi - lambda psi||.
     let h_psi_raw = op.apply(&psi);
