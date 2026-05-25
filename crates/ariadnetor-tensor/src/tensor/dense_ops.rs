@@ -1,9 +1,9 @@
 //! Dense-specific inherent methods on `Tensor<DenseStorage<S>, DenseLayout, B>`.
 //!
 //! Covers element access, in-place fills / scales, linear combinations,
-//! and Frobenius-norm-based normalization. These operations are
-//! storage-local: they do not need the backend for dispatch, so they
-//! work uniformly over any `B: ComputeBackend`.
+//! Frobenius-norm-based normalization, and zero-copy reshape. These
+//! operations are storage-local: they do not need the backend for
+//! dispatch, so they work uniformly over any `B: ComputeBackend`.
 
 use std::ops::{Add, Mul};
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use arnet_core::backend::ComputeBackend;
 use num_traits::{One, Zero};
 
 use super::Tensor;
-use crate::{DenseLayout, DenseStorage, DenseTensorData};
+use crate::{DenseLayout, DenseStorage, DenseTensorData, TensorData};
 
 // ============================================================================
 // Dense-specific data access (all backends)
@@ -32,6 +32,29 @@ impl<S, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
         S: Clone,
     {
         self.data.storage_mut().data_mut()
+    }
+
+    /// Reshape to `new_shape` (zero-copy). Preserves the layout's memory
+    /// order and the backend `Arc`. The flat data buffer is `Arc`-shared
+    /// via `DenseStorage::Clone`, so the result aliases the same
+    /// allocation as `self`.
+    ///
+    /// Under non-adjacent axis fusion the logical mapping differs
+    /// between row-major and column-major; callers fusing such axes
+    /// must reorder the flat buffer to the appropriate order first.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `new_shape.iter().product() != self.len()`, via
+    /// [`TensorData::new`]'s `storage.flat_len() == layout.storage_extent()`
+    /// assert.
+    pub fn reshape(&self, new_shape: Vec<usize>) -> Self {
+        let new_layout = DenseLayout::new(new_shape, self.data.layout().order());
+        let new_storage = self.data.storage().clone();
+        Self::with_backend(
+            TensorData::new(new_storage, new_layout),
+            Arc::clone(&self.backend),
+        )
     }
 }
 

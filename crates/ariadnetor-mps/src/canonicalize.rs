@@ -8,7 +8,6 @@ use arnet::{
 };
 
 use super::chain::TensorChain;
-use super::internal_helpers::dense_reshape;
 use super::types::CanonicalForm;
 
 /// Move the orthogonality center of a Dense tensor chain to the specified site.
@@ -69,7 +68,7 @@ where
         let k = q_rm.shape()[1];
         let mut q_shape = orig_shape[..rank - 1].to_vec();
         q_shape.push(k);
-        let q_multi = dense_reshape(&q_rm, q_shape);
+        let q_multi = q_rm.reshape(q_shape);
         let q_back = q_multi.reordered(order);
 
         (q_back, r)
@@ -104,7 +103,7 @@ where
         let k = q_rm.shape()[0];
         let mut q_shape = vec![k];
         q_shape.extend_from_slice(&orig_shape[1..]);
-        let q_multi = dense_reshape(&q_rm, q_shape);
+        let q_multi = q_rm.reshape(q_shape);
         let q_back = q_multi.reordered(order);
 
         (q_back, l)
@@ -138,7 +137,7 @@ where
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
 
-    let next_2d_rm = dense_reshape(&next_rm, vec![first, rest]);
+    let next_2d_rm = next_rm.reshape(vec![first, rest]);
     let next_2d = next_2d_rm.reordered(order);
     let result_2d =
         contract(r, &next_2d, "ab,bc->ac").expect("R absorption: validated by entry point");
@@ -147,7 +146,7 @@ where
     let k = r.shape()[0];
     let mut new_shape = next_shape;
     new_shape[0] = k;
-    let result_multi = dense_reshape(&result_2d_rm, new_shape);
+    let result_multi = result_2d_rm.reshape(new_shape);
     result_multi.reordered(order)
 }
 
@@ -163,7 +162,7 @@ where
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
 
-    let prev_2d_rm = dense_reshape(&prev_rm, vec![rest, last]);
+    let prev_2d_rm = prev_rm.reshape(vec![rest, last]);
     let prev_2d = prev_2d_rm.reordered(order);
     let result_2d =
         contract(&prev_2d, l, "ab,bc->ac").expect("L absorption: validated by entry point");
@@ -172,7 +171,7 @@ where
     let k = l.shape()[1];
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
-    let result_multi = dense_reshape(&result_2d_rm, new_shape);
+    let result_multi = result_2d_rm.reshape(new_shape);
     result_multi.reordered(order)
 }
 

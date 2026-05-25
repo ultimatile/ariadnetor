@@ -11,7 +11,6 @@ use arnet::{
 };
 
 use super::chain::TensorChain;
-use super::internal_helpers::dense_reshape;
 use super::types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncateParams};
 
 // Forward pass switches from QR (lossless, fast) to truncated SVD when the
@@ -71,7 +70,7 @@ where
         let chi_r = shape[4];
 
         let result_rm = result.reordered(rm);
-        let fused_rm = dense_reshape(&result_rm, vec![w_l * chi_l, d_bra, w_r * chi_r]);
+        let fused_rm = result_rm.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
         let fused = fused_rm.reordered(order);
 
         sites.push(fused);
@@ -147,7 +146,7 @@ where
         let s = local.shape();
         let (w_l, chi_l, d_bra, w_r, chi_r) = (s[0], s[1], s[2], s[3], s[4]);
         let local_rm = local.reordered(rm);
-        let fused_rm = dense_reshape(&local_rm, vec![w_l * chi_l, d_bra, w_r * chi_r]);
+        let fused_rm = local_rm.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
         let mut p = fused_rm.reordered(order);
 
         if let Some(c) = carry.as_ref() {
@@ -168,7 +167,7 @@ where
                 let (q, r) = qr(&p, 2).expect("QR: validated by entry point");
                 let k = q.shape()[1];
                 let q_rm = q.reordered(rm);
-                let q_multi_rm = dense_reshape(&q_rm, vec![left, d, k]);
+                let q_multi_rm = q_rm.reshape(vec![left, d, k]);
                 let q_site = q_multi_rm.reordered(order);
                 tensors.push(q_site);
                 carry = Some(r);
@@ -181,7 +180,7 @@ where
                     trunc_svd(&p, 2, &svd_params).expect("trunc_svd: validated by entry point");
                 let k = u.shape()[1];
                 let u_rm = u.reordered(rm);
-                let u_multi_rm = dense_reshape(&u_rm, vec![left, d, k]);
+                let u_multi_rm = u_rm.reshape(vec![left, d, k]);
                 let u_site = u_multi_rm.reordered(order);
                 tensors.push(u_site);
 
@@ -212,7 +211,7 @@ where
         let chi = vt.shape()[0];
 
         let vt_rm = vt.reordered(rm);
-        let vt_multi_rm = dense_reshape(&vt_rm, vec![chi, d, right]);
+        let vt_multi_rm = vt_rm.reshape(vec![chi, d, right]);
         tensors[j] = vt_multi_rm.reordered(order);
 
         let us = diagonal_scale(&u, s_vec.data_slice(), 1)
