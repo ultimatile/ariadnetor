@@ -15,9 +15,6 @@
 //! - [`lq_block_sparse`]: Block-sparse LQ decomposition via fused sector method
 //! - [`permute_block_sparse`]: Block-sparse tensor axis permutation
 //! - [`fuse_legs_block_sparse`]: Block-sparse consecutive leg fusion
-//! - [`scale`]: Scalar multiplication (out-of-place)
-//! - [`norm`]: Frobenius norm
-//! - [`normalize`]: Normalize to unit norm (out-of-place)
 //! - [`linear_combine`]: Linear combination of tensors
 //! - [`trace`]: Partial trace over bond index pairs
 //! - [`diag`]: Diagonal extraction and construction
@@ -78,7 +75,7 @@ pub use eigen::{
 };
 pub use einsum::einsum;
 pub use expm::{expm, expm_antihermitian, expm_hermitian};
-pub use scalar_ops::{diag, diagonal_scale, linear_combine, norm, normalize, scale, trace};
+pub use scalar_ops::{diag, diagonal_scale, linear_combine, trace};
 pub use solve::{inverse, solve, solve_with_policy};
 pub use transpose::{
     conjugate_transpose, conjugate_transpose_with_policy, transpose, transpose_with_policy,

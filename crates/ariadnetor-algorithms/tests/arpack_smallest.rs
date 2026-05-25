@@ -9,7 +9,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet::Scalar;
-use arnet::{DenseTensor, MemoryOrder, NativeBackend, eigh, norm};
+use arnet::{DenseTensor, MemoryOrder, NativeBackend, eigh};
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
 use num_complex::Complex;
 use num_traits::{Float, NumCast, One, Zero};
@@ -144,7 +144,7 @@ where
     // output, so ||v|| equals 1 modulo IEEE rounding. 1e-5 is
     // generous against the f32 floor (~few * ULP * sqrt(n)) and
     // trivial against the f64 floor.
-    let v_norm = norm(&result.eigenvector);
+    let v_norm = result.eigenvector.norm();
     let one_real = T::Real::one();
     let norm_eps_real: T::Real = NumCast::from(1e-5_f64).unwrap();
     assert!(
@@ -233,7 +233,7 @@ fn arpack_diagonal_f64_returns_smallest() {
         &[n],
         "eigenvector shape mismatch",
     );
-    assert_abs_diff_eq!(norm(&result.eigenvector), 1.0_f64, epsilon = 1e-12);
+    assert_abs_diff_eq!(result.eigenvector.norm(), 1.0_f64, epsilon = 1e-12);
     assert!(
         result.n_matvec >= 1,
         "matvec count should be positive: {}",

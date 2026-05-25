@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, eigh, normalize};
+use arnet::{ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, eigh};
 use num_traits::{One, Zero};
 use rand::Rng;
 use rand::rngs::StdRng;
@@ -115,7 +115,7 @@ pub(super) fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Den
     }
     let backend = NativeBackend::shared();
     let v = DenseTensor::from_raw_parts(data, vec![dim], MemoryOrder::ColumnMajor, backend);
-    let (normalized, _) = normalize(&v);
+    let (normalized, _) = v.normalized();
     normalized
 }
 
