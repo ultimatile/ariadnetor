@@ -34,14 +34,14 @@ impl<S, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
         self.data.storage_mut().data_mut()
     }
 
-    /// Reshape to `new_shape` (zero-copy). Preserves `self.order()` and
-    /// the backend `Arc`. The flat data buffer is `Arc`-shared via
-    /// `DenseStorage::Clone`, so the result aliases the same allocation
-    /// as `self`.
+    /// Reshape to `new_shape` (zero-copy). Preserves the layout's memory
+    /// order and the backend `Arc`. The flat data buffer is `Arc`-shared
+    /// via `DenseStorage::Clone`, so the result aliases the same
+    /// allocation as `self`.
     ///
     /// Under non-adjacent axis fusion the logical mapping differs
     /// between row-major and column-major; callers fusing such axes
-    /// must `reordered(...)` to the appropriate order first.
+    /// must reorder the flat buffer to the appropriate order first.
     ///
     /// # Panics
     ///
