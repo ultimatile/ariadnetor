@@ -54,8 +54,7 @@ pub use arnet_core::{
 // High-level free functions (backend extracted from Tensor)
 pub use ops::{
     contract, diag, eig, eigh, eigvals, eigvalsh, einsum, expm, expm_antihermitian, expm_hermitian,
-    inverse, linear_combine, lq, norm, normalize, qr, scale, solve, svd, trace, transpose,
-    trunc_svd,
+    inverse, linear_combine, lq, qr, solve, svd, trace, transpose, trunc_svd,
 };
 
 // Block-sparse low-level free functions and result types. Needed by

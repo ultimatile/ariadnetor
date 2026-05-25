@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use arnet::{DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine, norm, normalize};
+use arnet::{DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 
@@ -303,7 +303,7 @@ where
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let eigenvector = DenseTensor::from_raw_parts(
+    let mut eigenvector = DenseTensor::from_raw_parts(
         solution.eigenvector,
         vec![dim],
         MemoryOrder::ColumnMajor,
@@ -311,7 +311,7 @@ where
     );
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
-    let (eigenvector, _) = normalize(&eigenvector);
+    eigenvector.normalize();
 
     // True residual ||H psi - lambda psi||_2.
     let h_psi_raw = op.apply(&eigenvector);
@@ -333,7 +333,7 @@ where
     let neg_lambda = lambda_t.scale_real(-T::Real::one());
     let residual_vec = linear_combine(&[&h_psi, &eigenvector], &[T::one(), neg_lambda])
         .expect("linear_combine on rank-1 tensors of matching shape");
-    let residual = norm(&residual_vec);
+    let residual = residual_vec.norm();
 
     let tol_real: T::Real = <T::Real as NumCast>::from(params.tol)
         .unwrap_or_else(|| panic!("tol {} not representable in T::Real", params.tol));

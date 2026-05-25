@@ -4,10 +4,9 @@
 //! `DenseTensor<T, B>`, so the umbrella re-exports each call site
 //! directly without copy bridges.
 //!
-//! Inherent `DenseTensor` scalar ops (`scale`, `norm`, `normalize`,
-//! `linear_combine`) live as thin wrappers below since they
-//! short-circuit the `arnet_linalg` dispatch entirely and operate on
-//! the joined-form storage directly.
+//! `linear_combine` is the lone umbrella shim below: it adapts the
+//! inherent `DenseTensor::linear_combine`'s `String` error into
+//! `LinalgError` for callers that expect the linalg error type.
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
@@ -31,31 +30,7 @@ pub use arnet_linalg::{
 
 // ============================================================================
 // Inherent-method shortcuts
-//
-// These four ops operate on the joined-form storage directly (no
-// backend kernel involved), so they remain umbrella-level shims rather
-// than passing through arnet_linalg.
 // ============================================================================
-
-/// Scale tensor by a scalar factor (out-of-place).
-pub fn scale<S: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<S, B>,
-    factor: S,
-) -> DenseTensor<S, B> {
-    tensor.scaled(factor)
-}
-
-/// Frobenius norm.
-pub fn norm<S: Scalar, B: ComputeBackend>(tensor: &DenseTensor<S, B>) -> S::Real {
-    tensor.norm()
-}
-
-/// Normalize to unit norm (out-of-place).
-pub fn normalize<S: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<S, B>,
-) -> (DenseTensor<S, B>, S::Real) {
-    tensor.normalized()
-}
 
 /// Linear combination of tensors.
 pub fn linear_combine<S: Scalar, B: ComputeBackend>(

@@ -27,6 +27,10 @@ rand = { workspace = true }
 name = "dense_ops"
 harness = false
 
+[[bench]]
+name = "dense_tensor_scalar_ops"
+harness = false
+
 [lib]
 name = "arnet_tensor"
 path = "src/lib.rs"

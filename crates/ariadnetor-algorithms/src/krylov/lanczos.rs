@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine, norm,
-    normalize,
-};
+use arnet::{ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine};
 use num_traits::{Float, One, Zero};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -201,7 +198,7 @@ where
             }
         }
 
-        let beta = norm(&w);
+        let beta = w.norm();
 
         // Solve current tridiagonal eigenproblem of size m = j + 1.
         let m = j + 1;
@@ -259,8 +256,8 @@ where
         .iter()
         .map(|&zk| T::from_real_imag(zk, T::Real::zero()))
         .collect();
-    let psi = linear_combine(&basis_refs, &coefs).expect("linear_combine on Lanczos basis");
-    let (psi, _) = normalize(&psi);
+    let mut psi = linear_combine(&basis_refs, &coefs).expect("linear_combine on Lanczos basis");
+    psi.normalize();
 
     // True residual: ||H psi - lambda psi||.
     let h_psi_raw = op.apply(&psi);
@@ -281,7 +278,7 @@ where
     let neg_lambda = lambda_t.scale_real(-T::Real::one());
     let residual_vec =
         linear_combine(&[&h_psi, &psi], &[T::one(), neg_lambda]).expect("residual lc");
-    let residual = norm(&residual_vec);
+    let residual = residual_vec.norm();
 
     // Set `converged` from the true residual rather than the Lanczos estimate,
     // so the flag is consistent with the residual the caller sees: the Ritz

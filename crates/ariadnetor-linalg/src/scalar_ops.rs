@@ -1,117 +1,12 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_tensor::{Dense, DenseTensor};
-use num_traits::{Float, One, Zero};
+use num_traits::Zero;
 use std::ops::{Add, Mul};
 
 use crate::error::LinalgError;
 use crate::tensor_bridge::{wrap_dense, wrap_dense_as};
 use arnet_tensor::{flat_index, normalize_to};
-
-/// Scale tensor by a scalar factor (out-of-place).
-///
-/// Returns a new tensor with all elements multiplied by `factor`.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use arnet_linalg::scale;
-/// use arnet_tensor::DenseTensor;
-///
-/// let tensor = DenseTensor::<f64>::ones(vec![2, 3]);
-/// let scaled = scale(&tensor, 2.5);
-/// ```
-pub fn scale<T, B>(tensor: &DenseTensor<T, B>, factor: T) -> DenseTensor<T, B>
-where
-    T: Clone + Mul<Output = T>,
-    B: ComputeBackend,
-{
-    let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = scale_dense(&dense, factor);
-    wrap_dense(result, backend_arc)
-}
-
-/// Internal kernel for [`scale`] operating on the legacy `Dense<T>` form.
-pub(crate) fn scale_dense<T>(tensor: &Dense<T>, factor: T) -> Dense<T>
-where
-    T: Clone + Mul<Output = T>,
-{
-    let data: Vec<T> = tensor
-        .data()
-        .iter()
-        .map(|x| x.clone() * factor.clone())
-        .collect();
-    Dense::new(data, tensor.shape().to_vec(), tensor.order())
-}
-
-/// Compute the Frobenius norm of a tensor.
-///
-/// Returns sqrt(sum |element|^2) as a real value.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use arnet_linalg::norm;
-/// use arnet_tensor::DenseTensor;
-///
-/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
-/// let n = norm(&tensor);
-/// assert!((n - 2.0).abs() < 1e-10);
-/// ```
-pub fn norm<T: Scalar, B: ComputeBackend>(tensor: &DenseTensor<T, B>) -> T::Real {
-    let dense = tensor.data().as_dense();
-    norm_dense(&dense)
-}
-
-/// Internal kernel for [`norm`] operating on the legacy `Dense<T>` form.
-pub(crate) fn norm_dense<T: Scalar>(tensor: &Dense<T>) -> T::Real {
-    let sum_sq = tensor
-        .iter()
-        .map(|&x| {
-            let a = x.abs();
-            a * a
-        })
-        .fold(T::Real::zero(), |acc, x| acc + x);
-    sum_sq.sqrt()
-}
-
-/// Normalize a tensor to unit Frobenius norm (out-of-place).
-///
-/// Returns `(normalized_tensor, original_norm)`.
-/// Panics if the tensor has zero norm.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use arnet_linalg::normalize;
-/// use arnet_tensor::DenseTensor;
-///
-/// let tensor = DenseTensor::<f64>::ones(vec![2, 2]);
-/// let (normalized, n) = normalize(&tensor);
-/// assert!((n - 2.0).abs() < 1e-10);
-/// ```
-pub fn normalize<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-) -> (DenseTensor<T, B>, T::Real) {
-    let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let (result, n) = normalize_dense(&dense);
-    (wrap_dense(result, backend_arc), n)
-}
-
-/// Internal kernel for [`normalize`] operating on the legacy `Dense<T>` form.
-pub(crate) fn normalize_dense<T: Scalar>(tensor: &Dense<T>) -> (Dense<T>, T::Real) {
-    let n = norm_dense(tensor);
-    assert!(n != T::Real::zero(), "Cannot normalize zero tensor");
-    let inv_norm = T::Real::one() / n;
-    let data: Vec<T> = tensor
-        .data()
-        .iter()
-        .map(|&x| x.scale_real(inv_norm))
-        .collect();
-    (Dense::new(data, tensor.shape().to_vec(), tensor.order()), n)
-}
 
 /// Linear combination of tensors: sum coefs[i] * tensors[i].
 ///
