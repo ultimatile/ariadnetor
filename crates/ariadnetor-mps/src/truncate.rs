@@ -10,7 +10,6 @@ use num_traits::{Float, Zero};
 
 use super::canonicalize::{canonicalize_bsp, canonicalize_dense};
 use super::chain::TensorChain;
-use super::internal_helpers::dense_reshape;
 use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 
 /// Truncate bond dimensions of a Dense tensor chain via SVD sweeps.
@@ -119,7 +118,7 @@ where
 
         let reshape_u = |u_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
             let u_rm = u_2d.reordered(rm);
-            let multi = dense_reshape(&u_rm, u_shape.clone());
+            let multi = u_rm.reshape(u_shape.clone());
             multi.reordered(order)
         };
 
@@ -187,7 +186,7 @@ where
 
         let reshape_vt = |vt_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
             let vt_rm = vt_2d.reordered(rm);
-            let multi = dense_reshape(&vt_rm, vt_shape.clone());
+            let multi = vt_rm.reshape(vt_shape.clone());
             multi.reordered(order)
         };
 
@@ -237,7 +236,7 @@ where
     let first = next_shape[0];
     let rest: usize = next_shape[1..].iter().product();
 
-    let next_2d_rm = dense_reshape(&next_rm, vec![first, rest]);
+    let next_2d_rm = next_rm.reshape(vec![first, rest]);
     let next_2d = next_2d_rm.reordered(order);
     let result_2d =
         contract(left, &next_2d, "ab,bc->ac").expect("left absorption failed during truncate");
@@ -246,7 +245,7 @@ where
     let k = left.shape()[0];
     let mut new_shape = next_shape;
     new_shape[0] = k;
-    let result_multi = dense_reshape(&result_2d_rm, new_shape);
+    let result_multi = result_2d_rm.reshape(new_shape);
     result_multi.reordered(order)
 }
 
@@ -262,7 +261,7 @@ where
     let last = *prev_shape.last().unwrap();
     let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
 
-    let prev_2d_rm = dense_reshape(&prev_rm, vec![rest, last]);
+    let prev_2d_rm = prev_rm.reshape(vec![rest, last]);
     let prev_2d = prev_2d_rm.reordered(order);
     let result_2d =
         contract(&prev_2d, right, "ab,bc->ac").expect("right absorption failed during truncate");
@@ -271,7 +270,7 @@ where
     let k = right.shape()[1];
     let mut new_shape = prev_shape;
     *new_shape.last_mut().unwrap() = k;
-    let result_multi = dense_reshape(&result_2d_rm, new_shape);
+    let result_multi = result_2d_rm.reshape(new_shape);
     result_multi.reordered(order)
 }
 

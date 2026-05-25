@@ -2,8 +2,6 @@
 //! n=2 fixture (boundary envs) and the n=3 fixture (one extended
 //! env via `extend_right_step`).
 
-use std::sync::Arc;
-
 use arnet::{DenseTensor, MemoryOrder, NativeBackend, Sector, TruncSvdParams, U1Sector, eigh};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, EffectiveHamiltonian2Site, EffectiveHamiltonian2SiteBlockSparse,
@@ -19,21 +17,6 @@ use super::helpers::{
     build_dense_psi_from_flat, dense_to_template_flat, densify_bsp_f64, template_block_offsets,
     template_from_mps_pair,
 };
-
-/// Copy-based reshape for `DenseTensor` (the joined surface lacks an
-/// inherent zero-copy reshape; tests reshape rarely so the cost is
-/// negligible).
-fn dt_reshape<T>(t: &DenseTensor<T>, new_shape: Vec<usize>) -> DenseTensor<T>
-where
-    T: Clone + arnet::Scalar,
-{
-    DenseTensor::from_raw_parts(
-        t.data_slice().to_vec(),
-        new_shape,
-        t.order(),
-        Arc::clone(t.backend_arc()),
-    )
-}
 
 #[test]
 fn bsp_heff_matvec_matches_dense_oracle() {
@@ -83,8 +66,8 @@ fn bsp_heff_matvec_matches_dense_oracle() {
         assert_eq!(bsp_out.shape(), &[dim], "BSP output shape");
 
         let psi_dense = build_dense_psi_from_flat(v, &template);
-        let dense_out = dense_heff.apply(&dt_reshape(&psi_dense, vec![chi_l * d0 * d1 * chi_r]));
-        let dense_out_4d = dt_reshape(&dense_out, vec![chi_l, d0, d1, chi_r]);
+        let dense_out = dense_heff.apply(&psi_dense.reshape(vec![chi_l * d0 * d1 * chi_r]));
+        let dense_out_4d = dense_out.reshape(vec![chi_l, d0, d1, chi_r]);
         let expected = dense_to_template_flat(&dense_out_4d, &template);
 
         for (i, (bsp_val, exp_val)) in bsp_out.data_slice().iter().zip(expected.iter()).enumerate()
@@ -157,9 +140,8 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
             NativeBackend::shared(),
         ));
         let psi_dense = build_dense_psi_from_flat(v, &template);
-        let dense_out =
-            dense_heff.apply(&dt_reshape(&psi_dense, vec![chi_l * d_i * d_ip1 * chi_r]));
-        let dense_out_4d = dt_reshape(&dense_out, vec![chi_l, d_i, d_ip1, chi_r]);
+        let dense_out = dense_heff.apply(&psi_dense.reshape(vec![chi_l * d_i * d_ip1 * chi_r]));
+        let dense_out_4d = dense_out.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
         let expected = dense_to_template_flat(&dense_out_4d, &template);
 
         for (i, (bsp_val, exp_val)) in bsp_out.data_slice().iter().zip(expected.iter()).enumerate()
@@ -289,7 +271,7 @@ fn bsp_heff_step_uvt_canonical_form() {
     let u_shape = u_d.shape().to_vec();
     let m: usize = u_shape[0] * u_shape[1];
     let n: usize = u_shape[2];
-    let u_2d = dt_reshape(&u_d, vec![m, n]);
+    let u_2d = u_d.reshape(vec![m, n]);
     let u_2d_rm = u_2d.reordered(MemoryOrder::RowMajor);
     let u_data = u_2d_rm.data_slice();
     for i in 0..n {
@@ -311,7 +293,7 @@ fn bsp_heff_step_uvt_canonical_form() {
     let vt_shape = vt_d.shape().to_vec();
     let p: usize = vt_shape[0];
     let q: usize = vt_shape[1] * vt_shape[2];
-    let vt_2d = dt_reshape(&vt_d, vec![p, q]);
+    let vt_2d = vt_d.reshape(vec![p, q]);
     let vt_2d_rm = vt_2d.reordered(MemoryOrder::RowMajor);
     let vt_data = vt_2d_rm.data_slice();
     for i in 0..p {

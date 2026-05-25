@@ -508,12 +508,9 @@ fn heff_svd_reconstruction_round_trips() {
     let heff = make_heff(&envs, &mps, &mpo, site);
     let dim = heff.dim();
     let lan = arnet_algorithms::krylov::lanczos_smallest::<f64, _>(&heff, dim, &lan_params);
-    let psi_4d = DenseTensor::from_raw_parts(
-        lan.eigenvector.data_slice().to_vec(),
-        vec![heff.chi_l(), heff.d_i(), heff.d_ip1(), heff.chi_r()],
-        lan.eigenvector.order(),
-        Arc::clone(lan.eigenvector.backend_arc()),
-    );
+    let psi_4d =
+        lan.eigenvector
+            .reshape(vec![heff.chi_l(), heff.d_i(), heff.d_ip1(), heff.chi_r()]);
 
     let psi_data = psi_4d.data_slice();
     let recon_data = recon.data_slice();

@@ -13,7 +13,6 @@ mod canonicalize;
 mod chain;
 mod dispatch;
 mod inner;
-mod internal_helpers;
 mod site_ops;
 mod truncate;
 mod types;

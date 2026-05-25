@@ -142,7 +142,7 @@ impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T, NativeBackend>
         // `NativeBackend` for the Krylov body's downstream
         // `linear_combine` / `normalize` calls.
         let v_b = rebind::<T, NativeBackend, B>(v, &self.backend);
-        let psi = reshape_dense(&v_b, vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
+        let psi = v_b.reshape(vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
 
         let tmp1 = contract(self.left, &psi, "abc,cijf->abijf")
             .expect("heff matvec step 1: shape pre-validated");
@@ -153,34 +153,10 @@ impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T, NativeBackend>
         let out = contract(&tmp3, self.right, "astgf,hgf->asth")
             .expect("heff matvec step 4: shape pre-validated");
 
-        let out_flat = reshape_dense(&out, vec![self.dim()]);
+        let out_flat = out.reshape(vec![self.dim()]);
         let native: Arc<NativeBackend> = NativeBackend::shared();
         rebind::<T, B, NativeBackend>(&out_flat, &native)
     }
-}
-
-/// Reshape a `DenseTensor` to a new shape, preserving memory order and
-/// backend. The flat data is copied because the joined `DenseTensor`
-/// surface does not expose a zero-copy reshape (the legacy
-/// `Dense::reshape` is not reachable through the umbrella).
-fn reshape_dense<T, B>(t: &DenseTensor<T, B>, new_shape: Vec<usize>) -> DenseTensor<T, B>
-where
-    T: Scalar,
-    B: ComputeBackend,
-{
-    let new_total: usize = new_shape.iter().product();
-    assert_eq!(
-        t.len(),
-        new_total,
-        "reshape_dense: total elements must match ({} vs {new_total})",
-        t.len()
-    );
-    DenseTensor::from_raw_parts(
-        t.data_slice().to_vec(),
-        new_shape,
-        t.order(),
-        Arc::clone(t.backend_arc()),
-    )
 }
 
 /// Rebind a `DenseTensor<T, From>` onto a different backend `Arc`,
@@ -404,7 +380,7 @@ where
     };
     let eigenvector = rebind::<T, NativeBackend, B>(&eigenvector_native, &backend);
 
-    let psi_4d = reshape_dense(&eigenvector, vec![chi_l, d_i, d_ip1, chi_r]);
+    let psi_4d = eigenvector.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
     let (u_2d, s, vt_2d, trunc_err) = trunc_svd(&psi_4d, 2, trunc)?;
 
     let chi_new = u_2d.shape()[1];
@@ -414,7 +390,7 @@ where
     let rm = MemoryOrder::RowMajor;
     let reshape_to_3d = |t_2d: DenseTensor<T, B>, new_shape: Vec<usize>| -> DenseTensor<T, B> {
         let rm_view = t_2d.reordered(rm);
-        let multi = reshape_dense(&rm_view, new_shape);
+        let multi = rm_view.reshape(new_shape);
         multi.reordered(order)
     };
     let u = reshape_to_3d(u_2d, vec![chi_l, d_i, chi_new]);

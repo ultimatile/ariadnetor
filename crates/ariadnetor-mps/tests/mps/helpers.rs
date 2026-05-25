@@ -1,9 +1,9 @@
 //! Shared test helpers for MPS tests.
 
 use arnet::{
-    BlockCoord, BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseLayout,
-    DenseStorage, DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, Tensor, U1Sector,
-    contract, contract_block_sparse,
+    BlockCoord, BlockSparseContractResult, BlockSparseTensor, DenseLayout, DenseStorage,
+    DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, U1Sector, contract,
+    contract_block_sparse,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
@@ -88,7 +88,7 @@ pub fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let k = shape[rank - 1];
     let m: usize = shape[..rank - 1].iter().product();
     let rm = site.reordered(MemoryOrder::RowMajor);
-    let rm2d = dense_reshape_tensor(&rm, vec![m, k]);
+    let rm2d = rm.reshape(vec![m, k]);
     let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
     let qtq = contract(&mat, &mat, "ab,ac->bc").unwrap();
@@ -112,7 +112,7 @@ pub fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let k = shape[0];
     let n: usize = shape[1..].iter().product();
     let rm = site.reordered(MemoryOrder::RowMajor);
-    let rm2d = dense_reshape_tensor(&rm, vec![k, n]);
+    let rm2d = rm.reshape(vec![k, n]);
     let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
     let qqt = contract(&mat, &mat, "ab,cb->ac").unwrap();
@@ -130,21 +130,6 @@ pub fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     true
 }
 
-/// Reshape helper for tests (zero-copy via legacy Dense).
-fn dense_reshape_tensor<T, B>(t: &DenseTensor<T, B>, new_shape: Vec<usize>) -> DenseTensor<T, B>
-where
-    T: arnet::Scalar,
-    B: ComputeBackend,
-{
-    let backend_arc = t.backend_arc().clone();
-    let legacy = t.data().as_dense();
-    let reshaped = legacy.reshape(new_shape);
-    Tensor::<DenseStorage<T>, DenseLayout, B>::with_backend(
-        reshaped.into_tensor_data(),
-        backend_arc,
-    )
-}
-
 /// Compute the full state vector from an MPS by contracting all sites.
 pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f64> {
     let order = MemoryOrder::ColumnMajor;
@@ -159,13 +144,13 @@ pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f6
         let r_last: usize = *result.shape().last().unwrap();
         let r_rest: usize = result.shape()[..r_rank - 1].iter().product();
         let result_rm = result.reordered(rm);
-        let result_2d_rm = dense_reshape_tensor(&result_rm, vec![r_rest, r_last]);
+        let result_2d_rm = result_rm.reshape(vec![r_rest, r_last]);
         let result_2d = result_2d_rm.reordered(order);
 
         let s_first = site.shape()[0];
         let s_rest: usize = site.shape()[1..].iter().product();
         let site_rm = site.reordered(rm);
-        let site_2d_rm = dense_reshape_tensor(&site_rm, vec![s_first, s_rest]);
+        let site_2d_rm = site_rm.reshape(vec![s_first, s_rest]);
         let site_2d = site_2d_rm.reordered(order);
 
         let contracted = contract(&result_2d, &site_2d, "ab,bc->ac").unwrap();
@@ -173,7 +158,7 @@ pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f6
         let contracted_rm = contracted.reordered(rm);
         let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
         new_shape.extend_from_slice(&site.shape()[1..]);
-        let multi_rm = dense_reshape_tensor(&contracted_rm, new_shape);
+        let multi_rm = contracted_rm.reshape(new_shape);
         result = multi_rm.reordered(order);
     }
 
