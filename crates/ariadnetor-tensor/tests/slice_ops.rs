@@ -1,11 +1,11 @@
 //! Tests for slice operations.
 
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 
 #[test]
 fn test_slice_column_major() {
     // Column-major 3x3, slice rows 0..2, cols 1..3
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 4.0, 7.0, 2.0, 5.0, 8.0, 3.0, 6.0, 9.0],
         vec![3, 3],
         MemoryOrder::ColumnMajor,
@@ -18,7 +18,7 @@ fn test_slice_column_major() {
 
 #[test]
 fn test_slice_1d() {
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![10.0, 20.0, 30.0, 40.0, 50.0],
         vec![5],
         MemoryOrder::ColumnMajor,
@@ -30,7 +30,7 @@ fn test_slice_1d() {
 
 #[test]
 fn test_slice_empty() {
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -46,7 +46,7 @@ fn test_slice_empty() {
 
 #[test]
 fn test_slice_scalar_row_major_returns_clone() {
-    let t = Dense::<f64>::new(vec![42.0], vec![], MemoryOrder::RowMajor);
+    let t = DenseTensorData::<f64>::from_raw_parts(vec![42.0], vec![], MemoryOrder::RowMajor);
     let s = t.slice(&[]);
     assert_eq!(s.shape(), &[] as &[usize]);
     assert_eq!(s.data(), &[42.0]);
@@ -55,7 +55,7 @@ fn test_slice_scalar_row_major_returns_clone() {
 
 #[test]
 fn test_slice_scalar_column_major_returns_clone() {
-    let t = Dense::<f64>::new(vec![42.0], vec![], MemoryOrder::ColumnMajor);
+    let t = DenseTensorData::<f64>::from_raw_parts(vec![42.0], vec![], MemoryOrder::ColumnMajor);
     let s = t.slice(&[]);
     assert_eq!(s.shape(), &[] as &[usize]);
     assert_eq!(s.data(), &[42.0]);

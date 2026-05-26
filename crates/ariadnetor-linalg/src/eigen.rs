@@ -1,11 +1,10 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
-use crate::tensor_bridge::{wrap_dense, wrap_dense_as};
-use arnet_tensor::reorder;
+use arnet_tensor::reorder_data;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
@@ -13,8 +12,9 @@ use arnet_tensor::reorder;
 /// - Eigenvectors: `DenseTensor<T, B>` with shape `[n, n]`, columns are eigenvectors
 pub type EighResult<T, B> = (DenseTensor<<T as Scalar>::Real, B>, DenseTensor<T, B>);
 
-/// Internal kernel form of [`EighResult`] operating on legacy `Dense<T>`.
-pub(crate) type EighResultDense<T> = (Dense<<T as Scalar>::Real>, Dense<T>);
+/// Internal kernel form of [`EighResult`] operating on joined
+/// [`DenseTensorData<T>`].
+pub(crate) type EighResultDense<T> = (DenseTensorData<<T as Scalar>::Real>, DenseTensorData<T>);
 
 /// Compute self-adjoint eigenvalue decomposition of a tensor reshaped as a square matrix.
 ///
@@ -41,18 +41,17 @@ pub fn eigh<T: Scalar, B: ComputeBackend>(
     nrow: usize,
 ) -> Result<EighResult<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let (w, v) = eigh_dense(tensor.backend(), &dense, nrow)?;
+    let (w, v) = eigh_dense(tensor.backend(), tensor.data(), nrow)?;
     Ok((
-        wrap_dense_as(w, backend_arc.clone()),
-        wrap_dense(v, backend_arc),
+        DenseTensor::with_backend(w, backend_arc.clone()),
+        DenseTensor::with_backend(v, backend_arc),
     ))
 }
 
-/// Internal kernel for [`eigh`] on legacy `Dense<T>`.
+/// Internal kernel for [`eigh`] on the joined [`DenseTensorData<T>`] form.
 pub(crate) fn eigh_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<EighResultDense<T>, LinalgError> {
     let n = if nrow == 0 || nrow >= tensor.rank() {
@@ -74,18 +73,18 @@ pub fn eigh_with_policy<T: Scalar, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<EighResult<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let (w, v) = eigh_with_policy_dense(tensor.backend(), &dense, nrow, policy)?;
+    let (w, v) = eigh_with_policy_dense(tensor.backend(), tensor.data(), nrow, policy)?;
     Ok((
-        wrap_dense_as(w, backend_arc.clone()),
-        wrap_dense(v, backend_arc),
+        DenseTensor::with_backend(w, backend_arc.clone()),
+        DenseTensor::with_backend(v, backend_arc),
     ))
 }
 
-/// Internal kernel for [`eigh_with_policy`] on legacy `Dense<T>`.
+/// Internal kernel for [`eigh_with_policy`] on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn eigh_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<EighResultDense<T>, LinalgError> {
@@ -109,9 +108,10 @@ pub(crate) fn eigh_with_policy_dense<T: Scalar>(
 
     let order = backend.preferred_order();
     // Ensure row-major reshape to 2D, then convert to backend order
-    let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
-    let mat_2d = Dense::new(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let contiguous = reorder(&mat_2d, MemoryOrder::RowMajor, order);
+    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let mat_2d =
+        DenseTensorData::from_raw_parts(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let contiguous = reorder_data(&mat_2d, order);
 
     let mut w_data = vec![T::Real::zero(); n];
     let mut v_data = vec![T::zero(); n * n];
@@ -127,7 +127,7 @@ pub(crate) fn eigh_with_policy_dense<T: Scalar>(
 
     backend.eigh(desc)?;
 
-    let w_tensor = Dense::new(w_data, vec![n], order);
+    let w_tensor = DenseTensorData::from_raw_parts(w_data, vec![n], order);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))
@@ -167,8 +167,12 @@ pub type EigResult<T, B> = (
     DenseTensor<<T as Scalar>::Complex, B>,
 );
 
-/// Internal kernel form of [`EigResult`] operating on legacy `Dense<T>`.
-pub(crate) type EigResultDense<T> = (Dense<<T as Scalar>::Complex>, Dense<<T as Scalar>::Complex>);
+/// Internal kernel form of [`EigResult`] operating on joined
+/// [`DenseTensorData<T>`].
+pub(crate) type EigResultDense<T> = (
+    DenseTensorData<<T as Scalar>::Complex>,
+    DenseTensorData<<T as Scalar>::Complex>,
+);
 
 /// Compute general eigenvalue decomposition of a tensor reshaped as a square matrix.
 ///
@@ -195,18 +199,17 @@ pub fn eig<T: Scalar, B: ComputeBackend>(
     nrow: usize,
 ) -> Result<EigResult<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let (w, v) = eig_dense(tensor.backend(), &dense, nrow)?;
+    let (w, v) = eig_dense(tensor.backend(), tensor.data(), nrow)?;
     Ok((
-        wrap_dense_as(w, backend_arc.clone()),
-        wrap_dense_as(v, backend_arc),
+        DenseTensor::with_backend(w, backend_arc.clone()),
+        DenseTensor::with_backend(v, backend_arc),
     ))
 }
 
-/// Internal kernel for [`eig`] on legacy `Dense<T>`.
+/// Internal kernel for [`eig`] on the joined [`DenseTensorData<T>`] form.
 pub(crate) fn eig_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<EigResultDense<T>, LinalgError> {
     let n = if nrow == 0 || nrow >= tensor.rank() {
@@ -228,18 +231,18 @@ pub fn eig_with_policy<T: Scalar, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<EigResult<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let (w, v) = eig_with_policy_dense(tensor.backend(), &dense, nrow, policy)?;
+    let (w, v) = eig_with_policy_dense(tensor.backend(), tensor.data(), nrow, policy)?;
     Ok((
-        wrap_dense_as(w, backend_arc.clone()),
-        wrap_dense_as(v, backend_arc),
+        DenseTensor::with_backend(w, backend_arc.clone()),
+        DenseTensor::with_backend(v, backend_arc),
     ))
 }
 
-/// Internal kernel for [`eig_with_policy`] on legacy `Dense<T>`.
+/// Internal kernel for [`eig_with_policy`] on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn eig_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<EigResultDense<T>, LinalgError> {
@@ -262,9 +265,10 @@ pub(crate) fn eig_with_policy_dense<T: Scalar>(
     }
 
     let order = backend.preferred_order();
-    let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
-    let mat_2d = Dense::new(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let contiguous = reorder(&mat_2d, MemoryOrder::RowMajor, order);
+    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let mat_2d =
+        DenseTensorData::from_raw_parts(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let contiguous = reorder_data(&mat_2d, order);
 
     let mut w_data = vec![T::Complex::zero(); n];
     let mut v_data = vec![T::Complex::zero(); n * n];
@@ -280,7 +284,7 @@ pub(crate) fn eig_with_policy_dense<T: Scalar>(
 
     backend.eig(desc)?;
 
-    let w_tensor = Dense::new(w_data, vec![n], order);
+    let w_tensor = DenseTensorData::from_raw_parts(w_data, vec![n], order);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);
 
     Ok((w_tensor, v_tensor))

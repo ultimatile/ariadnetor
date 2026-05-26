@@ -1,10 +1,9 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_dense;
-use arnet_tensor::reorder;
+use arnet_tensor::reorder_data;
 
 /// Solve the linear system AX = B via LU decomposition.
 ///
@@ -37,19 +36,17 @@ pub fn solve<T: Scalar, B: ComputeBackend>(
     nrow_a: usize,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = a.backend_arc().clone();
-    let a_dense = a.data().as_dense();
-    let b_dense = b.data().as_dense();
-    let result = solve_dense(a.backend(), &a_dense, &b_dense, nrow_a)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = solve_dense(a.backend(), a.data(), b.data(), nrow_a)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`solve`] on legacy `Dense<T>`.
+/// Internal kernel for [`solve`] on the joined [`DenseTensorData<T>`] form.
 pub(crate) fn solve_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &Dense<T>,
-    b: &Dense<T>,
+    a: &DenseTensorData<T>,
+    b: &DenseTensorData<T>,
     nrow_a: usize,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     // Extract key dims for par_for_solve; full validation occurs in solve_with_policy_dense.
     // If nrow_a is out of range, use a placeholder key — policy_by_n is defined for any
     // input, and solve_with_policy_dense will return the descriptive error.
@@ -80,20 +77,19 @@ pub fn solve_with_policy<T: Scalar, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = a.backend_arc().clone();
-    let a_dense = a.data().as_dense();
-    let b_dense = b.data().as_dense();
-    let result = solve_with_policy_dense(a.backend(), &a_dense, &b_dense, nrow_a, policy)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = solve_with_policy_dense(a.backend(), a.data(), b.data(), nrow_a, policy)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`solve_with_policy`] on legacy `Dense<T>`.
+/// Internal kernel for [`solve_with_policy`] on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn solve_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &Dense<T>,
-    b: &Dense<T>,
+    a: &DenseTensorData<T>,
+    b: &DenseTensorData<T>,
     nrow_a: usize,
     policy: ExecPolicy,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let a_shape = a.shape();
     let a_rank = a.rank();
 
@@ -116,11 +112,12 @@ pub(crate) fn solve_with_policy_dense<T: Scalar>(
     let order = backend.preferred_order();
 
     // Ensure row-major reshape semantics, then convert to backend order
-    let a_rm = reorder(a, a.order(), MemoryOrder::RowMajor);
-    let a_2d = Dense::new(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let a_contiguous = reorder(&a_2d, MemoryOrder::RowMajor, order);
+    let a_rm = reorder_data(a, MemoryOrder::RowMajor);
+    let a_2d =
+        DenseTensorData::from_raw_parts(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let a_contiguous = reorder_data(&a_2d, order);
 
-    let b_rm = reorder(b, b.order(), MemoryOrder::RowMajor);
+    let b_rm = reorder_data(b, MemoryOrder::RowMajor);
     let b_total = b_rm.len();
 
     if !b_total.is_multiple_of(n) {
@@ -131,8 +128,9 @@ pub(crate) fn solve_with_policy_dense<T: Scalar>(
 
     let nrhs = b_total / n;
 
-    let b_2d = Dense::new(b_rm.data().to_vec(), vec![n, nrhs], MemoryOrder::RowMajor);
-    let b_contiguous = reorder(&b_2d, MemoryOrder::RowMajor, order);
+    let b_2d =
+        DenseTensorData::from_raw_parts(b_rm.data().to_vec(), vec![n, nrhs], MemoryOrder::RowMajor);
+    let b_contiguous = reorder_data(&b_2d, order);
 
     let mut x_data = vec![T::zero(); n * nrhs];
 
@@ -152,13 +150,13 @@ pub(crate) fn solve_with_policy_dense<T: Scalar>(
     // Convert to row-major for reshape (correct axis-merge semantics),
     // then reshape to b's original shape, then back to preferred order.
     let x_2d = backend.make_tensor(x_data, vec![n, nrhs]);
-    let x_rm = reorder(&x_2d, order, MemoryOrder::RowMajor);
-    let x_reshaped = Dense::new(
+    let x_rm = reorder_data(&x_2d, MemoryOrder::RowMajor);
+    let x_reshaped = DenseTensorData::from_raw_parts(
         x_rm.data().to_vec(),
         b.shape().to_vec(),
         MemoryOrder::RowMajor,
     );
-    Ok(reorder(&x_reshaped, MemoryOrder::RowMajor, order))
+    Ok(reorder_data(&x_reshaped, order))
 }
 
 /// Compute the inverse of a square matrix via LU decomposition.
@@ -183,17 +181,16 @@ pub fn inverse<T: Scalar, B: ComputeBackend>(
     nrow: usize,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = inverse_dense(tensor.backend(), &dense, nrow)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = inverse_dense(tensor.backend(), tensor.data(), nrow)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`inverse`] on legacy `Dense<T>`.
+/// Internal kernel for [`inverse`] on the joined [`DenseTensorData<T>`] form.
 pub(crate) fn inverse_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -221,19 +218,20 @@ pub(crate) fn inverse_dense<T: Scalar>(
     let identity = backend.eye::<T>(n);
 
     // Flatten tensor to n x n using RM reshape semantics, then convert to preferred_order.
-    let a_rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
-    let a_flat_rm = Dense::new(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let a_flat = reorder(&a_flat_rm, MemoryOrder::RowMajor, order);
+    let a_rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let a_flat_rm =
+        DenseTensorData::from_raw_parts(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
+    let a_flat = reorder_data(&a_flat_rm, order);
 
     let result = solve_dense(backend, &a_flat, &identity, 1)?;
 
     // solve() returns preferred_order data. RM intermediate for axis-split,
     // then back to preferred_order.
-    let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-    let reshaped = Dense::new(
+    let result_rm = reorder_data(&result, MemoryOrder::RowMajor);
+    let reshaped = DenseTensorData::from_raw_parts(
         result_rm.data().to_vec(),
         shape.to_vec(),
         MemoryOrder::RowMajor,
     );
-    Ok(reorder(&reshaped, MemoryOrder::RowMajor, order))
+    Ok(reorder_data(&reshaped, order))
 }

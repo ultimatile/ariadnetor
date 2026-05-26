@@ -1,18 +1,17 @@
 //! Block-sparse tensor contraction.
 //!
-//! Contracts two [`BlockSparse<T, S>`] tensors over specified axis pairs,
-//! performing QN compatibility validation, block pairing, and dense GEMM
-//! per block pair.
+//! Contracts two [`BlockSparseTensor<T, S, B>`] tensors over specified axis
+//! pairs, performing QN compatibility validation, block pairing, and dense
+//! GEMM per block pair.
 
 use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensor, QNIndex};
+use arnet_tensor::{BlockCoord, BlockSparseTensor, BlockSparseTensorData, QNIndex};
 
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_block_sparse;
 
 /// Result of a block-sparse tensor contraction.
 pub enum BlockSparseContractResult<T, S: Sector, B: ComputeBackend> {
@@ -22,9 +21,10 @@ pub enum BlockSparseContractResult<T, S: Sector, B: ComputeBackend> {
     Scalar(T),
 }
 
-/// Internal kernel form of [`BlockSparseContractResult`] operating on legacy `BlockSparse<T, S>`.
+/// Internal kernel form of [`BlockSparseContractResult`] operating on
+/// joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) enum BlockSparseContractResultBsp<T, S: Sector> {
-    Tensor(BlockSparse<T, S>),
+    Tensor(BlockSparseTensorData<T, S>),
     Scalar(T),
 }
 
@@ -88,30 +88,28 @@ pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend
         "contract_block_sparse: rhs",
     );
     let backend_arc = lhs.backend_arc().clone();
-    let out_order = lhs.backend().preferred_order();
-    let lhs_bsp = lhs.data().as_block_sparse();
-    let rhs_bsp = rhs.data().as_block_sparse();
     let result = contract_block_sparse_with_policy_dense(
         lhs.backend(),
-        &lhs_bsp,
-        &rhs_bsp,
+        lhs.data(),
+        rhs.data(),
         axes_lhs,
         axes_rhs,
         policy,
     )?;
     match result {
         BlockSparseContractResultBsp::Tensor(t) => Ok(BlockSparseContractResult::Tensor(
-            wrap_block_sparse(t, backend_arc, out_order),
+            BlockSparseTensor::with_backend(t, backend_arc),
         )),
         BlockSparseContractResultBsp::Scalar(s) => Ok(BlockSparseContractResult::Scalar(s)),
     }
 }
 
-/// Internal kernel for [`contract_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`contract_block_sparse_with_policy`] on joined-form
+/// [`BlockSparseTensorData<T, S>`].
 pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
-    lhs: &BlockSparse<T, S>,
-    rhs: &BlockSparse<T, S>,
+    lhs: &BlockSparseTensorData<T, S>,
+    rhs: &BlockSparseTensorData<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     policy: ExecPolicy,
@@ -119,10 +117,12 @@ pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     validate_contraction_axes(lhs, rhs, axes_lhs, axes_rhs)?;
 
     let num_contracted = axes_lhs.len();
-    let output_rank = lhs.rank() + rhs.rank() - 2 * num_contracted;
+    let lhs_rank = lhs.layout().rank();
+    let rhs_rank = rhs.layout().rank();
+    let output_rank = lhs_rank + rhs_rank - 2 * num_contracted;
 
-    let free_lhs: Vec<usize> = (0..lhs.rank()).filter(|a| !axes_lhs.contains(a)).collect();
-    let free_rhs: Vec<usize> = (0..rhs.rank()).filter(|a| !axes_rhs.contains(a)).collect();
+    let free_lhs: Vec<usize> = (0..lhs_rank).filter(|a| !axes_lhs.contains(a)).collect();
+    let free_rhs: Vec<usize> = (0..rhs_rank).filter(|a| !axes_rhs.contains(a)).collect();
 
     let rhs_groups = group_by_contracted_key(rhs, axes_rhs);
 
@@ -149,8 +149,8 @@ pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 // ---------------------------------------------------------------------------
 
 fn validate_contraction_axes<T, S: Sector>(
-    lhs: &BlockSparse<T, S>,
-    rhs: &BlockSparse<T, S>,
+    lhs: &BlockSparseTensorData<T, S>,
+    rhs: &BlockSparseTensorData<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
 ) -> Result<(), LinalgError> {
@@ -162,11 +162,12 @@ fn validate_contraction_axes<T, S: Sector>(
         )));
     }
 
+    let lhs_rank = lhs.layout().rank();
+    let rhs_rank = rhs.layout().rank();
     for (i, &a) in axes_lhs.iter().enumerate() {
-        if a >= lhs.rank() {
+        if a >= lhs_rank {
             return Err(LinalgError::InvalidArgument(format!(
-                "axes_lhs[{i}] = {a} out of range for lhs rank {}",
-                lhs.rank()
+                "axes_lhs[{i}] = {a} out of range for lhs rank {lhs_rank}"
             )));
         }
         if axes_lhs[..i].contains(&a) {
@@ -176,10 +177,9 @@ fn validate_contraction_axes<T, S: Sector>(
         }
     }
     for (i, &a) in axes_rhs.iter().enumerate() {
-        if a >= rhs.rank() {
+        if a >= rhs_rank {
             return Err(LinalgError::InvalidArgument(format!(
-                "axes_rhs[{i}] = {a} out of range for rhs rank {}",
-                rhs.rank()
+                "axes_rhs[{i}] = {a} out of range for rhs rank {rhs_rank}"
             )));
         }
         if axes_rhs[..i].contains(&a) {
@@ -190,8 +190,8 @@ fn validate_contraction_axes<T, S: Sector>(
     }
 
     for (i, (&al, &ar)) in axes_lhs.iter().zip(axes_rhs.iter()).enumerate() {
-        let il = &lhs.indices()[al];
-        let ir = &rhs.indices()[ar];
+        let il = &lhs.layout().indices()[al];
+        let ir = &rhs.layout().indices()[ar];
 
         if il.direction() == ir.direction() {
             return Err(LinalgError::InvalidArgument(format!(
@@ -233,11 +233,11 @@ fn validate_contraction_axes<T, S: Sector>(
 
 /// Group blocks by their contracted-axis block indices for O(1) lookup.
 fn group_by_contracted_key<T, S: Sector>(
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     contracted_axes: &[usize],
 ) -> HashMap<Vec<usize>, Vec<usize>> {
     let mut groups: HashMap<Vec<usize>, Vec<usize>> = HashMap::new();
-    for (idx, meta) in tensor.block_metas().iter().enumerate() {
+    for (idx, meta) in tensor.layout().block_metas().iter().enumerate() {
         let key: Vec<usize> = contracted_axes.iter().map(|&a| meta.coord.0[a]).collect();
         groups.entry(key).or_default().push(idx);
     }
@@ -249,19 +249,21 @@ fn group_by_contracted_key<T, S: Sector>(
 // ---------------------------------------------------------------------------
 
 fn contract_to_scalar<T: Scalar, S: Sector>(
-    lhs: &BlockSparse<T, S>,
-    rhs: &BlockSparse<T, S>,
+    lhs: &BlockSparseTensorData<T, S>,
+    rhs: &BlockSparseTensorData<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     order: MemoryOrder,
 ) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
-    if lhs.flux().fuse(rhs.flux()) != S::identity() {
+    if lhs.layout().flux().fuse(rhs.layout().flux()) != S::identity() {
         return Ok(BlockSparseContractResultBsp::Scalar(T::zero()));
     }
 
+    let lhs_rank = lhs.layout().rank();
+    let rhs_rank = rhs.layout().rank();
     // Permute rhs so its axes align with lhs axis order for dot product
-    let rhs_perm: Vec<usize> = (0..lhs.rank())
+    let rhs_perm: Vec<usize> = (0..lhs_rank)
         .map(|l| {
             let pos = axes_lhs.iter().position(|&a| a == l).unwrap();
             axes_rhs[pos]
@@ -269,12 +271,12 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
         .collect();
     let needs_transpose = !is_identity_perm(&rhs_perm);
 
-    let rhs_metas = rhs.block_metas();
+    let rhs_metas = rhs.layout().block_metas();
     let mut sum = T::zero();
 
     let mut key = Vec::with_capacity(axes_lhs.len());
 
-    for lhs_meta in lhs.block_metas() {
+    for lhs_meta in lhs.layout().block_metas() {
         key.clear();
         key.extend(axes_lhs.iter().map(|&a| lhs_meta.coord.0[a]));
         let Some(rhs_indices) = rhs_groups.get(key.as_slice()) else {
@@ -288,8 +290,8 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
             let rhs_data = rhs.block_data(&rhs_meta.coord).unwrap();
 
             if needs_transpose {
-                let rhs_shape: Vec<usize> = (0..rhs.rank())
-                    .map(|a| rhs.indices()[a].block_dim(rhs_meta.coord.0[a]))
+                let rhs_shape: Vec<usize> = (0..rhs_rank)
+                    .map(|a| rhs.layout().indices()[a].block_dim(rhs_meta.coord.0[a]))
                     .collect();
                 let rhs_t = transpose_block_data(rhs_data, &rhs_shape, &rhs_perm, order);
                 for (&a, &b) in lhs_data.iter().zip(rhs_t.iter()) {
@@ -313,8 +315,8 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
 #[allow(clippy::too_many_arguments)]
 fn contract_to_tensor<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
-    lhs: &BlockSparse<T, S>,
-    rhs: &BlockSparse<T, S>,
+    lhs: &BlockSparseTensorData<T, S>,
+    rhs: &BlockSparseTensorData<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     free_lhs: &[usize],
@@ -322,15 +324,18 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     policy: ExecPolicy,
 ) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
+    let lhs_rank = lhs.layout().rank();
+    let rhs_rank = rhs.layout().rank();
+    let order = backend.preferred_order();
     let mut output_indices: Vec<QNIndex<S>> = Vec::with_capacity(free_lhs.len() + free_rhs.len());
     for &a in free_lhs {
-        output_indices.push(lhs.indices()[a].clone());
+        output_indices.push(lhs.layout().indices()[a].clone());
     }
     for &a in free_rhs {
-        output_indices.push(rhs.indices()[a].clone());
+        output_indices.push(rhs.layout().indices()[a].clone());
     }
-    let output_flux = lhs.flux().fuse(rhs.flux());
-    let mut output = BlockSparse::zeros(output_indices, output_flux);
+    let output_flux = lhs.layout().flux().fuse(rhs.layout().flux());
+    let mut output = BlockSparseTensorData::zeros(output_indices, output_flux, order);
 
     // Determine transpose strategy per operand.
     // GEMM wants lhs as (m, k) and rhs as (k, n). When the permutation
@@ -344,7 +349,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
         .copied()
         .enumerate()
         .all(|(i, p)| p == i);
-    let lhs_trans_flag = compute_lhs_trans_flag(lhs_is_id, axes_lhs, free_lhs, lhs.rank());
+    let lhs_trans_flag = compute_lhs_trans_flag(lhs_is_id, axes_lhs, free_lhs, lhs_rank);
     let lhs_needs_physical_t = !lhs_is_id && !lhs_trans_flag;
 
     let rhs_is_id = axes_rhs
@@ -353,22 +358,25 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
         .copied()
         .enumerate()
         .all(|(i, p)| p == i);
-    let rhs_trans_flag = compute_rhs_trans_flag(rhs_is_id, axes_rhs, free_rhs, rhs.rank());
+    let rhs_trans_flag = compute_rhs_trans_flag(rhs_is_id, axes_rhs, free_rhs, rhs_rank);
     let rhs_needs_physical_t = !rhs_is_id && !rhs_trans_flag;
 
-    let order = backend.preferred_order();
-    let rhs_metas = rhs.block_metas();
+    // Snapshot the metadata vectors so we can mutate `output` inside the
+    // loop while reading per-block data from `lhs` and `rhs` (the layout
+    // borrows would otherwise outlive their owners across the iteration).
+    let lhs_metas = lhs.layout().block_metas().to_vec();
+    let rhs_metas = rhs.layout().block_metas().to_vec();
     let mut key = Vec::with_capacity(axes_lhs.len());
 
-    for lhs_meta in lhs.block_metas() {
+    for lhs_meta in &lhs_metas {
         key.clear();
         key.extend(axes_lhs.iter().map(|&a| lhs_meta.coord.0[a]));
         let Some(rhs_indices) = rhs_groups.get(key.as_slice()) else {
             continue;
         };
 
-        let lhs_block_shape: Vec<usize> = (0..lhs.rank())
-            .map(|a| lhs.indices()[a].block_dim(lhs_meta.coord.0[a]))
+        let lhs_block_shape: Vec<usize> = (0..lhs_rank)
+            .map(|a| lhs.layout().indices()[a].block_dim(lhs_meta.coord.0[a]))
             .collect();
         let m: usize = free_lhs
             .iter()
@@ -407,8 +415,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 continue;
             };
 
-            let rhs_block_shape: Vec<usize> = (0..rhs.rank())
-                .map(|a| rhs.indices()[a].block_dim(rhs_meta.coord.0[a]))
+            let rhs_block_shape: Vec<usize> = (0..rhs_rank)
+                .map(|a| rhs.layout().indices()[a].block_dim(rhs_meta.coord.0[a]))
                 .collect();
             let n: usize = free_rhs
                 .iter()

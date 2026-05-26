@@ -1,4 +1,4 @@
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 
@@ -45,15 +45,15 @@ fn shapes_rank3() -> Vec<TensorShape> {
     }]
 }
 
-fn random_tensor(shape: Vec<usize>) -> Dense<f64> {
-    Dense::random(shape, &mut rng())
+fn random_tensor(shape: Vec<usize>) -> DenseTensorData<f64> {
+    DenseTensorData::random_in_order(shape, MemoryOrder::ColumnMajor, &mut rng())
 }
 
 /// Create a uniquely-owned copy (Arc refcount = 1) so mutating ops
 /// don't trigger copy-on-write during the timed section.
-fn unique_copy(t: &Dense<f64>) -> Dense<f64> {
-    Dense::new(
-        t.data().to_vec(),
+fn unique_copy(t: &DenseTensorData<f64>) -> DenseTensorData<f64> {
+    DenseTensorData::from_raw_parts(
+        t.storage().data().to_vec(),
         t.shape().to_vec(),
         MemoryOrder::ColumnMajor,
     )
@@ -163,7 +163,9 @@ fn bench_linear_combine(c: &mut Criterion) {
             BenchmarkId::from_parameter(s.label),
             &s.label,
             |bench, _| {
-                bench.iter_with_large_drop(|| Dense::linear_combine(&tensors, &coefs).unwrap());
+                bench.iter_with_large_drop(|| {
+                    DenseTensorData::linear_combine(&tensors, &coefs).unwrap()
+                });
             },
         );
     }
@@ -251,7 +253,7 @@ fn bench_concatenate(c: &mut Criterion) {
         let b = random_tensor(s.shape.clone());
         let tensors = [&a, &b];
         group.bench_with_input(BenchmarkId::new("axis0", s.label), &s.label, |bench, _| {
-            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
+            bench.iter_with_large_drop(|| DenseTensorData::concatenate(&tensors, 0));
         });
     }
 
@@ -262,7 +264,7 @@ fn bench_concatenate(c: &mut Criterion) {
         BenchmarkId::new("axis0", "64x4x64"),
         &"64x4x64",
         |bench, _| {
-            bench.iter_with_large_drop(|| Dense::concatenate(&tensors, 0));
+            bench.iter_with_large_drop(|| DenseTensorData::concatenate(&tensors, 0));
         },
     );
 

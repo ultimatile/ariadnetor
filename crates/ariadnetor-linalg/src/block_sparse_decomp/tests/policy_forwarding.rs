@@ -13,7 +13,7 @@ use crate::test_util::RecordingBackend;
 
 // A multi-sector rank-2 tensor: sectors (0,0) 2×2 and (1,1) 3×3 both
 // yield non-trivial per-sector SVD/QR/LQ work — two entries per recorded list.
-fn multi_sector() -> arnet_tensor::BlockSparse<f64, arnet_tensor::U1Sector> {
+fn multi_sector() -> arnet_tensor::BlockSparseTensorData<f64, arnet_tensor::U1Sector> {
     super::sample_u1_rank2()
 }
 

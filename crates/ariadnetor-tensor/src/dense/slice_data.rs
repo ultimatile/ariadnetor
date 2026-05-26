@@ -1,10 +1,16 @@
-//! Slice, expand, and replace operations for Dense.
+//! Slice, expand, and replace operations for `DenseTensorData<T>`.
+//!
+//! Joined-form counterparts of the routines in [`super::slice`]. The
+//! strip-copy machinery is identical; the difference is reading via
+//! `storage().data()` and constructing via
+//! [`DenseTensorData::from_raw_parts`].
 
 use num_traits::Zero;
-use std::sync::Arc;
 
-use super::{Dense, compute_strides_column_usize, compute_strides_usize};
+use crate::DenseTensorData;
 use arnet_core::MemoryOrder;
+
+use super::{compute_strides_column_usize, compute_strides_usize};
 
 /// Compute strides (usize) for the given shape and order.
 fn strides_for(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
@@ -14,19 +20,20 @@ fn strides_for(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
     }
 }
 
-impl<T> Dense<T>
+impl<T> DenseTensorData<T>
 where
     T: Clone,
 {
-    /// Extract a sub-tensor by specifying a range for each axis.
+    /// Extract a sub-tensor by specifying a `(start, end)` range for
+    /// each axis (exclusive end).
     ///
-    /// Each range is `(start, end)` with exclusive end. The flat-data
-    /// interpretation follows `self.order()`, and the output preserves
-    /// the same order.
+    /// The flat-data interpretation follows `self.order()`, and the
+    /// output preserves the same order.
     ///
     /// # Panics
     ///
-    /// Panics if `ranges` length doesn't match rank, or any range is out of bounds.
+    /// Panics if `ranges` length doesn't match rank, or any range is
+    /// out of bounds.
     pub fn slice(&self, ranges: &[(usize, usize)]) -> Self {
         let shape = self.shape();
         assert_eq!(
@@ -50,9 +57,8 @@ where
         let rank = shape.len();
 
         if new_total == 0 {
-            return Self::new(Vec::new(), new_shape, order);
+            return DenseTensorData::from_raw_parts(Vec::new(), new_shape, order);
         }
-
         if rank == 0 {
             return self.clone();
         }
@@ -63,7 +69,7 @@ where
         };
 
         let src_strides = strides_for(shape, order);
-        let raw = self.data();
+        let raw = self.storage().data();
         let strip_len = new_shape[inner_axis];
         let num_strips = new_total / strip_len.max(1);
 
@@ -79,7 +85,6 @@ where
             .zip(&src_strides)
             .map(|(&(s, _), &st)| s * st)
             .sum();
-
         let mut outer_flat = strip_src_start;
 
         for _ in 0..num_strips {
@@ -96,7 +101,7 @@ where
             }
         }
 
-        Self::new(data, new_shape, order)
+        DenseTensorData::from_raw_parts(data, new_shape, order)
     }
 
     /// Expand tensor by adding zero-padding at the boundaries.
@@ -130,40 +135,34 @@ where
         let src_total = self.len();
         if src_total == 0 || rank == 0 {
             if src_total == 1 {
-                data[0] = self.data()[0].clone();
+                data[0] = self.storage().data()[0].clone();
             }
-            return Self::new(data, new_shape, order);
+            return DenseTensorData::from_raw_parts(data, new_shape, order);
         }
 
         let inner_axis = match order {
             MemoryOrder::RowMajor => rank - 1,
             MemoryOrder::ColumnMajor => 0,
         };
-
         let no_inner_pad = padding[inner_axis] == (0, 0);
         let src_strides = strides_for(shape, order);
 
         if no_inner_pad {
-            // Strip copy: no padding on innermost axis
-            let raw = self.data();
+            let raw = self.storage().data();
             let strip_len = shape[inner_axis];
-
             let outer_axes: Vec<usize> = match order {
                 MemoryOrder::RowMajor => (0..rank - 1).collect(),
                 MemoryOrder::ColumnMajor => (1..rank).rev().collect(),
             };
-
             let num_strips = src_total / strip_len.max(1);
             let mut src_offset = 0usize;
             let mut dst_flat: usize = (0..rank).map(|d| padding[d].0 * dst_strides[d]).sum();
-
             let mut outer_coords = vec![0usize; rank];
 
             for _ in 0..num_strips {
                 data[dst_flat..dst_flat + strip_len]
                     .clone_from_slice(&raw[src_offset..src_offset + strip_len]);
                 src_offset += strip_len;
-
                 for &d in outer_axes.iter().rev() {
                     outer_coords[d] += 1;
                     dst_flat += dst_strides[d];
@@ -174,24 +173,20 @@ where
                     outer_coords[d] = 0;
                 }
             }
-
-            return Self::new(data, new_shape, order);
+            return DenseTensorData::from_raw_parts(data, new_shape, order);
         }
 
-        // General case: element-wise copy with dual index tracking
-        let raw = self.data();
+        let raw = self.storage().data();
         let mut coords = vec![0usize; rank];
         let axis_order: Vec<usize> = match order {
             MemoryOrder::RowMajor => (0..rank).collect(),
             MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
         };
-
         let mut src_flat: usize = 0;
         let mut dst_flat: usize = (0..rank).map(|d| padding[d].0 * dst_strides[d]).sum();
 
         for _ in 0..src_total {
             data[dst_flat] = raw[src_flat].clone();
-
             for &d in axis_order.iter().rev() {
                 coords[d] += 1;
                 src_flat += src_strides[d];
@@ -205,27 +200,22 @@ where
             }
         }
 
-        Self::new(data, new_shape, order)
+        DenseTensorData::from_raw_parts(data, new_shape, order)
     }
 
-    /// Write a sub-tensor into this tensor starting at the given position.
+    /// Write a sub-tensor into this tensor starting at the given
+    /// position (triggers CoW on the storage half if shared).
     ///
     /// The flat-data interpretation follows `self.order()`.
     ///
     /// # Panics
     ///
-    /// Panics if `sub.rank()` or `begin.len()` does not match `self.rank()`,
-    /// or any sub-tensor extent exceeds the destination's bounds.
-    ///
-    /// Panics if `sub.order()` differs from `self.order()` when the
-    /// strip-copy path actually depends on the order — that is, when
-    /// `sub` is non-empty and `self.rank() >= 2`. Empty `sub` (any rank),
-    /// rank-0 scalars, and rank-1 inputs are layout-insensitive in this
-    /// implementation: the empty case short-circuits before any walk,
-    /// rank-0 is a single direct write, and rank-1 collapses to a single
-    /// linear strip-copy whose direction is the same under either order.
+    /// Panics if `sub.rank()` or `begin.len()` does not match
+    /// `self.rank()`, or any sub-tensor extent exceeds the
+    /// destination's bounds. Also panics if `sub.order()` differs from
+    /// `self.order()` at rank ≥ 2.
     pub fn replace_slice(&mut self, sub: &Self, begin: &[usize]) {
-        let shape = self.shape().to_vec();
+        let shape: Vec<usize> = self.shape().to_vec();
         let sub_shape = sub.shape();
         assert_eq!(
             sub_shape.len(),
@@ -255,17 +245,12 @@ where
             return;
         }
 
-        // Rank-0 (scalar): direct write
         if rank == 0 {
-            Arc::make_mut(&mut self.data)[0] = sub.data()[0].clone();
+            self.storage_mut().data_mut()[0] = sub.storage().data()[0].clone();
             return;
         }
 
         let order = self.order();
-
-        // At rank ≥ 2 the strip-copy depends on the order tag matching
-        // between destination and source; at rank 1 both order branches
-        // collapse to the same linear copy, so mixed orders are valid.
         if rank >= 2 {
             assert_eq!(
                 sub.order(),
@@ -280,26 +265,22 @@ where
             MemoryOrder::RowMajor => rank - 1,
             MemoryOrder::ColumnMajor => 0,
         };
-
         let self_strides = strides_for(&shape, order);
-        let sub_raw = sub.data().to_vec(); // snapshot before mutating self
-
+        let sub_raw = sub.storage().data().to_vec();
         let strip_len = sub_shape[inner_axis];
         let num_strips = sub_total / strip_len.max(1);
-
-        let dst_buf = Arc::make_mut(&mut self.data);
-
         let outer_axes: Vec<usize> = match order {
             MemoryOrder::RowMajor => (0..rank - 1).collect(),
             MemoryOrder::ColumnMajor => (1..rank).rev().collect(),
         };
 
+        let dst_buf = self.storage_mut().data_mut();
         let mut src_offset = 0usize;
         let mut dst_flat: usize = begin.iter().zip(&self_strides).map(|(&b, &s)| b * s).sum();
         let mut outer_coords = vec![0usize; rank];
 
         for _ in 0..num_strips {
-            dst_buf.as_mut_slice()[dst_flat..dst_flat + strip_len]
+            dst_buf[dst_flat..dst_flat + strip_len]
                 .clone_from_slice(&sub_raw[src_offset..src_offset + strip_len]);
             src_offset += strip_len;
 

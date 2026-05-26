@@ -1,4 +1,4 @@
-//! Cross-crate invariant tests for the `Dense::order()` field.
+//! Cross-crate invariant tests for the `DenseTensorData::order()` field.
 //!
 //! Pins assertions that span linalg ops (`linear_combine` mixed-order
 //! rejection) and the cross-API regression (a `RowMajor` Dense paired
@@ -12,37 +12,46 @@ use arnet_linalg::{
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::{
-    ComputeBackend, ComputeBackendTensorExt, Dense, DenseTensor, MemoryOrder, reorder,
+    ComputeBackend, ComputeBackendTensorExt, DenseTensor, DenseTensorData, MemoryOrder,
+    reorder_data,
 };
 use num_complex::Complex;
 
-/// Wrap a legacy `Dense<T>` into the user-facing `DenseTensor<T, NativeBackend>`
+/// Wrap a `DenseTensorData<T>` into the user-facing `DenseTensor<T, NativeBackend>`
 /// for feeding into linalg pub fns. Preserves the order tag so the
 /// order-normalization branches inside the linalg op are exercised the
 /// same way as before the API migration.
-fn wrap<T: Clone>(d: Dense<T>) -> DenseTensor<T, NativeBackend> {
-    DenseTensor::with_backend(d.into_tensor_data(), NativeBackend::shared())
+fn wrap<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
+    DenseTensor::with_backend(d, NativeBackend::shared())
 }
 
-/// View a `DenseTensor` back as a legacy `Dense<T>` for assertions that
-/// use `reorder` and slice-level data comparison.
-fn as_dense<T: Clone>(t: &DenseTensor<T, NativeBackend>) -> Dense<T> {
-    t.data().as_dense()
+/// Clone out a `DenseTensor`'s joined-form `DenseTensorData<T>` for
+/// assertions that use `reorder_data` and slice-level data comparison.
+fn as_data<T: Clone>(t: &DenseTensor<T, NativeBackend>) -> DenseTensorData<T> {
+    t.data().clone()
 }
 
-/// Construct a `Dense<T>` representing the same logical tensor as
-/// `data_rm` (interpreted in RowMajor flat order) but tagged with the
+/// Construct a `DenseTensorData<T>` representing the same logical tensor
+/// as `data_rm` (interpreted in RowMajor flat order) but tagged with the
 /// requested `order`. For `order == RowMajor` the data is used directly;
 /// for `ColumnMajor` it is reordered so the byte layout matches the tag.
 /// This is the foundation of `assert_op_layout_invariance` — without it,
 /// the same raw bytes under different tags would describe different
 /// logical matrices, defeating the layout-invariance check.
-fn build_tagged<T: Scalar>(data_rm: &[T], shape: &[usize], order: MemoryOrder) -> Dense<T> {
-    let rm = Dense::<T>::new(data_rm.to_vec(), shape.to_vec(), MemoryOrder::RowMajor);
+fn build_tagged<T: Scalar>(
+    data_rm: &[T],
+    shape: &[usize],
+    order: MemoryOrder,
+) -> DenseTensorData<T> {
+    let rm = DenseTensorData::<T>::from_raw_parts(
+        data_rm.to_vec(),
+        shape.to_vec(),
+        MemoryOrder::RowMajor,
+    );
     if order == MemoryOrder::RowMajor {
         rm
     } else {
-        reorder(&rm, MemoryOrder::RowMajor, order)
+        reorder_data(&rm, order)
     }
 }
 
@@ -57,13 +66,13 @@ fn build_tagged<T: Scalar>(data_rm: &[T], shape: &[usize], order: MemoryOrder) -
 fn assert_op_layout_invariance<T, F>(op_label: &str, op_with_order: F)
 where
     T: Scalar + PartialEq + std::fmt::Debug,
-    F: Fn(MemoryOrder) -> Dense<T>,
+    F: Fn(MemoryOrder) -> DenseTensorData<T>,
 {
     let out_rm = op_with_order(MemoryOrder::RowMajor);
     let out_cm = op_with_order(MemoryOrder::ColumnMajor);
 
-    let rm_norm = reorder(&out_rm, out_rm.order(), MemoryOrder::RowMajor);
-    let cm_norm = reorder(&out_cm, out_cm.order(), MemoryOrder::RowMajor);
+    let rm_norm = reorder_data(&out_rm, MemoryOrder::RowMajor);
+    let cm_norm = reorder_data(&out_cm, MemoryOrder::RowMajor);
 
     assert_eq!(
         rm_norm.shape(),
@@ -79,12 +88,12 @@ where
 
 #[test]
 fn linear_combine_rejects_mixed_orders() {
-    let a = wrap(Dense::<f64>::new(
+    let a = wrap(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
     ));
-    let b = wrap(Dense::<f64>::new(
+    let b = wrap(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -98,12 +107,12 @@ fn linear_combine_rejects_mixed_orders() {
 
 #[test]
 fn linear_combine_accepts_matched_orders() {
-    let a = wrap(Dense::<f64>::new(
+    let a = wrap(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
     ));
-    let b = wrap(Dense::<f64>::new(
+    let b = wrap(DenseTensorData::<f64>::from_raw_parts(
         vec![5.0, 6.0, 7.0, 8.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -122,24 +131,32 @@ fn contract_normalizes_row_major_input_against_column_major_backend() {
     // Build the same logical 2x2 matrix product A * B for two layouts.
     // Logical A = [[1, 2], [3, 4]], Logical B = [[5, 6], [7, 8]].
     // Expected A*B = [[19, 22], [43, 50]].
-    let a_rm = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b_rm = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
+    let a_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
-    let a_cm = reorder(&a_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    let b_cm = reorder(&b_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
+    let a_cm = reorder_data(&a_rm, MemoryOrder::ColumnMajor);
+    let b_cm = reorder_data(&b_rm, MemoryOrder::ColumnMajor);
 
     let c_rm_inputs = contract(&wrap(a_rm), &wrap(b_rm), "ij,jk->ik")
         .expect("contract with RM-flagged inputs must normalize and succeed");
     let c_cm_inputs = contract(&wrap(a_cm), &wrap(b_cm), "ij,jk->ik")
         .expect("contract with CM-flagged inputs is the reference path");
 
-    let c_rm_inputs = as_dense(&c_rm_inputs);
-    let c_cm_inputs = as_dense(&c_cm_inputs);
+    let c_rm_inputs = as_data(&c_rm_inputs);
+    let c_cm_inputs = as_data(&c_cm_inputs);
 
     // Outputs may carry either order — compare logically by first
     // normalizing both to RowMajor for byte comparison.
-    let c_rm_norm = reorder(&c_rm_inputs, c_rm_inputs.order(), MemoryOrder::RowMajor);
-    let c_cm_norm = reorder(&c_cm_inputs, c_cm_inputs.order(), MemoryOrder::RowMajor);
+    let c_rm_norm = reorder_data(&c_rm_inputs, MemoryOrder::RowMajor);
+    let c_cm_norm = reorder_data(&c_cm_inputs, MemoryOrder::RowMajor);
 
     assert_eq!(c_rm_norm.shape(), c_cm_norm.shape());
     assert_eq!(c_rm_norm.data(), c_cm_norm.data());
@@ -158,22 +175,30 @@ fn contract_with_permutation_normalizes_row_major_input_against_column_major_bac
     // (RHS axis 0). Effectively (A^T) * B.
     // (A^T) * B with A = [[1,2],[3,4]], B = [[5,6],[7,8]] gives
     // [[1,3],[2,4]] * [[5,6],[7,8]] = [[26, 30], [38, 44]].
-    let a_rm = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b_rm = Dense::<f64>::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2], MemoryOrder::RowMajor);
+    let a_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b_rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![5.0, 6.0, 7.0, 8.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
 
-    let a_cm = reorder(&a_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    let b_cm = reorder(&b_rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
+    let a_cm = reorder_data(&a_rm, MemoryOrder::ColumnMajor);
+    let b_cm = reorder_data(&b_rm, MemoryOrder::ColumnMajor);
 
     let c_rm_inputs = contract(&wrap(a_rm), &wrap(b_rm), "ji,jk->ik")
         .expect("contract with RM-flagged inputs must normalize and succeed");
     let c_cm_inputs = contract(&wrap(a_cm), &wrap(b_cm), "ji,jk->ik")
         .expect("contract with CM-flagged inputs is the reference path");
 
-    let c_rm_inputs = as_dense(&c_rm_inputs);
-    let c_cm_inputs = as_dense(&c_cm_inputs);
+    let c_rm_inputs = as_data(&c_rm_inputs);
+    let c_cm_inputs = as_data(&c_cm_inputs);
 
-    let c_rm_norm = reorder(&c_rm_inputs, c_rm_inputs.order(), MemoryOrder::RowMajor);
-    let c_cm_norm = reorder(&c_cm_inputs, c_cm_inputs.order(), MemoryOrder::RowMajor);
+    let c_rm_norm = reorder_data(&c_rm_inputs, MemoryOrder::RowMajor);
+    let c_cm_norm = reorder_data(&c_cm_inputs, MemoryOrder::RowMajor);
 
     assert_eq!(c_rm_norm.shape(), c_cm_norm.shape());
     assert_eq!(c_rm_norm.data(), c_cm_norm.data());
@@ -218,7 +243,7 @@ fn backend_eye_uses_preferred_order() {
 #[test]
 fn svd_s_tensor_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let a = wrap(Dense::<f64>::new(
+    let a = wrap(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -230,7 +255,7 @@ fn svd_s_tensor_uses_preferred_order() {
 #[test]
 fn trunc_svd_s_tensor_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let a = wrap(Dense::<f64>::new(
+    let a = wrap(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -255,7 +280,7 @@ fn solve_normalizes_row_major_input() {
         let a = build_tagged(&a_data, &[2, 2], order);
         let b = build_tagged(&b_data, &[2, 1], order);
         let out = solve(&wrap(a), &wrap(b), 1).expect("solve must succeed");
-        as_dense(&out)
+        as_data(&out)
     });
 }
 
@@ -267,7 +292,7 @@ fn inverse_normalizes_row_major_input() {
     assert_op_layout_invariance("inverse", |order| {
         let a = build_tagged(&a_data, &[2, 2], order);
         let out = inverse(&wrap(a), 1).expect("inverse must succeed");
-        as_dense(&out)
+        as_data(&out)
     });
 }
 
@@ -287,7 +312,7 @@ fn expm_normalizes_row_major_input() {
     assert_op_layout_invariance("expm", |order| {
         let m = build_tagged(&data, &[2, 2], order);
         let out = expm(&wrap(m), 1).expect("expm must succeed");
-        as_dense(&out)
+        as_data(&out)
     });
 }
 
@@ -306,6 +331,6 @@ fn batched_einsum_normalizes_row_major_input() {
         let wa = wrap(a);
         let wb = wrap(b);
         let out = einsum(&[&wa, &wb], "bik,bkj->bij").expect("einsum must succeed");
-        as_dense(&out)
+        as_data(&out)
     });
 }

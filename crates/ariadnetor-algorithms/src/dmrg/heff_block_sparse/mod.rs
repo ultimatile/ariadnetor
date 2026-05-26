@@ -1,20 +1,22 @@
 //! BlockSparse / U(1) variant of the 2-site DMRG local update.
 //!
 //! Mirrors [`super::heff`] (the Dense path) for a
-//! `BlockSparse<T, S>`-backed chain. The effective Hamiltonian
-//! built from `(left(i), W[i], W[i+1], right(i+2))` is exposed as
-//! a [`crate::krylov::LinearOp<T>`] so the existing Dense Krylov
-//! solvers (Lanczos by default, ARPACK behind the `arpack` feature)
-//! drive it without a separate native BlockSparse Krylov path.
+//! `BlockSparseTensorData<T, S>`-backed chain. The effective
+//! Hamiltonian built from `(left(i), W[i], W[i+1], right(i+2))` is
+//! exposed as a [`crate::krylov::LinearOp<T>`] so the existing Dense
+//! Krylov solvers (Lanczos by default, ARPACK behind the `arpack`
+//! feature) drive it without a separate native BlockSparse Krylov
+//! path.
 //!
 //! ## Flat-buffer adapter
 //!
-//! `LinearOp<T>` operates on `Dense<T>` flat vectors. The
-//! BlockSparse Heff implements `apply(&Dense<T>) -> Dense<T>` via:
+//! `LinearOp<T>` operates on `DenseTensor<T, B>` flat vectors. The
+//! BlockSparse Heff implements `apply(&DenseTensor<T, B>) -> DenseTensor<T, B>` via:
 //!
-//! 1. **Scatter** the flat input into a populated `BlockSparse`
-//!    2-site tensor whose indices and flux match the psi template
-//!    derived from the MPS sites at `(site, site+1)`.
+//! 1. **Scatter** the flat input into a populated
+//!    `BlockSparseTensorData` 2-site tensor whose indices and flux
+//!    match the psi template derived from the MPS sites at
+//!    `(site, site+1)`.
 //! 2. **Contract** through the env / W tensors using
 //!    [`arnet::contract_block_sparse`] in four steps. The
 //!    axis convention mirrors `arnet_mps::inner::braket_bsp` and
@@ -22,10 +24,10 @@
 //!    order `lhs_free | rhs_free` ends in
 //!    `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
 //!    no axis swap.
-//! 3. **Gather** the rank-4 result back into a flat `Dense<T>` of
-//!    the same length, walking the psi template's
-//!    [`BlockSparse::block_metas`] and looking up each block in
-//!    the contracted output by coordinate.
+//! 3. **Gather** the rank-4 result back into a flat `DenseTensor<T, B>`
+//!    of the same length, walking the psi template's
+//!    [`BlockSparseTensorData::block_metas`] and looking up each block
+//!    in the contracted output by coordinate.
 //!
 //! Symmetry preservation is structural: the psi template only
 //! allocates flux-allowed blocks, and `contract_block_sparse`
@@ -139,13 +141,14 @@ where
         // ensure individual outer axes are non-empty, but the
         // combined `psi_flux = mps_i.flux ⊕ mps_ip1.flux` may
         // still be unreachable on the (axis_0 × axis_1 × axis_1
-        // × axis_2) sector lattice — in which case
-        // `BlockSparse::zeros(...)` allocates zero blocks. Without
-        // this check the underlying solver's `dim >= 1`
-        // precondition fires (Lanczos panics, ARPACK rejects with
-        // `InvalidParam`) on otherwise valid user input. Doing the
-        // check here (post `new`) avoids a second `BlockSparse::zeros`
-        // allocation that a validation-time check would have required.
+        // × axis_2) sector lattice — in which case the
+        // `BlockSparseTensorData::zeros(...)` template allocates
+        // zero blocks. Without this check the underlying solver's
+        // `dim >= 1` precondition fires (Lanczos panics, ARPACK
+        // rejects with `InvalidParam`) on otherwise valid user
+        // input. Doing the check here (post `new`) avoids a second
+        // template allocation that a validation-time check would
+        // have required.
         return Err(DmrgHeffError::QnMismatch {
             site,
             field: "psi_template",

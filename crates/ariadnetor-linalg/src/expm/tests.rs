@@ -1,6 +1,6 @@
 use super::{compute_scaling_decision, validate_expm_nrow};
 use arnet_core::backend::MemoryOrder;
-use arnet_tensor::Dense;
+use arnet_tensor::DenseTensorData;
 
 #[test]
 fn validate_expm_nrow_rejects_zero() {
@@ -32,7 +32,7 @@ fn validate_expm_nrow_accepts_valid() {
 fn compute_scaling_decision_above_shift_threshold() {
     let theta = 1.0_f64;
     let norm = (1u64 << 62) as f64 * 1.5;
-    let a = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -57,7 +57,7 @@ fn compute_scaling_decision_above_shift_threshold() {
 /// the input but whose storage pointer differs.
 #[test]
 fn compute_scaling_decision_zero_steps_returns_input_unchanged() {
-    let a = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,

@@ -97,12 +97,11 @@ fn logical_extent_and_storage_extent_diverge_when_symmetry_forbids_all_blocks() 
 }
 
 #[test]
-fn norm_lives_on_storage_half_and_matches_legacy_block_sparse() {
+fn norm_lives_on_storage_half() {
     // Scalar-only data ops are placed on `BlockSparseStorage<T>` so
     // they need no layout, sector, or backend. This test pins the
     // placement (`.storage().norm()`) and verifies the numeric value
-    // against the legacy `BlockSparse<T, S>::norm` definition
-    // (Frobenius norm over all stored elements).
+    // is the Frobenius norm over all stored elements.
     let mut td = sample_u1_rank2_data();
 
     // Norm of a freshly-zeroed tensor is exactly zero.

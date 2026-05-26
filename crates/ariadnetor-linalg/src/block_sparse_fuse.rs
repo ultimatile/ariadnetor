@@ -1,17 +1,18 @@
 //! Block-sparse tensor leg fusion.
 //!
-//! Fuses consecutive legs of a [`BlockSparse<T, S>`] tensor into a single leg
-//! via Kronecker-product sector fusion.
+//! Fuses consecutive legs of a [`BlockSparseTensor<T, S, B>`] tensor into
+//! a single leg via Kronecker-product sector fusion.
 
 use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensor, Direction, QNIndex, Sector};
+use arnet_tensor::{
+    BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, QNIndex, Sector,
+};
 
 use crate::block_sparse_decomp::fused_sector::enumerate_fused_tuples;
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_block_sparse;
 
 /// Fuse consecutive legs of a block-sparse tensor into a single leg.
 ///
@@ -45,27 +46,31 @@ where
 {
     crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "fuse_legs_block_sparse");
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.backend().preferred_order();
-    let bsp = tensor.data().as_block_sparse();
-    let result =
-        fuse_legs_block_sparse_dense(tensor.backend(), &bsp, start, count, fused_direction)?;
-    Ok(wrap_block_sparse(result, backend_arc, order))
+    let result = fuse_legs_block_sparse_dense(
+        tensor.backend(),
+        tensor.data(),
+        start,
+        count,
+        fused_direction,
+    )?;
+    Ok(BlockSparseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`fuse_legs_block_sparse`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`fuse_legs_block_sparse`] on joined-form
+/// [`BlockSparseTensorData<T, S>`].
 pub(crate) fn fuse_legs_block_sparse_dense<T, S, B>(
     backend: &B,
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     start: usize,
     count: usize,
     fused_direction: Direction,
-) -> Result<BlockSparse<T, S>, LinalgError>
+) -> Result<BlockSparseTensorData<T, S>, LinalgError>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    let rank = tensor.rank();
+    let rank = tensor.layout().rank();
 
     if count < 2 {
         return Err(LinalgError::InvalidArgument(format!(
@@ -79,7 +84,7 @@ where
         )));
     }
 
-    let indices = tensor.indices();
+    let indices = tensor.layout().indices().to_vec();
     let order = backend.preferred_order();
 
     // Enumerate ALL fused tuples from the Kronecker product of the fused legs.
@@ -134,15 +139,22 @@ where
     out_indices.push(fused_index);
     out_indices.extend(indices[start + count..].iter().cloned());
 
-    let mut output = BlockSparse::zeros(out_indices, tensor.flux().clone());
+    let mut output =
+        BlockSparseTensorData::zeros(out_indices, tensor.layout().flux().clone(), order);
 
     // Pre-compute fused dimension sizes per fused block index (avoids borrow conflict)
-    let fused_dim_per_block: Vec<usize> = (0..output.indices()[start].num_blocks())
-        .map(|bi| output.indices()[start].block_dim(bi))
+    let fused_dim_per_block: Vec<usize> = (0..output.layout().indices()[start].num_blocks())
+        .map(|bi| output.layout().indices()[start].block_dim(bi))
         .collect();
 
+    // Snapshot block metas so we can read `tensor.block_data` while
+    // mutating `output` inside the loop (the metas live on
+    // `tensor.layout()`, which would otherwise alias the immutable borrow
+    // held by `block_data`).
+    let block_metas = tensor.layout().block_metas().to_vec();
+
     // Copy data from each input block to the correct output block
-    for meta in tensor.block_metas() {
+    for meta in &block_metas {
         let fuse_tuple: Vec<usize> = meta.coord.0[start..start + count].to_vec();
         let &(fused_block_idx, fused_offset) = tuple_to_fused
             .get(&fuse_tuple)
@@ -175,13 +187,16 @@ where
             .max(1);
         let fused_total = fused_dim_per_block[fused_block_idx];
 
-        let src_data = tensor.block_data(&meta.coord).unwrap();
+        // Copy out the source slice before mutably borrowing `output`,
+        // because `tensor.block_data()` and `output.block_data_mut()` both
+        // hold references whose lifetimes overlap inside this iteration.
+        let src_buf: Vec<T> = tensor.block_data(&meta.coord).unwrap().to_vec();
         let dst_data = output
             .block_data_mut(&out_coord)
             .expect("output block must exist");
 
         copy_fused_block(
-            src_data,
+            &src_buf,
             dst_data,
             leading_prod,
             fused_prod,

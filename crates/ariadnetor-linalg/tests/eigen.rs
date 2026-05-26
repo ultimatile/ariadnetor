@@ -1,20 +1,20 @@
 use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
 fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
-    let cm = arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm.into_tensor_data(), NativeBackend::shared())
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
+    let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(cm, NativeBackend::shared())
 }
 
-/// Convert a column-major Dense to row-major so `Dense::get` (which is
-/// row-major-fixed by design) returns the logical `[i, j]` element.
+/// Convert a column-major tensor to row-major so `DenseTensor::get`
+/// (which is row-major-fixed by design) returns the logical `[i, j]`
+/// element.
 fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
-    let dense = tensor.data().as_dense();
-    let rm = arnet_tensor::reorder(&dense, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm.into_tensor_data(), NativeBackend::shared())
+    let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
+    DenseTensor::with_backend(rm, NativeBackend::shared())
 }
 
 // --- EIGH tests ---
@@ -36,7 +36,7 @@ fn test_eigh_f64_2x2_symmetric() {
 
     // Eigenvectors should be orthogonal. `eigh` outputs `v` in
     // column-major (backend preferred order); convert to row-major so
-    // `Dense::get([i, j])` returns the logical `v[i, j]` element.
+    // `DenseTensor::get([i, j])` returns the logical `v[i, j]` element.
     let v_rm = to_rm(&v);
     let v00 = v_rm.get(&[0, 0]);
     let v10 = v_rm.get(&[1, 0]);

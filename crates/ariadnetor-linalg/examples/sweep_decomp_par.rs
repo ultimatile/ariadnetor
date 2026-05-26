@@ -20,7 +20,7 @@ use arnet_linalg::{
     eig_with_policy, eigh_with_policy, lq_with_policy, qr_with_policy, svd_with_policy,
 };
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 fn random_dense(n: usize) -> DenseTensor<f64, NativeBackend> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -37,8 +37,8 @@ fn random_symmetric(n: usize) -> DenseTensor<f64, NativeBackend> {
             out[i * n + j] = src[i * n + j] + src[j * n + i];
         }
     }
-    let d = Dense::new(out, vec![n, n], MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(d.into_tensor_data(), NativeBackend::shared())
+    let d = DenseTensorData::from_raw_parts(out, vec![n, n], MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(d, NativeBackend::shared())
 }
 
 fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {

@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract_dense;
@@ -10,9 +10,8 @@ use crate::eigen::eigh_dense;
 use crate::error::LinalgError;
 use crate::scalar_ops::{diagonal_scale_dense, linear_combine_dense};
 use crate::solve::solve_dense;
-use crate::tensor_bridge::wrap_dense;
 use crate::transpose::conjugate_transpose_dense;
-use arnet_tensor::reorder;
+use arnet_tensor::reorder_data;
 
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
 ///
@@ -38,17 +37,17 @@ pub fn expm_hermitian<T: Scalar, B: ComputeBackend>(
     nrow: usize,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = expm_hermitian_dense(tensor.backend(), &dense, nrow)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = expm_hermitian_dense(tensor.backend(), tensor.data(), nrow)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`expm_hermitian`] on legacy `Dense<T>`.
+/// Internal kernel for [`expm_hermitian`] on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn expm_hermitian_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let (w, v) = eigh_dense(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(lambda_j)
@@ -87,17 +86,17 @@ pub fn expm_antihermitian<T: Scalar, B: ComputeBackend>(
     nrow: usize,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = expm_antihermitian_dense(tensor.backend(), &dense, nrow)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = expm_antihermitian_dense(tensor.backend(), tensor.data(), nrow)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`expm_antihermitian`] on legacy `Dense<T>`.
+/// Internal kernel for [`expm_antihermitian`] on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn expm_antihermitian_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     // Reject real types -- multiplication by i is not representable
     let tid = TypeId::of::<T>();
     if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
@@ -109,7 +108,7 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
     let order = backend.preferred_order();
 
     // Reorder to RowMajor for element-wise iA computation
-    let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
+    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
     let data = rm.data();
     let shape = tensor.shape();
 
@@ -120,8 +119,8 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
         .map(|&x| T::from_real_imag(-x.im(), x.re()))
         .collect();
     // ia data is in RowMajor; reorder to preferred_order for backend consumption
-    let ia_rm = Dense::new(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
-    let ia = reorder(&ia_rm, MemoryOrder::RowMajor, order);
+    let ia_rm = DenseTensorData::from_raw_parts(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
+    let ia = reorder_data(&ia_rm, order);
 
     // eigh(iA) -> real eigenvalues lambda, eigenvectors V
     let (w, v_orig) = eigh_dense(backend, &ia, nrow)?;
@@ -161,12 +160,12 @@ fn norm_1<T: Scalar>(data: &[T], n: usize) -> T::Real {
     max_col_sum
 }
 
-/// Matrix multiplication helper: C = A * B (both n x n, stored as Dense).
+/// Matrix multiplication helper: C = A * B (both n x n, stored as `DenseTensorData`).
 fn matmul<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &Dense<T>,
-    b: &Dense<T>,
-) -> Result<Dense<T>, LinalgError> {
+    a: &DenseTensorData<T>,
+    b: &DenseTensorData<T>,
+) -> Result<DenseTensorData<T>, LinalgError> {
     contract_dense(backend, a, b, "ij,jk->ik")
 }
 
@@ -198,10 +197,10 @@ fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
 /// - `s <= 62` boundary: at `s == 62` both the shift and the doubling
 ///   loop produce `2^62`.
 fn compute_scaling_decision<T: Scalar>(
-    a: Dense<T>,
+    a: DenseTensorData<T>,
     norm: T::Real,
     theta: T::Real,
-) -> (Dense<T>, usize) {
+) -> (DenseTensorData<T>, usize) {
     let s = if norm > theta {
         let ratio = norm / theta;
         ratio.log2().ceil().to_usize().unwrap_or(0)
@@ -228,13 +227,13 @@ fn compute_scaling_decision<T: Scalar>(
 }
 
 /// Scale each element of a tensor by a real factor.
-fn scale_real<T: Scalar>(tensor: &Dense<T>, factor: T::Real) -> Dense<T> {
+fn scale_real<T: Scalar>(tensor: &DenseTensorData<T>, factor: T::Real) -> DenseTensorData<T> {
     let data: Vec<T> = tensor
         .data()
         .iter()
         .map(|&x| x.scale_real(factor))
         .collect();
-    Dense::new(data, tensor.shape().to_vec(), tensor.order())
+    DenseTensorData::from_raw_parts(data, tensor.shape().to_vec(), tensor.order())
 }
 
 /// Pade approximant coefficients b_0..b_m for [m/m] approximant.
@@ -258,10 +257,10 @@ fn coeff<T: Scalar>(c: f64) -> T {
 /// Uses Horner-like evaluation to minimize matrix multiplications.
 fn pade_uv_small<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &Dense<T>,
+    a: &DenseTensorData<T>,
     n: usize,
     m: usize,
-) -> Result<(Dense<T>, Dense<T>), LinalgError> {
+) -> Result<(DenseTensorData<T>, DenseTensorData<T>), LinalgError> {
     let b = pade_coefficients(m);
     // `id.order()` must match `a.order()` for the `linear_combine`
     // calls below; `backend.eye` produces an identity in
@@ -360,9 +359,9 @@ fn pade_uv_small<T: Scalar>(
 /// plus 3 for the polynomial evaluation = 6 total).
 fn pade_uv_13<T: Scalar>(
     backend: &impl ComputeBackend,
-    a: &Dense<T>,
+    a: &DenseTensorData<T>,
     n: usize,
-) -> Result<(Dense<T>, Dense<T>), LinalgError> {
+) -> Result<(DenseTensorData<T>, DenseTensorData<T>), LinalgError> {
     let b = pade_coefficients(13);
     // See `pade_uv_small` for the order-matching rationale.
     let id = backend.eye::<T>(n);
@@ -442,17 +441,16 @@ pub fn expm<T: Scalar, B: ComputeBackend>(
     nrow: usize,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = expm_dense(tensor.backend(), &dense, nrow)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = expm_dense(tensor.backend(), tensor.data(), nrow)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`expm`] on legacy `Dense<T>`.
+/// Internal kernel for [`expm`] on the joined [`DenseTensorData<T>`] form.
 pub(crate) fn expm_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let shape = tensor.shape();
     let rank = tensor.rank();
 
@@ -471,11 +469,10 @@ pub(crate) fn expm_dense<T: Scalar>(
     let order = backend.preferred_order();
 
     // Flatten to n x n row-major for internal computation (norm_1 expects row-major)
-    let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
+    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
     // Construct the working matrix in preferred_order for backend operations
-    let a = reorder(
-        &Dense::new(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor),
-        MemoryOrder::RowMajor,
+    let a = reorder_data(
+        &DenseTensorData::from_raw_parts(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor),
         order,
     );
 
@@ -498,13 +495,13 @@ pub(crate) fn expm_dense<T: Scalar>(
             let (u, v) = pade_uv_small(backend, &a, n, pade_order)?;
             let result = solve_pade(backend, &u, &v)?;
             // RM intermediate for correct axis-split, then back to preferred order
-            let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-            let reshaped = Dense::new(
+            let result_rm = reorder_data(&result, MemoryOrder::RowMajor);
+            let reshaped = DenseTensorData::from_raw_parts(
                 result_rm.data().to_vec(),
                 shape.to_vec(),
                 MemoryOrder::RowMajor,
             );
-            return Ok(reorder(&reshaped, MemoryOrder::RowMajor, order));
+            return Ok(reorder_data(&reshaped, order));
         }
     }
 
@@ -521,21 +518,21 @@ pub(crate) fn expm_dense<T: Scalar>(
     }
 
     // RM intermediate for correct axis-split, then back to preferred order
-    let result_rm = reorder(&result, order, MemoryOrder::RowMajor);
-    let reshaped = Dense::new(
+    let result_rm = reorder_data(&result, MemoryOrder::RowMajor);
+    let reshaped = DenseTensorData::from_raw_parts(
         result_rm.data().to_vec(),
         shape.to_vec(),
         MemoryOrder::RowMajor,
     );
-    Ok(reorder(&reshaped, MemoryOrder::RowMajor, order))
+    Ok(reorder_data(&reshaped, order))
 }
 
 /// Solve (V - U) X = V + U for the Pade approximant.
 fn solve_pade<T: Scalar>(
     backend: &impl ComputeBackend,
-    u: &Dense<T>,
-    v: &Dense<T>,
-) -> Result<Dense<T>, LinalgError> {
+    u: &DenseTensorData<T>,
+    v: &DenseTensorData<T>,
+) -> Result<DenseTensorData<T>, LinalgError> {
     // V - U
     let neg_one: T = coeff::<T>(-1.0);
     let lhs = linear_combine_dense(&[v, u], &[T::one(), neg_one])?;

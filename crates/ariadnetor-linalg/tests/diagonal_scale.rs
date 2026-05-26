@@ -2,18 +2,18 @@
 
 use arnet_linalg::diagonal_scale;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
-/// Wrap a `Dense<f64>` into a `DenseTensor` so the new pub API accepts it.
-fn t(d: Dense<f64>) -> DenseTensor<f64, NativeBackend> {
-    DenseTensor::with_backend(d.into_tensor_data(), NativeBackend::shared())
+/// Wrap a `DenseTensorData<f64>` into a `DenseTensor` so the new pub API accepts it.
+fn t(d: DenseTensorData<f64>) -> DenseTensor<f64, NativeBackend> {
+    DenseTensor::with_backend(d, NativeBackend::shared())
 }
 
 #[test]
 fn test_diagonal_scale_axis0() {
     // 2x3 matrix in CM layout, scale rows by [2, 3]
     // CM layout of [[1,2,3],[4,5,6]]: col0=[1,4], col1=[2,5], col2=[3,6]
-    let t_in = t(Dense::<f64>::new(
+    let t_in = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -27,7 +27,7 @@ fn test_diagonal_scale_axis0() {
 #[test]
 fn test_diagonal_scale_axis1() {
     // 2x3 matrix in CM layout, scale columns by [1, 2, 3]
-    let t_in = t(Dense::<f64>::new(
+    let t_in = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -40,7 +40,7 @@ fn test_diagonal_scale_axis1() {
 
 #[test]
 fn test_diagonal_scale_rank1() {
-    let t_in = t(Dense::<f64>::new(
+    let t_in = t(DenseTensorData::<f64>::from_raw_parts(
         vec![10.0, 20.0, 30.0],
         vec![3],
         MemoryOrder::ColumnMajor,
@@ -51,7 +51,7 @@ fn test_diagonal_scale_rank1() {
 
 #[test]
 fn test_diagonal_scale_error_cases() {
-    let t_in = t(Dense::<f64>::new(
+    let t_in = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0; 6],
         vec![2, 3],
         MemoryOrder::ColumnMajor,

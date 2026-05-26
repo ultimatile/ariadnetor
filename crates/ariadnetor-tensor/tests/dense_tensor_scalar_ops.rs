@@ -1,23 +1,22 @@
 //! Integration tests for the inherent unary scalar ops on the joined
 //! `DenseTensor` surface (`scaled`, `norm`, `normalized`). The
-//! `Dense::*` legacy form is covered separately in `normalize_ops.rs`.
+//! `DenseTensorData::*` form is covered separately in `normalize_ops.rs`.
 
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
-/// Wrap a legacy `Dense<T>` into a `DenseTensor<T, NativeBackend>` pinned
-/// to the shared `NativeBackend`. Tests build `Dense` directly (often
-/// with a specific `MemoryOrder` distinct from `preferred_order()`) and
-/// feed it to the inherent methods through this wrapper.
-fn t<T: Clone>(d: Dense<T>) -> DenseTensor<T, NativeBackend> {
-    DenseTensor::with_backend(d.into_tensor_data(), NativeBackend::shared())
+/// Wrap a `DenseTensorData<T>` (built with a specific `MemoryOrder` distinct
+/// from the backend's preferred order in some tests) into a
+/// `DenseTensor<T, NativeBackend>` pinned to the shared `NativeBackend`.
+fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
+    DenseTensor::with_backend(d, NativeBackend::shared())
 }
 
 // --- scaled ---
 
 #[test]
 fn test_scaled_f64() {
-    let tensor = t(Dense::<f64>::new(
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -34,7 +33,7 @@ fn test_scaled_f64() {
 #[test]
 fn test_scaled_complex() {
     use num_complex::Complex;
-    let tensor = t(Dense::new(
+    let tensor = t(DenseTensorData::from_raw_parts(
         vec![Complex::new(1.0, 0.0), Complex::new(0.0, 1.0)],
         vec![2],
         MemoryOrder::ColumnMajor,
@@ -49,7 +48,7 @@ fn test_scaled_complex() {
 #[test]
 fn test_scaled_column_major() {
     // CM layout for [[1,2],[3,4]]: col0=[1,3], col1=[2,4] -> flat [1,3,2,4]
-    let tensor = t(Dense::<f64>::new(
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 3.0, 2.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -72,7 +71,7 @@ fn test_norm_f64() {
 fn test_norm_complex() {
     use num_complex::Complex;
     // |3+4i| = 5, so norm of single element [3+4i] = 5
-    let tensor = t(Dense::new(
+    let tensor = t(DenseTensorData::from_raw_parts(
         vec![Complex::new(3.0, 4.0)],
         vec![1],
         MemoryOrder::ColumnMajor,
@@ -83,7 +82,7 @@ fn test_norm_complex() {
 
 #[test]
 fn test_norm_column_major() {
-    let tensor = t(Dense::<f64>::new(
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 3.0, 2.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -114,7 +113,7 @@ fn test_normalized_zero_panics() {
 
 #[test]
 fn test_normalized_column_major() {
-    let tensor = t(Dense::<f64>::new(
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 3.0, 2.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,

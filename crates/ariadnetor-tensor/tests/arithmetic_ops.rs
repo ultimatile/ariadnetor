@@ -1,19 +1,19 @@
-//! Arithmetic operations tests for Dense and Tensor
+//! Arithmetic operations tests for DenseTensorData and Tensor
 //!
 //! Tests for TCI-spec arithmetic operations:
 //! - scale: scalar multiplication
 //! - linear_combine: linear combination of tensors
 
-use arnet_tensor::Dense;
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 use num_complex::Complex;
 
 // ============================================================================
-// Dense::scale tests
+// DenseTensorData::scale tests
 // ============================================================================
 
 #[test]
 fn test_tensor_storage_scale_f64() {
-    let mut tensor = Dense::<f64>::ones(vec![2, 3]);
+    let mut tensor = DenseTensorData::<f64>::ones_in_order(vec![2, 3], MemoryOrder::ColumnMajor);
     tensor.scale(2.5);
 
     {
@@ -26,7 +26,7 @@ fn test_tensor_storage_scale_f64() {
 
 #[test]
 fn test_tensor_storage_scale_f32() {
-    let mut tensor = Dense::<f32>::ones(vec![3, 2]);
+    let mut tensor = DenseTensorData::<f32>::ones_in_order(vec![3, 2], MemoryOrder::ColumnMajor);
     tensor.scale(3.0f32);
 
     {
@@ -39,7 +39,8 @@ fn test_tensor_storage_scale_f32() {
 
 #[test]
 fn test_tensor_storage_scale_complex_f64() {
-    let mut tensor = Dense::<Complex<f64>>::ones(vec![2, 2]);
+    let mut tensor =
+        DenseTensorData::<Complex<f64>>::ones_in_order(vec![2, 2], MemoryOrder::ColumnMajor);
     let factor = Complex::new(2.0, 1.0);
     tensor.scale(factor);
 
@@ -54,7 +55,8 @@ fn test_tensor_storage_scale_complex_f64() {
 
 #[test]
 fn test_tensor_storage_scaled_out_of_place() {
-    let tensor = Dense::<f64>::constant(vec![2, 2], 3.0);
+    let tensor =
+        DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
     let scaled = tensor.scaled(2.0);
 
     // Original unchanged
@@ -73,17 +75,17 @@ fn test_tensor_storage_scaled_out_of_place() {
 }
 
 // ============================================================================
-// Dense::linear_combine tests
+// DenseTensorData::linear_combine tests
 // ============================================================================
 
 #[test]
 fn test_linear_combine_simple() {
-    let a = Dense::<f64>::constant(vec![2, 2], 1.0);
-    let b = Dense::<f64>::constant(vec![2, 2], 2.0);
-    let c = Dense::<f64>::constant(vec![2, 2], 3.0);
+    let a = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 1.0, MemoryOrder::ColumnMajor);
+    let b = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 2.0, MemoryOrder::ColumnMajor);
+    let c = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
 
     // 1.0*a + 2.0*b + 3.0*c = 1.0*1 + 2.0*2 + 3.0*3 = 14.0
-    let result = Dense::linear_combine(&[&a, &b, &c], &[1.0, 2.0, 3.0]).unwrap();
+    let result = DenseTensorData::linear_combine(&[&a, &b, &c], &[1.0, 2.0, 3.0]).unwrap();
 
     {
         let data = result.data();
@@ -95,11 +97,11 @@ fn test_linear_combine_simple() {
 
 #[test]
 fn test_linear_combine_f32() {
-    let a = Dense::<f32>::constant(vec![3, 3], 1.0);
-    let b = Dense::<f32>::constant(vec![3, 3], 4.0);
+    let a = DenseTensorData::<f32>::constant_in_order(vec![3, 3], 1.0, MemoryOrder::ColumnMajor);
+    let b = DenseTensorData::<f32>::constant_in_order(vec![3, 3], 4.0, MemoryOrder::ColumnMajor);
 
     // 2.0*a + 0.5*b = 2.0*1 + 0.5*4 = 4.0
-    let result = Dense::linear_combine(&[&a, &b], &[2.0f32, 0.5f32]).unwrap();
+    let result = DenseTensorData::linear_combine(&[&a, &b], &[2.0f32, 0.5f32]).unwrap();
 
     {
         let data = result.data();
@@ -111,13 +113,23 @@ fn test_linear_combine_f32() {
 
 #[test]
 fn test_linear_combine_complex() {
-    let a = Dense::<Complex<f64>>::constant(vec![2, 2], Complex::new(1.0, 0.0));
-    let b = Dense::<Complex<f64>>::constant(vec![2, 2], Complex::new(0.0, 1.0));
+    let a = DenseTensorData::<Complex<f64>>::constant_in_order(
+        vec![2, 2],
+        Complex::new(1.0, 0.0),
+        MemoryOrder::ColumnMajor,
+    );
+    let b = DenseTensorData::<Complex<f64>>::constant_in_order(
+        vec![2, 2],
+        Complex::new(0.0, 1.0),
+        MemoryOrder::ColumnMajor,
+    );
 
     // (2+0i)*(1+0i) + (0+1i)*(0+1i) = (2+0i) + (i^2) = (2+0i) + (-1+0i) = (1+0i)
-    let result =
-        Dense::linear_combine(&[&a, &b], &[Complex::new(2.0, 0.0), Complex::new(0.0, 1.0)])
-            .unwrap();
+    let result = DenseTensorData::linear_combine(
+        &[&a, &b],
+        &[Complex::new(2.0, 0.0), Complex::new(0.0, 1.0)],
+    )
+    .unwrap();
 
     {
         let data = result.data();
@@ -130,40 +142,46 @@ fn test_linear_combine_complex() {
 
 #[test]
 fn test_linear_combine_empty_error() {
-    let result = Dense::<f64>::linear_combine(&[], &[]);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("empty"));
+    let result = DenseTensorData::<f64>::linear_combine(&[], &[]);
+    let Err(msg) = result else {
+        panic!("expected Err for empty input");
+    };
+    assert!(msg.contains("empty"));
 }
 
 #[test]
 fn test_linear_combine_mismatched_lengths() {
-    let a = Dense::<f64>::ones(vec![2, 2]);
-    let result = Dense::linear_combine(&[&a], &[1.0, 2.0]);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Mismatched lengths"));
+    let a = DenseTensorData::<f64>::ones_in_order(vec![2, 2], MemoryOrder::ColumnMajor);
+    let result = DenseTensorData::linear_combine(&[&a], &[1.0, 2.0]);
+    let Err(msg) = result else {
+        panic!("expected Err for length mismatch");
+    };
+    assert!(msg.contains("Mismatched lengths"));
 }
 
 #[test]
 fn test_linear_combine_shape_mismatch() {
-    let a = Dense::<f64>::ones(vec![2, 2]);
-    let b = Dense::<f64>::ones(vec![3, 3]);
-    let result = Dense::linear_combine(&[&a, &b], &[1.0, 1.0]);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("same shape"));
+    let a = DenseTensorData::<f64>::ones_in_order(vec![2, 2], MemoryOrder::ColumnMajor);
+    let b = DenseTensorData::<f64>::ones_in_order(vec![3, 3], MemoryOrder::ColumnMajor);
+    let result = DenseTensorData::linear_combine(&[&a, &b], &[1.0, 1.0]);
+    let Err(msg) = result else {
+        panic!("expected Err for shape mismatch");
+    };
+    assert!(msg.contains("same shape"));
 }
 
 // ============================================================================
-// Dense::add_all tests
+// DenseTensorData::add_all tests
 // ============================================================================
 
 #[test]
 fn test_add_all_simple() {
-    let a = Dense::<f64>::constant(vec![2, 2], 1.0);
-    let b = Dense::<f64>::constant(vec![2, 2], 2.0);
-    let c = Dense::<f64>::constant(vec![2, 2], 3.0);
+    let a = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 1.0, MemoryOrder::ColumnMajor);
+    let b = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 2.0, MemoryOrder::ColumnMajor);
+    let c = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
 
     // a + b + c = 1 + 2 + 3 = 6
-    let result = Dense::add_all(&[&a, &b, &c]).unwrap();
+    let result = DenseTensorData::add_all(&[&a, &b, &c]).unwrap();
 
     {
         let data = result.data();
@@ -175,10 +193,18 @@ fn test_add_all_simple() {
 
 #[test]
 fn test_add_all_complex() {
-    let a = Dense::<Complex<f64>>::constant(vec![2, 2], Complex::new(1.0, 2.0));
-    let b = Dense::<Complex<f64>>::constant(vec![2, 2], Complex::new(3.0, 4.0));
+    let a = DenseTensorData::<Complex<f64>>::constant_in_order(
+        vec![2, 2],
+        Complex::new(1.0, 2.0),
+        MemoryOrder::ColumnMajor,
+    );
+    let b = DenseTensorData::<Complex<f64>>::constant_in_order(
+        vec![2, 2],
+        Complex::new(3.0, 4.0),
+        MemoryOrder::ColumnMajor,
+    );
 
-    let result = Dense::add_all(&[&a, &b]).unwrap();
+    let result = DenseTensorData::add_all(&[&a, &b]).unwrap();
 
     {
         let data = result.data();
