@@ -3,6 +3,16 @@
 This document captures the coding conventions you are expected to
 follow when adding or modifying code in this repository.
 
+## Building
+
+`cargo make` aliases defined in `Makefile.toml`:
+
+```bash
+cargo make build       # Build workspace
+cargo make test        # Run unit tests
+cargo make ci          # Full CI checks (fmt, clippy, test)
+```
+
 ## Coding Conventions
 
 ### Naming
