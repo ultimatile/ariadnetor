@@ -42,16 +42,17 @@ where
     ///
     /// Panics if indices are out of bounds.
     pub fn set(&mut self, indices: &[usize], value: T) {
-        let shape_vec = self.shape().to_vec();
-        assert_eq!(indices.len(), shape_vec.len());
-        for (axis, (&idx, &dim)) in indices.iter().zip(&shape_vec).enumerate() {
-            assert!(
-                idx < dim,
-                "index {idx} out of bounds for axis {axis} with size {dim}"
-            );
-        }
-        let order = self.order();
-        let idx = flat_index(indices, &shape_vec, order);
+        let idx = {
+            let shape = self.shape();
+            assert_eq!(indices.len(), shape.len());
+            for (axis, (&i, &dim)) in indices.iter().zip(shape).enumerate() {
+                assert!(
+                    i < dim,
+                    "index {i} out of bounds for axis {axis} with size {dim}"
+                );
+            }
+            flat_index(indices, shape, self.order())
+        };
         self.storage_mut().data_mut()[idx] = value;
     }
 

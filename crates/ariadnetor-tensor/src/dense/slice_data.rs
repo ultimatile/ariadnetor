@@ -1,8 +1,7 @@
 //! Slice, expand, and replace operations for `DenseTensorData<T>`.
 //!
-//! Joined-form counterparts of the routines in [`super::slice`]. The
-//! strip-copy machinery is identical; the difference is reading via
-//! `storage().data()` and constructing via
+//! Strip-copy machinery for `slice`, `expand`, and `replace_slice`:
+//! read via `storage().data()` and construct outputs via
 //! [`DenseTensorData::from_raw_parts`].
 
 use num_traits::Zero;
