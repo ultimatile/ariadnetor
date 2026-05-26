@@ -70,15 +70,15 @@ where
     let weight_map: HashMap<&S, &Vec<T::Real>> =
         weights.values.iter().map(|(s, vs)| (s, vs)).collect();
 
-    // Snapshot the block metadata we need before cloning the tensor.
-    // The clone shares storage via Arc; mutating `result` triggers CoW
-    // on first `block_data_mut`, leaving the original `tensor` intact
-    // for the immutable inspection inside the loop.
-    let block_metas = tensor.layout().block_metas().to_vec();
-    let indices = tensor.layout().indices().to_vec();
+    // `result` is a clone that shares storage via Arc; mutating it
+    // triggers CoW on first `block_data_mut`, leaving the original
+    // `tensor` intact. Because `tensor` and `result` are distinct
+    // values, the inner loop can borrow `tensor.layout()` for its
+    // block_metas / indices reads while it mutates `result`.
+    let indices = tensor.layout().indices();
     let mut result = tensor.clone();
 
-    for meta in &block_metas {
+    for meta in tensor.layout().block_metas() {
         let block_idx_at_axis = meta.coord.0[axis];
         let sector = indices[axis].sector(block_idx_at_axis);
 

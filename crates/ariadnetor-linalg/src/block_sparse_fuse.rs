@@ -84,7 +84,7 @@ where
         )));
     }
 
-    let indices = tensor.layout().indices().to_vec();
+    let indices = tensor.layout().indices();
     let order = backend.preferred_order();
 
     // Enumerate ALL fused tuples from the Kronecker product of the fused legs.
@@ -147,14 +147,12 @@ where
         .map(|bi| output.layout().indices()[start].block_dim(bi))
         .collect();
 
-    // Snapshot block metas so we can read `tensor.block_data` while
-    // mutating `output` inside the loop (the metas live on
-    // `tensor.layout()`, which would otherwise alias the immutable borrow
-    // held by `block_data`).
-    let block_metas = tensor.layout().block_metas().to_vec();
-
-    // Copy data from each input block to the correct output block
-    for meta in &block_metas {
+    // Copy data from each input block to the correct output block.
+    // `tensor.layout().block_metas()` is borrowed for the loop duration;
+    // `tensor.block_data()` aliases the same immutable borrow on `tensor`,
+    // and `output.block_data_mut(...)` is on a different value, so no
+    // snapshot is needed.
+    for meta in tensor.layout().block_metas() {
         let fuse_tuple: Vec<usize> = meta.coord.0[start..start + count].to_vec();
         let &(fused_block_idx, fused_offset) = tuple_to_fused
             .get(&fuse_tuple)

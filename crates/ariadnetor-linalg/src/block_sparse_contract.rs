@@ -361,14 +361,15 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     let rhs_trans_flag = compute_rhs_trans_flag(rhs_is_id, axes_rhs, free_rhs, rhs_rank);
     let rhs_needs_physical_t = !rhs_is_id && !rhs_trans_flag;
 
-    // Snapshot the metadata vectors so we can mutate `output` inside the
-    // loop while reading per-block data from `lhs` and `rhs` (the layout
-    // borrows would otherwise outlive their owners across the iteration).
-    let lhs_metas = lhs.layout().block_metas().to_vec();
-    let rhs_metas = rhs.layout().block_metas().to_vec();
+    // `lhs` / `rhs` are immutable inputs; `output` is a separate value
+    // that we mutate. Borrowing `lhs.layout().block_metas()` for the
+    // loop is compatible with `lhs.block_data(...)` inside the body
+    // (both immutable on the same value) and with
+    // `output.block_data_mut(...)` (different value).
+    let rhs_metas = rhs.layout().block_metas();
     let mut key = Vec::with_capacity(axes_lhs.len());
 
-    for lhs_meta in &lhs_metas {
+    for lhs_meta in lhs.layout().block_metas() {
         key.clear();
         key.extend(axes_lhs.iter().map(|&a| lhs_meta.coord.0[a]));
         let Some(rhs_indices) = rhs_groups.get(key.as_slice()) else {
