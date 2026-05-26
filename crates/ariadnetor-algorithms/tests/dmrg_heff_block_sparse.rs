@@ -11,7 +11,7 @@
 //! - non-identity 2-site flux propagation
 //! - n=2 edge case
 //! - error paths (`QnMismatch` and others)
-//! - complex `BlockSparse<Complex<f64>, U1Sector>` coverage
+//! - complex `BlockSparseTensorData<Complex<f64>, U1Sector>` coverage
 //!
 //! Test fixtures use the XY hopping interaction
 //! `H = J (S+_a S-_{a+1} + S-_a S+_{a+1})`. See

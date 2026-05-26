@@ -1,12 +1,11 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{Dense, DenseTensor};
+use arnet_tensor::{DenseTensor, DenseTensorData};
 use num_traits::Zero;
 use std::ops::{Add, Mul};
 
 use crate::error::LinalgError;
-use crate::tensor_bridge::{wrap_dense, wrap_dense_as};
-use arnet_tensor::{flat_index, normalize_to};
+use arnet_tensor::{flat_index, normalize_to_data};
 
 /// Linear combination of tensors: sum coefs[i] * tensors[i].
 ///
@@ -46,19 +45,19 @@ where
         ));
     }
     let backend_arc = tensors[0].backend_arc().clone();
-    // Materialize Dense views; they hold Arcs into the same buffers so
-    // this is O(N) Arc-clones rather than O(N) data copies.
-    let dense_views: Vec<Dense<T>> = tensors.iter().map(|t| t.data().as_dense()).collect();
-    let dense_refs: Vec<&Dense<T>> = dense_views.iter().collect();
-    let result = linear_combine_dense(&dense_refs, coefs)?;
-    Ok(wrap_dense(result, backend_arc))
+    // Borrow the joined `DenseTensorData<T>` halves directly from each
+    // input tensor — this is O(1) per input (no clone, no Arc bump).
+    let data_refs: Vec<&DenseTensorData<T>> = tensors.iter().map(|t| t.data()).collect();
+    let result = linear_combine_dense(&data_refs, coefs)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`linear_combine`] operating on legacy `Dense<T>` slices.
+/// Internal kernel for [`linear_combine`] operating on joined
+/// [`DenseTensorData<T>`] slices.
 pub(crate) fn linear_combine_dense<T>(
-    tensors: &[&Dense<T>],
+    tensors: &[&DenseTensorData<T>],
     coefs: &[T],
-) -> Result<Dense<T>, LinalgError>
+) -> Result<DenseTensorData<T>, LinalgError>
 where
     T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
 {
@@ -98,7 +97,11 @@ where
             *r = r.clone() + coef.clone() * val.clone();
         }
     }
-    Ok(Dense::new(result, shape.to_vec(), order))
+    Ok(DenseTensorData::from_raw_parts(
+        result,
+        shape.to_vec(),
+        order,
+    ))
 }
 
 /// Partial trace over matched bond index pairs.
@@ -139,16 +142,16 @@ pub fn trace<T: Scalar, B: ComputeBackend>(
     pairs: &[(usize, usize)],
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = trace_dense(&dense, pairs)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = trace_dense(tensor.data(), pairs)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`trace`] operating on the legacy `Dense<T>` form.
+/// Internal kernel for [`trace`] operating on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn trace_dense<T: Scalar>(
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     pairs: &[(usize, usize)],
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let rank = tensor.rank();
     let shape = tensor.shape();
 
@@ -158,8 +161,8 @@ pub(crate) fn trace_dense<T: Scalar>(
     }
 
     // Normalize input to RowMajor for the direct-indexing implementation below.
-    let rm_tensor = normalize_to(tensor, MemoryOrder::RowMajor);
-    let tensor: &Dense<T> = &rm_tensor;
+    let rm_tensor = normalize_to_data(tensor, MemoryOrder::RowMajor);
+    let tensor: &DenseTensorData<T> = &rm_tensor;
 
     // Validate pairs
     let mut used = vec![false; rank];
@@ -246,7 +249,11 @@ pub(crate) fn trace_dense<T: Scalar>(
         *res = sum;
     }
 
-    Ok(Dense::new(result, output_shape, MemoryOrder::RowMajor))
+    Ok(DenseTensorData::from_raw_parts(
+        result,
+        output_shape,
+        MemoryOrder::RowMajor,
+    ))
 }
 
 /// Compute row-major strides from shape.
@@ -281,13 +288,15 @@ pub fn diag<T: Scalar, B: ComputeBackend>(
     tensor: &DenseTensor<T, B>,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = diag_dense(&dense)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = diag_dense(tensor.data())?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`diag`] operating on the legacy `Dense<T>` form.
-pub(crate) fn diag_dense<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, LinalgError> {
+/// Internal kernel for [`diag`] operating on the joined
+/// [`DenseTensorData<T>`] form.
+pub(crate) fn diag_dense<T: Scalar>(
+    tensor: &DenseTensorData<T>,
+) -> Result<DenseTensorData<T>, LinalgError> {
     let shape = tensor.shape();
     match shape.len() {
         1 => {
@@ -298,7 +307,11 @@ pub(crate) fn diag_dense<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, Linal
             for i in 0..n {
                 data[i * n + i] = tensor.data()[i];
             }
-            Ok(Dense::new(data, vec![n, n], tensor.order()))
+            Ok(DenseTensorData::from_raw_parts(
+                data,
+                vec![n, n],
+                tensor.order(),
+            ))
         }
         2 => {
             // Matrix -> diagonal vector: normalize to RowMajor for direct indexing.
@@ -308,14 +321,18 @@ pub(crate) fn diag_dense<T: Scalar>(tensor: &Dense<T>) -> Result<Dense<T>, Linal
                     "diag requires a square matrix, got {m}x{n}"
                 )));
             }
-            let rm = normalize_to(tensor, MemoryOrder::RowMajor);
+            let rm = normalize_to_data(tensor, MemoryOrder::RowMajor);
             let raw = rm.data();
             let coords_rm = MemoryOrder::RowMajor;
             let data: Vec<T> = (0..n)
                 .map(|i| raw[flat_index(&[i, i], shape, coords_rm)])
                 .collect();
             // 1D output: layout is invariant; propagate the input's order.
-            Ok(Dense::new(data, vec![n], tensor.order()))
+            Ok(DenseTensorData::from_raw_parts(
+                data,
+                vec![n],
+                tensor.order(),
+            ))
         }
         r => Err(LinalgError::InvalidArgument(format!(
             "diag requires rank 1 or 2, got rank {r}"
@@ -356,18 +373,18 @@ where
     B: ComputeBackend,
 {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let result = diagonal_scale_dense(tensor.backend(), &dense, weights, axis)?;
-    Ok(wrap_dense_as(result, backend_arc))
+    let result = diagonal_scale_dense(tensor.backend(), tensor.data(), weights, axis)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`diagonal_scale`] operating on the legacy `Dense<T>` form.
+/// Internal kernel for [`diagonal_scale`] operating on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn diagonal_scale_dense<T, S>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     weights: &[S],
     axis: usize,
-) -> Result<Dense<T>, LinalgError>
+) -> Result<DenseTensorData<T>, LinalgError>
 where
     T: Clone + Mul<S, Output = T> + 'static,
     S: Clone,
@@ -377,11 +394,11 @@ where
 
 /// Inner implementation with explicit memory order (for internal use and testing).
 fn diagonal_scale_inner<T, S>(
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     weights: &[S],
     axis: usize,
     order: MemoryOrder,
-) -> Result<Dense<T>, LinalgError>
+) -> Result<DenseTensorData<T>, LinalgError>
 where
     T: Clone + Mul<S, Output = T> + 'static,
     S: Clone,
@@ -402,13 +419,17 @@ where
 
     let total = tensor.len();
     if total == 0 {
-        return Ok(Dense::new(Vec::new(), tensor.shape().to_vec(), order));
+        return Ok(DenseTensorData::from_raw_parts(
+            Vec::new(),
+            tensor.shape().to_vec(),
+            order,
+        ));
     }
 
     // The strip-length computation below assumes the input data is laid
     // out in `order`; normalize to that order if needed.
-    let normalized = normalize_to(tensor, order);
-    let tensor: &Dense<T> = &normalized;
+    let normalized = normalize_to_data(tensor, order);
+    let tensor: &DenseTensorData<T> = &normalized;
     let shape = tensor.shape();
     let data = tensor.data();
 
@@ -427,13 +448,17 @@ where
         })
         .collect();
 
-    Ok(Dense::new(result, shape.to_vec(), order))
+    Ok(DenseTensorData::from_raw_parts(
+        result,
+        shape.to_vec(),
+        order,
+    ))
 }
 
 #[cfg(test)]
 mod diagonal_scale_tests {
     use super::*;
-    use arnet_tensor::{MemoryOrder, reorder};
+    use arnet_tensor::{MemoryOrder, reorder_data};
 
     /// RM/CM invariance: the same logical tensor, laid out in RM and CM,
     /// should produce logically identical results.
@@ -441,14 +466,14 @@ mod diagonal_scale_tests {
     fn rm_cm_invariance_axis0() {
         let rm_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let cm_data = vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0];
-        let t_rm = Dense::new(rm_data, vec![2, 3], MemoryOrder::RowMajor);
-        let t_cm = Dense::new(cm_data, vec![2, 3], MemoryOrder::ColumnMajor);
+        let t_rm = DenseTensorData::from_raw_parts(rm_data, vec![2, 3], MemoryOrder::RowMajor);
+        let t_cm = DenseTensorData::from_raw_parts(cm_data, vec![2, 3], MemoryOrder::ColumnMajor);
         let weights = [10.0, 20.0];
 
         let r_rm = diagonal_scale_inner(&t_rm, &weights, 0, MemoryOrder::RowMajor).unwrap();
         let r_cm = diagonal_scale_inner(&t_cm, &weights, 0, MemoryOrder::ColumnMajor).unwrap();
 
-        let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+        let r_cm_as_rm = reorder_data(&r_cm, MemoryOrder::RowMajor);
         assert_eq!(r_rm.data(), r_cm_as_rm.data(), "axis0 RM/CM mismatch");
     }
 
@@ -456,31 +481,32 @@ mod diagonal_scale_tests {
     fn rm_cm_invariance_axis1() {
         let rm_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let cm_data = vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0];
-        let t_rm = Dense::new(rm_data, vec![2, 3], MemoryOrder::RowMajor);
-        let t_cm = Dense::new(cm_data, vec![2, 3], MemoryOrder::ColumnMajor);
+        let t_rm = DenseTensorData::from_raw_parts(rm_data, vec![2, 3], MemoryOrder::RowMajor);
+        let t_cm = DenseTensorData::from_raw_parts(cm_data, vec![2, 3], MemoryOrder::ColumnMajor);
         let weights = [10.0, 20.0, 30.0];
 
         let r_rm = diagonal_scale_inner(&t_rm, &weights, 1, MemoryOrder::RowMajor).unwrap();
         let r_cm = diagonal_scale_inner(&t_cm, &weights, 1, MemoryOrder::ColumnMajor).unwrap();
 
-        let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+        let r_cm_as_rm = reorder_data(&r_cm, MemoryOrder::RowMajor);
         assert_eq!(r_rm.data(), r_cm_as_rm.data(), "axis1 RM/CM mismatch");
     }
 
     #[test]
     fn rm_cm_invariance_rank3() {
         let rm_data: Vec<f64> = (1..=8).map(|x| x as f64).collect();
-        let t_rm = Dense::new(rm_data, vec![2, 2, 2], MemoryOrder::RowMajor);
+        let t_rm = DenseTensorData::from_raw_parts(rm_data, vec![2, 2, 2], MemoryOrder::RowMajor);
 
         let cm_data = vec![1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0, 8.0];
-        let t_cm = Dense::new(cm_data, vec![2, 2, 2], MemoryOrder::ColumnMajor);
+        let t_cm =
+            DenseTensorData::from_raw_parts(cm_data, vec![2, 2, 2], MemoryOrder::ColumnMajor);
 
         let weights = [3.0, 7.0];
 
         let r_rm = diagonal_scale_inner(&t_rm, &weights, 1, MemoryOrder::RowMajor).unwrap();
         let r_cm = diagonal_scale_inner(&t_cm, &weights, 1, MemoryOrder::ColumnMajor).unwrap();
 
-        let r_cm_as_rm = reorder(&r_cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+        let r_cm_as_rm = reorder_data(&r_cm, MemoryOrder::RowMajor);
 
         for (a, b) in r_rm.data().iter().zip(r_cm_as_rm.data()) {
             assert!(

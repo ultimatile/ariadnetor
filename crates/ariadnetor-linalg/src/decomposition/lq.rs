@@ -1,12 +1,11 @@
-//! LQ decomposition pub fns + crate-internal `Dense<T>` kernels.
+//! LQ decomposition pub fns + crate-internal `DenseTensorData<T>` kernels.
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, LqDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 
 use super::reshape_for_backend;
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_dense;
 
 /// Result of a thin LQ decomposition: `(L, Q)`.
 ///
@@ -14,8 +13,9 @@ use crate::tensor_bridge::wrap_dense;
 /// - `Q`: Orthogonal/unitary matrix, shape `[k, n]`
 pub type LqResult<T, B> = (DenseTensor<T, B>, DenseTensor<T, B>);
 
-/// Internal kernel form of [`LqResult`] operating on legacy `Dense<T>`.
-pub(crate) type LqResultDense<T> = (Dense<T>, Dense<T>);
+/// Internal kernel form of [`LqResult`] operating on joined
+/// [`DenseTensorData<T>`].
+pub(crate) type LqResultDense<T> = (DenseTensorData<T>, DenseTensorData<T>);
 
 /// Compute thin LQ decomposition of a tensor reshaped as a matrix.
 ///
@@ -41,18 +41,17 @@ pub fn lq<T: Scalar, B: ComputeBackend>(
     nrow: usize,
 ) -> Result<LqResult<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let (l, q) = lq_dense(tensor.backend(), &dense, nrow)?;
+    let (l, q) = lq_dense(tensor.backend(), tensor.data(), nrow)?;
     Ok((
-        wrap_dense(l, backend_arc.clone()),
-        wrap_dense(q, backend_arc),
+        DenseTensor::with_backend(l, backend_arc.clone()),
+        DenseTensor::with_backend(q, backend_arc),
     ))
 }
 
-/// Internal kernel for [`lq`] on legacy `Dense<T>`.
+/// Internal kernel for [`lq`] on the joined [`DenseTensorData<T>`] form.
 pub(crate) fn lq_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<LqResultDense<T>, LinalgError> {
     let (m, n) = if nrow == 0 || nrow >= tensor.rank() {
@@ -76,18 +75,18 @@ pub fn lq_with_policy<T: Scalar, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<LqResult<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
-    let dense = tensor.data().as_dense();
-    let (l, q) = lq_with_policy_dense(tensor.backend(), &dense, nrow, policy)?;
+    let (l, q) = lq_with_policy_dense(tensor.backend(), tensor.data(), nrow, policy)?;
     Ok((
-        wrap_dense(l, backend_arc.clone()),
-        wrap_dense(q, backend_arc),
+        DenseTensor::with_backend(l, backend_arc.clone()),
+        DenseTensor::with_backend(q, backend_arc),
     ))
 }
 
-/// Internal kernel for [`lq_with_policy`] on legacy `Dense<T>`.
+/// Internal kernel for [`lq_with_policy`] on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn lq_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<LqResultDense<T>, LinalgError> {

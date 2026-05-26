@@ -1,13 +1,13 @@
 use arnet_linalg::{diag, linear_combine, trace};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
-/// Wrap a legacy `Dense<T>` into a `DenseTensor<T, NativeBackend>`
-/// pinned to the shared `NativeBackend`. Tests build `Dense` directly
-/// (often with a specific `MemoryOrder` that is not `preferred_order()`)
-/// and feed it to linalg pub fns through this wrapper.
-fn t<T: Clone>(d: Dense<T>) -> DenseTensor<T, NativeBackend> {
-    DenseTensor::with_backend(d.into_tensor_data(), NativeBackend::shared())
+/// Wrap a `DenseTensorData<T>` into a `DenseTensor<T, NativeBackend>`
+/// pinned to the shared `NativeBackend`. Tests build `DenseTensorData`
+/// directly (often with a specific `MemoryOrder` that is not
+/// `preferred_order()`) and feed it to linalg pub fns through this wrapper.
+fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
+    DenseTensor::with_backend(d, NativeBackend::shared())
 }
 
 // --- Linear combine tests ---
@@ -42,12 +42,12 @@ fn test_linear_combine_length_mismatch() {
 
 #[test]
 fn test_linear_combine_column_major() {
-    let a = t(Dense::<f64>::new(
+    let a = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 3.0, 2.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     ));
-    let b = t(Dense::<f64>::new(
+    let b = t(DenseTensorData::<f64>::from_raw_parts(
         vec![10.0, 30.0, 20.0, 40.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -67,7 +67,7 @@ fn test_trace_matrix() {
     // flat layout `[a, b, c, d]` for `[[a, b], [c, d]]`, so tag the
     // storage `RowMajor` to match (this happens to also be the order
     // `trace` normalizes to internally).
-    let mat = t(Dense::<f64>::new(
+    let mat = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::RowMajor,
@@ -84,7 +84,11 @@ fn test_trace_3x3_identity() {
     data[0] = 1.0;
     data[4] = 1.0;
     data[8] = 1.0;
-    let mat = t(Dense::new(data, vec![3, 3], MemoryOrder::ColumnMajor));
+    let mat = t(DenseTensorData::from_raw_parts(
+        data,
+        vec![3, 3],
+        MemoryOrder::ColumnMajor,
+    ));
     let result = trace(&mat, &[(0, 1)]).unwrap();
     assert_eq!(result.data_slice()[0], 3.0);
 }
@@ -102,7 +106,11 @@ fn test_trace_partial_rank3() {
     data[9] = 4.0; // [1,0,0]
     data[13] = 5.0; // [1,1,1]
     data[17] = 6.0; // [1,2,2]
-    let tensor = t(Dense::new(data, vec![2, 3, 3], MemoryOrder::RowMajor));
+    let tensor = t(DenseTensorData::from_raw_parts(
+        data,
+        vec![2, 3, 3],
+        MemoryOrder::RowMajor,
+    ));
     let result = trace(&tensor, &[(1, 2)]).unwrap();
     assert_eq!(result.shape(), &[2]);
     assert_eq!(result.data_slice()[0], 6.0);
@@ -129,7 +137,11 @@ fn test_trace_tci_example() {
     // A[1, 2, 0, 2, 0] = 5.0
     data[strides[0] + 2 * strides[1] + 2 * strides[3]] = 5.0;
 
-    let tensor = t(Dense::new(data, shape, MemoryOrder::RowMajor));
+    let tensor = t(DenseTensorData::from_raw_parts(
+        data,
+        shape,
+        MemoryOrder::RowMajor,
+    ));
     let result = trace(&tensor, &[(1, 3), (2, 4)]).unwrap();
     assert_eq!(result.shape(), &[3]);
     assert_eq!(result.data_slice()[0], 3.0);
@@ -150,7 +162,11 @@ fn test_trace_full_contraction() {
     data[0] = 1.0;
     data[strides[0] + strides[1] + strides[2] + strides[3]] = 2.0;
     data[2 * strides[1] + 2 * strides[3]] = 3.0;
-    let tensor = t(Dense::new(data, shape, MemoryOrder::RowMajor));
+    let tensor = t(DenseTensorData::from_raw_parts(
+        data,
+        shape,
+        MemoryOrder::RowMajor,
+    ));
     let result = trace(&tensor, &[(0, 2), (1, 3)]).unwrap();
     assert_eq!(result.shape(), &[1]);
     assert_eq!(result.data_slice()[0], 6.0);
@@ -158,7 +174,7 @@ fn test_trace_full_contraction() {
 
 #[test]
 fn test_trace_empty_pairs() {
-    let tensor = t(Dense::<f64>::new(
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -170,7 +186,7 @@ fn test_trace_empty_pairs() {
 
 #[test]
 fn test_trace_dimension_mismatch() {
-    let tensor = t(Dense::new(
+    let tensor = t(DenseTensorData::from_raw_parts(
         vec![0.0; 6],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -180,7 +196,7 @@ fn test_trace_dimension_mismatch() {
 
 #[test]
 fn test_trace_index_out_of_range() {
-    let tensor = t(Dense::new(
+    let tensor = t(DenseTensorData::from_raw_parts(
         vec![0.0; 4],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -190,7 +206,7 @@ fn test_trace_index_out_of_range() {
 
 #[test]
 fn test_trace_self_pair() {
-    let tensor = t(Dense::new(
+    let tensor = t(DenseTensorData::from_raw_parts(
         vec![0.0; 4],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -200,7 +216,7 @@ fn test_trace_self_pair() {
 
 #[test]
 fn test_trace_duplicate_index() {
-    let tensor = t(Dense::new(
+    let tensor = t(DenseTensorData::from_raw_parts(
         vec![0.0; 8],
         vec![2, 2, 2],
         MemoryOrder::ColumnMajor,
@@ -212,7 +228,7 @@ fn test_trace_duplicate_index() {
 
 #[test]
 fn test_diag_extract_3x3() {
-    let a = t(Dense::<f64>::new(
+    let a = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
         vec![3, 3],
         MemoryOrder::ColumnMajor,
@@ -224,7 +240,7 @@ fn test_diag_extract_3x3() {
 
 #[test]
 fn test_diag_construct_3x3() {
-    let v = t(Dense::<f64>::new(
+    let v = t(DenseTensorData::<f64>::from_raw_parts(
         vec![2.0, 5.0, 8.0],
         vec![3],
         MemoryOrder::ColumnMajor,
@@ -246,7 +262,7 @@ fn test_diag_identity() {
 
 #[test]
 fn test_diag_round_trip() {
-    let v = t(Dense::<f64>::new(
+    let v = t(DenseTensorData::<f64>::from_raw_parts(
         vec![3.0, 7.0],
         vec![2],
         MemoryOrder::ColumnMajor,
@@ -260,7 +276,7 @@ fn test_diag_round_trip() {
 fn test_diag_complex() {
     use num_complex::Complex;
 
-    let v = t(Dense::new(
+    let v = t(DenseTensorData::from_raw_parts(
         vec![Complex::new(1.0, 2.0), Complex::new(3.0, 4.0)],
         vec![2],
         MemoryOrder::ColumnMajor,
@@ -275,7 +291,7 @@ fn test_diag_complex() {
 
 #[test]
 fn test_diag_nonsquare_error() {
-    let a = t(Dense::<f64>::new(
+    let a = t(DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -285,7 +301,7 @@ fn test_diag_nonsquare_error() {
 
 #[test]
 fn test_diag_rank3_error() {
-    let a = t(Dense::new(
+    let a = t(DenseTensorData::from_raw_parts(
         vec![0.0; 8],
         vec![2, 2, 2],
         MemoryOrder::ColumnMajor,

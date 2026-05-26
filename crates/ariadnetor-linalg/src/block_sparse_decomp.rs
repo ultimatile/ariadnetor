@@ -1,10 +1,10 @@
 //! Block-sparse tensor decompositions via fused sector method.
 //!
-//! Decomposes [`BlockSparse<T, S>`] tensors using SVD, QR, or LQ by:
+//! Decomposes [`BlockSparseTensor<T, S, B>`] tensors using SVD, QR, or LQ by:
 //! 1. Fusing left/right leg groups into fused sectors
 //! 2. Assembling dense matrices per fused sector pair
 //! 3. Running per-sector dense decomposition
-//! 4. Reconstructing BlockSparse output tensors
+//! 4. Reconstructing block-sparse output tensors
 //!
 //! All decompositions produce a left tensor with `flux = identity()` and a
 //! right tensor with `flux = original_flux`. The new bond uses fused left
@@ -14,21 +14,16 @@ pub(crate) mod fused_sector;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
-use arnet_tensor::BlockSparse;
-use arnet_tensor::BlockSparseTensor;
-use arnet_tensor::Dense;
-use arnet_tensor::Sector;
+use arnet_tensor::{
+    BlockSparseTensor, BlockSparseTensorData, DenseTensorData, Sector, reorder_data,
+};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_block_sparse;
-use arnet_tensor::reorder;
 use fused_sector::*;
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+// Public types ============================================================
 
 /// SVD singular values stored per fused sector.
 ///
@@ -63,11 +58,11 @@ pub type BlockSparseSvdResult<T, S, B> = (
     BlockSparseTensor<T, S, B>,
 );
 
-/// Internal kernel form of [`BlockSparseSvdResult`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel form of [`BlockSparseSvdResult`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) type BlockSparseSvdResultBsp<T, S> = (
-    BlockSparse<T, S>,
+    BlockSparseTensorData<T, S>,
     BlockSingularValues<<T as Scalar>::Real, S>,
-    BlockSparse<T, S>,
+    BlockSparseTensorData<T, S>,
 );
 
 /// Result of a truncated block-sparse SVD: `(U, S, Vt, trunc_err)`.
@@ -78,23 +73,22 @@ pub type BlockSparseTruncSvdResult<T, S, B> = (
     <T as Scalar>::Real,
 );
 
-/// Internal kernel form of [`BlockSparseTruncSvdResult`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel form of [`BlockSparseTruncSvdResult`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) type BlockSparseTruncSvdResultBsp<T, S> = (
-    BlockSparse<T, S>,
+    BlockSparseTensorData<T, S>,
     BlockSingularValues<<T as Scalar>::Real, S>,
-    BlockSparse<T, S>,
+    BlockSparseTensorData<T, S>,
     <T as Scalar>::Real,
 );
 
 /// Result of a block-sparse QR or LQ decomposition.
 pub type BlockSparseQrResult<T, S, B> = (BlockSparseTensor<T, S, B>, BlockSparseTensor<T, S, B>);
 
-/// Internal kernel form of [`BlockSparseQrResult`] on legacy `BlockSparse<T, S>`.
-pub(crate) type BlockSparseQrResultBsp<T, S> = (BlockSparse<T, S>, BlockSparse<T, S>);
+/// Internal kernel form of [`BlockSparseQrResult`] on joined-form [`BlockSparseTensorData<T, S>`].
+pub(crate) type BlockSparseQrResultBsp<T, S> =
+    (BlockSparseTensorData<T, S>, BlockSparseTensorData<T, S>);
 
-// ---------------------------------------------------------------------------
-// Public API -- SVD
-// ---------------------------------------------------------------------------
+// Public API -- SVD =======================================================
 
 /// Thin SVD of a block-sparse tensor via fused sector method.
 ///
@@ -123,24 +117,23 @@ pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
 ) -> Result<BlockSparseSvdResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
     crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
-    let order = tensor.backend().preferred_order();
-    let bsp = tensor.data().as_block_sparse();
-    let (u, s, vt) = svd_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
+    let (u, s, vt) =
+        svd_block_sparse_with_policy_dense(tensor.backend(), tensor.data(), nrow, policy)?;
     Ok((
-        wrap_block_sparse(u, backend_arc.clone(), order),
+        BlockSparseTensor::with_backend(u, backend_arc.clone()),
         s,
-        wrap_block_sparse(vt, backend_arc, order),
+        BlockSparseTensor::with_backend(vt, backend_arc),
     ))
 }
 
-/// Internal kernel for [`svd_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`svd_block_sparse_with_policy`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<BlockSparseSvdResultBsp<T, S>, LinalgError> {
-    validate_nrow(tensor.rank(), nrow)?;
+    validate_nrow(tensor.layout().rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
 
@@ -151,11 +144,11 @@ pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::new(matrix, vec![group.m, group.n], order);
+        let dense = DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order);
         let (u, s, vt) = crate::decomposition::svd_with_policy_dense(backend, &dense, 1, policy)?;
         k_per_sector.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
-        s_values.push((group.sector.clone(), s.data().to_vec()));
+        s_values.push((group.sector.clone(), s.storage().data().to_vec()));
         vt_matrices.push(to_vec_in_order(&vt, order));
     }
 
@@ -163,7 +156,7 @@ pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
         &groups,
         &u_matrices,
         &k_per_sector,
-        tensor.indices(),
+        tensor.layout().indices(),
         nrow,
         order,
     );
@@ -171,9 +164,9 @@ pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
         &groups,
         &vt_matrices,
         &k_per_sector,
-        tensor.indices(),
+        tensor.layout().indices(),
         nrow,
-        tensor.flux().clone(),
+        tensor.layout().flux().clone(),
         order,
     );
 
@@ -213,27 +206,30 @@ pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBacken
 ) -> Result<BlockSparseTruncSvdResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
     crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
-    let order = tensor.backend().preferred_order();
-    let bsp = tensor.data().as_block_sparse();
-    let (u, s, vt, err) =
-        trunc_svd_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, params, policy)?;
+    let (u, s, vt, err) = trunc_svd_block_sparse_with_policy_dense(
+        tensor.backend(),
+        tensor.data(),
+        nrow,
+        params,
+        policy,
+    )?;
     Ok((
-        wrap_block_sparse(u, backend_arc.clone(), order),
+        BlockSparseTensor::with_backend(u, backend_arc.clone()),
         s,
-        wrap_block_sparse(vt, backend_arc, order),
+        BlockSparseTensor::with_backend(vt, backend_arc),
         err,
     ))
 }
 
-/// Internal kernel for [`trunc_svd_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`trunc_svd_block_sparse_with_policy`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
     params: &TruncSvdParams,
     policy: ExecPolicy,
 ) -> Result<BlockSparseTruncSvdResultBsp<T, S>, LinalgError> {
-    validate_nrow(tensor.rank(), nrow)?;
+    validate_nrow(tensor.layout().rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
 
@@ -245,11 +241,11 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 
     for group in &groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::new(matrix, vec![group.m, group.n], order);
+        let dense = DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order);
         let (u, s, vt) = crate::decomposition::svd_with_policy_dense(backend, &dense, 1, policy)?;
         k_full.push(group.m.min(group.n));
         u_matrices.push(to_vec_in_order(&u, order));
-        all_s.push(s.data().to_vec());
+        all_s.push(s.storage().data().to_vec());
         vt_matrices.push(to_vec_in_order(&vt, order));
     }
 
@@ -285,7 +281,7 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
         &groups,
         &u_trunc,
         &k_per_sector,
-        tensor.indices(),
+        tensor.layout().indices(),
         nrow,
         order,
     );
@@ -293,9 +289,9 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
         &groups,
         &vt_trunc,
         &k_per_sector,
-        tensor.indices(),
+        tensor.layout().indices(),
         nrow,
-        tensor.flux().clone(),
+        tensor.layout().flux().clone(),
         order,
     );
 
@@ -314,9 +310,7 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     ))
 }
 
-// ---------------------------------------------------------------------------
-// Public API -- QR / LQ
-// ---------------------------------------------------------------------------
+// Public API -- QR / LQ ===================================================
 
 /// QR decomposition of a block-sparse tensor via fused sector method.
 ///
@@ -342,23 +336,21 @@ pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
 ) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
     crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
-    let order = tensor.backend().preferred_order();
-    let bsp = tensor.data().as_block_sparse();
-    let (q, r) = qr_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
+    let (q, r) = qr_block_sparse_with_policy_dense(tensor.backend(), tensor.data(), nrow, policy)?;
     Ok((
-        wrap_block_sparse(q, backend_arc.clone(), order),
-        wrap_block_sparse(r, backend_arc, order),
+        BlockSparseTensor::with_backend(q, backend_arc.clone()),
+        BlockSparseTensor::with_backend(r, backend_arc),
     ))
 }
 
-/// Internal kernel for [`qr_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`qr_block_sparse_with_policy`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) fn qr_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<BlockSparseQrResultBsp<T, S>, LinalgError> {
-    validate_nrow(tensor.rank(), nrow)?;
+    validate_nrow(tensor.layout().rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
     let (q_mats, r_mats, k_per) =
@@ -366,14 +358,21 @@ pub(crate) fn qr_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
             crate::decomposition::qr_with_policy_dense(b, d, 1, policy)
                 .map(|(q, r)| (to_vec_in_order(&q, order), to_vec_in_order(&r, order)))
         })?;
-    let q = build_left_tensor(&groups, &q_mats, &k_per, tensor.indices(), nrow, order);
+    let q = build_left_tensor(
+        &groups,
+        &q_mats,
+        &k_per,
+        tensor.layout().indices(),
+        nrow,
+        order,
+    );
     let r = build_right_tensor(
         &groups,
         &r_mats,
         &k_per,
-        tensor.indices(),
+        tensor.layout().indices(),
         nrow,
-        tensor.flux().clone(),
+        tensor.layout().flux().clone(),
         order,
     );
     Ok((q, r))
@@ -403,23 +402,21 @@ pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
 ) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
     crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "block_sparse_decomp");
-    let order = tensor.backend().preferred_order();
-    let bsp = tensor.data().as_block_sparse();
-    let (l, q) = lq_block_sparse_with_policy_dense(tensor.backend(), &bsp, nrow, policy)?;
+    let (l, q) = lq_block_sparse_with_policy_dense(tensor.backend(), tensor.data(), nrow, policy)?;
     Ok((
-        wrap_block_sparse(l, backend_arc.clone(), order),
-        wrap_block_sparse(q, backend_arc, order),
+        BlockSparseTensor::with_backend(l, backend_arc.clone()),
+        BlockSparseTensor::with_backend(q, backend_arc),
     ))
 }
 
-/// Internal kernel for [`lq_block_sparse_with_policy`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`lq_block_sparse_with_policy`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) fn lq_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
     policy: ExecPolicy,
 ) -> Result<BlockSparseQrResultBsp<T, S>, LinalgError> {
-    validate_nrow(tensor.rank(), nrow)?;
+    validate_nrow(tensor.layout().rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
     let (l_mats, q_mats, k_per) =
@@ -427,22 +424,27 @@ pub(crate) fn lq_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
             crate::decomposition::lq_with_policy_dense(b, d, 1, policy)
                 .map(|(l, q)| (to_vec_in_order(&l, order), to_vec_in_order(&q, order)))
         })?;
-    let l = build_left_tensor(&groups, &l_mats, &k_per, tensor.indices(), nrow, order);
+    let l = build_left_tensor(
+        &groups,
+        &l_mats,
+        &k_per,
+        tensor.layout().indices(),
+        nrow,
+        order,
+    );
     let q = build_right_tensor(
         &groups,
         &q_mats,
         &k_per,
-        tensor.indices(),
+        tensor.layout().indices(),
         nrow,
-        tensor.flux().clone(),
+        tensor.layout().flux().clone(),
         order,
     );
     Ok((l, q))
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+// Internal helpers ========================================================
 
 /// Keep the first `k_t` columns of an `m × k_f` matrix.
 fn truncate_cols<T: Scalar>(
@@ -497,7 +499,7 @@ fn validate_nrow(rank: usize, nrow: usize) -> Result<(), LinalgError> {
 #[allow(clippy::type_complexity)]
 fn decompose_per_sector<T, S, B, F>(
     groups: &[FusedSectorGroup<S>],
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     _nrow: usize,
     backend: &B,
     order: MemoryOrder,
@@ -507,14 +509,14 @@ where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
-    F: Fn(&B, &Dense<T>) -> Result<(Vec<T>, Vec<T>), LinalgError>,
+    F: Fn(&B, &DenseTensorData<T>) -> Result<(Vec<T>, Vec<T>), LinalgError>,
 {
     let mut left_mats = Vec::with_capacity(groups.len());
     let mut right_mats = Vec::with_capacity(groups.len());
     let mut k_per = Vec::with_capacity(groups.len());
     for group in groups {
         let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = Dense::new(matrix, vec![group.m, group.n], order);
+        let dense = DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order);
         let (l, r) = decompose(backend, &dense)?;
         k_per.push(group.m.min(group.n));
         left_mats.push(l);
@@ -587,12 +589,11 @@ fn cross_sector_truncate<T: Scalar>(
     Ok((k_per_sector, err_sq.sqrt()))
 }
 
-/// Extract tensor data in the specified memory order.
-fn to_vec_in_order<T: Scalar>(tensor: &Dense<T>, order: MemoryOrder) -> Vec<T> {
-    // Dense data is already in the backend's preferred order (which is `order`
-    // since callers pass backend.preferred_order()). No reorder needed for
-    // the same order; reorder is a no-op (clone) when from == to.
-    reorder(tensor, order, order).data().to_vec()
+/// Extract tensor data in `order`. `reorder_data` is a no-op clone
+/// when `tensor.order() == order`, so passing the backend's preferred
+/// order short-circuits to the existing buffer.
+fn to_vec_in_order<T: Scalar>(tensor: &DenseTensorData<T>, order: MemoryOrder) -> Vec<T> {
+    reorder_data(tensor, order).storage().data().to_vec()
 }
 
 #[cfg(test)]

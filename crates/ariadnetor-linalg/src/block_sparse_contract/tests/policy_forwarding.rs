@@ -6,24 +6,32 @@
 //! to each per-sector GEMM. The multi-sector fixture produces two block
 //! pairs so per-sector forwarding is observable, not just the first hit.
 
-use arnet_core::backend::ExecPolicy;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector};
+use arnet_core::backend::{ComputeBackend, ExecPolicy};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, U1Sector};
 
 use super::super::contract_block_sparse_with_policy_dense;
 use super::to_order;
 use crate::test_util::RecordingBackend;
 
-fn multi_sector_pair() -> (BlockSparse<f64, U1Sector>, BlockSparse<f64, U1Sector>) {
+fn multi_sector_pair() -> (
+    BlockSparseTensorData<f64, U1Sector>,
+    BlockSparseTensorData<f64, U1Sector>,
+) {
+    let order = RecordingBackend::new().preferred_order();
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-    let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![row.clone(), col.clone()], U1Sector(0));
+    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![row.clone(), col.clone()],
+        U1Sector(0),
+        order,
+    );
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
     a.block_data_mut(&BlockCoord(vec![1, 1]))
         .unwrap()
         .copy_from_slice(&[5.0]);
-    let mut c = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order);
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[6.0, 7.0, 8.0, 9.0], &[2, 2]));

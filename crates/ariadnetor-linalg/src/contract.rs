@@ -1,12 +1,11 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_dense;
 use crate::transpose::transpose_dense;
-use arnet_tensor::{normalize_to, reorder};
+use arnet_tensor::{normalize_to_data, reorder_data};
 
 /// Contract two tensors using Einstein summation notation.
 ///
@@ -38,19 +37,17 @@ pub fn contract<T: Scalar, B: ComputeBackend>(
     notation: &str,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = lhs.backend_arc().clone();
-    let lhs_dense = lhs.data().as_dense();
-    let rhs_dense = rhs.data().as_dense();
-    let result = contract_dense(lhs.backend(), &lhs_dense, &rhs_dense, notation)?;
-    Ok(wrap_dense(result, backend_arc))
+    let result = contract_dense(lhs.backend(), lhs.data(), rhs.data(), notation)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`contract`] on the legacy `Dense<T>` form.
+/// Internal kernel for [`contract`] on the joined [`DenseTensorData<T>`] form.
 pub(crate) fn contract_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    lhs: &Dense<T>,
-    rhs: &Dense<T>,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
     notation: &str,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     // Parse once up-front so we can compute the GEMM key (m, n, k) for
     // par_for_gemm. Parsing is not free, but the result is reused inside
     // contract_with_policy via a re-parse; keeping the two paths independent
@@ -112,21 +109,20 @@ pub fn contract_with_policy<T: Scalar, B: ComputeBackend>(
     policy: ExecPolicy,
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = lhs.backend_arc().clone();
-    let lhs_dense = lhs.data().as_dense();
-    let rhs_dense = rhs.data().as_dense();
     let result =
-        contract_with_policy_dense(lhs.backend(), &lhs_dense, &rhs_dense, notation, policy)?;
-    Ok(wrap_dense(result, backend_arc))
+        contract_with_policy_dense(lhs.backend(), lhs.data(), rhs.data(), notation, policy)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`contract_with_policy`] on the legacy `Dense<T>` form.
+/// Internal kernel for [`contract_with_policy`] on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn contract_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    lhs: &Dense<T>,
-    rhs: &Dense<T>,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
     notation: &str,
     policy: ExecPolicy,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
@@ -199,8 +195,8 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
 
     // Prepare operands for GEMM: reshape to 2D.
     // rank <= 2: no axis merge needed; `prepare_for_gemm` normalizes
-    // the operand to `order` via `normalize_to` so a caller-supplied
-    // Dense tagged in a different order is reordered at the boundary.
+    // the operand to `order` via `normalize_to_data` so a caller-supplied
+    // tensor tagged in a different order is reordered at the boundary.
     // rank > 2: RowMajor reshape (correct axis merge semantics) is
     // required, then the reshaped tensor is reordered to `order`.
     let lhs_ready = prepare_for_gemm(&lhs_permuted, m, k, order);
@@ -231,14 +227,14 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
         backend.make_tensor(c_data, output_shape)
     } else {
         // 2D preferred_order -> RowMajor 2D -> reshape to multi-dim -> preferred_order
-        let result_2d = Dense::new(c_data, vec![m, n], order);
-        let result_rm = reorder(&result_2d, order, MemoryOrder::RowMajor);
-        let multi_dim = Dense::new(
+        let result_2d = DenseTensorData::from_raw_parts(c_data, vec![m, n], order);
+        let result_rm = reorder_data(&result_2d, MemoryOrder::RowMajor);
+        let multi_dim = DenseTensorData::from_raw_parts(
             result_rm.data().to_vec(),
             output_shape,
             MemoryOrder::RowMajor,
         );
-        reorder(&multi_dim, MemoryOrder::RowMajor, order)
+        reorder_data(&multi_dim, order)
     };
 
     // Reorder output dimensions to match the requested output index order.
@@ -252,19 +248,19 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
 /// target order and return.
 /// For rank > 2, reorder to RowMajor, reshape (correct axis merge), then back.
 fn prepare_for_gemm<T: Scalar>(
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     rows: usize,
     cols: usize,
     order: MemoryOrder,
-) -> Dense<T> {
+) -> DenseTensorData<T> {
     if tensor.rank() <= 2 {
         // No axis merge needed; ensure data is in the target order before GEMM.
-        normalize_to(tensor, order).into_owned()
+        normalize_to_data(tensor, order).into_owned()
     } else {
         // Axis merge requires RowMajor reshape, then convert to preferred_order
-        let rm = reorder(tensor, tensor.order(), MemoryOrder::RowMajor);
+        let rm = reorder_data(tensor, MemoryOrder::RowMajor);
         let reshaped = rm.reshape(vec![rows, cols]);
-        reorder(&reshaped, MemoryOrder::RowMajor, order)
+        reorder_data(&reshaped, order)
     }
 }
 
@@ -280,10 +276,10 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
 /// Reorder output dimensions from [free_lhs, free_rhs] to the requested output order.
 fn reorder_output<T: Scalar>(
     backend: &impl ComputeBackend,
-    result: Dense<T>,
+    result: DenseTensorData<T>,
     plan: &ContractionPlan,
     expr: &EinsumExpr,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let out = expr.out_indices();
     if out.is_empty() {
         // Scalar result — no reordering needed

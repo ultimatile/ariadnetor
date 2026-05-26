@@ -10,14 +10,13 @@ use std::collections::{HashMap, HashSet};
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, Dense, DenseTensor, normalize_to};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData, normalize_to_data};
 
 use crate::contract::contract_dense;
 use crate::error::LinalgError;
 use crate::scalar_ops::trace_dense;
-use crate::tensor_bridge::wrap_dense;
 use crate::transpose::transpose_dense;
-use arnet_tensor::reorder;
+use arnet_tensor::reorder_data;
 
 /// Execute an Einstein summation over N tensors.
 ///
@@ -60,18 +59,17 @@ pub fn einsum<T: Scalar, B: ComputeBackend>(
     }
     let backend_arc = tensors[0].backend_arc().clone();
     let backend = tensors[0].backend();
-    let dense_views: Vec<Dense<T>> = tensors.iter().map(|t| t.data().as_dense()).collect();
-    let dense_refs: Vec<&Dense<T>> = dense_views.iter().collect();
-    let result = einsum_dense(backend, &dense_refs, notation)?;
-    Ok(wrap_dense(result, backend_arc))
+    let data_refs: Vec<&DenseTensorData<T>> = tensors.iter().map(|t| t.data()).collect();
+    let result = einsum_dense(backend, &data_refs, notation)?;
+    Ok(DenseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`einsum`] on legacy `Dense<T>` slices.
+/// Internal kernel for [`einsum`] on joined [`DenseTensorData<T>`] slices.
 pub(crate) fn einsum_dense<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensors: &[&Dense<T>],
+    tensors: &[&DenseTensorData<T>],
     notation: &str,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
@@ -100,10 +98,10 @@ pub(crate) fn einsum_dense<T: Scalar>(
 /// - Batched contraction -> slice-and-loop over [`contract`]
 fn einsum_pair<T: Scalar>(
     backend: &impl ComputeBackend,
-    lhs: &Dense<T>,
-    rhs: &Dense<T>,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
     notation: &str,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
@@ -148,11 +146,11 @@ fn einsum_pair<T: Scalar>(
 /// Element-wise (Hadamard) product: all indices are batch.
 fn hadamard<T: Scalar>(
     backend: &impl ComputeBackend,
-    lhs: &Dense<T>,
-    rhs: &Dense<T>,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
     expr: &EinsumExpr,
     plan: &ContractionPlan,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     // Permute both operands to [batch...] order (= output order for Hadamard)
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
@@ -175,8 +173,8 @@ fn hadamard<T: Scalar>(
     // order; normalize to `backend.preferred_order()` so the result we
     // tag below matches its data.
     let order = backend.preferred_order();
-    let lhs_normalized = normalize_to(&lhs_ordered, order);
-    let rhs_normalized = normalize_to(&rhs_ordered, order);
+    let lhs_normalized = normalize_to_data(&lhs_ordered, order);
+    let rhs_normalized = normalize_to_data(&rhs_ordered, order);
 
     let c_data: Vec<T> = lhs_normalized
         .data()
@@ -200,11 +198,11 @@ fn hadamard<T: Scalar>(
 /// Batched contraction: loop over batch dimensions, call contract() per slice.
 fn batched_contract<T: Scalar>(
     backend: &impl ComputeBackend,
-    lhs: &Dense<T>,
-    rhs: &Dense<T>,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
     expr: &EinsumExpr,
     plan: &ContractionPlan,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let order = backend.preferred_order();
 
     // Compute batch dimensions
@@ -233,14 +231,14 @@ fn batched_contract<T: Scalar>(
 
     // The no-permutation branch carries the caller's order tag, which
     // may differ from `order`. Normalize so the subsequent
-    // `reorder(.., order, RowMajor)` reads the bytes under the
+    // `reorder_data(.., RowMajor)` reads the bytes under the
     // declared layout.
-    let lhs_permuted = normalize_to(&lhs_permuted, order).into_owned();
-    let rhs_permuted = normalize_to(&rhs_permuted, order).into_owned();
+    let lhs_permuted = normalize_to_data(&lhs_permuted, order).into_owned();
+    let rhs_permuted = normalize_to_data(&rhs_permuted, order).into_owned();
 
     // Reorder to RowMajor so batch slices are contiguous memory ranges
-    let lhs_rm = reorder(&lhs_permuted, order, MemoryOrder::RowMajor);
-    let rhs_rm = reorder(&rhs_permuted, order, MemoryOrder::RowMajor);
+    let lhs_rm = reorder_data(&lhs_permuted, MemoryOrder::RowMajor);
+    let rhs_rm = reorder_data(&rhs_permuted, MemoryOrder::RowMajor);
 
     // Per-slice sizes (after removing batch dimensions)
     let lhs_slice_size = lhs_rm.len() / batch_size;
@@ -267,29 +265,27 @@ fn batched_contract<T: Scalar>(
     let rhs_data = rhs_rm.data();
 
     // Contract each batch slice
-    let mut result_slices: Vec<Dense<T>> = Vec::with_capacity(batch_size);
+    let mut result_slices: Vec<DenseTensorData<T>> = Vec::with_capacity(batch_size);
     for b in 0..batch_size {
         let lhs_slice_data = &lhs_data[b * lhs_slice_size..(b + 1) * lhs_slice_size];
         let rhs_slice_data = &rhs_data[b * rhs_slice_size..(b + 1) * rhs_slice_size];
 
         // Slice data is in RowMajor layout; contract() expects data in
         // preferred_order, so reorder each slice before contracting.
-        let lhs_slice_preferred = reorder(
-            &Dense::new(
+        let lhs_slice_preferred = reorder_data(
+            &DenseTensorData::from_raw_parts(
                 lhs_slice_data.to_vec(),
                 lhs_slice_shape.clone(),
                 MemoryOrder::RowMajor,
             ),
-            MemoryOrder::RowMajor,
             order,
         );
-        let rhs_slice_preferred = reorder(
-            &Dense::new(
+        let rhs_slice_preferred = reorder_data(
+            &DenseTensorData::from_raw_parts(
                 rhs_slice_data.to_vec(),
                 rhs_slice_shape.clone(),
                 MemoryOrder::RowMajor,
             ),
-            MemoryOrder::RowMajor,
             order,
         );
 
@@ -317,14 +313,15 @@ fn batched_contract<T: Scalar>(
     let mut stacked_data: Vec<T> = Vec::with_capacity(total_size);
     for slice in &result_slices {
         // Reorder each slice result to RowMajor for consistent stacking
-        let rm = reorder(slice, order, MemoryOrder::RowMajor);
+        let rm = reorder_data(slice, MemoryOrder::RowMajor);
         stacked_data.extend_from_slice(rm.data());
     }
 
-    // Stacked data is in RowMajor; construct Dense in RowMajor, then
-    // reorder to preferred_order for the final result.
-    let stacked_rm = Dense::new(stacked_data, output_shape, MemoryOrder::RowMajor);
-    let stacked = reorder(&stacked_rm, MemoryOrder::RowMajor, order);
+    // Stacked data is in RowMajor; construct in RowMajor, then reorder to
+    // preferred_order for the final result.
+    let stacked_rm =
+        DenseTensorData::from_raw_parts(stacked_data, output_shape, MemoryOrder::RowMajor);
+    let stacked = reorder_data(&stacked_rm, order);
 
     // Reorder to requested output index order
     reorder_batched_output(
@@ -370,12 +367,12 @@ fn build_batch_free_notation(plan: &ContractionPlan, contracted_rhs_order: &[u8]
 /// Reorder output from canonical [batch..., free_lhs..., free_rhs...] to requested order.
 fn reorder_batched_output<T: Scalar>(
     backend: &impl ComputeBackend,
-    result: Dense<T>,
+    result: DenseTensorData<T>,
     batch: &[u8],
     free_lhs: &[u8],
     free_rhs: &[u8],
     out: &[u8],
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     if out.is_empty() {
         return Ok(result);
     }
@@ -406,9 +403,9 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
 /// (accumulated union next tensor indices) with (final output union all future input indices).
 fn einsum_multi<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensors: &[&Dense<T>],
+    tensors: &[&DenseTensorData<T>],
     expr: &EinsumExpr,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let inputs = expr.inputs();
     let final_output = expr.out_indices();
     let n = inputs.len();
@@ -471,9 +468,9 @@ fn build_notation(lhs: &[u8], rhs: &[u8], output: &[u8]) -> String {
 /// Dispatch a single-tensor einsum to trace and/or transpose.
 fn einsum_single<T: Scalar>(
     backend: &impl ComputeBackend,
-    tensor: &Dense<T>,
+    tensor: &DenseTensorData<T>,
     expr: &EinsumExpr,
-) -> Result<Dense<T>, LinalgError> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     let input = expr.lhs_indices();
     let output = expr.out_indices();
 
@@ -537,7 +534,7 @@ fn einsum_single<T: Scalar>(
         tensor.clone()
     } else {
         let result_rm = trace_dense(tensor, &trace_pairs)?;
-        reorder(&result_rm, MemoryOrder::RowMajor, order)
+        reorder_data(&result_rm, order)
     };
 
     // Scalar result -> done

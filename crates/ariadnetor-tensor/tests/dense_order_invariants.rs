@@ -1,25 +1,29 @@
-//! Invariant tests for `Dense<T>::order()` propagation across operations.
+//! Invariant tests for `DenseTensorData<T>::order()` propagation across operations.
 //!
-//! Pins the layout-authority contract introduced when `Dense` gained an
-//! explicit `order` field: every operation must declare what its output's
-//! `order()` is, and consuming ops must enforce or propagate that order
-//! consistently. Without these tests, a future refactor could silently
-//! revert `order` to the implicit `backend.preferred_order()` model that
-//! motivated the original boundary-contract bug.
+//! Pins the layout-authority contract enforced by the joined `TensorData`:
+//! every operation must declare what its output's `order()` is, and consuming
+//! ops must enforce or propagate that order consistently. Without these tests,
+//! a future refactor could silently revert `order` to the implicit
+//! `backend.preferred_order()` model that motivated the original
+//! boundary-contract bug.
 
-use arnet_tensor::{Dense, MemoryOrder, normalize_to, reorder};
+use arnet_tensor::{DenseTensorData, MemoryOrder, normalize_to_data, reorder_data};
 use num_complex::Complex;
 use std::borrow::Cow;
 
 #[test]
 fn dense_new_round_trips_source_order_row_major() {
-    let t = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let t = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     assert_eq!(t.order(), MemoryOrder::RowMajor);
 }
 
 #[test]
 fn dense_new_round_trips_source_order_column_major() {
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -29,23 +33,31 @@ fn dense_new_round_trips_source_order_column_major() {
 
 #[test]
 fn reorder_outputs_target_order() {
-    let rm = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let cm = reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
+    let rm = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let cm = reorder_data(&rm, MemoryOrder::ColumnMajor);
     assert_eq!(cm.order(), MemoryOrder::ColumnMajor);
-    let back = reorder(&cm, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
+    let back = reorder_data(&cm, MemoryOrder::RowMajor);
     assert_eq!(back.order(), MemoryOrder::RowMajor);
 }
 
 #[test]
 fn map_preserves_order_row_major() {
-    let t = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
+    let t = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
     let m = t.map(|x| x * 2.0);
     assert_eq!(m.order(), MemoryOrder::RowMajor);
 }
 
 #[test]
 fn map_preserves_order_column_major() {
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -56,7 +68,7 @@ fn map_preserves_order_column_major() {
 
 #[test]
 fn reshape_preserves_order_row_major() {
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
@@ -67,7 +79,7 @@ fn reshape_preserves_order_row_major() {
 
 #[test]
 fn reshape_preserves_order_column_major() {
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -81,7 +93,7 @@ fn map_with_index_outputs_iteration_order() {
     // `map_with_index` iterates in `self.order()`; build one tensor
     // per order to verify the output `order()` matches the input's
     // storage order in each case.
-    let t_rm = Dense::<f64>::new(
+    let t_rm = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
@@ -89,7 +101,7 @@ fn map_with_index_outputs_iteration_order() {
     let row_major_out = t_rm.map_with_index(|_idx, &x| x);
     assert_eq!(row_major_out.order(), MemoryOrder::RowMajor);
 
-    let t_cm = Dense::<f64>::new(
+    let t_cm = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -100,47 +112,55 @@ fn map_with_index_outputs_iteration_order() {
 
 #[test]
 fn dense_linear_combine_rejects_mixed_orders() {
-    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     );
-    let result = Dense::linear_combine(&[&a, &b], &[1.0, 1.0]);
+    let result = DenseTensorData::linear_combine(&[&a, &b], &[1.0, 1.0]);
     assert!(
         result.is_err(),
-        "Dense::linear_combine must reject inputs with mismatched memory order"
+        "DenseTensorData::linear_combine must reject inputs with mismatched memory order"
     );
 }
 
 #[test]
 fn normalize_to_borrows_when_order_matches() {
-    let t = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let cow = normalize_to(&t, MemoryOrder::RowMajor);
+    let t = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let cow = normalize_to_data(&t, MemoryOrder::RowMajor);
     assert!(
         matches!(cow, Cow::Borrowed(_)),
-        "normalize_to must return Cow::Borrowed when source order already matches target"
+        "normalize_to_data must return Cow::Borrowed when source order already matches target"
     );
 }
 
 #[test]
 fn normalize_to_owns_when_order_differs() {
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     );
-    let cow = normalize_to(&t, MemoryOrder::RowMajor);
+    let cow = normalize_to_data(&t, MemoryOrder::RowMajor);
     assert!(
         matches!(cow, Cow::Owned(_)),
-        "normalize_to must return Cow::Owned when a reorder is performed"
+        "normalize_to_data must return Cow::Owned when a reorder is performed"
     );
     assert_eq!(cow.order(), MemoryOrder::RowMajor);
 }
 
 #[test]
 fn dense_get_honors_storage_order() {
-    // Two Dense holding the same logical matrix in their respective
+    // Two DenseTensorData holding the same logical matrix in their respective
     // layouts must return the same value at the same logical
     // `[i, j, ...]`. The chosen indices have distinct flat positions
     // under RowMajor vs ColumnMajor, so a regression to row-major-
@@ -150,12 +170,12 @@ fn dense_get_honors_storage_order() {
     // Rank-2: shape [2, 3], M[i, j] = 10 * (i * 3 + j) + 10.
     // RM flat: [10, 20, 30, 40, 50, 60].
     // CM flat: [10, 40, 20, 50, 30, 60].
-    let m_rm = Dense::<f64>::new(
+    let m_rm = DenseTensorData::<f64>::from_raw_parts(
         vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
         vec![2, 3],
         MemoryOrder::RowMajor,
     );
-    let m_cm = Dense::<f64>::new(
+    let m_cm = DenseTensorData::<f64>::from_raw_parts(
         vec![10.0, 40.0, 20.0, 50.0, 30.0, 60.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -184,8 +204,10 @@ fn dense_get_honors_storage_order() {
             }
         }
     }
-    let m_rm3 = Dense::<f64>::new(rm_data, vec![2, 3, 4], MemoryOrder::RowMajor);
-    let m_cm3 = Dense::<f64>::new(cm_data, vec![2, 3, 4], MemoryOrder::ColumnMajor);
+    let m_rm3 =
+        DenseTensorData::<f64>::from_raw_parts(rm_data, vec![2, 3, 4], MemoryOrder::RowMajor);
+    let m_cm3 =
+        DenseTensorData::<f64>::from_raw_parts(cm_data, vec![2, 3, 4], MemoryOrder::ColumnMajor);
     // [0, 1, 2] flat positions: RM=6, CM=14 (distinct).
     assert_eq!(m_rm3.get(&[0, 1, 2]), 12.0);
     assert_eq!(m_cm3.get(&[0, 1, 2]), 12.0);
@@ -203,7 +225,7 @@ fn dense_get_panics_on_oob_column_major() {
     // return `data[2]` instead of panicking. Pins the contract
     // that out-of-bounds indices panic regardless of whether the
     // computed flat position happens to land in range.
-    let t = Dense::<f64>::new(
+    let t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -217,7 +239,7 @@ fn dense_set_panics_on_oob_column_major() {
     // Mirror of `dense_get_panics_on_oob_column_major` for `set`.
     // Without explicit bounds checking the write would silently
     // overwrite `data[2]` instead of panicking.
-    let mut t = Dense::<f64>::new(
+    let mut t = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![2, 3],
         MemoryOrder::ColumnMajor,
@@ -231,13 +253,17 @@ fn concatenate_panics_on_mixed_order() {
     // Mixed-order inputs walk the strip-copy in incompatible directions;
     // the explicit assert_eq! on `t.order()` must reject this regardless
     // of shape compatibility.
-    let a = Dense::<f64>::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2], MemoryOrder::RowMajor);
-    let b = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    );
+    let b = DenseTensorData::<f64>::from_raw_parts(
         vec![5.0, 6.0, 7.0, 8.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     );
-    let _c = Dense::concatenate(&[&a, &b], 0);
+    let _c = DenseTensorData::concatenate(&[&a, &b], 0);
 }
 
 #[test]
@@ -245,9 +271,10 @@ fn concatenate_panics_on_mixed_order() {
 fn stack_panics_on_mixed_order() {
     // Stack reshapes each input and forwards to concatenate; the order
     // mismatch must propagate through reshape (which preserves order).
-    let a = Dense::<f64>::new(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
-    let b = Dense::<f64>::new(vec![3.0, 4.0], vec![2], MemoryOrder::ColumnMajor);
-    let _s = Dense::stack(&[&a, &b], 0);
+    let a = DenseTensorData::<f64>::from_raw_parts(vec![1.0, 2.0], vec![2], MemoryOrder::RowMajor);
+    let b =
+        DenseTensorData::<f64>::from_raw_parts(vec![3.0, 4.0], vec![2], MemoryOrder::ColumnMajor);
+    let _s = DenseTensorData::stack(&[&a, &b], 0);
 }
 
 #[test]
@@ -257,8 +284,9 @@ fn replace_slice_panics_on_mixed_order_rank2() {
     // order; a different-order sub would land bytes at the wrong logical
     // positions, so the call must panic. (Rank-0 / rank-1 / empty sub
     // are layout-insensitive and remain valid under mixed orders.)
-    let mut dst = Dense::<f64>::new(vec![0.0; 9], vec![3, 3], MemoryOrder::RowMajor);
-    let sub = Dense::<f64>::new(
+    let mut dst =
+        DenseTensorData::<f64>::from_raw_parts(vec![0.0; 9], vec![3, 3], MemoryOrder::RowMajor);
+    let sub = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
@@ -272,24 +300,24 @@ fn concatenate_propagates_input_order_column_major() {
     // propagation is implicit in `tests/dense.rs::test_concatenate_axis0`
     // (asserts the RM-laid output buffer); this test pins the CM case
     // explicitly so the contract holds for both orders.
-    let a = Dense::<f64>::new(
+    let a = DenseTensorData::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     );
-    let b = Dense::<f64>::new(
+    let b = DenseTensorData::<f64>::from_raw_parts(
         vec![5.0, 6.0, 7.0, 8.0],
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     );
-    let c = Dense::concatenate(&[&a, &b], 0);
+    let c = DenseTensorData::concatenate(&[&a, &b], 0);
     assert_eq!(c.order(), MemoryOrder::ColumnMajor);
 }
 
 #[test]
 fn dense_set_honors_storage_order() {
-    // `set` on two zero-initialized Dense with different orders must
-    // write the value at the flat position dictated by each Dense's
+    // `set` on two zero-initialized DenseTensorData with different orders
+    // must write the value at the flat position dictated by each tensor's
     // own order. Verifying via `data()` (raw flat slice) catches a
     // regression where `set` ignored `self.order()` and always wrote
     // at the row-major flat position.
@@ -297,13 +325,15 @@ fn dense_set_honors_storage_order() {
     // Rank-2: shape [2, 3], write at [0, 2].
     // RM flat position: 0 * 3 + 2 = 2.
     // CM flat position: 0 + 2 * 2 = 4.
-    let mut m_rm = Dense::<f64>::new(vec![0.0; 6], vec![2, 3], MemoryOrder::RowMajor);
-    let mut m_cm = Dense::<f64>::new(vec![0.0; 6], vec![2, 3], MemoryOrder::ColumnMajor);
+    let mut m_rm =
+        DenseTensorData::<f64>::from_raw_parts(vec![0.0; 6], vec![2, 3], MemoryOrder::RowMajor);
+    let mut m_cm =
+        DenseTensorData::<f64>::from_raw_parts(vec![0.0; 6], vec![2, 3], MemoryOrder::ColumnMajor);
     m_rm.set(&[0, 2], 9.0);
     m_cm.set(&[0, 2], 9.0);
     assert_eq!(m_rm.data()[2], 9.0);
     assert_eq!(m_cm.data()[4], 9.0);
-    // The other Dense's flat slot is still zero — ruling out the
+    // The other tensor's flat slot is still zero — ruling out the
     // "set ignores order" regression where both writes would land at
     // flat position 2.
     assert_eq!(m_rm.data()[4], 0.0);
@@ -312,8 +342,13 @@ fn dense_set_honors_storage_order() {
     // Rank-3: shape [2, 3, 4], write at [0, 1, 2].
     // RM flat position: 0 * 12 + 1 * 4 + 2 = 6.
     // CM flat position: 0 + 1 * 2 + 2 * 6 = 14.
-    let mut m_rm3 = Dense::<f64>::new(vec![0.0; 24], vec![2, 3, 4], MemoryOrder::RowMajor);
-    let mut m_cm3 = Dense::<f64>::new(vec![0.0; 24], vec![2, 3, 4], MemoryOrder::ColumnMajor);
+    let mut m_rm3 =
+        DenseTensorData::<f64>::from_raw_parts(vec![0.0; 24], vec![2, 3, 4], MemoryOrder::RowMajor);
+    let mut m_cm3 = DenseTensorData::<f64>::from_raw_parts(
+        vec![0.0; 24],
+        vec![2, 3, 4],
+        MemoryOrder::ColumnMajor,
+    );
     m_rm3.set(&[0, 1, 2], 7.5);
     m_cm3.set(&[0, 1, 2], 7.5);
     assert_eq!(m_rm3.data()[6], 7.5);
@@ -343,7 +378,8 @@ fn pauli_sigma_x_kron_sigma_y_row_major() -> Vec<Complex<f64>> {
 #[test]
 fn complex_hermitian_correct_source_order_matches_analytical_entries() {
     let data = pauli_sigma_x_kron_sigma_y_row_major();
-    let t = Dense::<Complex<f64>>::new(data, vec![4, 4], MemoryOrder::RowMajor);
+    let t =
+        DenseTensorData::<Complex<f64>>::from_raw_parts(data, vec![4, 4], MemoryOrder::RowMajor);
     let i = Complex::new(0.0, 1.0);
     let ni = Complex::new(0.0, -1.0);
     assert_eq!(t.get(&[0, 3]), ni);
@@ -359,7 +395,8 @@ fn complex_hermitian_wrong_source_order_returns_conjugated_entries() {
     // off-diagonal entry flips sign on its imaginary part. A real-
     // symmetric fixture would silently pass under this mis-tag.
     let data = pauli_sigma_x_kron_sigma_y_row_major();
-    let t = Dense::<Complex<f64>>::new(data, vec![4, 4], MemoryOrder::ColumnMajor);
+    let t =
+        DenseTensorData::<Complex<f64>>::from_raw_parts(data, vec![4, 4], MemoryOrder::ColumnMajor);
     let i = Complex::new(0.0, 1.0);
     let ni = Complex::new(0.0, -1.0);
     assert_eq!(t.get(&[0, 3]), i);

@@ -7,23 +7,23 @@
 //! wrong order, the downstream operation would produce numerically wrong
 //! results.
 //!
-//! Motivation: `Dense::order()` records each tensor's flat-data layout,
+//! Motivation: `DenseTensorData::order()` records each tensor's flat-data layout,
 //! but downstream backend kernels still expect the active backend's
 //! preferred order. These tests pin the metadata-vs-data consistency
 //! at the linalg output boundary so a regression where an op tags its
 //! output with the wrong order — or produces bytes in a different
-//! order than its `Dense::order()` claims — surfaces as a numerical
+//! order than its `DenseTensorData::order()` claims — surfaces as a numerical
 //! mismatch rather than silently propagating downstream.
 
 use arnet_linalg::{contract, diagonal_scale, expm, inverse, solve, svd, transpose};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, DenseTensorData, MemoryOrder, reorder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder, reorder_data};
 
 /// Build a `DenseTensor` from conceptual row-major data, reordered to CM.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64, NativeBackend> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
-    let cm = reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm.into_tensor_data(), NativeBackend::shared())
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
+    let cm = reorder_data(&rm, MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(cm, NativeBackend::shared())
 }
 
 // =========================================================================

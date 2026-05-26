@@ -34,13 +34,12 @@ pub use arnet_tensor::{BlockSparseTensor, DenseTensor, Tensor};
 
 // Storage / Layout building blocks. Required by downstream crates that
 // parameterize their own generic containers (e.g. `Mps<St, L, B>`) over
-// the joined `Tensor<St, L, B>` type. The legacy `Dense` / `BlockSparse`
-// representations and the `TensorData<St, L>` joined-data aliases are
-// intentionally not re-exported here — umbrella consumers should only
-// see the joined `Tensor` surface. `TensorData` stays `pub` in
-// `arnet-tensor` for crates that perform cross-crate kernel access;
-// such crates depend on `arnet-tensor` directly rather than the
-// umbrella.
+// the joined `Tensor<St, L, B>` type. The `TensorData<St, L>`
+// joined-data aliases are intentionally not re-exported here — umbrella
+// consumers should only see the joined `Tensor` surface. `TensorData`
+// stays `pub` in `arnet-tensor` for crates that perform cross-crate
+// kernel access; such crates depend on `arnet-tensor` directly rather
+// than the umbrella.
 pub use arnet_tensor::{
     BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage,
     Direction, QNIndex, Sector, Storage, StorageFor, TensorLayout, U1Sector, Z2Sector,
@@ -71,7 +70,7 @@ pub use arnet_linalg::{
 // memory-order-aware index math. The actual reorder routine lives as
 // the `DenseTensor::reordered` inherent method on the joined surface
 // (see `arnet_tensor::dense_ops`); the `DenseTensorData`-typed
-// `reorder_dense_data` is intentionally not re-exported here.
+// `reorder_data` is intentionally not re-exported here.
 pub use arnet_tensor::flat_index;
 
 // Linalg-level error type and SVD parameters.

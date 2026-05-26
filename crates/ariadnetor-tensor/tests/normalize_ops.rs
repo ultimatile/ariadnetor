@@ -4,19 +4,19 @@
 //! - norm: Frobenius norm (sqrt(sum|element|^2))
 //! - normalize: Divide by norm and return the norm value
 
-use arnet_tensor::{Dense, MemoryOrder};
+use arnet_tensor::{DenseTensorData, MemoryOrder};
 use num_complex::Complex;
 
 const EPSILON: f64 = 1e-10;
 
 // ============================================================================
-// Dense::norm tests
+// DenseTensorData::norm tests
 // ============================================================================
 
 #[test]
 fn test_norm_f64_simple() {
     // Identity matrix 3x3: norm = sqrt(3)
-    let mut tensor = Dense::<f64>::zeros(vec![3, 3]);
+    let mut tensor = DenseTensorData::<f64>::zeros_in_order(vec![3, 3], MemoryOrder::ColumnMajor);
     tensor.set(&[0, 0], 1.0);
     tensor.set(&[1, 1], 1.0);
     tensor.set(&[2, 2], 1.0);
@@ -28,14 +28,14 @@ fn test_norm_f64_simple() {
 #[test]
 fn test_norm_f64_all_ones() {
     // 2x3 tensor of ones: norm = sqrt(6)
-    let tensor = Dense::<f64>::ones(vec![2, 3]);
+    let tensor = DenseTensorData::<f64>::ones_in_order(vec![2, 3], MemoryOrder::ColumnMajor);
     let norm = tensor.norm();
     assert!((norm - 6.0f64.sqrt()).abs() < EPSILON);
 }
 
 #[test]
 fn test_norm_f32() {
-    let tensor = Dense::<f32>::ones(vec![2, 2]);
+    let tensor = DenseTensorData::<f32>::ones_in_order(vec![2, 2], MemoryOrder::ColumnMajor);
     let norm = tensor.norm();
     assert!((norm - 4.0f32.sqrt()).abs() < 1e-6);
 }
@@ -51,25 +51,25 @@ fn test_norm_complex_f64() {
         Complex::new(2.0, 0.0),
         Complex::new(0.0, 2.0),
     ];
-    let tensor = Dense::new(data, vec![2, 2], MemoryOrder::ColumnMajor);
+    let tensor = DenseTensorData::from_raw_parts(data, vec![2, 2], MemoryOrder::ColumnMajor);
     let norm = tensor.norm();
     assert!((norm - 10.0f64.sqrt()).abs() < EPSILON);
 }
 
 #[test]
 fn test_norm_zero_tensor() {
-    let tensor = Dense::<f64>::zeros(vec![3, 3]);
+    let tensor = DenseTensorData::<f64>::zeros_in_order(vec![3, 3], MemoryOrder::ColumnMajor);
     let norm = tensor.norm();
     assert!(norm.abs() < EPSILON);
 }
 
 // ============================================================================
-// Dense::normalize tests
+// DenseTensorData::normalize tests
 // ============================================================================
 
 #[test]
 fn test_normalize_f64_inplace() {
-    let mut tensor = Dense::<f64>::ones(vec![2, 2]);
+    let mut tensor = DenseTensorData::<f64>::ones_in_order(vec![2, 2], MemoryOrder::ColumnMajor);
     // Initial norm = sqrt(4) = 2
     let norm = tensor.normalize();
     assert!((norm - 2.0).abs() < EPSILON);
@@ -89,7 +89,8 @@ fn test_normalize_f64_inplace() {
 
 #[test]
 fn test_normalize_f64_out_of_place() {
-    let tensor = Dense::<f64>::constant(vec![2, 2], 3.0);
+    let tensor =
+        DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
     // Initial norm = sqrt(4*9) = 6
     let (normalized, norm) = tensor.normalized();
     assert!((norm - 6.0).abs() < EPSILON);
@@ -111,7 +112,7 @@ fn test_normalize_f64_out_of_place() {
 
 #[test]
 fn test_normalize_f32() {
-    let mut tensor = Dense::<f32>::ones(vec![3, 3]);
+    let mut tensor = DenseTensorData::<f32>::ones_in_order(vec![3, 3], MemoryOrder::ColumnMajor);
     let norm = tensor.normalize();
     assert!((norm - 3.0f32).abs() < 1e-6);
 
@@ -127,7 +128,7 @@ fn test_normalize_f32() {
 fn test_normalize_complex_f64() {
     // [2+0i, 0+2i]: |2+0i|^2 = 4, |0+2i|^2 = 4, sum = 8, norm = sqrt(8) = 2*sqrt(2)
     let data: Vec<Complex<f64>> = vec![Complex::new(2.0, 0.0), Complex::new(0.0, 2.0)];
-    let mut tensor = Dense::new(data, vec![2], MemoryOrder::ColumnMajor);
+    let mut tensor = DenseTensorData::from_raw_parts(data, vec![2], MemoryOrder::ColumnMajor);
 
     let norm = tensor.normalize();
     assert!((norm - 8.0f64.sqrt()).abs() < EPSILON);
@@ -151,7 +152,7 @@ fn test_normalize_complex_f64() {
 #[test]
 #[should_panic(expected = "Cannot normalize zero tensor")]
 fn test_normalize_zero_tensor_panic() {
-    let mut tensor = Dense::<f64>::zeros(vec![2, 2]);
+    let mut tensor = DenseTensorData::<f64>::zeros_in_order(vec![2, 2], MemoryOrder::ColumnMajor);
     tensor.normalize();
 }
 

@@ -8,13 +8,12 @@ use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::BlockSparse;
 use arnet_tensor::BlockSparseTensor;
+use arnet_tensor::BlockSparseTensorData;
 use arnet_tensor::Sector;
 
 use crate::block_sparse_decomp::BlockSingularValues;
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_block_sparse;
 
 /// Scale each slice along `axis` by per-sector diagonal weights.
 ///
@@ -44,27 +43,26 @@ where
         "diagonal_scale_block_sparse",
     );
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.backend().preferred_order();
-    let bsp = tensor.data().as_block_sparse();
-    let result = diagonal_scale_block_sparse_dense(tensor.backend(), &bsp, weights, axis)?;
-    Ok(wrap_block_sparse(result, backend_arc, order))
+    let result = diagonal_scale_block_sparse_dense(tensor.backend(), tensor.data(), weights, axis)?;
+    Ok(BlockSparseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`diagonal_scale_block_sparse`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`diagonal_scale_block_sparse`] on joined-form
+/// [`BlockSparseTensorData<T, S>`].
 pub(crate) fn diagonal_scale_block_sparse_dense<T, S>(
     backend: &impl ComputeBackend,
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     weights: &BlockSingularValues<T::Real, S>,
     axis: usize,
-) -> Result<BlockSparse<T, S>, LinalgError>
+) -> Result<BlockSparseTensorData<T, S>, LinalgError>
 where
     T: Scalar,
     S: Sector,
 {
-    if axis >= tensor.rank() {
+    let rank = tensor.layout().rank();
+    if axis >= rank {
         return Err(LinalgError::InvalidArgument(format!(
-            "axis {axis} out of range for rank {}",
-            tensor.rank()
+            "axis {axis} out of range for rank {rank}"
         )));
     }
 
@@ -72,13 +70,17 @@ where
     let weight_map: HashMap<&S, &Vec<T::Real>> =
         weights.values.iter().map(|(s, vs)| (s, vs)).collect();
 
-    // Clone tensor; first block_data_mut triggers one CoW copy.
+    // `result` is a clone that shares storage via Arc; mutating it
+    // triggers CoW on first `block_data_mut`, leaving the original
+    // `tensor` intact. Because `tensor` and `result` are distinct
+    // values, the inner loop can borrow `tensor.layout()` for its
+    // block_metas / indices reads while it mutates `result`.
+    let indices = tensor.layout().indices();
     let mut result = tensor.clone();
 
-    // Iterate original block metadata (immutable) while mutating the clone.
-    for meta in tensor.block_metas() {
+    for meta in tensor.layout().block_metas() {
         let block_idx_at_axis = meta.coord.0[axis];
-        let sector = tensor.indices()[axis].sector(block_idx_at_axis);
+        let sector = indices[axis].sector(block_idx_at_axis);
 
         let w = weight_map.get(sector).ok_or_else(|| {
             LinalgError::InvalidArgument(format!("no weights for sector {sector:?} at axis {axis}"))
@@ -89,7 +91,7 @@ where
             .0
             .iter()
             .enumerate()
-            .map(|(a, &bi)| tensor.indices()[a].block_dim(bi))
+            .map(|(a, &bi)| indices[a].block_dim(bi))
             .collect();
 
         let d_axis = block_shape[axis];

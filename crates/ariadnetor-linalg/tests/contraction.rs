@@ -5,20 +5,19 @@
 
 use arnet_linalg::{contract, einsum, transpose};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64, NativeBackend> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
-    let cm = arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm.into_tensor_data(), NativeBackend::shared())
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
+    let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(cm, NativeBackend::shared())
 }
 
 /// Reorder a `DenseTensor` back to row-major for index-by-index assertions.
 fn to_rm(tensor: &DenseTensor<f64, NativeBackend>) -> DenseTensor<f64, NativeBackend> {
-    let dense = tensor.data().as_dense();
-    let rm = arnet_tensor::reorder(&dense, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm.into_tensor_data(), NativeBackend::shared())
+    let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
+    DenseTensor::with_backend(rm, NativeBackend::shared())
 }
 
 // ============================================================================

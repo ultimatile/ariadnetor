@@ -301,8 +301,9 @@ where
         });
     }
 
-    // (The empty-psi-template guard — checking that
-    // `BlockSparse::zeros(psi_indices, psi_flux)` has at least one
+    // (The empty-psi-template guard — checking that the
+    // `BlockSparseTensorData::zeros(psi_indices, psi_flux, order)`
+    // built from `psi_indices` / `psi_flux` has at least one
     // flux-allowed block — is handled in the entry point after
     // `EffectiveHamiltonian2SiteBlockSparse::new` builds the real
     // template, to avoid allocating it twice. See the

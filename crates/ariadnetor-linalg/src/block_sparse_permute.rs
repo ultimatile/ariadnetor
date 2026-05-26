@@ -1,15 +1,14 @@
 //! Block-sparse tensor axis permutation.
 //!
-//! Permutes the leg order of a [`BlockSparse<T, S>`] tensor by reordering
-//! indices, block coordinates, and transposing each block's data.
+//! Permutes the leg order of a [`BlockSparseTensor<T, S, B>`] tensor by
+//! reordering indices, block coordinates, and transposing each block's data.
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockCoord, BlockSparse, BlockSparseTensor, Sector};
+use arnet_tensor::{BlockCoord, BlockSparseTensor, BlockSparseTensorData, Sector};
 
 use crate::block_sparse_contract::transpose_block_data;
 use crate::error::LinalgError;
-use crate::tensor_bridge::wrap_block_sparse;
 
 /// Permute the axes of a block-sparse tensor.
 ///
@@ -34,24 +33,23 @@ where
 {
     crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "permute_block_sparse");
     let backend_arc = tensor.backend_arc().clone();
-    let order = tensor.backend().preferred_order();
-    let bsp = tensor.data().as_block_sparse();
-    let result = permute_block_sparse_dense(tensor.backend(), &bsp, perm)?;
-    Ok(wrap_block_sparse(result, backend_arc, order))
+    let result = permute_block_sparse_dense(tensor.backend(), tensor.data(), perm)?;
+    Ok(BlockSparseTensor::with_backend(result, backend_arc))
 }
 
-/// Internal kernel for [`permute_block_sparse`] on legacy `BlockSparse<T, S>`.
+/// Internal kernel for [`permute_block_sparse`] on joined-form
+/// [`BlockSparseTensorData<T, S>`].
 pub(crate) fn permute_block_sparse_dense<T, S, B>(
     backend: &B,
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     perm: &[usize],
-) -> Result<BlockSparse<T, S>, LinalgError>
+) -> Result<BlockSparseTensorData<T, S>, LinalgError>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    let rank = tensor.rank();
+    let rank = tensor.layout().rank();
 
     // Validate permutation
     if perm.len() != rank {
@@ -81,16 +79,17 @@ where
     }
 
     let order = backend.preferred_order();
-    let old_indices = tensor.indices();
+    let old_indices = tensor.layout().indices();
 
     // Permuted indices
     let new_indices = perm.iter().map(|&p| old_indices[p].clone()).collect();
 
     // Build output with zeros (establishes correct block structure)
-    let mut output = BlockSparse::zeros(new_indices, tensor.flux().clone());
+    let mut output =
+        BlockSparseTensorData::zeros(new_indices, tensor.layout().flux().clone(), order);
 
     // Fill each block by transposing the corresponding input block's data
-    for meta in tensor.block_metas() {
+    for meta in tensor.layout().block_metas() {
         // Permute block coordinate
         let new_coord_vec: Vec<usize> = perm.iter().map(|&p| meta.coord.0[p]).collect();
         let new_coord = BlockCoord(new_coord_vec);

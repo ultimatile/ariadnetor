@@ -1,6 +1,6 @@
-use arnet_core::backend::MemoryOrder;
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex, U1Sector, Z2Sector};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, U1Sector, Z2Sector};
 
 use super::copy_fused_block;
 use crate::block_sparse_contract::contract_block_sparse_with_policy_dense;
@@ -11,15 +11,20 @@ fn backend() -> NativeBackend {
     NativeBackend::new()
 }
 
+fn order() -> MemoryOrder {
+    backend().preferred_order()
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /// Build a rank-2 U1, flux=0. Out(0:2, 1:3), In(0:2, 1:3).
-fn sample_u1_rank2() -> BlockSparse<f64, U1Sector> {
+fn sample_u1_rank2() -> BlockSparseTensorData<f64, U1Sector> {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut bs =
+        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
     let d = bs.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
     d.copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
     let d = bs.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
@@ -28,11 +33,11 @@ fn sample_u1_rank2() -> BlockSparse<f64, U1Sector> {
 }
 
 /// Build a rank-3 U1, flux=0. Out(0:2, 1:3), Out(0:2, 1:1), In(0:2, 1:3).
-fn sample_u1_rank3() -> BlockSparse<f64, U1Sector> {
+fn sample_u1_rank3() -> BlockSparseTensorData<f64, U1Sector> {
     let i0 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let i1 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
     let i2 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparse::zeros(vec![i0, i1, i2], U1Sector(0));
+    let mut bs = BlockSparseTensorData::zeros(vec![i0, i1, i2], U1Sector(0), order());
     let mut val = 1.0;
     for meta in bs.block_metas().to_vec() {
         let data = bs.block_data_mut(&meta.coord).unwrap();
@@ -108,7 +113,8 @@ fn fuse_tuple_offset_is_lexicographic() {
     // flux = 0, so allowed blocks must satisfy Out(s0).fuse(In(s1)).fuse(In(s2)) = 0
     // s2 = 0 always. So Out(s0).fuse(In(s1)) = 0 → s0 - s1 = 0 → s0 == s1
     // Blocks: (0,0,0) and (1,1,0)
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(0));
+    let mut bs =
+        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(0), order());
     // Block (0,0,0): 1×1×3 = 3 elements, fill with [10, 20, 30]
     bs.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .unwrap()
@@ -184,7 +190,8 @@ fn fuse_data_matches_dense_reshape_single_sector() {
     // Build a rank-2 tensor with a single sector pair (only 0-sector) for direct comparison
     let row = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut bs =
+        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
     let data: Vec<f64> = (1..=12).map(|i| i as f64).collect();
     bs.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
@@ -243,8 +250,11 @@ fn apply_scenario_fuse_rank5_to_rank3() {
     let chi_l = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let chi_r = QNIndex::new(vec![(U1Sector(0), 3)], Direction::In);
 
-    let mut bs =
-        BlockSparse::<f64, U1Sector>::zeros(vec![w_l, d_bra, w_r, chi_l, chi_r], U1Sector(0));
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![w_l, d_bra, w_r, chi_l, chi_r],
+        U1Sector(0),
+        order(),
+    );
     let data: Vec<f64> = (1..=18).map(|i| i as f64).collect();
     bs.block_data_mut(&BlockCoord(vec![0, 0, 0, 0, 0]))
         .unwrap()
@@ -293,7 +303,11 @@ fn apply_scenario_multi_sector() {
     let d_ket_a = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let chi_r = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
 
-    let mut w = BlockSparse::<f64, U1Sector>::zeros(vec![w_l, d_ket_w, d_bra, w_r], U1Sector(0));
+    let mut w = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![w_l, d_ket_w, d_bra, w_r],
+        U1Sector(0),
+        order(),
+    );
     // Fill W with known values
     for meta in w.block_metas().to_vec() {
         let data = w.block_data_mut(&meta.coord).unwrap();
@@ -302,7 +316,11 @@ fn apply_scenario_multi_sector() {
         }
     }
 
-    let mut a = BlockSparse::<f64, U1Sector>::zeros(vec![chi_l, d_ket_a, chi_r], U1Sector(0));
+    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![chi_l, d_ket_a, chi_r],
+        U1Sector(0),
+        order(),
+    );
     for meta in a.block_metas().to_vec() {
         let data = a.block_data_mut(&meta.coord).unwrap();
         for (i, v) in data.iter_mut().enumerate() {
@@ -360,7 +378,8 @@ fn fuse_z2_rank2() {
         vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 3)],
         Direction::In,
     );
-    let mut bs = BlockSparse::<f64, Z2Sector>::zeros(vec![row, col], Z2Sector::new(0));
+    let mut bs =
+        BlockSparseTensorData::<f64, Z2Sector>::zeros(vec![row, col], Z2Sector::new(0), order());
     let d = bs.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
     d.copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
     let d = bs.block_data_mut(&BlockCoord(vec![1, 1])).unwrap();
@@ -384,7 +403,8 @@ fn fuse_nonzero_flux() {
     let i0 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let i1 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
     let i2 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(1));
+    let mut bs =
+        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(1), order());
     for meta in bs.block_metas().to_vec() {
         let data = bs.block_data_mut(&meta.coord).unwrap();
         for (i, v) in data.iter_mut().enumerate() {
@@ -421,9 +441,13 @@ fn fused_qnindex_independent_of_stored_blocks() {
         Direction::In,
     );
 
-    let bs_many =
-        BlockSparse::<f64, U1Sector>::zeros(vec![i0.clone(), i1.clone(), i2.clone()], U1Sector(0));
-    let bs_few = BlockSparse::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(2));
+    let bs_many = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        vec![i0.clone(), i1.clone(), i2.clone()],
+        U1Sector(0),
+        order(),
+    );
+    let bs_few =
+        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(2), order());
 
     // Precondition: different number of stored blocks
     assert!(
@@ -465,7 +489,8 @@ fn fuse_trailing_axes_with_nontrivial_leading() {
     let i0 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let i1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let i2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut bs = BlockSparse::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(0));
+    let mut bs =
+        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![i0, i1, i2], U1Sector(0), order());
 
     // Block (0, 0, 0): shape [2, 1, 1] = 2 elements
     bs.block_data_mut(&BlockCoord(vec![0, 0, 0]))

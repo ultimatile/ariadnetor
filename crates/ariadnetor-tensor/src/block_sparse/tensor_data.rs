@@ -18,12 +18,13 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// Construct a zero-filled `BlockSparseTensorData` with all
     /// flux-allowed blocks.
     ///
-    /// Crate-internal: the user-facing constructor is
+    /// Cross-crate: the user-facing constructor is
     /// [`BlockSparseTensor::zeros`](crate::BlockSparseTensor::zeros),
     /// which pins memory order to the active backend. Direct callers
+    /// (notably `arnet-linalg` BSp kernel output-construction sites)
     /// that need an explicit `order` go through this helper or build
     /// `TensorData::new(storage, layout)` directly.
-    pub(crate) fn zeros(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder) -> Self
+    pub fn zeros(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder) -> Self
     where
         T: Clone + Zero,
     {
@@ -43,7 +44,7 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// queried. Block coordinates are visited in the layout's
     /// lexicographic enumeration order.
     ///
-    /// Crate-internal: the user-facing constructor is
+    /// Cross-crate: the user-facing constructor is
     /// [`BlockSparseTensor::from_block_fn`](crate::BlockSparseTensor::from_block_fn),
     /// which pins memory order to the active backend.
     ///
@@ -51,12 +52,7 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     ///
     /// Panics if the closure returns a `Vec<T>` whose length differs
     /// from `product(block_shape)` (the per-block element count).
-    pub(crate) fn from_block_fn<F>(
-        indices: Vec<QNIndex<S>>,
-        flux: S,
-        order: MemoryOrder,
-        mut f: F,
-    ) -> Self
+    pub fn from_block_fn<F>(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder, mut f: F) -> Self
     where
         T: Clone + Zero,
         F: FnMut(&BlockCoord, &[usize]) -> Vec<T>,
@@ -92,10 +88,10 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// Construct with all flux-allowed blocks filled with random
     /// values from the standard distribution.
     ///
-    /// Crate-internal: the user-facing constructor is
+    /// Cross-crate: the user-facing constructor is
     /// [`BlockSparseTensor::random`](crate::BlockSparseTensor::random),
     /// which pins memory order to the active backend.
-    pub(crate) fn random<R: rand::Rng>(
+    pub fn random<R: rand::Rng>(
         indices: Vec<QNIndex<S>>,
         flux: S,
         order: MemoryOrder,
@@ -152,6 +148,47 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
         Some(&self.storage().data()[meta.offset..meta.offset + meta.size])
     }
 
+    /// Logical shape (total dimension per leg). Forwards to the layout.
+    pub fn shape(&self) -> &[usize] {
+        self.layout().shape()
+    }
+
+    /// Rank (number of legs). Forwards to the layout.
+    pub fn rank(&self) -> usize {
+        self.layout().rank()
+    }
+
+    /// Conserved flux (total quantum number). Forwards to the layout.
+    pub fn flux(&self) -> &S {
+        self.layout().flux()
+    }
+
+    /// Per-leg QN indices. Forwards to the layout.
+    pub fn indices(&self) -> &[super::QNIndex<S>] {
+        self.layout().indices()
+    }
+
+    /// Number of stored (non-zero) blocks. Forwards to the layout.
+    pub fn num_blocks(&self) -> usize {
+        self.layout().num_blocks()
+    }
+
+    /// Block metadata (sorted by coordinate). Forwards to the layout.
+    pub fn block_metas(&self) -> &[BlockMeta] {
+        self.layout().block_metas()
+    }
+
+    /// Check whether a block coordinate satisfies the flux conservation law.
+    /// Forwards to the layout.
+    pub fn is_allowed_block(&self, coord: &BlockCoord) -> bool {
+        self.layout().is_allowed_block(coord)
+    }
+
+    /// Memory order the paired storage is laid out in. Forwards to the layout.
+    pub fn order(&self) -> arnet_core::backend::MemoryOrder {
+        self.layout().order()
+    }
+
     /// Mutable data slice for a block identified by coordinate
     /// (triggers CoW on the storage half if shared).
     pub fn block_data_mut(&mut self, coord: &BlockCoord) -> Option<&mut [T]>
@@ -165,27 +202,6 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
         let arc = self.storage_mut().arc_mut();
         let data = Arc::make_mut(arc);
         Some(&mut data[offset..offset + size])
-    }
-}
-
-impl<T, S: Sector> BlockSparseTensorData<T, S> {
-    /// Cheap O(1) `BlockSparse<T, S>` view that shares the underlying
-    /// storage Arc and clones the block metadata.
-    ///
-    /// Bridges the joined-form `BlockSparseTensorData` into the legacy
-    /// [`BlockSparse<T, S>`](crate::BlockSparse) representation that
-    /// internal linalg kernels still operate on. The memory `order`
-    /// recorded on the layout is dropped because the legacy
-    /// `BlockSparse` type predates the per-tensor order field.
-    pub fn as_block_sparse(&self) -> super::BlockSparse<T, S> {
-        super::BlockSparse::from_storage_arc(
-            self.storage().arc_clone(),
-            self.layout().block_metas().to_vec(),
-            self.layout().block_index().clone(),
-            self.layout().indices().to_vec(),
-            self.layout().flux().clone(),
-            self.layout().shape().to_vec(),
-        )
     }
 }
 
@@ -216,5 +232,63 @@ where
             AVec::from_iter(64, self.storage().data().iter().copied().map(|x| x.conj()));
         let storage = BlockSparseStorage::from_aligned(new_data);
         Self::new(storage, self.layout().clone())
+    }
+
+    /// Total number of stored elements across all blocks. Forwards
+    /// to the storage half.
+    pub fn stored_len(&self) -> usize {
+        self.storage().stored_len()
+    }
+
+    /// Frobenius norm: √(Σ |element|²). Forwards to the storage half.
+    pub fn norm_frobenius(&self) -> T::Real {
+        self.storage().norm_frobenius()
+    }
+
+    /// Frobenius norm (alias for [`norm_frobenius`](Self::norm_frobenius)).
+    pub fn norm(&self) -> T::Real {
+        self.storage().norm()
+    }
+
+    /// Normalize to unit Frobenius norm in place. Returns the norm
+    /// before normalization. Panics if the tensor has zero norm.
+    pub fn normalize(&mut self) -> T::Real {
+        self.storage_mut().normalize()
+    }
+
+    /// Normalize and return a new tensor (out-of-place). Returns
+    /// `(normalized_tensor, original_norm)`. Panics if the tensor has
+    /// zero norm.
+    pub fn normalized(&self) -> (Self, T::Real) {
+        let mut result = self.clone();
+        let norm = result.normalize();
+        (result, norm)
+    }
+}
+
+impl<T, S: Sector> BlockSparseTensorData<T, S>
+where
+    T: Clone,
+{
+    /// Scale every stored element by a scalar factor in place
+    /// (triggers CoW if shared).
+    pub fn scale<F>(&mut self, factor: F)
+    where
+        T: std::ops::Mul<F, Output = T>,
+        F: Clone,
+    {
+        self.storage_mut().scale(factor);
+    }
+
+    /// Scale every stored element and return a new tensor
+    /// (out-of-place).
+    pub fn scaled<F>(&self, factor: F) -> Self
+    where
+        T: std::ops::Mul<F, Output = T>,
+        F: Clone,
+    {
+        let mut result = self.clone();
+        result.scale(factor);
+        result
     }
 }

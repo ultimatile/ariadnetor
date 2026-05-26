@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use arnet_core::Scalar;
 use arnet_core::backend::MemoryOrder;
 use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparse, Direction, QNIndex};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
 
 /// Per-sector grouping of block-index tuples for matrix assembly.
 pub(super) struct FusedSectorGroup<S: Sector> {
@@ -36,11 +36,11 @@ pub(super) struct FusedSectorGroup<S: Sector> {
 /// For each fused left sector with a matching fused right sector (determined
 /// by flux), collects the left/right block-index tuples and their dimensions.
 pub(super) fn compute_fused_sector_groups<T, S: Sector>(
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Vec<FusedSectorGroup<S>> {
-    let indices = tensor.indices();
-    let flux = tensor.flux();
+    let indices = tensor.layout().indices();
+    let flux = tensor.layout().flux();
 
     let left_groups = enumerate_fused_tuples(&indices[..nrow]);
     let right_groups = enumerate_fused_tuples(&indices[nrow..]);
@@ -143,7 +143,7 @@ fn cumulative_offsets(dims: &[usize]) -> Vec<usize> {
 ///
 /// The output matrix layout follows the given `order`.
 pub(super) fn assemble_sector_matrix<T: Scalar, S: Sector>(
-    tensor: &BlockSparse<T, S>,
+    tensor: &BlockSparseTensorData<T, S>,
     group: &FusedSectorGroup<S>,
     order: MemoryOrder,
 ) -> Vec<T> {
@@ -198,7 +198,7 @@ pub(super) fn build_left_tensor<T: Scalar, S: Sector>(
     original_indices: &[QNIndex<S>],
     nrow: usize,
     order: MemoryOrder,
-) -> BlockSparse<T, S> {
+) -> BlockSparseTensorData<T, S> {
     let bond_blocks: Vec<(S, usize)> = groups
         .iter()
         .zip(k_per_sector.iter())
@@ -209,7 +209,7 @@ pub(super) fn build_left_tensor<T: Scalar, S: Sector>(
 
     let mut out_indices: Vec<QNIndex<S>> = original_indices[..nrow].to_vec();
     out_indices.push(bond_index);
-    let mut output = BlockSparse::zeros(out_indices, S::identity());
+    let mut output = BlockSparseTensorData::zeros(out_indices, S::identity(), order);
 
     let mut bond_idx = 0;
     for (gi, group) in groups.iter().enumerate() {
@@ -262,7 +262,7 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
     nrow: usize,
     flux: S,
     order: MemoryOrder,
-) -> BlockSparse<T, S> {
+) -> BlockSparseTensorData<T, S> {
     let bond_blocks: Vec<(S, usize)> = groups
         .iter()
         .zip(k_per_sector.iter())
@@ -273,7 +273,7 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
 
     let mut out_indices: Vec<QNIndex<S>> = vec![bond_index];
     out_indices.extend_from_slice(&original_indices[nrow..]);
-    let mut output = BlockSparse::zeros(out_indices, flux);
+    let mut output = BlockSparseTensorData::zeros(out_indices, flux, order);
 
     let mut bond_idx = 0;
     for (gi, group) in groups.iter().enumerate() {

@@ -1,23 +1,21 @@
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::contract;
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major
-/// (the NativeBackend's preferred order). Mirrors the original
-/// `cm()` helper that produced a `Dense`.
+/// (the NativeBackend's preferred order).
 fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
-    let cm = arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm.into_tensor_data(), NativeBackend::shared())
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
+    let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(cm, NativeBackend::shared())
 }
 
 /// Reorder a `DenseTensor` result back to row-major so element-wise
 /// `.get()` assertions return the values one would index in RM.
 fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
-    let dense = tensor.data().as_dense();
-    let rm = arnet_tensor::reorder(&dense, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm.into_tensor_data(), NativeBackend::shared())
+    let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
+    DenseTensor::with_backend(rm, NativeBackend::shared())
 }
 
 #[test]

@@ -3,10 +3,17 @@
 //! Carries only the flat element buffer. Shape and memory order live
 //! on the paired [`DenseLayout`](crate::DenseLayout); the wrapper
 //! [`DenseTensorData<T>`](crate::DenseTensorData) joins the two.
+//!
+//! `T: Scalar`-bound scalar-only data operations (`norm`,
+//! `norm_frobenius`, `normalize`, `normalized`) live here because
+//! their bodies touch only `data`; they require no shape, no memory
+//! order, and no compute backend. Symmetric with the BSp side.
 
+use std::ops::Mul;
 use std::sync::Arc;
 
 use aligned_vec::{AVec, ConstAlign};
+use num_traits::{Float, One, Zero};
 
 use super::Align64;
 use crate::{Storage, StorageFor};
@@ -51,6 +58,13 @@ impl<T> DenseStorage<T> {
         }
     }
 
+    /// Construct from an already-aligned `AVec` (zero-copy).
+    pub(crate) fn from_aligned(data: AVec<T, ConstAlign<64>>) -> Self {
+        Self {
+            data: Arc::new(data),
+        }
+    }
+
     /// Get a reference to the underlying contiguous data.
     pub fn data(&self) -> &[T] {
         &self.data[..]
@@ -83,29 +97,6 @@ impl<T> DenseStorage<T> {
     {
         Arc::make_mut(&mut self.data).as_mut_ptr()
     }
-
-    /// Cheap O(1) clone of the underlying storage Arc.
-    ///
-    /// Internal kernel bridge for
-    /// [`DenseTensorData::as_dense`](crate::DenseTensorData::as_dense)
-    /// so the legacy [`Dense<T>`](crate::Dense) view can share the
-    /// same aligned buffer without copying. Pub for cross-crate access
-    /// from `arnet-linalg`; not a user-facing accessor.
-    #[doc(hidden)]
-    pub fn arc_clone(&self) -> Arc<AVec<T, Align64>> {
-        Arc::clone(&self.data)
-    }
-
-    /// Construct directly from an already-aligned storage Arc.
-    ///
-    /// Internal kernel counterpart to [`arc_clone`](Self::arc_clone),
-    /// used by [`Dense::into_tensor_data`](crate::Dense::into_tensor_data)
-    /// to move ownership of the buffer without a copy. Pub for
-    /// cross-crate access; not a user-facing constructor.
-    #[doc(hidden)]
-    pub fn from_arc(data: Arc<AVec<T, Align64>>) -> Self {
-        Self { data }
-    }
 }
 
 impl<T> Storage for DenseStorage<T> {
@@ -117,3 +108,107 @@ impl<T> Storage for DenseStorage<T> {
 }
 
 impl<T> StorageFor<crate::DenseLayout> for DenseStorage<T> {}
+
+// ---------------------------------------------------------------------------
+// Length-preserving data operations
+//
+// Bodies only touch `data`, so they live on the storage half.
+// Mirrors the BSp storage pattern.
+// ---------------------------------------------------------------------------
+
+impl<T> DenseStorage<T>
+where
+    T: Clone,
+{
+    /// Fill every stored element with a constant value (triggers CoW
+    /// if shared).
+    pub fn fill(&mut self, value: T) {
+        Arc::make_mut(&mut self.data).as_mut_slice().fill(value);
+    }
+
+    /// Apply a function to each stored element in place (triggers CoW
+    /// if shared).
+    ///
+    /// Element ordering follows storage layout; the closure sees raw
+    /// flat positions without coordinate context.
+    pub fn map_mut<F>(&mut self, f: F)
+    where
+        F: Fn(&T) -> T,
+    {
+        let data = Arc::make_mut(&mut self.data).as_mut_slice();
+        for x in data.iter_mut() {
+            *x = f(x);
+        }
+    }
+
+    /// Scale every stored element by a scalar factor in place
+    /// (triggers CoW if shared).
+    pub fn scale<S>(&mut self, factor: S)
+    where
+        T: Mul<S, Output = T>,
+        S: Clone,
+    {
+        let data = Arc::make_mut(&mut self.data).as_mut_slice();
+        for elem in data.iter_mut() {
+            *elem = elem.clone() * factor.clone();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Scalar-only data operations
+//
+// Symmetric with `BlockSparseStorage`: norm-related operations read
+// only the flat buffer (no shape, no layout-internal metadata).
+// ---------------------------------------------------------------------------
+
+impl<T> DenseStorage<T>
+where
+    T: arnet_core::Scalar,
+{
+    /// Squared Frobenius norm: Σ |element|².
+    fn norm_squared(&self) -> T::Real {
+        self.data
+            .iter()
+            .map(|&x| {
+                let a = x.abs();
+                a * a
+            })
+            .fold(T::Real::zero(), |acc, x| acc + x)
+    }
+
+    /// Frobenius norm: √(Σ |element|²).
+    pub fn norm_frobenius(&self) -> T::Real {
+        self.norm_squared().sqrt()
+    }
+
+    /// Frobenius norm (alias for [`norm_frobenius`](Self::norm_frobenius)).
+    pub fn norm(&self) -> T::Real {
+        self.norm_frobenius()
+    }
+
+    /// Normalize to unit Frobenius norm (in-place).
+    ///
+    /// Returns the norm before normalization. Panics if the tensor has
+    /// zero norm.
+    pub fn normalize(&mut self) -> T::Real {
+        let norm = self.norm_frobenius();
+        assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
+        let inv_norm = T::Real::one() / norm;
+        let data = Arc::make_mut(&mut self.data);
+        for elem in data.iter_mut() {
+            *elem = elem.scale_real(inv_norm);
+        }
+        norm
+    }
+
+    /// Normalize and return a new storage (out-of-place).
+    ///
+    /// Returns `(normalized_storage, original_norm)`. Panics if the
+    /// tensor has zero norm.
+    pub fn normalized(&self) -> (Self, T::Real) {
+        let mut result = self.clone();
+        let norm = result.normalize();
+        (result, norm)
+    }
+}

@@ -1,19 +1,18 @@
 use arnet_linalg::{EighResult, contract, eigh, expm, expm_antihermitian, expm_hermitian};
 use arnet_native::NativeBackend;
-use arnet_tensor::{Dense, DenseTensor, MemoryOrder};
+use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
 fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
-    let rm = Dense::new(data, shape, MemoryOrder::RowMajor);
-    let cm = arnet_tensor::reorder(&rm, MemoryOrder::RowMajor, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm.into_tensor_data(), NativeBackend::shared())
+    let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
+    let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
+    DenseTensor::with_backend(cm, NativeBackend::shared())
 }
 
 /// Convert column-major Dense back to row-major so `.get()` returns correct values.
 fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
-    let dense = tensor.data().as_dense();
-    let rm = arnet_tensor::reorder(&dense, MemoryOrder::ColumnMajor, MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm.into_tensor_data(), NativeBackend::shared())
+    let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
+    DenseTensor::with_backend(rm, NativeBackend::shared())
 }
 
 #[test]
@@ -208,12 +207,11 @@ fn test_expm_antihermitian_invalid_nonsquare() {
     use num_traits::Zero;
 
     let a = DenseTensor::with_backend(
-        Dense::new(
+        DenseTensorData::from_raw_parts(
             vec![Complex::<f64>::zero(); 6],
             vec![2, 3],
             MemoryOrder::ColumnMajor,
-        )
-        .into_tensor_data(),
+        ),
         NativeBackend::shared(),
     );
     assert!(expm_antihermitian(&a, 1).is_err());

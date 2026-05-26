@@ -8,7 +8,6 @@ mod block_sparse;
 mod dense;
 mod layout;
 mod reorder;
-mod repr;
 mod sector;
 mod storage;
 mod tensor;
@@ -21,13 +20,12 @@ pub use arnet_core::{
 };
 
 pub use block_sparse::{
-    BlockCoord, BlockMeta, BlockSparse, BlockSparseLayout, BlockSparseStorage,
-    BlockSparseTensorData, Direction, QNIndex,
+    BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, Direction,
+    QNIndex,
 };
-pub use dense::{Dense, DenseLayout, DenseStorage, DenseTensorData};
+pub use dense::{DenseLayout, DenseStorage, DenseTensorData};
 pub use layout::{StorageFor, TensorLayout};
-pub use reorder::{flat_index, normalize_to, reorder, reorder_dense_data};
-pub use repr::TensorRepr;
+pub use reorder::{flat_index, normalize_to_data, reorder_data};
 pub use sector::{Sector, U1Sector, Z2Sector};
 pub use storage::Storage;
 pub use tensor::{BlockSparseTensor, DenseTensor, Tensor};
@@ -41,47 +39,45 @@ pub use arnet_native::NativeBackend;
 /// Extension trait for backend-aware tensor construction.
 ///
 /// Provides tensor constructors on any `ComputeBackend` that produce
-/// `Dense<T>` whose `order()` matches the backend's `preferred_order()`,
-/// so downstream linalg operations on `Tensor<Dense, B>` find the
-/// storage already in the layout they expect.
+/// `DenseTensorData<T>` whose `order()` matches the backend's
+/// `preferred_order()`, so downstream linalg operations on the
+/// joined `Tensor<DenseStorage, DenseLayout, B>` find the storage
+/// already in the layout they expect.
 pub trait ComputeBackendTensorExt: ComputeBackend {
-    /// Construct a `Dense` from data in this backend's preferred memory order.
+    /// Construct a `DenseTensorData` from data in this backend's
+    /// preferred memory order.
     ///
-    /// The caller must arrange `data` in this backend's `preferred_order()`.
-    /// The resulting Dense has `order() == self.preferred_order()`.
-    fn make_tensor<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> Dense<T> {
-        Dense::new(data, shape, self.preferred_order())
+    /// The caller must arrange `data` in this backend's
+    /// `preferred_order()`. The resulting tensor data has
+    /// `order() == self.preferred_order()`.
+    fn make_tensor<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> DenseTensorData<T> {
+        DenseTensorData::from_raw_parts(data, shape, self.preferred_order())
     }
 
     /// Create a zero-filled tensor whose `order()` matches this backend.
-    fn zeros<T: Clone + num_traits::Zero>(&self, shape: Vec<usize>) -> Dense<T> {
-        let total: usize = shape.iter().product();
-        Dense::new(vec![T::zero(); total], shape, self.preferred_order())
+    fn zeros<T: Clone + num_traits::Zero>(&self, shape: Vec<usize>) -> DenseTensorData<T> {
+        DenseTensorData::zeros_in_order(shape, self.preferred_order())
     }
 
     /// Create a ones-filled tensor whose `order()` matches this backend.
-    fn ones<T: Clone + num_traits::Zero + num_traits::One>(&self, shape: Vec<usize>) -> Dense<T> {
-        let total: usize = shape.iter().product();
-        Dense::new(vec![T::one(); total], shape, self.preferred_order())
+    fn ones<T: Clone + num_traits::Zero + num_traits::One>(
+        &self,
+        shape: Vec<usize>,
+    ) -> DenseTensorData<T> {
+        DenseTensorData::ones_in_order(shape, self.preferred_order())
     }
 
     /// Create a constant-filled tensor whose `order()` matches this backend.
-    fn constant<T: Clone>(&self, shape: Vec<usize>, value: T) -> Dense<T> {
-        let total: usize = shape.iter().product();
-        Dense::new(vec![value; total], shape, self.preferred_order())
+    fn constant<T: Clone>(&self, shape: Vec<usize>, value: T) -> DenseTensorData<T> {
+        DenseTensorData::constant_in_order(shape, value, self.preferred_order())
     }
 
     /// Create an identity matrix whose `order()` matches this backend.
     ///
     /// The identity matrix is symmetric, so its flat data layout is the same
-    /// regardless of memory order; only the `order()` field differs from
-    /// `Dense::eye(n)`.
-    fn eye<T: Clone + num_traits::Zero + num_traits::One>(&self, n: usize) -> Dense<T> {
-        let mut data = vec![T::zero(); n * n];
-        for i in 0..n {
-            data[i * n + i] = T::one();
-        }
-        Dense::new(data, vec![n, n], self.preferred_order())
+    /// regardless of memory order; only the `order()` field differs.
+    fn eye<T: Clone + num_traits::Zero + num_traits::One>(&self, n: usize) -> DenseTensorData<T> {
+        DenseTensorData::eye_in_order(n, self.preferred_order())
     }
 }
 
