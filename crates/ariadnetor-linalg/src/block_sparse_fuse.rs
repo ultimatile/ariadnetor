@@ -187,16 +187,13 @@ where
             .max(1);
         let fused_total = fused_dim_per_block[fused_block_idx];
 
-        // Copy out the source slice before mutably borrowing `output`,
-        // because `tensor.block_data()` and `output.block_data_mut()` both
-        // hold references whose lifetimes overlap inside this iteration.
-        let src_buf: Vec<T> = tensor.block_data(&meta.coord).unwrap().to_vec();
+        let src_data = tensor.block_data(&meta.coord).unwrap();
         let dst_data = output
             .block_data_mut(&out_coord)
             .expect("output block must exist");
 
         copy_fused_block(
-            &src_buf,
+            src_data,
             dst_data,
             leading_prod,
             fused_prod,

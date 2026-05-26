@@ -265,7 +265,7 @@ where
             MemoryOrder::ColumnMajor => 0,
         };
         let self_strides = strides_for(&shape, order);
-        let sub_raw = sub.storage().data().to_vec();
+        let sub_raw = sub.storage().data();
         let strip_len = sub_shape[inner_axis];
         let num_strips = sub_total / strip_len.max(1);
         let outer_axes: Vec<usize> = match order {
