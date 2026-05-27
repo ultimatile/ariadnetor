@@ -48,7 +48,11 @@ impl std::error::Error for LinalgError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Backend(e) => Some(e),
-            Self::Tensor(e) => Some(e),
+            // Transparent wrap: expose the inner's source, not the inner
+            // itself. Since `Display` already delegates to the inner, also
+            // returning `Some(e)` would surface the same message twice in
+            // an `Error::source()`-walking reporter.
+            Self::Tensor(e) => e.source(),
             _ => None,
         }
     }
@@ -76,9 +80,11 @@ mod tests {
     }
 
     #[test]
-    fn tensor_variant_source_exposes_inner() {
+    fn tensor_variant_source_is_transparent_to_inner() {
+        // Transparent wrap: `source()` exposes the inner's source, not the
+        // inner itself. `TensorError::InvalidArgument` has no inner source,
+        // so the wrap's `source()` is `None`.
         let err: LinalgError = TensorError::InvalidArgument("z".to_string()).into();
-        let src = err.source().expect("Tensor variant must expose source");
-        assert_eq!(src.to_string(), "Invalid argument: z");
+        assert!(err.source().is_none());
     }
 }

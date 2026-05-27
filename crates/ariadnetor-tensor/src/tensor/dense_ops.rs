@@ -1,7 +1,7 @@
 //! Dense-specific inherent methods on `Tensor<DenseStorage<S>, DenseLayout, B>`.
 //!
-//! Covers element access, in-place fills / scales, linear combinations,
-//! Frobenius-norm-based normalization, and zero-copy reshape. These
+//! Covers element access, in-place fills / scales, Frobenius-norm-based
+//! normalization, conjugation, zero-copy reshape, and reorder. These
 //! operations are storage-local: they do not need the backend for
 //! dispatch, so they work uniformly over any `B: ComputeBackend`.
 
