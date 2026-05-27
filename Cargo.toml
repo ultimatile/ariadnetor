@@ -33,6 +33,9 @@ rand = "0.10"
 # Parallelism
 rayon = "1"
 
+# Error handling
+thiserror = "1"
+
 # Dev dependencies
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }

@@ -6,7 +6,9 @@
 
 mod block_sparse;
 mod dense;
+mod error;
 mod layout;
+mod ops;
 mod reorder;
 mod sector;
 mod storage;
@@ -24,7 +26,9 @@ pub use block_sparse::{
     QNIndex,
 };
 pub use dense::{DenseLayout, DenseStorage, DenseTensorData};
+pub use error::TensorError;
 pub use layout::{StorageFor, TensorLayout};
+pub use ops::{add_all, linear_combine};
 pub use reorder::{flat_index, normalize_to_data, reorder_data};
 pub use sector::{Sector, U1Sector, Z2Sector};
 pub use storage::Storage;

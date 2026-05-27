@@ -3,7 +3,7 @@
 use num_traits::Zero;
 use std::ops::{Add, Mul};
 
-use crate::{DenseLayout, DenseTensorData, TensorData};
+use crate::{DenseLayout, DenseTensorData, TensorData, TensorError};
 use arnet_core::MemoryOrder;
 
 impl<T> DenseTensorData<T>
@@ -109,7 +109,7 @@ where
     T: Clone,
 {
     /// Add all tensors (coefficients all = 1).
-    pub fn add_all(tensors: &[&DenseTensorData<T>]) -> Result<DenseTensorData<T>, String>
+    pub fn add_all(tensors: &[&DenseTensorData<T>]) -> Result<DenseTensorData<T>, TensorError>
     where
         T: Zero + num_traits::One + Add<Output = T> + Mul<Output = T>,
     {
@@ -130,32 +130,36 @@ where
     pub fn linear_combine(
         tensors: &[&DenseTensorData<T>],
         coefs: &[T],
-    ) -> Result<DenseTensorData<T>, String>
+    ) -> Result<DenseTensorData<T>, TensorError>
     where
         T: Zero + Add<Output = T> + Mul<Output = T>,
     {
         if tensors.is_empty() {
-            return Err("Cannot combine empty tensor list".to_string());
+            return Err(TensorError::InvalidArgument(
+                "Cannot combine empty tensor list".to_string(),
+            ));
         }
         if tensors.len() != coefs.len() {
-            return Err(format!(
+            return Err(TensorError::InvalidArgument(format!(
                 "Mismatched lengths: {} tensors vs {} coefficients",
                 tensors.len(),
                 coefs.len()
-            ));
+            )));
         }
         let shape = tensors[0].shape();
         let order = tensors[0].order();
         for t in &tensors[1..] {
             if t.shape() != shape {
-                return Err("All tensors must have the same shape".to_string());
+                return Err(TensorError::InvalidArgument(
+                    "All tensors must have the same shape".to_string(),
+                ));
             }
             if t.order() != order {
-                return Err(format!(
+                return Err(TensorError::InvalidArgument(format!(
                     "All tensors must have the same memory order; got {:?} and {:?}",
                     order,
                     t.order()
-                ));
+                )));
             }
         }
         let len = tensors[0].len();

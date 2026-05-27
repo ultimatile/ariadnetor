@@ -51,9 +51,10 @@ pub use arnet_core::{
 };
 
 // High-level free functions (backend extracted from Tensor)
+pub use arnet_tensor::{add_all, linear_combine};
 pub use ops::{
     contract, diag, eig, eigh, eigvals, eigvalsh, einsum, expm, expm_antihermitian, expm_hermitian,
-    inverse, linear_combine, lq, qr, solve, svd, trace, transpose, trunc_svd,
+    inverse, lq, qr, solve, svd, trace, transpose, trunc_svd,
 };
 
 // Block-sparse low-level free functions and result types. Needed by
@@ -75,6 +76,7 @@ pub use arnet_tensor::flat_index;
 
 // Linalg-level error type and SVD parameters.
 pub use arnet_linalg::{LinalgError, TruncSvdParams};
+pub use arnet_tensor::TensorError;
 pub use ops::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
 
 // Re-export the native backend
