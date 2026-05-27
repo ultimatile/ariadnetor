@@ -15,7 +15,7 @@ ariadnetor-mps = { path = "../ariadnetor-mps" }
 num-traits = { workspace = true }
 num-complex = { workspace = true, optional = true }
 rand = { workspace = true }
-arpack = { version = "0.0.1", optional = true }
+arpack = { version = "0.0.2", optional = true }
 
 [dev-dependencies]
 approx = { workspace = true }
