@@ -17,9 +17,6 @@ num-complex = { workspace = true }
 num-traits = { workspace = true }
 rayon = { workspace = true }
 
-[dev-dependencies]
-approx = { workspace = true }
-
 [lib]
 name = "arnet_native"
 path = "src/lib.rs"

@@ -18,7 +18,6 @@ num-traits = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
-approx = { workspace = true }
 criterion = { workspace = true }
 rand = { workspace = true }
 

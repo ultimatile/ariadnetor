@@ -22,9 +22,7 @@ num-traits = { workspace = true }
 
 [dev-dependencies]
 ariadnetor-native = { path = "../ariadnetor-native", default-features = false }
-approx = { workspace = true }
 criterion = { workspace = true }
-faer = { workspace = true }
 rand = { workspace = true }
 
 [[bench]]
