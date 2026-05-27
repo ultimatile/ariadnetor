@@ -10,10 +10,6 @@ ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 ariadnetor-linalg = { path = "../ariadnetor-linalg" }
 ariadnetor-native = { path = "../ariadnetor-native" }
-num-traits = { workspace = true }
-
-[dev-dependencies]
-approx = { workspace = true }
 
 [lib]
 name = "arnet"
