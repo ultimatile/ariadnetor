@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arnet::{ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine};
 use num_traits::{Float, One, Zero};
 use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::rngs::{StdRng, SysRng};
 
 use super::lanczos_kernels::{
     inner, random_unit_vector, solve_tridiagonal_smallest, sub_complex_axpy, sub_real_axpy,
@@ -138,7 +138,7 @@ where
 
     let mut rng = match params.seed {
         Some(s) => StdRng::seed_from_u64(s),
-        None => StdRng::from_os_rng(),
+        None => StdRng::try_from_rng(&mut SysRng).expect("OS RNG must be available"),
     };
     let v0 = random_unit_vector::<T>(dim, &mut rng);
 

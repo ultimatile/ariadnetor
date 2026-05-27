@@ -22,7 +22,7 @@ use arnet_algorithms::krylov::ArpackParams;
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_mps::{Mpo, Mps};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

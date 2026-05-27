@@ -27,7 +27,7 @@ use arnet::{
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

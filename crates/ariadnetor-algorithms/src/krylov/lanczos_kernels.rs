@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use arnet::{ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, eigh};
 use num_traits::{One, Zero};
-use rand::Rng;
+use rand::RngExt;
 use rand::rngs::StdRng;
 
 /// Hermitian inner product `<a, b> = sum_i conj(a_i) * b_i`.

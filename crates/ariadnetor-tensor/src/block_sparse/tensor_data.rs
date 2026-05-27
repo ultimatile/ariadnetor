@@ -6,6 +6,7 @@ use std::sync::Arc;
 use aligned_vec::{AVec, ConstAlign};
 use arnet_core::backend::MemoryOrder;
 use num_traits::Zero;
+use rand::RngExt;
 
 use super::{BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, QNIndex};
 use crate::{Sector, TensorData};

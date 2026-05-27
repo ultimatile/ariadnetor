@@ -26,7 +26,7 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_mps::{Mpo, Mps};
 use num_complex::Complex;
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

@@ -7,6 +7,7 @@
 use aligned_vec::{AVec, ConstAlign};
 use arnet_core::backend::MemoryOrder;
 use num_traits::{One, Zero};
+use rand::RngExt;
 
 use crate::{DenseLayout, DenseStorage, DenseTensorData, TensorData};
 

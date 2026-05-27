@@ -35,7 +35,7 @@ fn random_mps_center_zero_f64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    use rand::Rng;
+    use rand::RngExt;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 

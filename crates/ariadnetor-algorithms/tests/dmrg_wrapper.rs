@@ -21,7 +21,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

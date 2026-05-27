@@ -19,7 +19,7 @@ fn random_mps_center_zero_f64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    use rand::Rng;
+    use rand::RngExt;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
@@ -49,7 +49,7 @@ fn random_mps_center_zero_f64(
 /// `d × d`). Bond dim is 1; the chain's `<psi|H|psi>` factors as a
 /// product per site.
 fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    use rand::Rng;
+    use rand::RngExt;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 

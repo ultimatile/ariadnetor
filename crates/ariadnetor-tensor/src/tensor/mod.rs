@@ -20,6 +20,7 @@ use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_native::NativeBackend;
 use num_traits::Zero;
+use rand::RngExt;
 
 use crate::block_sparse::BlockMeta;
 use crate::{

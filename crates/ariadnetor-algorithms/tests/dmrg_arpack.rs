@@ -29,7 +29,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, LanczosParams};
 use arnet_mps::{Mpo, Mps};
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

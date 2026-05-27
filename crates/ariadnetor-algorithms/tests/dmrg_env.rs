@@ -76,7 +76,7 @@ fn random_mps_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len)
-                .map(|_| rand::Rng::random_range(&mut rng, -0.5_f64..0.5))
+                .map(|_| rand::RngExt::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
             DenseTensor::from_raw_parts(
                 data,
@@ -103,7 +103,7 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<DenseStorage<f
             let r = if i + 1 == n { 1 } else { w };
             let len = l * d * d * r;
             let data: Vec<f64> = (0..len)
-                .map(|_| rand::Rng::random_range(&mut rng, -0.5_f64..0.5))
+                .map(|_| rand::RngExt::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
             DenseTensor::from_raw_parts(
                 data,
