@@ -13,7 +13,6 @@ ariadnetor-core = { path = "../ariadnetor-core" }
 # `NativeBackend::{shared, preferred_order}` and do not require `hptt`.
 ariadnetor-native = { path = "../ariadnetor-native", default-features = false }
 aligned-vec = { workspace = true }
-anyhow = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 rand = { workspace = true }
