@@ -103,7 +103,7 @@ fn linear_combine_sums_with_coefs() {
     let mut b = DenseTensor::<f64>::zeros(vec![2]);
     b.set(&[0], 10.0);
     b.set(&[1], 20.0);
-    let r = DenseTensor::linear_combine(&[&a, &b], &[3.0, 4.0]).unwrap();
+    let r = crate::linear_combine(&[&a, &b], &[3.0, 4.0]).unwrap();
     // 3*1 + 4*10 = 43; 3*2 + 4*20 = 86
     assert_eq!(r.get(&[0]), 43.0);
     assert_eq!(r.get(&[1]), 86.0);
@@ -118,34 +118,31 @@ fn add_all_sums_with_unit_coefs() {
     let mut b = DenseTensor::<f64>::zeros(vec![2]);
     b.set(&[0], 10.0);
     b.set(&[1], 20.0);
-    let r = DenseTensor::add_all(&[&a, &b]).unwrap();
+    let r = crate::add_all(&[&a, &b]).unwrap();
     assert_eq!(r.get(&[0]), 11.0);
     assert_eq!(r.get(&[1]), 22.0);
 }
 
 #[test]
 fn linear_combine_rejects_empty_list() {
-    let err = DenseTensor::<f64>::linear_combine(&[], &[]).unwrap_err();
-    assert!(err.contains("empty"), "got: {err}");
+    let err = crate::linear_combine::<f64, crate::NativeBackend>(&[], &[]).unwrap_err();
+    assert!(err.to_string().contains("empty"), "got: {err}");
 }
 
 #[test]
 fn linear_combine_rejects_length_mismatch() {
     let a = DenseTensor::<f64>::zeros(vec![2]);
     let b = DenseTensor::<f64>::zeros(vec![2]);
-    let err = DenseTensor::linear_combine(&[&a, &b], &[1.0]).unwrap_err();
-    assert!(
-        err.contains("tensors.len()") && err.contains("coefs.len()"),
-        "got: {err}",
-    );
+    let err = crate::linear_combine(&[&a, &b], &[1.0]).unwrap_err();
+    assert!(err.to_string().contains("Mismatched lengths"), "got: {err}");
 }
 
 #[test]
 fn linear_combine_rejects_shape_mismatch() {
     let a = DenseTensor::<f64>::zeros(vec![2]);
     let b = DenseTensor::<f64>::zeros(vec![3]);
-    let err = DenseTensor::linear_combine(&[&a, &b], &[1.0, 1.0]).unwrap_err();
-    assert!(err.contains("shape mismatch"), "got: {err}");
+    let err = crate::linear_combine(&[&a, &b], &[1.0, 1.0]).unwrap_err();
+    assert!(err.to_string().contains("same shape"), "got: {err}");
 }
 
 #[test]

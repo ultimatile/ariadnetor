@@ -8,7 +8,7 @@ use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 use crate::contract::contract_dense;
 use crate::eigen::eigh_dense;
 use crate::error::LinalgError;
-use crate::scalar_ops::{diagonal_scale_dense, linear_combine_dense};
+use crate::scalar_ops::diagonal_scale_dense;
 use crate::solve::solve_dense;
 use crate::transpose::conjugate_transpose_dense;
 use arnet_tensor::reorder_data;
@@ -278,18 +278,24 @@ fn pade_uv_small<T: Scalar>(
         3 => {
             // V = b_0 I + b_2 A^2
             // U = A(b_1 I + b_3 A^2)
-            let v = linear_combine_dense(&[&id, &a2], &[coeff::<T>(b[0]), coeff::<T>(b[2])])?;
-            let u_inner = linear_combine_dense(&[&id, &a2], &[coeff::<T>(b[1]), coeff::<T>(b[3])])?;
+            let v = DenseTensorData::linear_combine(
+                &[&id, &a2],
+                &[coeff::<T>(b[0]), coeff::<T>(b[2])],
+            )?;
+            let u_inner = DenseTensorData::linear_combine(
+                &[&id, &a2],
+                &[coeff::<T>(b[1]), coeff::<T>(b[3])],
+            )?;
             let u = matmul(backend, a, &u_inner)?;
             Ok((u, v))
         }
         5 => {
             let a4 = matmul(backend, &a2, &a2)?;
-            let v = linear_combine_dense(
+            let v = DenseTensorData::linear_combine(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[0]), coeff::<T>(b[2]), coeff::<T>(b[4])],
             )?;
-            let u_inner = linear_combine_dense(
+            let u_inner = DenseTensorData::linear_combine(
                 &[&id, &a2, &a4],
                 &[coeff::<T>(b[1]), coeff::<T>(b[3]), coeff::<T>(b[5])],
             )?;
@@ -299,7 +305,7 @@ fn pade_uv_small<T: Scalar>(
         7 => {
             let a4 = matmul(backend, &a2, &a2)?;
             let a6 = matmul(backend, &a4, &a2)?;
-            let v = linear_combine_dense(
+            let v = DenseTensorData::linear_combine(
                 &[&id, &a2, &a4, &a6],
                 &[
                     coeff::<T>(b[0]),
@@ -308,7 +314,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[6]),
                 ],
             )?;
-            let u_inner = linear_combine_dense(
+            let u_inner = DenseTensorData::linear_combine(
                 &[&id, &a2, &a4, &a6],
                 &[
                     coeff::<T>(b[1]),
@@ -324,7 +330,7 @@ fn pade_uv_small<T: Scalar>(
             let a4 = matmul(backend, &a2, &a2)?;
             let a6 = matmul(backend, &a4, &a2)?;
             let a8 = matmul(backend, &a6, &a2)?;
-            let v = linear_combine_dense(
+            let v = DenseTensorData::linear_combine(
                 &[&id, &a2, &a4, &a6, &a8],
                 &[
                     coeff::<T>(b[0]),
@@ -334,7 +340,7 @@ fn pade_uv_small<T: Scalar>(
                     coeff::<T>(b[8]),
                 ],
             )?;
-            let u_inner = linear_combine_dense(
+            let u_inner = DenseTensorData::linear_combine(
                 &[&id, &a2, &a4, &a6, &a8],
                 &[
                     coeff::<T>(b[1]),
@@ -371,13 +377,13 @@ fn pade_uv_13<T: Scalar>(
     let a6 = matmul(backend, &a4, &a2)?;
 
     // W1 = b13 A^6 + b11 A^4 + b9 A^2
-    let w1 = linear_combine_dense(
+    let w1 = DenseTensorData::linear_combine(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[13]), coeff::<T>(b[11]), coeff::<T>(b[9])],
     )?;
 
     // W2 = b7 A^6 + b5 A^4 + b3 A^2 + b1 I
-    let w2 = linear_combine_dense(
+    let w2 = DenseTensorData::linear_combine(
         &[&a6, &a4, &a2, &id],
         &[
             coeff::<T>(b[7]),
@@ -389,17 +395,17 @@ fn pade_uv_13<T: Scalar>(
 
     // U = A (A^6 W1 + W2)
     let a6w1 = matmul(backend, &a6, &w1)?;
-    let u_inner = linear_combine_dense(&[&a6w1, &w2], &[T::one(), T::one()])?;
+    let u_inner = DenseTensorData::linear_combine(&[&a6w1, &w2], &[T::one(), T::one()])?;
     let u = matmul(backend, a, &u_inner)?;
 
     // W3 = b12 A^6 + b10 A^4 + b8 A^2
-    let w3 = linear_combine_dense(
+    let w3 = DenseTensorData::linear_combine(
         &[&a6, &a4, &a2],
         &[coeff::<T>(b[12]), coeff::<T>(b[10]), coeff::<T>(b[8])],
     )?;
 
     // W4 = b6 A^6 + b4 A^4 + b2 A^2 + b0 I
-    let w4 = linear_combine_dense(
+    let w4 = DenseTensorData::linear_combine(
         &[&a6, &a4, &a2, &id],
         &[
             coeff::<T>(b[6]),
@@ -411,7 +417,7 @@ fn pade_uv_13<T: Scalar>(
 
     // V = A^6 W3 + W4
     let a6w3 = matmul(backend, &a6, &w3)?;
-    let v = linear_combine_dense(&[&a6w3, &w4], &[T::one(), T::one()])?;
+    let v = DenseTensorData::linear_combine(&[&a6w3, &w4], &[T::one(), T::one()])?;
 
     Ok((u, v))
 }
@@ -535,10 +541,10 @@ fn solve_pade<T: Scalar>(
 ) -> Result<DenseTensorData<T>, LinalgError> {
     // V - U
     let neg_one: T = coeff::<T>(-1.0);
-    let lhs = linear_combine_dense(&[v, u], &[T::one(), neg_one])?;
+    let lhs = DenseTensorData::linear_combine(&[v, u], &[T::one(), neg_one])?;
 
     // V + U
-    let rhs = linear_combine_dense(&[v, u], &[T::one(), T::one()])?;
+    let rhs = DenseTensorData::linear_combine(&[v, u], &[T::one(), T::one()])?;
 
     // Reshape rhs to n x n for solve (nrow_a=1 since shape is [n, n])
     solve_dense(backend, &lhs, &rhs, 1)

@@ -1,108 +1,10 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_tensor::{DenseTensor, DenseTensorData};
-use num_traits::Zero;
-use std::ops::{Add, Mul};
+use std::ops::Mul;
 
 use crate::error::LinalgError;
 use arnet_tensor::{flat_index, normalize_to_data};
-
-/// Linear combination of tensors: sum coefs[i] * tensors[i].
-///
-/// All tensors must have the same shape. The result is wrapped against
-/// `tensors[0]`'s backend Arc; callers must ensure every input shares the
-/// same backend Arc (a mismatch silently labels the output with the first
-/// tensor's backend, which is wrong for backends carrying state).
-///
-/// # Errors
-///
-/// Returns an error if tensors have different shapes, the list is empty,
-/// or tensors and coefficients have different lengths.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use arnet_linalg::linear_combine;
-/// use arnet_tensor::DenseTensor;
-///
-/// let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
-/// let b = DenseTensor::<f64>::constant(vec![2, 2], 2.0);
-///
-/// // 2*a + 3*b = 2*1 + 3*2 = 8
-/// let result = linear_combine(&[&a, &b], &[2.0, 3.0]).unwrap();
-/// ```
-pub fn linear_combine<T, B>(
-    tensors: &[&DenseTensor<T, B>],
-    coefs: &[T],
-) -> Result<DenseTensor<T, B>, LinalgError>
-where
-    T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
-    B: ComputeBackend,
-{
-    if tensors.is_empty() {
-        return Err(LinalgError::InvalidArgument(
-            "Cannot combine empty tensor list".to_string(),
-        ));
-    }
-    let backend_arc = tensors[0].backend_arc().clone();
-    // Borrow the joined `DenseTensorData<T>` halves directly from each
-    // input tensor — this is O(1) per input (no clone, no Arc bump).
-    let data_refs: Vec<&DenseTensorData<T>> = tensors.iter().map(|t| t.data()).collect();
-    let result = linear_combine_dense(&data_refs, coefs)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`linear_combine`] operating on joined
-/// [`DenseTensorData<T>`] slices.
-pub(crate) fn linear_combine_dense<T>(
-    tensors: &[&DenseTensorData<T>],
-    coefs: &[T],
-) -> Result<DenseTensorData<T>, LinalgError>
-where
-    T: Clone + Zero + Add<Output = T> + Mul<Output = T>,
-{
-    if tensors.is_empty() {
-        return Err(LinalgError::InvalidArgument(
-            "Cannot combine empty tensor list".to_string(),
-        ));
-    }
-    if tensors.len() != coefs.len() {
-        return Err(LinalgError::InvalidArgument(format!(
-            "Mismatched lengths: {} tensors vs {} coefficients",
-            tensors.len(),
-            coefs.len()
-        )));
-    }
-    let shape = tensors[0].shape();
-    let order = tensors[0].order();
-    for t in &tensors[1..] {
-        if t.shape() != shape {
-            return Err(LinalgError::InvalidArgument(
-                "All tensors must have the same shape".to_string(),
-            ));
-        }
-        if t.order() != order {
-            return Err(LinalgError::InvalidArgument(format!(
-                "All tensors must have the same memory order; got {:?} and {:?}",
-                order,
-                t.order()
-            )));
-        }
-    }
-    let len = tensors[0].len();
-    let mut result = vec![T::zero(); len];
-    // All tensors share order; iterate element-wise in storage order.
-    for (tensor, coef) in tensors.iter().zip(coefs) {
-        for (r, val) in result.iter_mut().zip(tensor.data()) {
-            *r = r.clone() + coef.clone() * val.clone();
-        }
-    }
-    Ok(DenseTensorData::from_raw_parts(
-        result,
-        shape.to_vec(),
-        order,
-    ))
-}
 
 /// Partial trace over matched bond index pairs.
 ///

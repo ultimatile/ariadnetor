@@ -7,13 +7,11 @@
 //! normalization is wired up).
 
 use arnet_core::Scalar;
-use arnet_linalg::{
-    TruncSvdParams, contract, einsum, expm, inverse, linear_combine, solve, svd, trunc_svd,
-};
+use arnet_linalg::{TruncSvdParams, contract, einsum, expm, inverse, solve, svd, trunc_svd};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
     ComputeBackend, ComputeBackendTensorExt, DenseTensor, DenseTensorData, MemoryOrder,
-    reorder_data,
+    linear_combine, reorder_data,
 };
 use num_complex::Complex;
 

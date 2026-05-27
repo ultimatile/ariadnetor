@@ -146,7 +146,7 @@ fn test_linear_combine_empty_error() {
     let Err(msg) = result else {
         panic!("expected Err for empty input");
     };
-    assert!(msg.contains("empty"));
+    assert!(msg.to_string().contains("empty"));
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn test_linear_combine_mismatched_lengths() {
     let Err(msg) = result else {
         panic!("expected Err for length mismatch");
     };
-    assert!(msg.contains("Mismatched lengths"));
+    assert!(msg.to_string().contains("Mismatched lengths"));
 }
 
 #[test]
@@ -167,7 +167,7 @@ fn test_linear_combine_shape_mismatch() {
     let Err(msg) = result else {
         panic!("expected Err for shape mismatch");
     };
-    assert!(msg.contains("same shape"));
+    assert!(msg.to_string().contains("same shape"));
 }
 
 // ============================================================================
