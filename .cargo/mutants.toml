@@ -17,16 +17,6 @@ exclude_re = [
     # The `+ → *` mutation on the same line is NOT equivalent (multiplying by 0
     # zeros the accumulator) and remains in scope.
     "truncate.rs:354:37: replace \\+ with - in truncate_bsp",
-    # `forward_rank_estimate_bsp` const returns: with `forward_cap = Some(k)`
-    # (k >= 1) and `chi_max = c`, the forward cap is `k * c >= c`, so forward
-    # truncation is hierarchical with respect to the backward truncation —
-    # top-c of (top-(k*c) of full) equals top-c of full. With `forward_cap =
-    # None` the QR branch fires unconditionally and the cap comparison is
-    # dead code. Forcing rank = 0 (always QR) or rank = 1 (always-SVD-when-
-    # capped) produces a different forward intermediate but the same final
-    # chi_max contracted state after the backward truncate pass.
-    "replace forward_rank_estimate_bsp -> usize with 0",
-    "replace forward_rank_estimate_bsp -> usize with 1",
 
     # --- Function-name-based patterns (stable across line changes) ---
     # norm_1: tie-breaking order doesn't affect max value
