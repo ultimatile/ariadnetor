@@ -8,6 +8,8 @@
 //! chain's backend's `preferred_order()`. Algorithms parameterized over
 //! `L: MpsOps<T>` work uniformly across both flavors.
 
+use std::num::NonZeroUsize;
+
 use arnet::{
     BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, Scalar,
     Sector, Storage, StorageFor, TensorLayout,
@@ -53,18 +55,17 @@ pub trait MpsOps<T: Scalar>: TensorLayout + Sized {
         phi: &Mps<Self::Storage, Self, B>,
     ) -> T;
 
-    /// Apply an MPO to an MPS: O|ψ⟩.
+    /// Apply an MPO to an MPS: O|ψ⟩ via the streaming-naive algorithm.
+    ///
+    /// `forward_cap = None` keeps the forward pass on its QR-only branch
+    /// (lossless streaming naive). `forward_cap = Some(k)` falls to a
+    /// truncated SVD with cap `k * chi_max` when the natural per-site
+    /// forward rank exceeds it.
     fn apply<B: ComputeBackend>(
         op: &Mpo<Self::Storage, Self, B>,
         psi: &Mps<Self::Storage, Self, B>,
         params: Option<&TruncateParams>,
-    ) -> Mps<Self::Storage, Self, B>;
-
-    /// Apply an MPO to an MPS via the zip-up algorithm.
-    fn apply_zipup<B: ComputeBackend>(
-        op: &Mpo<Self::Storage, Self, B>,
-        psi: &Mps<Self::Storage, Self, B>,
-        params: Option<&TruncateParams>,
+        forward_cap: Option<NonZeroUsize>,
     ) -> Mps<Self::Storage, Self, B>;
 }
 
@@ -192,6 +193,7 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
         op: &Mpo<DenseStorage<T>, DenseLayout, B>,
         psi: &Mps<DenseStorage<T>, DenseLayout, B>,
         params: Option<&TruncateParams>,
+        forward_cap: Option<NonZeroUsize>,
     ) -> Mps<DenseStorage<T>, DenseLayout, B> {
         assert_eq!(
             op.backend().preferred_order(),
@@ -200,22 +202,7 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
         );
         assert_dense_chain_order(op, "MpsOps::apply.op");
         assert_dense_chain_order(psi, "MpsOps::apply.psi");
-        super::apply::apply_dense(op, psi, params)
-    }
-
-    fn apply_zipup<B: ComputeBackend>(
-        op: &Mpo<DenseStorage<T>, DenseLayout, B>,
-        psi: &Mps<DenseStorage<T>, DenseLayout, B>,
-        params: Option<&TruncateParams>,
-    ) -> Mps<DenseStorage<T>, DenseLayout, B> {
-        assert_eq!(
-            op.backend().preferred_order(),
-            psi.backend().preferred_order(),
-            "MpsOps::apply_zipup: op/psi backend preferred_order mismatch",
-        );
-        assert_dense_chain_order(op, "MpsOps::apply_zipup.op");
-        assert_dense_chain_order(psi, "MpsOps::apply_zipup.psi");
-        super::apply::apply_zipup_dense(op, psi, params)
+        super::apply::apply_streaming_naive_dense(op, psi, params, forward_cap)
     }
 }
 
@@ -289,6 +276,7 @@ impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
         op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
         psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
         params: Option<&TruncateParams>,
+        forward_cap: Option<NonZeroUsize>,
     ) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> {
         assert_eq!(
             op.backend().preferred_order(),
@@ -297,22 +285,7 @@ impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
         );
         assert_bsp_chain_order(op, "MpsOps::apply.op");
         assert_bsp_chain_order(psi, "MpsOps::apply.psi");
-        super::apply::apply_bsp(op, psi, params)
-    }
-
-    fn apply_zipup<B: ComputeBackend>(
-        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-        params: Option<&TruncateParams>,
-    ) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> {
-        assert_eq!(
-            op.backend().preferred_order(),
-            psi.backend().preferred_order(),
-            "MpsOps::apply_zipup: op/psi backend preferred_order mismatch",
-        );
-        assert_bsp_chain_order(op, "MpsOps::apply_zipup.op");
-        assert_bsp_chain_order(psi, "MpsOps::apply_zipup.psi");
-        super::apply::apply_zipup_bsp(op, psi, params)
+        super::apply::apply_streaming_naive_bsp(op, psi, params, forward_cap)
     }
 }
 
@@ -378,7 +351,10 @@ where
     <L as MpsOps<T>>::braket(psi, op, phi)
 }
 
-/// Apply an MPO to an MPS: O|ψ⟩.
+/// Apply an MPO to an MPS: O|ψ⟩ via the streaming-naive algorithm with the
+/// default lossless forward sweep (`forward_cap = None`).
+///
+/// Equivalent to `apply_with_method(op, psi, params, ApplyMethod::default())`.
 pub fn apply<T, L, B>(
     op: &Mpo<L::Storage, L, B>,
     psi: &Mps<L::Storage, L, B>,
@@ -389,10 +365,14 @@ where
     L: MpsOps<T>,
     B: ComputeBackend,
 {
-    <L as MpsOps<T>>::apply(op, psi, params)
+    <L as MpsOps<T>>::apply(op, psi, params, None)
 }
 
 /// Apply an MPO to an MPS using the requested algorithm.
+///
+/// `ApplyMethod::ZipUp` is reserved for the literature Stoudenmire-White
+/// single-pass interleaved-truncation algorithm and is not yet
+/// implemented; calling with that variant panics.
 pub fn apply_with_method<T, L, B>(
     op: &Mpo<L::Storage, L, B>,
     psi: &Mps<L::Storage, L, B>,
@@ -405,7 +385,14 @@ where
     B: ComputeBackend,
 {
     match method {
-        ApplyMethod::Naive => <L as MpsOps<T>>::apply(op, psi, params),
-        ApplyMethod::ZipUp => <L as MpsOps<T>>::apply_zipup(op, psi, params),
+        ApplyMethod::StreamingNaive { forward_cap } => {
+            <L as MpsOps<T>>::apply(op, psi, params, forward_cap)
+        }
+        ApplyMethod::ZipUp => unimplemented!(
+            "ApplyMethod::ZipUp is reserved for the literature Stoudenmire-White \
+             single-pass interleaved-truncation algorithm and is not yet \
+             implemented; use ApplyMethod::StreamingNaive for the streaming \
+             naive variant",
+        ),
     }
 }
