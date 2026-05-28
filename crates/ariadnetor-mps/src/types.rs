@@ -66,14 +66,41 @@ impl From<TruncSvdParams> for TruncateParams {
 
 /// Algorithm used by [`apply_with_method`](super::dispatch::apply_with_method)
 /// to multiply an MPO into an MPS.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplyMethod {
-    /// Materialize the exact MPO·MPS product, then canonicalize and truncate.
-    #[default]
-    Naive,
-    /// Interleave contraction with QR / truncated SVD so the inflated bond
-    /// dimension never appears simultaneously across all sites.
+    /// Per-site MPO·MPS product with a streaming forward QR sweep
+    /// (or truncated SVD when `forward_cap = Some(k)` and the natural
+    /// per-site forward rank exceeds `k * chi_max`). When the caller
+    /// passes `Some(TruncateParams)`, the forward sweep is followed by a
+    /// standard `canonicalize` + `truncate` finishing pass that honors
+    /// every `SvdAbsorb` variant and any in-range `params.center`. When
+    /// `params` is `None`, no canonicalization or truncation runs after
+    /// the forward sweep, and the result is left in `Mixed { center: n
+    /// - 1 }`.
+    ///
+    /// `forward_cap = None` is lossless streaming naive: the forward
+    /// branch is QR-only, and the final state matches a hypothetical
+    /// materialize-then-compress baseline modulo QR sign and
+    /// floating-point roundoff. The streaming forward keeps peak per-site
+    /// bond bounded by the QR ranks rather than the fully inflated
+    /// `w_R * chi_R`.
+    StreamingNaive {
+        forward_cap: Option<std::num::NonZeroUsize>,
+    },
+    /// Reserved for the literature Stoudenmire-White single-pass
+    /// interleaved-truncation algorithm — a forward sweep where the SVD bond
+    /// is bounded by `chi_max` at each site, with no separate backward
+    /// truncation pass. Not yet implemented; selecting this variant panics
+    /// at dispatch time. Distinct from
+    /// [`StreamingNaive`](ApplyMethod::StreamingNaive), which keeps a full
+    /// `chi_max` backward sweep.
     ZipUp,
+}
+
+impl Default for ApplyMethod {
+    fn default() -> Self {
+        Self::StreamingNaive { forward_cap: None }
+    }
 }
 
 /// Result of a truncation operation.

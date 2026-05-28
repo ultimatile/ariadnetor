@@ -12,7 +12,8 @@ use arnet_mps::{
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, make_2site_entangled_u1_mps,
-    make_4site_u1_mps, make_identity_u1_mpo, make_total_n_u1_mpo,
+    make_3site_u1_mps_multipath_middle, make_4site_u1_mps, make_identity_u1_mpo,
+    make_total_n_u1_mpo,
 };
 
 // ---------------------------------------------------------------------------
@@ -157,48 +158,15 @@ fn empty_mps_panics() {
 }
 
 // ===========================================================================
-// Zip-up algorithm tests (BlockSparse)
+// Streaming-naive algorithm tests (BlockSparse)
 // ===========================================================================
 
 #[test]
-fn zipup_lossless_matches_naive_no_params() {
-    // Forward QR pass alone is a gauge transformation: the contracted full
-    // tensor must agree with the naive product, charge-by-charge.
+fn streaming_naive_identity_preserves_state() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi_naive = apply(&identity, &psi, None);
-    let phi_zipup = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
-
-    let v_naive = bsp_mps_contract_full(&phi_naive);
-    let v_zipup = bsp_mps_contract_full(&phi_zipup);
-    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
-}
-
-#[test]
-fn zipup_lossless_matches_naive_large_chi() {
-    // chi_max above any inflated bond → no truncation in either path.
-    let psi = make_4site_u1_mps();
-    let identity = make_identity_u1_mpo(4);
-    let lossless = TruncateParams::from(TruncSvdParams {
-        chi_max: Some(64),
-        target_trunc_err: None,
-    });
-
-    let phi_naive = apply(&identity, &psi, Some(&lossless));
-    let phi_zipup = mps::apply_with_method(&identity, &psi, Some(&lossless), ApplyMethod::ZipUp);
-
-    let v_naive = bsp_mps_contract_full(&phi_naive);
-    let v_zipup = bsp_mps_contract_full(&phi_zipup);
-    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
-}
-
-#[test]
-fn zipup_identity_preserves_state() {
-    let psi = make_4site_u1_mps();
-    let identity = make_identity_u1_mpo(4);
-
-    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = mps::apply(&identity, &psi, None);
 
     let v_before = bsp_mps_contract_full(&psi);
     let v_after = bsp_mps_contract_full(&phi);
@@ -206,21 +174,23 @@ fn zipup_identity_preserves_state() {
 }
 
 #[test]
-fn zipup_canonical_form() {
+fn streaming_naive_canonical_form() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi_none = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+    // No params: the forward QR sweep leaves the chain at center = n - 1.
+    let phi_none = mps::apply(&identity, &psi, None);
     assert_eq!(
         *phi_none.canonical_form(),
         CanonicalForm::Mixed { center: 3 }
     );
 
+    // With params: canonicalize + truncate finishing parks the center at 0.
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(8),
         target_trunc_err: None,
     });
-    let phi_some = mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_some = mps::apply(&identity, &psi, Some(&params));
     assert_eq!(
         *phi_some.canonical_form(),
         CanonicalForm::Mixed { center: 0 }
@@ -228,11 +198,11 @@ fn zipup_canonical_form() {
 }
 
 #[test]
-fn zipup_output_structure_and_flux() {
+fn streaming_naive_output_structure_and_flux() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply_with_method(&identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = mps::apply(&identity, &psi, None);
 
     assert_eq!(phi.len(), psi.len());
     for j in 0..phi.len() {
@@ -346,10 +316,10 @@ fn total_n_mpo_acts_as_total_particle_number_3site_interior() {
 fn total_n_mpo_acts_as_total_particle_number() {
     // Correctness check on the make_total_n_u1_mpo fixture itself: apply it
     // to a state lying entirely in the total-N=1 subspace and verify that
-    // ⟨ψ|N|ψ⟩ = 1 · ⟨ψ|ψ⟩. If the MPO data layout were wrong, lossless
-    // naive-vs-zipup equivalence tests would still pass (both implementations
-    // would compute the same wrong operator), so we need an independent
-    // analytical anchor.
+    // ⟨ψ|N|ψ⟩ = 1 · ⟨ψ|ψ⟩. Independent analytical anchor for the MPO data
+    // layout; other tests that compute observables on the apply output cannot
+    // detect a wrong operator if the same operator drives both branches of
+    // the comparison.
     let psi = make_2site_entangled_u1_mps(); // 3|01⟩ + 8|10⟩, both N=1
     let n_op = make_total_n_u1_mpo(2);
 
@@ -362,41 +332,7 @@ fn total_n_mpo_acts_as_total_particle_number() {
 }
 
 #[test]
-fn zipup_lossless_matches_naive_nontrivial_mpo_no_params() {
-    // Total-N MPO has bond dim 2 and exercises the full w_L⊗χ_L / w_R⊗χ_R
-    // bond fusion that an identity MPO (bond dim 1) degenerates. Without
-    // this fixture the zip-up path on BlockSparse is effectively only
-    // tested for w_L = w_R = 1.
-    let psi = make_4site_u1_mps();
-    let op = make_total_n_u1_mpo(4);
-
-    let phi_naive = apply(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
-
-    let v_naive = bsp_mps_contract_full(&phi_naive);
-    let v_zipup = bsp_mps_contract_full(&phi_zipup);
-    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
-}
-
-#[test]
-fn zipup_lossless_matches_naive_nontrivial_mpo_large_chi() {
-    let psi = make_4site_u1_mps();
-    let op = make_total_n_u1_mpo(4);
-    let lossless = TruncateParams::from(TruncSvdParams {
-        chi_max: Some(64),
-        target_trunc_err: None,
-    });
-
-    let phi_naive = apply(&op, &psi, Some(&lossless));
-    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&lossless), ApplyMethod::ZipUp);
-
-    let v_naive = bsp_mps_contract_full(&phi_naive);
-    let v_zipup = bsp_mps_contract_full(&phi_zipup);
-    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
-}
-
-#[test]
-fn zipup_truncates_bond_dim() {
+fn streaming_naive_truncates_bond_dim() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
@@ -404,34 +340,19 @@ fn zipup_truncates_bond_dim() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi = mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = mps::apply(&identity, &psi, Some(&params));
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
     }
 }
 
-/// Contract-level chi=1 equivalence check between zip-up and naive `apply`.
-///
-/// On `make_4site_u1_mps` × `make_total_n_u1_mpo(4)` with `chi_max=1`, both
-/// methods produce a chi=1 approximation of the MPO·MPS state. Their
-/// fully contracted BlockSparse tensors must agree, because forward
-/// QR/SVD intermediate states are gauge-equivalent up to a less-aggressive
-/// truncation that the backward chi_max=1 sweep refines identically.
-///
-/// What this test catches: mutations whose forward intermediate is *not*
-/// gauge-equivalent to the original — e.g. an off-by-one boundary that
-/// drops a carry absorption (`<` → `<=`) or a backward-sweep axis-index
-/// off-by-one (`494:52 - → +`), both of which produce a state that
-/// disagrees with naive at chi=1.
-///
-/// What this test does NOT pin: forward QR-vs-SVD branch decisions and
-/// `forward_rank_estimate_bsp` perturbations are gauge-equivalent at
-/// chi=1 because `cap = chi_max * ZIPUP_SVD_RATIO ≥ chi_max` makes any
-/// forward truncation hierarchically lossless w.r.t. the backward
-/// truncation. Those mutants are documented in `.cargo/mutants.toml`.
+/// Anchor: with `chi_max = 1`, the chi=1 approximation pins the dominant
+/// Schmidt direction and the final canonical form sits at the default
+/// center. Mutating the forward sweep boundary or the post-sweep canonical
+/// form tag perturbs this fixture.
 #[test]
-fn zipup_truncated_matches_naive_truncated_chi1() {
+fn streaming_naive_truncated_chi1_baseline() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
     let params = TruncateParams::from(TruncSvdParams {
@@ -439,109 +360,157 @@ fn zipup_truncated_matches_naive_truncated_chi1() {
         target_trunc_err: None,
     });
 
-    let phi_naive = apply(&op, &psi, Some(&params));
-    let phi_zipup = mps::apply_with_method(&op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = mps::apply(&op, &psi, Some(&params));
 
-    for d in phi_zipup.bond_dims() {
-        assert!(d <= 1, "zipup bond {d} exceeds chi_max=1");
+    for d in phi.bond_dims() {
+        assert!(d <= 1, "bond {d} exceeds chi_max=1");
     }
-    for d in phi_naive.bond_dims() {
-        assert!(d <= 1, "naive bond {d} exceeds chi_max=1");
-    }
-
-    let v_naive = bsp_mps_contract_full(&phi_naive);
-    let v_zipup = bsp_mps_contract_full(&phi_zipup);
-    assert_block_sparse_close(&v_naive, &v_zipup, 1e-10);
+    assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 
-/// Pin the forward-sweep boundary control flow (`j < n - 1`) in
-/// `apply_zipup_bsp` by asserting at least one zip-up bond is strictly
-/// smaller than the corresponding naive bond.
-///
-/// `apply` (naive) builds the full local product per site, leaving every
-/// bond at `w_R * chi_R` (no rank reduction). Zip-up's forward sweep at
-/// `j < n - 1` runs `qr_block_sparse(p, 2)`, whose Q has bond
-/// `min(left*d, right) ≤ right`. With non-trivial MPO bond, the QR-reduced
-/// bond is strictly smaller than the naive bond at the early sites
-/// (`j = 0, 1`) where carry is small. If the boundary check is mutated to a
-/// relop that never enters the interior branch (e.g. `<` → `>`), the entire
-/// forward sweep raw-pushes per-site products and the resulting bond dims
-/// match naive exactly — assertion fails.
+// ===========================================================================
+// SvdAbsorb::{Left, Both} and arbitrary `params.center` support (BlockSparse)
+// ===========================================================================
+
 #[test]
-fn zipup_no_params_reduces_bond_dims_vs_naive_at_early_sites() {
-    let psi = make_4site_u1_mps();
-    let op = make_total_n_u1_mpo(4);
-
-    let phi_naive = apply(&op, &psi, None);
-    let phi_zipup = mps::apply_with_method(&op, &psi, None, ApplyMethod::ZipUp);
-
-    let bd_naive = phi_naive.bond_dims();
-    let bd_zipup = phi_zipup.bond_dims();
-    assert_eq!(bd_naive.len(), bd_zipup.len());
-    let any_strictly_smaller = bd_zipup.iter().zip(bd_naive.iter()).any(|(z, n)| z < n);
-    assert!(
-        any_strictly_smaller,
-        "expected zip-up to reduce at least one bond below naive — \
-         zipup={bd_zipup:?}, naive={bd_naive:?}"
-    );
-}
-
-/// Block-sparse mirror of the dense dispatch parity contract: every
-/// `TruncateParams` field zip-up does not yet honor for `BlockSparse` must
-/// trigger an up-front panic. Extend the `unsupported` table when zip-up
-/// gains support for a field.
-#[test]
-fn zipup_rejects_all_unsupported_truncate_params() {
+fn streaming_naive_absorb_left_yields_mixed_center() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
-    let base = TruncSvdParams {
-        chi_max: Some(2),
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(8),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::Left,
+        center: None,
+    };
+
+    let phi = mps::apply(&identity, &psi, Some(&params));
+
+    assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 0 });
+}
+
+#[test]
+fn streaming_naive_absorb_both_yields_unknown_canonical_form() {
+    let psi = make_4site_u1_mps();
+    let identity = make_identity_u1_mpo(4);
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(8),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::Both,
+        center: None,
+    };
+
+    let phi = mps::apply(&identity, &psi, Some(&params));
+
+    assert_eq!(*phi.canonical_form(), CanonicalForm::Unknown);
+}
+
+#[test]
+fn streaming_naive_center_nonzero_parks_center_at_request() {
+    let psi = make_4site_u1_mps();
+    let identity = make_identity_u1_mpo(4);
+    let svd = TruncSvdParams {
+        chi_max: Some(8),
         target_trunc_err: None,
     };
 
-    let n_minus_1 = psi.len() - 1;
-    let unsupported: Vec<(&str, TruncateParams)> = vec![
-        (
-            "absorb=Left",
-            TruncateParams {
-                svd: base.clone(),
-                absorb: SvdAbsorb::Left,
-                center: None,
-            },
-        ),
-        (
-            "absorb=Both",
-            TruncateParams {
-                svd: base.clone(),
-                absorb: SvdAbsorb::Both,
-                center: None,
-            },
-        ),
-        (
-            "center=Some(1)",
-            TruncateParams {
-                svd: base.clone(),
-                absorb: SvdAbsorb::Right,
-                center: Some(1),
-            },
-        ),
-        (
-            "center=Some(N-1)",
-            TruncateParams {
-                svd: base.clone(),
-                absorb: SvdAbsorb::Right,
-                center: Some(n_minus_1),
-            },
-        ),
-    ];
-
-    for (name, params) in unsupported {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mps::apply_with_method(&identity, &psi, Some(&params), ApplyMethod::ZipUp)
-        }));
-        assert!(
-            result.is_err(),
-            "expected apply_zipup to panic for unsupported params: {name}"
+    for c in [1usize, 2usize, 3usize] {
+        let params = TruncateParams {
+            svd: svd.clone(),
+            absorb: SvdAbsorb::Right,
+            center: Some(c),
+        };
+        let phi = mps::apply(&identity, &psi, Some(&params));
+        assert_eq!(
+            *phi.canonical_form(),
+            CanonicalForm::Mixed { center: c },
+            "params.center = Some({c}) should park the center at site {c}"
         );
     }
+}
+
+// ===========================================================================
+// forward_cap exposure (BlockSparse)
+// ===========================================================================
+
+/// Tight `forward_cap` (factor 1) produces a chain bounded by `chi_max`
+/// end-to-end. Anchors the cap parameter's plumbing through the BSP
+/// forward sweep.
+#[test]
+fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
+    use std::num::NonZeroUsize;
+
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let method = ApplyMethod::StreamingNaive {
+        forward_cap: Some(NonZeroUsize::new(1).unwrap()),
+    };
+
+    let phi = mps::apply_with_method(&op, &psi, Some(&params), method);
+
+    for d in phi.bond_dims() {
+        assert!(d <= 2, "bond {d} exceeds chi_max=2 under forward_cap=1");
+    }
+}
+
+/// Tightening `forward_cap` from `None` to `Some(1)` on a fixture whose
+/// middle bond has a sector with dim 3 fed by two distinct (left, phys)
+/// pathways must change the contracted output observably. The multi-path
+/// structure breaks the forward `(left*phys, right)` vs backward
+/// `(left, phys*right)` unfolding symmetry: per-sector SVD truncation
+/// chooses different rank-2 subspaces in the two sweep directions, so a
+/// `forward_cap = Some(1)` cap that pre-truncates the forward
+/// intermediate produces a chi=2 chain genuinely different from the
+/// lossless-forward + backward-chi=2 path.
+///
+/// Fixtures with single-pathway per sector and per-sector phys dim 1
+/// (e.g. `make_4site_u1_mps`) collapse the two unfoldings into the same
+/// matrix and hide the cap's effect end-to-end, which is why this test
+/// needs the dedicated multipath fixture.
+///
+/// If `forward_cap` were ignored — e.g. `forward_rank_estimate_bsp > cap`
+/// always evaluated to `false`, or the SVD branch routed back to QR —
+/// both runs would take the QR branch and the contracted outputs would
+/// match within roundoff.
+#[test]
+fn streaming_naive_forward_cap_observably_changes_output() {
+    use std::num::NonZeroUsize;
+
+    let psi = make_3site_u1_mps_multipath_middle();
+    let op = make_identity_u1_mpo(3);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let capped = ApplyMethod::StreamingNaive {
+        forward_cap: Some(NonZeroUsize::new(1).unwrap()),
+    };
+
+    let phi_lossless = mps::apply(&op, &psi, Some(&params));
+    let phi_capped = mps::apply_with_method(&op, &psi, Some(&params), capped);
+
+    // Both paths must still respect the chi_max budget.
+    for d in phi_capped.bond_dims() {
+        assert!(d <= 2, "bond {d} exceeds chi_max=2 under forward_cap=1");
+    }
+
+    let v_lossless = bsp_mps_contract_full(&phi_lossless);
+    let v_capped = bsp_mps_contract_full(&phi_capped);
+    let same = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert_block_sparse_close(&v_lossless, &v_capped, 1e-8);
+    }))
+    .is_ok();
+    assert!(
+        !same,
+        "forward_cap = Some(1) and forward_cap = None should produce \
+         observably different states on the thick-middle fixture, but \
+         the contracted outputs matched within 1e-8"
+    );
 }

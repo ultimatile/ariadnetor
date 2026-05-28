@@ -1,5 +1,7 @@
-//! MPO-MPS application: apply an MPO to an MPS.
+//! MPO-MPS application: apply an MPO to an MPS via the streaming-naive
+//! algorithm.
 
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use arnet::{
@@ -11,33 +13,36 @@ use arnet::{
 };
 
 use super::chain::TensorChain;
-use super::types::{CanonicalForm, Mpo, Mps, SvdAbsorb, TruncateParams};
+use super::types::{CanonicalForm, Mpo, Mps, TruncateParams};
 
-// Forward pass switches from QR (lossless, fast) to truncated SVD when the
-// natural rank exceeds this multiple of the user-supplied chi_max.
-const ZIPUP_SVD_RATIO: usize = 4;
-
-/// Apply an MPO to an MPS, producing a new MPS.
+/// Apply a Dense MPO to a Dense MPS via the streaming-naive algorithm.
 ///
-/// For each site, contracts the MPO tensor (rank-4) with the MPS tensor
-/// (rank-3) over the physical index, then fuses the bond dimensions:
+/// For each site `j`, contracts the MPO tensor (rank-4) with the MPS tensor
+/// (rank-3) over the physical index, fuses the resulting bonds, absorbs the
+/// carry factor from site `j-1`, then emits the new left factor of site `j`
+/// via QR (lossless) or truncated SVD (when `forward_cap` is `Some(k)` and
+/// the natural rank exceeds `k * chi_max`). The carry passes to site `j+1`.
 ///
-/// ```text
-/// W[w_L, d_ket, d_bra, w_R] × A[χ_L, d_ket, χ_R]
-///   → result[w_L*χ_L, d_bra, w_R*χ_R]
-/// ```
+/// After the forward sweep, if `params` is `Some`, the result is finished by
+/// `canonicalize_dense` + `truncate_dense`. The forward sweep keeps the peak
+/// per-site bond bounded by the QR ranks rather than the fully inflated
+/// `w_R * chi_R` product, while delegating canonicalization and `chi_max`
+/// truncation to the standard pipeline.
 ///
-/// If `params` is `Some`, the result is canonicalized and truncated.
-/// If `None`, the exact result is returned with `Unknown` canonical form.
+/// `forward_cap = None` is lossless streaming naive: the forward branch is
+/// always QR, and the final state matches a materialize-then-compress
+/// baseline modulo QR sign and floating-point roundoff.
 ///
 /// # Panics
 ///
-/// Panics if the MPO and MPS have different lengths, either is empty,
-/// or `params.center` is `Some(c)` with `c >= psi.len()`.
-pub(super) fn apply_dense<T, B>(
+/// Panics if the MPO and MPS have different lengths, if either is empty,
+/// or via the underlying `canonicalize_dense` / `truncate_dense` for
+/// out-of-range `params.center`.
+pub(super) fn apply_streaming_naive_dense<T, B>(
     op: &Mpo<DenseStorage<T>, DenseLayout, B>,
     psi: &Mps<DenseStorage<T>, DenseLayout, B>,
     params: Option<&TruncateParams>,
+    forward_cap: Option<NonZeroUsize>,
 ) -> Mps<DenseStorage<T>, DenseLayout, B>
 where
     T: Scalar,
@@ -51,88 +56,13 @@ where
     let order = backend_arc.preferred_order();
     let rm = MemoryOrder::RowMajor;
 
-    let mut sites: Vec<DenseTensor<T, B>> = Vec::with_capacity(n);
-
-    for j in 0..n {
-        let w = op.site(j); // (w_L, d_ket, d_bra, w_R)
-        let a = psi.site(j); // (χ_L, d, χ_R)
-
-        // W(a,b,c,d) × A(e,b,f) → result(a,e,c,d,f)
-        // = (w_L, χ_L, d_bra, w_R, χ_R)
-        let result = contract(w, a, "abcd,ebf->aecdf")
-            .expect("MPO-MPS contraction: validated by entry point");
-
-        let shape = result.shape();
-        let w_l = shape[0];
-        let chi_l = shape[1];
-        let d_bra = shape[2];
-        let w_r = shape[3];
-        let chi_r = shape[4];
-
-        let result_rm = result.reordered(rm);
-        let fused_rm = result_rm.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
-        let fused = fused_rm.reordered(order);
-
-        sites.push(fused);
-    }
-
-    let mut result_mps: Mps<DenseStorage<T>, DenseLayout, B> =
-        Mps::<DenseStorage<T>, DenseLayout, B>::with_backend(sites, backend_arc);
-
-    if let Some(trunc_params) = params {
-        let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_dense(&mut result_mps, center);
-        super::truncate::truncate_dense(&mut result_mps, trunc_params);
-    }
-
-    result_mps
-}
-
-/// Apply an MPO to an MPS via the zip-up algorithm (interleaved
-/// contraction + compression).
-///
-/// # Limitations
-///
-/// The backward sweep currently honors only [`SvdAbsorb::Right`].
-/// `params.center` must be `None` or `Some(0)`. Other values panic
-/// up front.
-pub(super) fn apply_zipup_dense<T, B>(
-    op: &Mpo<DenseStorage<T>, DenseLayout, B>,
-    psi: &Mps<DenseStorage<T>, DenseLayout, B>,
-    params: Option<&TruncateParams>,
-) -> Mps<DenseStorage<T>, DenseLayout, B>
-where
-    T: Scalar,
-    B: ComputeBackend,
-{
-    let n = psi.len();
-    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
-    assert!(n > 0, "must have at least one site");
-
-    if let Some(p) = params {
-        assert!(
-            matches!(p.absorb, SvdAbsorb::Right),
-            "apply_zipup currently supports only SvdAbsorb::Right; got {:?}. \
-             Use the naive apply path for Left/Both, or canonicalize the result \
-             after the fact.",
-            p.absorb,
-        );
-        assert!(
-            matches!(p.center, None | Some(0)),
-            "apply_zipup currently parks the orthogonality center at site 0; \
-             requested center = {:?}. Call canonicalize on the result to shift \
-             the center, or use the naive apply path.",
-            p.center,
-        );
-    }
-
-    let backend_arc = Arc::clone(psi.backend_arc());
-    let order = backend_arc.preferred_order();
-    let rm = MemoryOrder::RowMajor;
-
-    let chi_max_forward = params
-        .and_then(|p| p.svd.chi_max)
-        .map(|c| c.saturating_mul(ZIPUP_SVD_RATIO));
+    // The forward branch falls to truncated SVD only when both a user
+    // chi_max and a forward_cap factor are set; otherwise the per-site QR
+    // branch runs unconditionally (lossless streaming naive).
+    let chi_max_forward: Option<usize> = match (params.and_then(|p| p.svd.chi_max), forward_cap) {
+        (Some(chi), Some(factor)) => Some(chi.saturating_mul(factor.get())),
+        _ => None,
+    };
     let cutoff = params.and_then(|p| p.svd.target_trunc_err);
 
     let mut tensors: Vec<DenseTensor<T, B>> = Vec::with_capacity(n);
@@ -193,69 +123,17 @@ where
         }
     }
 
-    let Some(trunc_params) = params else {
-        let mut result_mps: Mps<DenseStorage<T>, DenseLayout, B> =
-            Mps::<DenseStorage<T>, DenseLayout, B>::with_backend(tensors, backend_arc);
-        result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
-        return result_mps;
-    };
-
-    // Backward pass: right-to-left truncated SVD sweep, parking S leftward.
-    let svd_params = trunc_params.svd.clone();
-    for j in (1..n).rev() {
-        let p_shape = tensors[j].shape().to_vec();
-        let (_left, d, right) = (p_shape[0], p_shape[1], p_shape[2]);
-
-        let (u, s_vec, vt, _err) =
-            trunc_svd(&tensors[j], 1, &svd_params).expect("trunc_svd: validated by entry point");
-        let chi = vt.shape()[0];
-
-        let vt_rm = vt.reordered(rm);
-        let vt_multi_rm = vt_rm.reshape(vec![chi, d, right]);
-        tensors[j] = vt_multi_rm.reordered(order);
-
-        let us = diagonal_scale(&u, s_vec.data_slice(), 1)
-            .expect("U·S scaling: validated by entry point");
-        let new_prev = contract(&tensors[j - 1], &us, "abc,cd->abd")
-            .expect("US absorption: validated by entry point");
-        tensors[j - 1] = new_prev;
-    }
-
     let mut result_mps: Mps<DenseStorage<T>, DenseLayout, B> =
         Mps::<DenseStorage<T>, DenseLayout, B>::with_backend(tensors, backend_arc);
-    result_mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
-    result_mps
-}
+    result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
 
-/// Apply a BlockSparse MPO to a BlockSparse MPS, producing a new MPS.
-pub(super) fn apply_bsp<T, S, B>(
-    op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-    params: Option<&TruncateParams>,
-) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    let n = psi.len();
-    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
-    assert!(n > 0, "must have at least one site");
-
-    let backend_arc = Arc::clone(psi.backend_arc());
-    let mut sites: Vec<BlockSparseTensor<T, S, B>> = Vec::with_capacity(n);
-
-    for j in 0..n {
-        sites.push(local_product_bsp(op.site(j), psi.site(j)));
-    }
-
-    let mut result_mps: Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> =
-        Mps::<BlockSparseStorage<T>, BlockSparseLayout<S>, B>::with_backend(sites, backend_arc);
-
+    // Delegate final canonicalization + truncation to the standard pipeline.
+    // This reuses the three-sweep gauge pattern in `truncate_dense` and
+    // honors every `SvdAbsorb` variant and any in-range `params.center`.
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_bsp(&mut result_mps, center);
-        super::truncate::truncate_bsp(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_dense(&mut result_mps, center);
+        super::truncate::truncate_dense(&mut result_mps, trunc_params);
     }
 
     result_mps
@@ -295,11 +173,19 @@ where
         .expect("right bond fusion: validated by entry point")
 }
 
-/// Apply a BlockSparse MPO to a BlockSparse MPS via the zip-up algorithm.
-pub(super) fn apply_zipup_bsp<T, S, B>(
+/// Apply a BlockSparse MPO to a BlockSparse MPS via the streaming-naive
+/// algorithm.
+///
+/// See [`apply_streaming_naive_dense`] for the algorithm description; the
+/// BlockSparse variant mirrors it via [`local_product_bsp`],
+/// `qr_block_sparse`, and `trunc_svd_block_sparse`, then delegates the
+/// final canonicalization + truncation to `canonicalize_bsp` +
+/// `truncate_bsp`.
+pub(super) fn apply_streaming_naive_bsp<T, S, B>(
     op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     params: Option<&TruncateParams>,
+    forward_cap: Option<NonZeroUsize>,
 ) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
 where
     T: Scalar,
@@ -310,25 +196,12 @@ where
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
 
-    if let Some(p) = params {
-        assert!(
-            matches!(p.absorb, SvdAbsorb::Right),
-            "apply_zipup currently supports only SvdAbsorb::Right; got {:?}.",
-            p.absorb,
-        );
-        assert!(
-            matches!(p.center, None | Some(0)),
-            "apply_zipup currently parks the orthogonality center at site 0; \
-             requested center = {:?}.",
-            p.center,
-        );
-    }
-
     let backend_arc = Arc::clone(psi.backend_arc());
 
-    let chi_max_forward = params
-        .and_then(|p| p.svd.chi_max)
-        .map(|c| c.saturating_mul(ZIPUP_SVD_RATIO));
+    let chi_max_forward: Option<usize> = match (params.and_then(|p| p.svd.chi_max), forward_cap) {
+        (Some(chi), Some(factor)) => Some(chi.saturating_mul(factor.get())),
+        _ => None,
+    };
     let cutoff = params.and_then(|p| p.svd.target_trunc_err);
 
     let mut tensors: Vec<BlockSparseTensor<T, S, B>> = Vec::with_capacity(n);
@@ -377,40 +250,16 @@ where
         }
     }
 
-    let Some(trunc_params) = params else {
-        let mut result_mps: Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> =
-            Mps::<BlockSparseStorage<T>, BlockSparseLayout<S>, B>::with_backend(
-                tensors,
-                backend_arc,
-            );
-        result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
-        return result_mps;
-    };
-
-    let svd_params = trunc_params.svd.clone();
-    for j in (1..n).rev() {
-        let (u, s_vec, vt, _err) = trunc_svd_block_sparse(&tensors[j], 1, &svd_params)
-            .expect("trunc_svd: validated by entry point");
-        tensors[j] = vt;
-
-        let us = diagonal_scale_block_sparse(&u, &s_vec, 1)
-            .expect("U·S scaling: validated by entry point");
-
-        let prev_last_axis = tensors[j - 1].rank() - 1;
-        let new_prev = match contract_block_sparse(&tensors[j - 1], &us, &[prev_last_axis], &[0])
-            .expect("US absorption: validated by entry point")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("US absorption keeps at least the physical legs free")
-            }
-        };
-        tensors[j - 1] = new_prev;
-    }
-
     let mut result_mps: Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> =
         Mps::<BlockSparseStorage<T>, BlockSparseLayout<S>, B>::with_backend(tensors, backend_arc);
-    result_mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
+    result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
+
+    if let Some(trunc_params) = params {
+        let center = trunc_params.center.unwrap_or(0);
+        super::canonicalize::canonicalize_bsp(&mut result_mps, center);
+        super::truncate::truncate_bsp(&mut result_mps, trunc_params);
+    }
+
     result_mps
 }
 
