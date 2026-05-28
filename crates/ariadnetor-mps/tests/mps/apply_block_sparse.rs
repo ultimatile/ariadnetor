@@ -12,7 +12,8 @@ use arnet_mps::{
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, make_2site_entangled_u1_mps,
-    make_4site_u1_mps, make_identity_u1_mpo, make_total_n_u1_mpo,
+    make_3site_u1_mps_multipath_middle, make_4site_u1_mps, make_identity_u1_mpo,
+    make_total_n_u1_mpo,
 };
 
 // ---------------------------------------------------------------------------
@@ -437,15 +438,7 @@ fn streaming_naive_center_nonzero_parks_center_at_request() {
 
 /// Tight `forward_cap` (factor 1) produces a chain bounded by `chi_max`
 /// end-to-end. Anchors the cap parameter's plumbing through the BSP
-/// forward sweep. The observable-difference property — that
-/// `forward_cap = Some(_)` and `forward_cap = None` produce numerically
-/// distinct outputs — is pinned by the dense companion test
-/// `test_apply_streaming_naive_forward_cap_observably_changes_output`;
-/// the BSP fixtures available here are U(1)-symmetric in a way that
-/// makes per-sector forward and backward truncations coincide, so the
-/// observable-difference check does not fire even though
-/// `apply_streaming_naive_bsp` shares its forward `match` /
-/// `forward_rank_estimate_bsp > cap` selection with the dense path.
+/// forward sweep.
 #[test]
 fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
     use std::num::NonZeroUsize;
@@ -465,4 +458,59 @@ fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond {d} exceeds chi_max=2 under forward_cap=1");
     }
+}
+
+/// Tightening `forward_cap` from `None` to `Some(1)` on a fixture whose
+/// middle bond has a sector with dim 3 fed by two distinct (left, phys)
+/// pathways must change the contracted output observably. The multi-path
+/// structure breaks the forward `(left*phys, right)` vs backward
+/// `(left, phys*right)` unfolding symmetry: per-sector SVD truncation
+/// chooses different rank-2 subspaces in the two sweep directions, so a
+/// `forward_cap = Some(1)` cap that pre-truncates the forward
+/// intermediate produces a chi=2 chain genuinely different from the
+/// lossless-forward + backward-chi=2 path.
+///
+/// Fixtures with single-pathway per sector and per-sector phys dim 1
+/// (e.g. `make_4site_u1_mps`) collapse the two unfoldings into the same
+/// matrix and hide the cap's effect end-to-end, which is why this test
+/// needs the dedicated multipath fixture.
+///
+/// If `forward_cap` were ignored — e.g. `forward_rank_estimate_bsp > cap`
+/// always evaluated to `false`, or the SVD branch routed back to QR —
+/// both runs would take the QR branch and the contracted outputs would
+/// match within roundoff.
+#[test]
+fn streaming_naive_forward_cap_observably_changes_output() {
+    use std::num::NonZeroUsize;
+
+    let psi = make_3site_u1_mps_multipath_middle();
+    let op = make_identity_u1_mpo(3);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let capped = ApplyMethod::StreamingNaive {
+        forward_cap: Some(NonZeroUsize::new(1).unwrap()),
+    };
+
+    let phi_lossless = mps::apply(&op, &psi, Some(&params));
+    let phi_capped = mps::apply_with_method(&op, &psi, Some(&params), capped);
+
+    // Both paths must still respect the chi_max budget.
+    for d in phi_capped.bond_dims() {
+        assert!(d <= 2, "bond {d} exceeds chi_max=2 under forward_cap=1");
+    }
+
+    let v_lossless = bsp_mps_contract_full(&phi_lossless);
+    let v_capped = bsp_mps_contract_full(&phi_capped);
+    let same = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert_block_sparse_close(&v_lossless, &v_capped, 1e-8);
+    }))
+    .is_ok();
+    assert!(
+        !same,
+        "forward_cap = Some(1) and forward_cap = None should produce \
+         observably different states on the thick-middle fixture, but \
+         the contracted outputs matched within 1e-8"
+    );
 }

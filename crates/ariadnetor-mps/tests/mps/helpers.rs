@@ -214,6 +214,53 @@ fn make_u1_site(
     site
 }
 
+/// Build a 3-site U(1)-symmetric MPS whose middle bond has a sector with
+/// dim 3 fed by **two distinct (left, phys) pathways**. The multi-path
+/// structure makes the forward `(left*phys, right)` and backward
+/// `(left, phys*right)` unfoldings of the per-sector block matrix
+/// genuinely different matrices, so the per-sector SVD truncation choice
+/// is not gauge-equivalent between the forward and backward sweeps. Total
+/// flux is anchored at `U1Sector(1)`.
+///
+/// This fixture is paired with the BSP `forward_cap` observable-difference
+/// test: cap = 2 against a sector with dim 3 and non-trivial forward /
+/// backward unfolding asymmetry produces a discernible Frobenius
+/// difference at the contracted-output level. Fixtures where every
+/// sector has a single incoming pathway and per-sector phys dim 1 (e.g.
+/// `make_4site_u1_mps`) collapse forward and backward SVDs into the same
+/// matrix, hiding the cap's effect.
+pub fn make_3site_u1_mps_multipath_middle()
+-> Mps<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>> {
+    let mut counter: f64 = 0.1;
+
+    let site0 = make_u1_site(
+        vec![(U1Sector(0), 1)],
+        vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+        vec![(U1Sector(0), 2), (U1Sector(1), 2)],
+        &mut counter,
+    );
+    // Site 1's right sector 1 (dim 3) is fed by both (left=0, phys=1) and
+    // (left=1, phys=0): two pathways that combine into the same right
+    // sector, giving the per-sector forward and backward unfoldings
+    // distinct shapes.
+    let site1 = make_u1_site(
+        vec![(U1Sector(0), 2), (U1Sector(1), 2)],
+        vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+        vec![(U1Sector(0), 2), (U1Sector(1), 3), (U1Sector(2), 2)],
+        &mut counter,
+    );
+    // Site 2 anchors total flux at 1; two pathways (left=0+phys=1 and
+    // left=1+phys=0) feed the right=1 boundary.
+    let site2 = make_u1_site(
+        vec![(U1Sector(0), 2), (U1Sector(1), 3), (U1Sector(2), 2)],
+        vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+        vec![(U1Sector(1), 1)],
+        &mut counter,
+    );
+
+    Mps::from_sites(vec![site0, site1, site2])
+}
+
 /// Build a 4-site U(1)-symmetric MPS with `f64` storage and per-site flux 0.
 pub fn make_4site_u1_mps() -> Mps<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>>
 {
