@@ -15,6 +15,35 @@ cargo make ci          # Full CI checks (fmt, clippy, test)
 
 ## Coding Conventions
 
+### Public API surface taxonomy
+
+Every workspace `pub` item placement is anchored to one of three
+layers. New additions are placed by the rule, not by analogy with
+neighbours.
+
+| Layer | Visibility | Membership rule |
+| --- | --- | --- |
+| User-API | `pub` in member crate **and** re-exported by umbrella `arnet` | The umbrella surface. Covers inherent methods on `Tensor` / `DenseTensor` / `BlockSparseTensor`, free fns (e.g. `add_all`, `linear_combine`, `contract`, `eig`), trait extensions, error/result types, and traits re-exported as type-parameter shapes. |
+| Mid-layer | `pub` in member crate, **not** re-exported by umbrella | Workspace-internal consumer API. Reachable only via a direct member-crate dependency (e.g. `arnet-mps` depending directly on `arnet-tensor`). The `*TensorData` joined-form bundle and storage-half basic accessors live here. |
+| Internal | `pub(crate)` | Consumed only by in-crate forwarders. New items default here unless a Mid-layer or User-API caller exists. |
+
+Re-exporting a type does not automatically promote its inherent
+methods to User-API. Even when `arnet` re-exports a struct as a
+generic type-parameter shape, classify each inherent method
+independently: some may stay at Mid-layer or Internal. The
+membership rule applies per-item, not per-type.
+
+When adding a new `pub` item, check the rule in this order:
+
+1. Is the umbrella `arnet` going to re-export it? → User-API.
+2. Will a sibling workspace crate call it directly (bypassing the
+   umbrella)? → Mid-layer.
+3. Otherwise → Internal (`pub(crate)`).
+
+If demoting to `pub(crate)` triggers a `dead_code` warning, the item
+was already dead under the narrower visibility — remove it rather
+than annotate.
+
 ### Naming
 
 #### In-place vs out-of-place method pairs
