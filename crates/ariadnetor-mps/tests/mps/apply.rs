@@ -400,13 +400,18 @@ fn test_apply_streaming_naive_forward_cap_factor_one_keeps_chi_max() {
     }
 }
 
-/// Tightening `forward_cap` produces a state at least as far from the
-/// effectively-lossless reference (chi_max=64) as the lossless-forward
-/// path. The forward SVD branch drops singular vectors that the backward
-/// chi_max sweep would otherwise weigh into its truncation, so the capped
-/// path has non-decreasing Frobenius distance from the reference.
+/// Tightening `forward_cap` from `None` to `Some(1)` must be observable on
+/// this fixture: the forward SVD branch at site 1 (rank 4, cap 2) drops
+/// singular vectors that the backward `chi_max = 2` sweep would otherwise
+/// weigh into its truncation, so the two output states differ by more than
+/// roundoff. The capped output is also no closer to the effectively-lossless
+/// `chi_max = 64` reference than the lossless-forward output (monotonicity).
+///
+/// If `forward_cap` were silently ignored, both branches would produce
+/// numerically identical output and the observable-difference assertion
+/// would fail.
 #[test]
-fn test_apply_streaming_naive_forward_cap_monotonic_vs_lossless_forward() {
+fn test_apply_streaming_naive_forward_cap_observably_changes_output() {
     use std::num::NonZeroUsize;
 
     let psi = make_3site_test_mps();
@@ -432,12 +437,24 @@ fn test_apply_streaming_naive_forward_cap_monotonic_vs_lossless_forward() {
     );
 
     let v_ref = mps_to_dense(&phi_ref);
-    let dist_lossless = dense_frobenius_distance(&mps_to_dense(&phi_lossless_forward), &v_ref);
-    let dist_capped = dense_frobenius_distance(&mps_to_dense(&phi_capped_forward), &v_ref);
+    let v_lossless = mps_to_dense(&phi_lossless_forward);
+    let v_capped = mps_to_dense(&phi_capped_forward);
 
-    // Allow floating-point slack: equality within roundoff is acceptable; a
-    // capped distance strictly below lossless would indicate the parameter
-    // is wired backwards.
+    // 1. The two outputs must differ by more than roundoff. This fails if
+    //    `forward_cap` is ignored (both branches would take QR).
+    let observed_diff = dense_frobenius_distance(&v_lossless, &v_capped);
+    assert!(
+        observed_diff > 1e-8,
+        "forward_cap = Some(1) and forward_cap = None should produce \
+         observably different states on this fixture; got Frobenius \
+         distance {observed_diff}"
+    );
+
+    // 2. Monotonicity: tightening the cap can only move the result away
+    //    from the high-chi reference. The `+ 1e-12` slack allows numerical
+    //    equality without permitting a regression of the direction.
+    let dist_lossless = dense_frobenius_distance(&v_lossless, &v_ref);
+    let dist_capped = dense_frobenius_distance(&v_capped, &v_ref);
     assert!(
         dist_capped + 1e-12 >= dist_lossless,
         "monotonicity violated: capped={dist_capped} < lossless-forward={dist_lossless}"

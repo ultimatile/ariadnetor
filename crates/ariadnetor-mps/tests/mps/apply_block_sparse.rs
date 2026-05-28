@@ -435,8 +435,17 @@ fn streaming_naive_center_nonzero_parks_center_at_request() {
 // forward_cap exposure (BlockSparse)
 // ===========================================================================
 
-/// Tight `forward_cap` (factor 1) still produces a chain bounded by `chi_max`
-/// end-to-end. Anchors the cap parameter's plumbing through the BSP path.
+/// Tight `forward_cap` (factor 1) produces a chain bounded by `chi_max`
+/// end-to-end. Anchors the cap parameter's plumbing through the BSP
+/// forward sweep. The observable-difference property — that
+/// `forward_cap = Some(_)` and `forward_cap = None` produce numerically
+/// distinct outputs — is pinned by the dense companion test
+/// `test_apply_streaming_naive_forward_cap_observably_changes_output`;
+/// the BSP fixtures available here are U(1)-symmetric in a way that
+/// makes per-sector forward and backward truncations coincide, so the
+/// observable-difference check does not fire even though
+/// `apply_streaming_naive_bsp` shares its forward `match` /
+/// `forward_rank_estimate_bsp > cap` selection with the dense path.
 #[test]
 fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
     use std::num::NonZeroUsize;
