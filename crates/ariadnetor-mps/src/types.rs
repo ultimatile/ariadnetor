@@ -70,8 +70,13 @@ impl From<TruncSvdParams> for TruncateParams {
 pub enum ApplyMethod {
     /// Per-site MPO·MPS product with a streaming forward QR sweep
     /// (or truncated SVD when `forward_cap = Some(k)` and the natural
-    /// per-site forward rank exceeds `k * chi_max`), followed by a
-    /// standard `canonicalize` + `truncate` finishing pass.
+    /// per-site forward rank exceeds `k * chi_max`). When the caller
+    /// passes `Some(TruncateParams)`, the forward sweep is followed by a
+    /// standard `canonicalize` + `truncate` finishing pass that honors
+    /// every `SvdAbsorb` variant and any in-range `params.center`. When
+    /// `params` is `None`, no canonicalization or truncation runs after
+    /// the forward sweep, and the result is left in `Mixed { center: n
+    /// - 1 }`.
     ///
     /// `forward_cap = None` is lossless streaming naive: the forward
     /// branch is QR-only, and the final state matches a hypothetical
