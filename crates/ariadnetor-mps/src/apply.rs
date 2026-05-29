@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arnet::{
     BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor,
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Direction, MemoryOrder, Scalar, Sector,
+    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Direction, Scalar, Sector,
     TruncSvdParams, contract, contract_block_sparse, diagonal_scale, diagonal_scale_block_sparse,
     fuse_legs_block_sparse, permute_block_sparse, qr, qr_block_sparse, trunc_svd,
     trunc_svd_block_sparse,
@@ -53,8 +53,6 @@ where
     assert!(n > 0, "must have at least one site");
 
     let backend_arc = Arc::clone(psi.backend_arc());
-    let order = backend_arc.preferred_order();
-    let rm = MemoryOrder::RowMajor;
 
     // The forward branch falls to truncated SVD only when both a user
     // chi_max and a forward_cap factor are set; otherwise the per-site QR
@@ -73,11 +71,9 @@ where
         let a = psi.site(j);
         let local = contract(w, a, "abcd,ebf->aecdf")
             .expect("MPO-MPS contraction: validated by entry point");
-        let s = local.shape();
-        let (w_l, chi_l, d_bra, w_r, chi_r) = (s[0], s[1], s[2], s[3], s[4]);
-        let local_rm = local.reordered(rm);
-        let fused_rm = local_rm.reshape(vec![w_l * chi_l, d_bra, w_r * chi_r]);
-        let mut p = fused_rm.reordered(order);
+        // Fuse the (w_l, chi_l) and (w_r, chi_r) boundary pairs, keeping
+        // the physical bra leg: (w_l*chi_l, d_bra, w_r*chi_r).
+        let mut p = local.fuse_legs(0..2).fuse_legs(2..4);
 
         if let Some(c) = carry.as_ref() {
             p = contract(c, &p, "ab,bcd->acd").expect("carry absorption: validated by entry point");
@@ -95,10 +91,8 @@ where
 
             if !use_svd {
                 let (q, r) = qr(&p, 2).expect("QR: validated by entry point");
-                let k = q.shape()[1];
-                let q_rm = q.reordered(rm);
-                let q_multi_rm = q_rm.reshape(vec![left, d, k]);
-                let q_site = q_multi_rm.reordered(order);
+                // Split Q's fused row leg back into (left, d, k).
+                let q_site = q.split_leg(0, &[left, d]);
                 tensors.push(q_site);
                 carry = Some(r);
             } else {
@@ -108,10 +102,8 @@ where
                 };
                 let (u, s_vec, vt, _err) =
                     trunc_svd(&p, 2, &svd_params).expect("trunc_svd: validated by entry point");
-                let k = u.shape()[1];
-                let u_rm = u.reordered(rm);
-                let u_multi_rm = u_rm.reshape(vec![left, d, k]);
-                let u_site = u_multi_rm.reordered(order);
+                // Split U's fused row leg back into (left, d, k).
+                let u_site = u.split_leg(0, &[left, d]);
                 tensors.push(u_site);
 
                 let svt = diagonal_scale(&vt, s_vec.data_slice(), 0)

@@ -3,7 +3,7 @@
 
 use arnet::{
     BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor,
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, MemoryOrder, Scalar, Sector, contract,
+    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Scalar, Sector, contract,
     contract_block_sparse, lq, lq_block_sparse, qr, qr_block_sparse,
 };
 
@@ -57,19 +57,11 @@ where
         let site = chain.site(j);
         let rank = site.rank();
         let orig_shape = site.shape().to_vec();
-        let order = chain.backend().preferred_order();
 
         let (q, r) = qr(site, rank - 1).expect("QR: validated by entry point");
 
-        // Reshape Q from (m, k) back to (*orig[..rank-1], k). Convert to
-        // RowMajor for correct axis-split semantics, then back to backend
-        // order.
-        let q_rm = q.reordered(MemoryOrder::RowMajor);
-        let k = q_rm.shape()[1];
-        let mut q_shape = orig_shape[..rank - 1].to_vec();
-        q_shape.push(k);
-        let q_multi = q_rm.reshape(q_shape);
-        let q_back = q_multi.reordered(order);
+        // Split Q's fused row leg (m, k) back into (*orig[..rank-1], k).
+        let q_back = q.split_leg(0, &orig_shape[..rank - 1]);
 
         (q_back, r)
     };
@@ -95,16 +87,11 @@ where
     let (q_tensor, l) = {
         let site = chain.site(j);
         let orig_shape = site.shape().to_vec();
-        let order = chain.backend().preferred_order();
 
         let (l, q) = lq(site, 1).expect("LQ: validated by entry point");
 
-        let q_rm = q.reordered(MemoryOrder::RowMajor);
-        let k = q_rm.shape()[0];
-        let mut q_shape = vec![k];
-        q_shape.extend_from_slice(&orig_shape[1..]);
-        let q_multi = q_rm.reshape(q_shape);
-        let q_back = q_multi.reordered(order);
+        // Split Q's fused column leg (k, m) back into (k, *orig[1..]).
+        let q_back = q.split_leg(1, &orig_shape[1..]);
 
         (q_back, l)
     };
@@ -120,34 +107,21 @@ where
 }
 
 /// Multiply R matrix into the next site: `R(k, d) × next(d, ...) → (k, ...)`.
-/// Reshapes next to 2D for matmul, then restores original rank.
-///
-/// Site / factor tensors are guaranteed to carry the backend's preferred
-/// order under the Tier 1 / Tier 2 ordering invariant, so the source
-/// order at the RowMajor conversion boundary is the backend's preferred
-/// order rather than a per-tensor read.
+/// Fuses next's trailing legs to a matrix for the matmul, then splits the
+/// result's fused leg back to restore the original rank. The logical leg
+/// operations handle the memory-order round-trip internally.
 fn absorb_from_left<T, B>(r: &DenseTensor<T, B>, next: &DenseTensor<T, B>) -> DenseTensor<T, B>
 where
     T: Scalar,
     B: ComputeBackend,
 {
-    let order = next.backend().preferred_order();
-    let next_rm = next.reordered(MemoryOrder::RowMajor);
-    let next_shape = next_rm.shape().to_vec();
-    let first = next_shape[0];
-    let rest: usize = next_shape[1..].iter().product();
-
-    let next_2d_rm = next_rm.reshape(vec![first, rest]);
-    let next_2d = next_2d_rm.reordered(order);
+    // Fuse next's trailing legs into a matrix, contract R · next, then
+    // split the fused leg back; axis 0 carries R's new bond.
+    let next_shape = next.shape().to_vec();
+    let next_2d = next.fuse_legs(1..next_shape.len());
     let result_2d =
         contract(r, &next_2d, "ab,bc->ac").expect("R absorption: validated by entry point");
-
-    let result_2d_rm = result_2d.reordered(MemoryOrder::RowMajor);
-    let k = r.shape()[0];
-    let mut new_shape = next_shape;
-    new_shape[0] = k;
-    let result_multi = result_2d_rm.reshape(new_shape);
-    result_multi.reordered(order)
+    result_2d.split_leg(1, &next_shape[1..])
 }
 
 /// Multiply L matrix into the previous site: `prev(..., d) × L(d, k) → (..., k)`.
@@ -156,23 +130,14 @@ where
     T: Scalar,
     B: ComputeBackend,
 {
-    let order = prev.backend().preferred_order();
-    let prev_rm = prev.reordered(MemoryOrder::RowMajor);
-    let prev_shape = prev_rm.shape().to_vec();
-    let last = *prev_shape.last().unwrap();
-    let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
-
-    let prev_2d_rm = prev_rm.reshape(vec![rest, last]);
-    let prev_2d = prev_2d_rm.reordered(order);
+    // Fuse prev's leading legs into a matrix, contract prev · L, then
+    // split the fused leg back; the last axis carries L's new bond.
+    let prev_shape = prev.shape().to_vec();
+    let split = prev_shape.len() - 1;
+    let prev_2d = prev.fuse_legs(0..split);
     let result_2d =
         contract(&prev_2d, l, "ab,bc->ac").expect("L absorption: validated by entry point");
-
-    let result_2d_rm = result_2d.reordered(MemoryOrder::RowMajor);
-    let k = l.shape()[1];
-    let mut new_shape = prev_shape;
-    *new_shape.last_mut().unwrap() = k;
-    let result_multi = result_2d_rm.reshape(new_shape);
-    result_multi.reordered(order)
+    result_2d.split_leg(0, &prev_shape[..split])
 }
 
 // ============================================================================
