@@ -5,9 +5,9 @@
 //! [`DenseTensorData<T>`](crate::DenseTensorData) joins the two.
 //!
 //! `T: Scalar`-bound scalar-only data operations (`norm`,
-//! `norm_frobenius`, `normalize`, `normalized`) live here because
-//! their bodies touch only `data`; they require no shape, no memory
-//! order, and no compute backend. Symmetric with the BSp side.
+//! `norm_frobenius`, `normalize`) live here because their bodies
+//! touch only `data`; they require no shape, no memory order, and no
+//! compute backend. Symmetric with the BSp side.
 
 use std::ops::Mul;
 use std::sync::Arc;
@@ -122,7 +122,7 @@ where
 {
     /// Fill every stored element with a constant value (triggers CoW
     /// if shared).
-    pub fn fill(&mut self, value: T) {
+    pub(crate) fn fill(&mut self, value: T) {
         Arc::make_mut(&mut self.data).as_mut_slice().fill(value);
     }
 
@@ -131,7 +131,7 @@ where
     ///
     /// Element ordering follows storage layout; the closure sees raw
     /// flat positions without coordinate context.
-    pub fn map_mut<F>(&mut self, f: F)
+    pub(crate) fn map_mut<F>(&mut self, f: F)
     where
         F: Fn(&T) -> T,
     {
@@ -143,7 +143,7 @@ where
 
     /// Scale every stored element by a scalar factor in place
     /// (triggers CoW if shared).
-    pub fn scale<S>(&mut self, factor: S)
+    pub(crate) fn scale<S>(&mut self, factor: S)
     where
         T: Mul<S, Output = T>,
         S: Clone,
@@ -178,12 +178,12 @@ where
     }
 
     /// Frobenius norm: √(Σ |element|²).
-    pub fn norm_frobenius(&self) -> T::Real {
+    pub(crate) fn norm_frobenius(&self) -> T::Real {
         self.norm_squared().sqrt()
     }
 
     /// Frobenius norm (alias for [`norm_frobenius`](Self::norm_frobenius)).
-    pub fn norm(&self) -> T::Real {
+    pub(crate) fn norm(&self) -> T::Real {
         self.norm_frobenius()
     }
 
@@ -191,7 +191,7 @@ where
     ///
     /// Returns the norm before normalization. Panics if the tensor has
     /// zero norm.
-    pub fn normalize(&mut self) -> T::Real {
+    pub(crate) fn normalize(&mut self) -> T::Real {
         let norm = self.norm_frobenius();
         assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
         let inv_norm = T::Real::one() / norm;
@@ -200,15 +200,5 @@ where
             *elem = elem.scale_real(inv_norm);
         }
         norm
-    }
-
-    /// Normalize and return a new storage (out-of-place).
-    ///
-    /// Returns `(normalized_storage, original_norm)`. Panics if the
-    /// tensor has zero norm.
-    pub fn normalized(&self) -> (Self, T::Real) {
-        let mut result = self.clone();
-        let norm = result.normalize();
-        (result, norm)
     }
 }

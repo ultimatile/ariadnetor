@@ -7,9 +7,9 @@
 //! the two.
 //!
 //! `T: Scalar`-bound scalar-only data operations (`stored_len`,
-//! `norm`, `norm_frobenius`, `normalize`, `normalized`) live here
-//! because their bodies touch only `data`; they require no layout
-//! field, no symmetry sector, and no compute backend.
+//! `norm`, `norm_frobenius`, `normalize`) live here because their
+//! bodies touch only `data`; they require no layout field, no
+//! symmetry sector, and no compute backend.
 
 use std::sync::Arc;
 
@@ -107,7 +107,7 @@ where
 {
     /// Scale every stored element by a scalar factor in place
     /// (triggers CoW if shared).
-    pub fn scale<S>(&mut self, factor: S)
+    pub(crate) fn scale<S>(&mut self, factor: S)
     where
         T: std::ops::Mul<S, Output = T>,
         S: Clone,
@@ -125,7 +125,7 @@ where
 {
     /// Total number of stored elements across all blocks (= length of
     /// the flat packed buffer).
-    pub fn stored_len(&self) -> usize {
+    pub(crate) fn stored_len(&self) -> usize {
         self.data.len()
     }
 
@@ -141,12 +141,12 @@ where
     }
 
     /// Frobenius norm: √(Σ |element|²).
-    pub fn norm_frobenius(&self) -> T::Real {
+    pub(crate) fn norm_frobenius(&self) -> T::Real {
         self.norm_squared().sqrt()
     }
 
     /// Frobenius norm (alias for [`norm_frobenius`](Self::norm_frobenius)).
-    pub fn norm(&self) -> T::Real {
+    pub(crate) fn norm(&self) -> T::Real {
         self.norm_frobenius()
     }
 
@@ -154,7 +154,7 @@ where
     ///
     /// Returns the norm before normalization.
     /// Panics if the tensor has zero norm.
-    pub fn normalize(&mut self) -> T::Real {
+    pub(crate) fn normalize(&mut self) -> T::Real {
         let norm = self.norm_frobenius();
         assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
         let inv_norm = T::Real::one() / norm;
@@ -163,15 +163,5 @@ where
             *elem = elem.scale_real(inv_norm);
         }
         norm
-    }
-
-    /// Normalize and return a new tensor (out-of-place).
-    ///
-    /// Returns `(normalized_storage, original_norm)`.
-    /// Panics if the tensor has zero norm.
-    pub fn normalized(&self) -> (Self, T::Real) {
-        let mut result = self.clone();
-        let norm = result.normalize();
-        (result, norm)
     }
 }
