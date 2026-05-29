@@ -121,20 +121,20 @@ fn fuse_then_split_round_trips_column_major() {
     assert_eq!(restored.data_slice(), data.as_slice());
 }
 
-#[test]
-fn reshape_logical_matches_chained_fuse_multi_group() {
+fn check_reshape_logical_multi_group(order: MemoryOrder) {
     // The apply.rs MPO local fuse regroups (w_l, chi_l, d_bra, w_r, chi_r)
     // into (w_l*chi_l, d_bra, w_r*chi_r) with a single reshape_logical.
     // Two chained single-group fuse_legs must yield the identical result,
     // so the migration from the chained form to the single call preserves
     // behavior. Shape and order alone would miss a wrong logical mapping,
-    // so compare the flat data too.
+    // so compare the flat data too. The public API promises to preserve
+    // the caller's memory order, so both orders are exercised.
     let total = 2 * 3 * 2 * 4 * 5;
     let data: Vec<f64> = (0..total).map(|x| x as f64).collect();
     let t = DenseTensor::<f64>::from_raw_parts(
         data,
         vec![2, 3, 2, 4, 5],
-        MemoryOrder::ColumnMajor,
+        order,
         NativeBackend::shared(),
     );
 
@@ -142,8 +142,14 @@ fn reshape_logical_matches_chained_fuse_multi_group() {
     let via_chain = t.fuse_legs(0..2).fuse_legs(2..4);
 
     assert_eq!(via_reshape.shape(), &[6, 2, 20]);
-    assert_eq!(via_reshape.order(), MemoryOrder::ColumnMajor);
+    assert_eq!(via_reshape.order(), order);
     assert_eq!(via_reshape.data_slice(), via_chain.data_slice());
+}
+
+#[test]
+fn reshape_logical_matches_chained_fuse_multi_group() {
+    check_reshape_logical_multi_group(MemoryOrder::ColumnMajor);
+    check_reshape_logical_multi_group(MemoryOrder::RowMajor);
 }
 
 #[test]
