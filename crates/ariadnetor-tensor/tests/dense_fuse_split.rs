@@ -124,6 +124,16 @@ fn chained_fuse_matches_single_multi_group_reshape() {
 
     assert_eq!(fused.shape(), &[6, 2, 20]);
     assert_eq!(fused.order(), MemoryOrder::ColumnMajor);
+
+    // The chained fuse must reproduce the single multi-group reshape it
+    // replaces: the explicit row-major sandwich on the same input. Shape
+    // and order alone would not catch a wrong logical mapping in the
+    // second fuse, so compare the flat data too.
+    let reference = t
+        .reordered(MemoryOrder::RowMajor)
+        .reshape(vec![6, 2, 20])
+        .reordered(MemoryOrder::ColumnMajor);
+    assert_eq!(fused.data_slice(), reference.data_slice());
 }
 
 #[test]
@@ -154,6 +164,12 @@ fn fuse_legs_panics_on_out_of_range() {
 #[should_panic(expected = "fuse_legs")]
 fn fuse_legs_panics_on_empty_range() {
     let _ = logical_2x3_row_major().fuse_legs(1..1);
+}
+
+#[test]
+#[should_panic(expected = "split_leg")]
+fn split_leg_panics_on_empty_into() {
+    let _ = logical_2x3_row_major().split_leg(0, &[]);
 }
 
 #[test]
