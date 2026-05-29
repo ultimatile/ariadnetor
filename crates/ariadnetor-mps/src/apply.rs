@@ -72,8 +72,12 @@ where
         let local = contract(w, a, "abcd,ebf->aecdf")
             .expect("MPO-MPS contraction: validated by entry point");
         // Fuse the (w_l, chi_l) and (w_r, chi_r) boundary pairs, keeping
-        // the physical bra leg: (w_l*chi_l, d_bra, w_r*chi_r).
-        let mut p = local.fuse_legs(0..2).fuse_legs(2..4);
+        // the physical bra leg: (w_l*chi_l, d_bra, w_r*chi_r). A two-group
+        // regrouping goes through reshape_logical in a single round-trip;
+        // the single-leg fuse_legs / split_leg cannot express it in one op.
+        let s = local.shape();
+        let (w_l, chi_l, d_bra, w_r, chi_r) = (s[0], s[1], s[2], s[3], s[4]);
+        let mut p = local.reshape_logical(vec![w_l * chi_l, d_bra, w_r * chi_r]);
 
         if let Some(c) = carry.as_ref() {
             p = contract(c, &p, "ab,bcd->acd").expect("carry absorption: validated by entry point");

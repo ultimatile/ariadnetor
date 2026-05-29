@@ -87,6 +87,20 @@ fn fuse_legs_column_major_logical_flatten() {
 }
 
 #[test]
+fn reshape_logical_column_major_regroup() {
+    // Logical [[1,2,3],[4,5,6]] (column-major buffer [1,4,2,5,3,6]).
+    // reshape_logical to (3, 2) regroups in C-order to [[1,2],[3,4],[5,6]],
+    // whose column-major buffer is [1,3,5,2,4,6]. Pins absolute logical
+    // correctness (not just equivalence to the chained form) and order
+    // preservation for the general escape-hatch path.
+    let r = logical_2x3_column_major().reshape_logical(vec![3, 2]);
+
+    assert_eq!(r.shape(), &[3, 2]);
+    assert_eq!(r.order(), MemoryOrder::ColumnMajor);
+    assert_eq!(r.data_slice(), &[1.0, 3.0, 5.0, 2.0, 4.0, 6.0]);
+}
+
+#[test]
 fn fuse_then_split_round_trips_column_major() {
     // Arbitrary 2x3x4 content; the round-trip identity is content- and
     // order-independent.
@@ -108,9 +122,13 @@ fn fuse_then_split_round_trips_column_major() {
 }
 
 #[test]
-fn chained_fuse_matches_single_multi_group_reshape() {
-    // Mirrors the apply.rs (w_l, chi_l, d_bra, w_r, chi_r) -> 3D fuse:
-    // fuse {0,1} and {3,4}, keep the middle axis.
+fn reshape_logical_matches_chained_fuse_multi_group() {
+    // The apply.rs MPO local fuse regroups (w_l, chi_l, d_bra, w_r, chi_r)
+    // into (w_l*chi_l, d_bra, w_r*chi_r) with a single reshape_logical.
+    // Two chained single-group fuse_legs must yield the identical result,
+    // so the migration from the chained form to the single call preserves
+    // behavior. Shape and order alone would miss a wrong logical mapping,
+    // so compare the flat data too.
     let total = 2 * 3 * 2 * 4 * 5;
     let data: Vec<f64> = (0..total).map(|x| x as f64).collect();
     let t = DenseTensor::<f64>::from_raw_parts(
@@ -120,20 +138,12 @@ fn chained_fuse_matches_single_multi_group_reshape() {
         NativeBackend::shared(),
     );
 
-    let fused = t.fuse_legs(0..2).fuse_legs(2..4);
+    let via_reshape = t.reshape_logical(vec![6, 2, 20]);
+    let via_chain = t.fuse_legs(0..2).fuse_legs(2..4);
 
-    assert_eq!(fused.shape(), &[6, 2, 20]);
-    assert_eq!(fused.order(), MemoryOrder::ColumnMajor);
-
-    // The chained fuse must reproduce the single multi-group reshape it
-    // replaces: the explicit row-major sandwich on the same input. Shape
-    // and order alone would not catch a wrong logical mapping in the
-    // second fuse, so compare the flat data too.
-    let reference = t
-        .reordered(MemoryOrder::RowMajor)
-        .reshape(vec![6, 2, 20])
-        .reordered(MemoryOrder::ColumnMajor);
-    assert_eq!(fused.data_slice(), reference.data_slice());
+    assert_eq!(via_reshape.shape(), &[6, 2, 20]);
+    assert_eq!(via_reshape.order(), MemoryOrder::ColumnMajor);
+    assert_eq!(via_reshape.data_slice(), via_chain.data_slice());
 }
 
 #[test]
