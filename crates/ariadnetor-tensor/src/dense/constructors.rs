@@ -41,12 +41,8 @@ where
         TensorData::new(storage, layout)
     }
 
-    /// Constant-filled tensor in the requested memory order.
-    ///
-    /// Name retained pending the `constant` → `filled` rename sweep
-    /// (<https://github.com/ultimatile/ariadnetor/issues/284>);
-    /// semantic is "fill with `value`".
-    pub fn constant_in_order(shape: Vec<usize>, value: T, order: MemoryOrder) -> Self {
+    /// Tensor filled with `value` in the requested memory order.
+    pub fn filled_in_order(shape: Vec<usize>, value: T, order: MemoryOrder) -> Self {
         let total: usize = shape.iter().product();
         let mut data: AVec<T, ConstAlign<64>> = AVec::with_capacity(64, total);
         data.resize(total, value);

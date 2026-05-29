@@ -240,8 +240,8 @@ impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout, NativeBackend> {
         Self::dense_filled(shape, S::one())
     }
 
-    /// Create a Dense tensor filled with a constant value.
-    pub fn constant(shape: Vec<usize>, value: S) -> Self {
+    /// Create a Dense tensor filled with `value`.
+    pub fn filled(shape: Vec<usize>, value: S) -> Self {
         Self::dense_filled(shape, value)
     }
 

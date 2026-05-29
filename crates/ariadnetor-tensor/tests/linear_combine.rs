@@ -11,8 +11,8 @@ fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
 
 #[test]
 fn test_linear_combine_basic() {
-    let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
-    let b = DenseTensor::<f64>::constant(vec![2, 2], 2.0);
+    let a = DenseTensor::<f64>::filled(vec![2, 2], 1.0);
+    let b = DenseTensor::<f64>::filled(vec![2, 2], 2.0);
     let result = linear_combine(&[&a, &b], &[3.0, 4.0]).unwrap();
     // 3*1 + 4*2 = 11
     assert_eq!(result.get(&[0, 0]), 11.0);
@@ -20,8 +20,8 @@ fn test_linear_combine_basic() {
 
 #[test]
 fn test_linear_combine_shape_mismatch() {
-    let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
-    let b = DenseTensor::<f64>::constant(vec![3, 3], 2.0);
+    let a = DenseTensor::<f64>::filled(vec![2, 2], 1.0);
+    let b = DenseTensor::<f64>::filled(vec![3, 3], 2.0);
     assert!(linear_combine(&[&a, &b], &[1.0, 1.0]).is_err());
 }
 
@@ -33,7 +33,7 @@ fn test_linear_combine_empty() {
 
 #[test]
 fn test_linear_combine_length_mismatch() {
-    let a = DenseTensor::<f64>::constant(vec![2, 2], 1.0);
+    let a = DenseTensor::<f64>::filled(vec![2, 2], 1.0);
     assert!(linear_combine(&[&a], &[1.0, 2.0]).is_err());
 }
 
