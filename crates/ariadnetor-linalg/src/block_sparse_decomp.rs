@@ -110,7 +110,7 @@ pub fn svd_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
 /// hardcodes `ExecPolicy::Sequential` (conservative for the typical
 /// small-sector pattern and compatible with future outer parallelism);
 /// this entry point lets a caller opt a large-sector case into `Parallel`.
-pub fn svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+pub(crate) fn svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
     policy: ExecPolicy,
@@ -198,7 +198,7 @@ pub fn trunc_svd_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
 ///
 /// Expert-layer counterpart of [`trunc_svd_block_sparse`]; the default wrapper
 /// hardcodes `ExecPolicy::Sequential`.
-pub fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+pub(crate) fn trunc_svd_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
     params: &TruncSvdParams,
@@ -329,7 +329,7 @@ pub fn qr_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
 ///
 /// Expert-layer counterpart of [`qr_block_sparse`]; the default wrapper
 /// hardcodes `ExecPolicy::Sequential`.
-pub fn qr_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+pub(crate) fn qr_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
     policy: ExecPolicy,
@@ -395,7 +395,7 @@ pub fn lq_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
 ///
 /// Expert-layer counterpart of [`lq_block_sparse`]; the default wrapper
 /// hardcodes `ExecPolicy::Sequential`.
-pub fn lq_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+pub(crate) fn lq_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     tensor: &BlockSparseTensor<T, S, B>,
     nrow: usize,
     policy: ExecPolicy,

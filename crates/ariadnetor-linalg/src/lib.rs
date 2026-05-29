@@ -52,14 +52,10 @@ pub(crate) mod test_util;
 pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
-pub use block_sparse_contract::{
-    BlockSparseContractResult, contract_block_sparse, contract_block_sparse_with_policy,
-};
+pub use block_sparse_contract::{BlockSparseContractResult, contract_block_sparse};
 pub use block_sparse_decomp::{
     BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
-    lq_block_sparse, lq_block_sparse_with_policy, qr_block_sparse, qr_block_sparse_with_policy,
-    svd_block_sparse, svd_block_sparse_with_policy, trunc_svd_block_sparse,
-    trunc_svd_block_sparse_with_policy,
+    lq_block_sparse, qr_block_sparse, svd_block_sparse, trunc_svd_block_sparse,
 };
 pub use block_sparse_fuse::fuse_legs_block_sparse;
 pub use block_sparse_permute::permute_block_sparse;
@@ -76,6 +72,4 @@ pub use einsum::einsum;
 pub use expm::{expm, expm_antihermitian, expm_hermitian};
 pub use scalar_ops::{diag, diagonal_scale, trace};
 pub use solve::{inverse, solve, solve_with_policy};
-pub use transpose::{
-    conjugate_transpose, conjugate_transpose_with_policy, transpose, transpose_with_policy,
-};
+pub use transpose::{transpose, transpose_with_policy};

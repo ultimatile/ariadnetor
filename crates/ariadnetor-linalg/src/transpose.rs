@@ -24,23 +24,6 @@ pub fn transpose<T: Scalar, B: ComputeBackend>(
     transpose_with_policy(tensor, perm, policy)
 }
 
-/// Conjugate transpose (permute axes + element-wise conjugation).
-///
-/// For real types the conjugation is a no-op, so this is equivalent to
-/// [`transpose`]. For complex types each element is conjugated during
-/// the permutation, fusing two passes into one.
-///
-/// # Errors
-///
-/// Returns `LinalgError` if the backend fails to execute the transpose.
-pub fn conjugate_transpose<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-    perm: &[usize],
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let policy = tensor.backend().par_for_transpose(tensor.shape());
-    conjugate_transpose_with_policy(tensor, perm, policy)
-}
-
 /// Transpose with caller-specified execution policy.
 ///
 /// Expert-layer counterpart of [`transpose`]; the default wrapper consults
@@ -53,19 +36,6 @@ pub fn transpose_with_policy<T: Scalar, B: ComputeBackend>(
 ) -> Result<DenseTensor<T, B>, LinalgError> {
     let backend_arc = tensor.backend_arc().clone();
     let result = transpose_inner(tensor.backend(), tensor.data(), perm, false, policy)?;
-    Ok(wrap(result, backend_arc))
-}
-
-/// Conjugate transpose with caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`conjugate_transpose`].
-pub fn conjugate_transpose_with_policy<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-    perm: &[usize],
-    policy: ExecPolicy,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = tensor.backend_arc().clone();
-    let result = transpose_inner(tensor.backend(), tensor.data(), perm, true, policy)?;
     Ok(wrap(result, backend_arc))
 }
 

@@ -72,7 +72,7 @@ pub fn contract_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
 /// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
 /// Arc; a mismatch silently runs on `lhs`'s backend and labels the output
 /// with `lhs`'s backend, which is wrong for backends carrying state.
-pub fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
+pub(crate) fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
     lhs: &BlockSparseTensor<T, S, B>,
     rhs: &BlockSparseTensor<T, S, B>,
     axes_lhs: &[usize],
