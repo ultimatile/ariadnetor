@@ -89,8 +89,7 @@ fn test_normalize_f64_inplace() {
 
 #[test]
 fn test_normalize_f64_out_of_place() {
-    let tensor =
-        DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
+    let tensor = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
     // Initial norm = sqrt(4*9) = 6
     let (normalized, norm) = tensor.normalized();
     assert!((norm - 6.0).abs() < EPSILON);

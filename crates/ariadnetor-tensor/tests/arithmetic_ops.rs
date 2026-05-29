@@ -55,8 +55,7 @@ fn test_tensor_storage_scale_complex_f64() {
 
 #[test]
 fn test_tensor_storage_scaled_out_of_place() {
-    let tensor =
-        DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
+    let tensor = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
     let scaled = tensor.scaled(2.0);
 
     // Original unchanged
@@ -80,9 +79,9 @@ fn test_tensor_storage_scaled_out_of_place() {
 
 #[test]
 fn test_linear_combine_simple() {
-    let a = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 1.0, MemoryOrder::ColumnMajor);
-    let b = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 2.0, MemoryOrder::ColumnMajor);
-    let c = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
+    let a = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 1.0, MemoryOrder::ColumnMajor);
+    let b = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 2.0, MemoryOrder::ColumnMajor);
+    let c = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
 
     // 1.0*a + 2.0*b + 3.0*c = 1.0*1 + 2.0*2 + 3.0*3 = 14.0
     let result = DenseTensorData::linear_combine(&[&a, &b, &c], &[1.0, 2.0, 3.0]).unwrap();
@@ -97,8 +96,8 @@ fn test_linear_combine_simple() {
 
 #[test]
 fn test_linear_combine_f32() {
-    let a = DenseTensorData::<f32>::constant_in_order(vec![3, 3], 1.0, MemoryOrder::ColumnMajor);
-    let b = DenseTensorData::<f32>::constant_in_order(vec![3, 3], 4.0, MemoryOrder::ColumnMajor);
+    let a = DenseTensorData::<f32>::filled_in_order(vec![3, 3], 1.0, MemoryOrder::ColumnMajor);
+    let b = DenseTensorData::<f32>::filled_in_order(vec![3, 3], 4.0, MemoryOrder::ColumnMajor);
 
     // 2.0*a + 0.5*b = 2.0*1 + 0.5*4 = 4.0
     let result = DenseTensorData::linear_combine(&[&a, &b], &[2.0f32, 0.5f32]).unwrap();
@@ -113,12 +112,12 @@ fn test_linear_combine_f32() {
 
 #[test]
 fn test_linear_combine_complex() {
-    let a = DenseTensorData::<Complex<f64>>::constant_in_order(
+    let a = DenseTensorData::<Complex<f64>>::filled_in_order(
         vec![2, 2],
         Complex::new(1.0, 0.0),
         MemoryOrder::ColumnMajor,
     );
-    let b = DenseTensorData::<Complex<f64>>::constant_in_order(
+    let b = DenseTensorData::<Complex<f64>>::filled_in_order(
         vec![2, 2],
         Complex::new(0.0, 1.0),
         MemoryOrder::ColumnMajor,
@@ -176,9 +175,9 @@ fn test_linear_combine_shape_mismatch() {
 
 #[test]
 fn test_add_all_simple() {
-    let a = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 1.0, MemoryOrder::ColumnMajor);
-    let b = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 2.0, MemoryOrder::ColumnMajor);
-    let c = DenseTensorData::<f64>::constant_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
+    let a = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 1.0, MemoryOrder::ColumnMajor);
+    let b = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 2.0, MemoryOrder::ColumnMajor);
+    let c = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
 
     // a + b + c = 1 + 2 + 3 = 6
     let result = DenseTensorData::add_all(&[&a, &b, &c]).unwrap();
@@ -193,12 +192,12 @@ fn test_add_all_simple() {
 
 #[test]
 fn test_add_all_complex() {
-    let a = DenseTensorData::<Complex<f64>>::constant_in_order(
+    let a = DenseTensorData::<Complex<f64>>::filled_in_order(
         vec![2, 2],
         Complex::new(1.0, 2.0),
         MemoryOrder::ColumnMajor,
     );
-    let b = DenseTensorData::<Complex<f64>>::constant_in_order(
+    let b = DenseTensorData::<Complex<f64>>::filled_in_order(
         vec![2, 2],
         Complex::new(3.0, 4.0),
         MemoryOrder::ColumnMajor,

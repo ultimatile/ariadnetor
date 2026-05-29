@@ -225,9 +225,9 @@ fn backend_ones_uses_preferred_order() {
 }
 
 #[test]
-fn backend_constant_uses_preferred_order() {
+fn backend_filled_uses_preferred_order() {
     let backend = NativeBackend::new();
-    let t = backend.constant::<f64>(vec![2, 3], 7.0);
+    let t = backend.filled::<f64>(vec![2, 3], 7.0);
     assert_eq!(t.order(), backend.preferred_order());
 }
 

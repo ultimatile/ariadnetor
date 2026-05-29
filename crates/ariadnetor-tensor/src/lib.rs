@@ -71,9 +71,9 @@ pub trait ComputeBackendTensorExt: ComputeBackend {
         DenseTensorData::ones_in_order(shape, self.preferred_order())
     }
 
-    /// Create a constant-filled tensor whose `order()` matches this backend.
-    fn constant<T: Clone>(&self, shape: Vec<usize>, value: T) -> DenseTensorData<T> {
-        DenseTensorData::constant_in_order(shape, value, self.preferred_order())
+    /// Create a tensor filled with `value` whose `order()` matches this backend.
+    fn filled<T: Clone>(&self, shape: Vec<usize>, value: T) -> DenseTensorData<T> {
+        DenseTensorData::filled_in_order(shape, value, self.preferred_order())
     }
 
     /// Create an identity matrix whose `order()` matches this backend.

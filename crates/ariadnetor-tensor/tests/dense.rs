@@ -98,9 +98,9 @@ fn test_complex_f32_tensor() {
 }
 
 #[test]
-fn test_constant_with_complex() {
+fn test_filled_with_complex() {
     let c = Complex::new(1.5, 2.5);
-    let tensor = DenseTensorData::constant_in_order(vec![3, 3], c, MemoryOrder::ColumnMajor);
+    let tensor = DenseTensorData::filled_in_order(vec![3, 3], c, MemoryOrder::ColumnMajor);
     for &val in tensor.data() {
         assert_eq!(val, c);
     }
