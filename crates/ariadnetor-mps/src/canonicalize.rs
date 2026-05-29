@@ -107,12 +107,9 @@ where
 }
 
 /// Multiply R matrix into the next site: `R(k, d) × next(d, ...) → (k, ...)`.
-/// Reshapes next to 2D for matmul, then restores original rank.
-///
-/// Site / factor tensors are guaranteed to carry the backend's preferred
-/// order under the Tier 1 / Tier 2 ordering invariant, so the source
-/// order at the RowMajor conversion boundary is the backend's preferred
-/// order rather than a per-tensor read.
+/// Fuses next's trailing legs to a matrix for the matmul, then splits the
+/// result's fused leg back to restore the original rank. The logical leg
+/// operations handle the memory-order round-trip internally.
 fn absorb_from_left<T, B>(r: &DenseTensor<T, B>, next: &DenseTensor<T, B>) -> DenseTensor<T, B>
 where
     T: Scalar,
