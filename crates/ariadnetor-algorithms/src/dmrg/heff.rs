@@ -159,17 +159,22 @@ impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T, NativeBackend>
 }
 
 /// Rebind a `DenseTensor<T, From>` onto a different backend `Arc`,
-/// copying the flat buffer + preserving shape + memory order.
+/// copying the flat buffer + preserving shape. The rebound tensor is
+/// tagged with the destination backend's preferred order; this is sound
+/// because every tensor reaching `rebind` already carries that order
+/// (every non-test backend is `ColumnMajor`-preferred). The
+/// `debug_assert` guards the day a `RowMajor`-preferred backend is
+/// introduced, where this buffer would need an actual reorder.
 fn rebind<T, From, To>(t: &DenseTensor<T, From>, backend: &Arc<To>) -> DenseTensor<T, To>
 where
     T: Scalar,
     From: ComputeBackend,
     To: ComputeBackend,
 {
+    debug_assert_eq!(t.order(), backend.preferred_order());
     DenseTensor::from_raw_parts(
         t.data_slice().to_vec(),
         t.shape().to_vec(),
-        t.order(),
         Arc::clone(backend),
     )
 }

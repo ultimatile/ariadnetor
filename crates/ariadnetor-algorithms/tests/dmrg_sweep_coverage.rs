@@ -19,7 +19,7 @@ use std::sync::Arc;
 use approx::assert_abs_diff_eq;
 use arnet::Scalar;
 use arnet::TruncSvdParams;
-use arnet::{ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
@@ -73,12 +73,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(
-        data,
-        vec![w_l_dim, D, D, w_r_dim],
-        backend.preferred_order(),
-        Arc::clone(&backend),
-    )
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
 }
 
 /// Spin-1/2 Heisenberg `H = J Σ S_i · S_{i+1}` as a bond-dim-5 MPO.
@@ -138,12 +133,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, D, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, D, r], Arc::clone(&backend))
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
@@ -171,12 +161,7 @@ fn psd_local_mpo_f64(n: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout>
                 }
                 h[s + D * s] += eps;
             }
-            DenseTensor::from_raw_parts(
-                h,
-                vec![1, D, D, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(h, vec![1, D, D, 1], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(storages)

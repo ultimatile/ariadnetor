@@ -239,13 +239,10 @@ where
 
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
         // 1D output is layout-invariant. Bind to `NativeBackend` (the
-        // Krylov family keeps its 1-D scratch space there) and label
-        // the order with that backend's `preferred_order()` so the
-        // tensor's layout-order matches its cached backend; the input
+        // Krylov family keeps its 1-D scratch space there); the input
         // is read-only here, so it imposes no order constraint.
         let native = NativeBackend::shared();
-        let order = native.preferred_order();
-        DenseTensor::from_raw_parts(flat, vec![self.dim], order, native)
+        DenseTensor::from_raw_parts(flat, vec![self.dim], native)
     }
 }
 

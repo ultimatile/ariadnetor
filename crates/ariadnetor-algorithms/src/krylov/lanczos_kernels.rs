@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, eigh};
+use arnet::{ComputeBackend, DenseTensor, NativeBackend, Scalar, eigh};
 use num_traits::{One, Zero};
 use rand::RngExt;
 use rand::rngs::StdRng;
@@ -36,12 +36,7 @@ pub(super) fn sub_real_axpy<T: Scalar>(
         .zip(v.data_slice().iter())
         .map(|(&wi, &vi)| wi + vi.scale_real(neg_alpha))
         .collect();
-    DenseTensor::from_raw_parts(
-        data,
-        w.shape().to_vec(),
-        w.order(),
-        Arc::clone(w.backend_arc()),
-    )
+    DenseTensor::from_raw_parts(data, w.shape().to_vec(), Arc::clone(w.backend_arc()))
 }
 
 /// Compute `w - alpha * v - beta * u` where alpha, beta are real.
@@ -61,12 +56,7 @@ pub(super) fn sub_two_real_axpy<T: Scalar>(
         .zip(u.data_slice().iter())
         .map(|((&wi, &vi), &ui)| wi + vi.scale_real(neg_alpha) + ui.scale_real(neg_beta))
         .collect();
-    DenseTensor::from_raw_parts(
-        data,
-        w.shape().to_vec(),
-        w.order(),
-        Arc::clone(w.backend_arc()),
-    )
+    DenseTensor::from_raw_parts(data, w.shape().to_vec(), Arc::clone(w.backend_arc()))
 }
 
 /// Compute `w - gamma * v` where gamma is the (possibly complex) scalar T.
@@ -82,12 +72,7 @@ pub(super) fn sub_complex_axpy<T: Scalar>(
         .zip(v.data_slice().iter())
         .map(|(&wi, &vi)| wi + neg_gamma * vi)
         .collect();
-    DenseTensor::from_raw_parts(
-        data,
-        w.shape().to_vec(),
-        w.order(),
-        Arc::clone(w.backend_arc()),
-    )
+    DenseTensor::from_raw_parts(data, w.shape().to_vec(), Arc::clone(w.backend_arc()))
 }
 
 /// Draw a unit-norm random vector by sampling each component
@@ -114,7 +99,7 @@ pub(super) fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Den
         data[0] = T::one();
     }
     let backend = NativeBackend::shared();
-    let mut v = DenseTensor::from_raw_parts(data, vec![dim], MemoryOrder::ColumnMajor, backend);
+    let mut v = DenseTensor::from_raw_parts(data, vec![dim], backend);
     v.normalize();
     v
 }
@@ -138,12 +123,7 @@ where
     if m == 1 {
         return (
             alphas[0],
-            DenseTensor::from_raw_parts(
-                vec![T::Real::one()],
-                vec![1],
-                MemoryOrder::ColumnMajor,
-                backend_arc,
-            ),
+            DenseTensor::from_raw_parts(vec![T::Real::one()], vec![1], backend_arc),
         );
     }
     // Build the m×m matrix in column-major order to match
@@ -157,18 +137,13 @@ where
             data[i + m * (i + 1)] = betas[i];
         }
     }
-    let matrix = DenseTensor::from_raw_parts(
-        data,
-        vec![m, m],
-        MemoryOrder::ColumnMajor,
-        Arc::clone(&backend_arc),
-    );
+    let matrix = DenseTensor::from_raw_parts(data, vec![m, m], Arc::clone(&backend_arc));
     let (eigvals, eigvecs) = eigh(&matrix, 1).expect("tridiagonal eigh");
     let lambda = eigvals.data_slice()[0];
     let z_data = eigvecs.data_slice()[0..m].to_vec();
     (
         lambda,
-        DenseTensor::from_raw_parts(z_data, vec![m], MemoryOrder::ColumnMajor, backend_arc),
+        DenseTensor::from_raw_parts(z_data, vec![m], backend_arc),
     )
 }
 
@@ -191,12 +166,7 @@ mod tests {
             .iter()
             .map(|&x| T::from_real_imag(real_from_f64::<T>(x), T::Real::zero()))
             .collect();
-        DenseTensor::from_raw_parts(
-            data,
-            vec![values.len()],
-            MemoryOrder::ColumnMajor,
-            NativeBackend::shared(),
-        )
+        DenseTensor::from_raw_parts(data, vec![values.len()], NativeBackend::shared())
     }
 
     fn assert_dense_close<T>(got: &DenseTensor<T>, expected: &DenseTensor<T>, tol: T::Real)
@@ -293,12 +263,8 @@ mod tests {
         );
         let inv_norm = T::Real::one() / raw_norm;
         let expected_data: Vec<T> = raw.iter().map(|&x| x.scale_real(inv_norm)).collect();
-        let expected = DenseTensor::from_raw_parts(
-            expected_data,
-            vec![dim],
-            MemoryOrder::ColumnMajor,
-            NativeBackend::shared(),
-        );
+        let expected =
+            DenseTensor::from_raw_parts(expected_data, vec![dim], NativeBackend::shared());
 
         assert_dense_close::<T>(&observed, &expected, real_from_f64::<T>(1e-12));
     }

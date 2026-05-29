@@ -25,8 +25,8 @@
 use std::sync::Arc;
 
 use arnet::{
-    ComputeBackend, DenseLayout, DenseStorage, LinalgError, MemoryOrder, NativeBackend, Scalar,
-    Storage, StorageFor, Tensor, TensorLayout, contract,
+    ComputeBackend, DenseLayout, DenseStorage, LinalgError, NativeBackend, Scalar, Storage,
+    StorageFor, Tensor, TensorLayout, contract,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
@@ -255,13 +255,7 @@ where
     T: Scalar,
     B: ComputeBackend,
 {
-    let order: MemoryOrder = backend.preferred_order();
-    arnet::DenseTensor::<T, B>::from_raw_parts(
-        vec![T::one()],
-        vec![1, 1, 1],
-        order,
-        Arc::clone(backend),
-    )
+    arnet::DenseTensor::<T, B>::from_raw_parts(vec![T::one()], vec![1, 1, 1], Arc::clone(backend))
 }
 
 // ============================================================================

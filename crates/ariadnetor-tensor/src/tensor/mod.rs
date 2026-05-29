@@ -183,19 +183,13 @@ where
     T: Clone,
     B: ComputeBackend,
 {
-    /// Construct a Dense tensor from flat data, shape, memory order,
-    /// and an explicit backend `Arc`.
-    ///
-    /// The resulting tensor's layout `order()` is the supplied `order`,
-    /// not the backend's preferred order — callers are responsible for
-    /// choosing an `order` compatible with the operations they intend
-    /// to dispatch.
-    pub fn from_raw_parts(
-        data: Vec<T>,
-        shape: Vec<usize>,
-        order: arnet_core::backend::MemoryOrder,
-        backend: Arc<B>,
-    ) -> Self {
+    /// Construct a Dense tensor from flat data and shape on an explicit
+    /// backend `Arc`. The flat `data` is taken to be already laid out in
+    /// the backend's preferred order, and the layout is tagged
+    /// accordingly — the public Dense surface offers no way to construct
+    /// a tensor whose order differs from `backend.preferred_order()`.
+    pub fn from_raw_parts(data: Vec<T>, shape: Vec<usize>, backend: Arc<B>) -> Self {
+        let order = backend.preferred_order();
         let td = DenseTensorData::from_raw_parts(data, shape, order);
         Self::with_backend(td, backend)
     }

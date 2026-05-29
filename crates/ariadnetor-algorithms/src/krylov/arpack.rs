@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use arnet::{DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine};
+use arnet::{DenseTensor, NativeBackend, Scalar, linear_combine};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 
@@ -285,12 +285,8 @@ where
     let solution = T::solve(
         dim,
         &mut |x_slice, y_slice| {
-            let x_dense = DenseTensor::from_raw_parts(
-                x_slice.to_vec(),
-                vec![dim],
-                MemoryOrder::ColumnMajor,
-                Arc::clone(&backend_arc),
-            );
+            let x_dense =
+                DenseTensor::from_raw_parts(x_slice.to_vec(), vec![dim], Arc::clone(&backend_arc));
             let y_dense = op.apply(&x_dense);
             assert_eq!(
                 y_dense.shape(),
@@ -303,12 +299,8 @@ where
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let mut eigenvector = DenseTensor::from_raw_parts(
-        solution.eigenvector,
-        vec![dim],
-        MemoryOrder::ColumnMajor,
-        Arc::clone(&backend_arc),
-    );
+    let mut eigenvector =
+        DenseTensor::from_raw_parts(solution.eigenvector, vec![dim], Arc::clone(&backend_arc));
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
     eigenvector.normalize();

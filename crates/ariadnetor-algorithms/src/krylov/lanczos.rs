@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, linear_combine};
+use arnet::{ComputeBackend, DenseTensor, NativeBackend, Scalar, linear_combine};
 use num_traits::{Float, One, Zero};
 use rand::SeedableRng;
 use rand::rngs::{StdRng, SysRng};
@@ -148,12 +148,8 @@ where
 
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
-    let mut converged_z: DenseTensor<T::Real> = DenseTensor::from_raw_parts(
-        vec![T::Real::one()],
-        vec![1],
-        MemoryOrder::ColumnMajor,
-        Arc::clone(&backend_arc),
-    );
+    let mut converged_z: DenseTensor<T::Real> =
+        DenseTensor::from_raw_parts(vec![T::Real::one()], vec![1], Arc::clone(&backend_arc));
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -237,12 +233,10 @@ where
             break;
         }
         let inv = T::Real::one() / beta;
-        let w_order = w.order();
         let v_next_data: Vec<T> = w.data_slice().iter().map(|&x| x.scale_real(inv)).collect();
         basis.push(DenseTensor::from_raw_parts(
             v_next_data,
             vec![dim],
-            w_order,
             Arc::clone(&backend_arc),
         ));
         betas.push(beta);

@@ -7,21 +7,18 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams,
-};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_mps::{Mpo, Mps};
 
 fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend: Arc<NativeBackend> = NativeBackend::shared();
-    let order = backend.preferred_order();
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            DenseTensor::from_raw_parts(data, vec![1, d, 1], order, Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![1, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mps::from_sites(sites)
@@ -29,14 +26,13 @@ fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> 
 
 fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
     let backend: Arc<NativeBackend> = NativeBackend::shared();
-    let order = backend.preferred_order();
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            DenseTensor::from_raw_parts(data, vec![1, d, d, 1], order, Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![1, d, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(sites)

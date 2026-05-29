@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use arnet::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
-    DenseStorage, DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, Sector, U1Sector,
+    DenseStorage, DenseTensor, Direction, NativeBackend, QNIndex, Sector, U1Sector,
 };
 
 /// Run `DmrgEnvs::build` and assert it returns an error. Equivalent to
@@ -67,8 +67,8 @@ fn densify_bsp(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
 
         // Per-block data is stored in CM (NativeBackend's preferred order),
         // so iterate logical block coordinates while reading block_data via
-        // a CM flat index. The scatter target `out` is built in RM and
-        // reordered to CM at the end.
+        // a CM flat index, and scatter into `out` via the matching global CM
+        // flat index so the buffer is preferred-order from the start.
         let block_total: usize = block_shape.iter().product();
         let mut local = vec![0_usize; rank];
         for _ in 0..block_total {
@@ -79,8 +79,10 @@ fn densify_bsp(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
                 stride *= block_shape[axis];
             }
             let mut g = 0_usize;
+            let mut g_stride = 1_usize;
             for axis in 0..rank {
-                g = g * global_dims[axis] + (offsets[axis] + local[axis]);
+                g += (offsets[axis] + local[axis]) * g_stride;
+                g_stride *= global_dims[axis];
             }
             out[g] = block_data[cm_flat];
             for axis in (0..rank).rev() {
@@ -93,19 +95,10 @@ fn densify_bsp(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
         }
     }
 
-    // The scatter loop above writes `out` in row-major order; declare
-    // the storage's `order` to match so the subsequent `reorder`'s
-    // `from` argument is consistent with the storage authority.
-    let rm = DenseTensor::from_raw_parts(
-        out,
-        global_dims,
-        MemoryOrder::RowMajor,
-        NativeBackend::shared(),
-    );
-    // The NativeBackend's preferred order is ColumnMajor; all Dense
-    // tensors flowing through `contract` must be CM. Reorder once
-    // before handing back.
-    rm.reordered(MemoryOrder::ColumnMajor)
+    // The scatter loop above writes `out` directly in column-major order
+    // (NativeBackend's preferred order), so the buffer is already in the
+    // order every Dense tensor flowing through `contract` must carry.
+    DenseTensor::from_raw_parts(out, global_dims, NativeBackend::shared())
 }
 
 // ---------------------------------------------------------------------------

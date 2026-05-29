@@ -3,9 +3,7 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams,
-};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
@@ -47,12 +45,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, d, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
         })
         .collect();
     let mut mps = Mps::from_sites(sites);
@@ -70,12 +63,7 @@ fn t6_step_error_propagated() {
     let backend = NativeBackend::shared();
     let mps_storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
-            DenseTensor::from_raw_parts(
-                vec![1.0_f64, 0.0],
-                vec![1, d_mps, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(vec![1.0_f64, 0.0], vec![1, d_mps, 1], Arc::clone(&backend))
         })
         .collect();
     let mut mps = Mps::from_sites(mps_storages);
@@ -86,12 +74,7 @@ fn t6_step_error_propagated() {
             for k in 0..d_mpo {
                 m[k * d_mpo + k] = 1.0;
             }
-            DenseTensor::from_raw_parts(
-                m,
-                vec![1, d_mpo, d_mpo, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(m, vec![1, d_mpo, d_mpo, 1], Arc::clone(&backend))
         })
         .collect();
     let mpo = Mpo::from_sites(mpo_storages);
@@ -105,7 +88,6 @@ fn t6_step_error_propagated() {
         env_mpo_storages.push(DenseTensor::from_raw_parts(
             m,
             vec![1, d_mpo, d_mpo, 1],
-            backend.preferred_order(),
             Arc::clone(&backend),
         ));
     }

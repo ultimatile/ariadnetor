@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
 use arnet::TruncSvdParams;
-use arnet::{ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgHeffError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, dmrg_2site_step,
 };
@@ -77,12 +77,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(
-        data,
-        vec![w_l_dim, D, D, w_r_dim],
-        backend.preferred_order(),
-        Arc::clone(&backend),
-    )
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
 }
 
 fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
@@ -140,12 +135,7 @@ fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, D, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, D, r], Arc::clone(&backend))
         })
         .collect();
     Mps::from_sites(storages)

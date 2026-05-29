@@ -17,8 +17,8 @@ use std::sync::Arc;
 use approx::assert_abs_diff_eq;
 use arnet::Scalar;
 use arnet::{
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, MemoryOrder, NativeBackend,
-    TruncSvdParams, contract, diagonal_scale, eigh,
+    DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams, contract,
+    diagonal_scale, eigh,
 };
 use arnet_algorithms::dmrg::{
     DmrgEnvs, EffectiveHamiltonian2Site, LocalEigensolverParams, dmrg_2site_step,
@@ -41,12 +41,7 @@ fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> 
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            DenseTensor::from_raw_parts(
-                data,
-                vec![1, d, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![1, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mps::from_sites(storages)
@@ -61,12 +56,7 @@ fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            DenseTensor::from_raw_parts(
-                data,
-                vec![1, d, d, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![1, d, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(storages)
@@ -87,12 +77,7 @@ fn random_mps_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, d, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
         })
         .collect();
     Mps::from_sites(storages)
@@ -118,12 +103,7 @@ fn random_mps_c64(
                     Complex::new(re, im)
                 })
                 .collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, d, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
         })
         .collect();
     Mps::from_sites(storages)
@@ -153,12 +133,7 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
             // MPO axis order [W_l=1, d_ket=s, d_bra=t, W_r=1]. The
             // local Hermitian operator h satisfies h[s,t] = conj(h[t,s]),
             // and we identify W[0, s, t, 0] = h[s, t].
-            DenseTensor::from_raw_parts(
-                m,
-                vec![1, d, d, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(m, vec![1, d, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(storages)
@@ -186,12 +161,7 @@ fn hermitian_local_mpo_c64(
                     m[s * d + t] = (r[s * d + t] + r[t * d + s].conj()) * 0.5;
                 }
             }
-            DenseTensor::from_raw_parts(
-                m,
-                vec![1, d, d, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(m, vec![1, d, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(storages)
@@ -212,24 +182,14 @@ where
     for k in 0..dim {
         let mut e = vec![T::zero(); dim];
         e[k] = T::one();
-        let e_dense = DenseTensor::from_raw_parts(
-            e,
-            vec![dim],
-            MemoryOrder::ColumnMajor,
-            NativeBackend::shared(),
-        );
+        let e_dense = DenseTensor::from_raw_parts(e, vec![dim], NativeBackend::shared());
         let col = heff.apply(&e_dense);
         let col_data = col.data_slice();
         for i in 0..dim {
             data[i + dim * k] = col_data[i];
         }
     }
-    DenseTensor::from_raw_parts(
-        data,
-        vec![dim, dim],
-        MemoryOrder::ColumnMajor,
-        NativeBackend::shared(),
-    )
+    DenseTensor::from_raw_parts(data, vec![dim, dim], NativeBackend::shared())
 }
 
 /// Construct an `EffectiveHamiltonian2Site` from a freshly built
@@ -334,12 +294,7 @@ fn heff_matvec_matches_dense_apply() {
     // Apply on a random vector via the operator and compare to `H_dense @ v`.
     let mut rng = StdRng::seed_from_u64(0xABCD_1234);
     let v_data: Vec<f64> = (0..dim).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-    let v = DenseTensor::from_raw_parts(
-        v_data.clone(),
-        vec![dim],
-        MemoryOrder::ColumnMajor,
-        NativeBackend::shared(),
-    );
+    let v = DenseTensor::from_raw_parts(v_data.clone(), vec![dim], NativeBackend::shared());
 
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data_slice();
@@ -636,12 +591,7 @@ fn heff_matvec_matches_dense_apply_complex() {
             Complex::new(re, im)
         })
         .collect();
-    let v = DenseTensor::from_raw_parts(
-        v_data.clone(),
-        vec![dim],
-        MemoryOrder::ColumnMajor,
-        NativeBackend::shared(),
-    );
+    let v = DenseTensor::from_raw_parts(v_data.clone(), vec![dim], NativeBackend::shared());
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data_slice();
     let mut dense_out = vec![Complex::new(0.0, 0.0); dim];

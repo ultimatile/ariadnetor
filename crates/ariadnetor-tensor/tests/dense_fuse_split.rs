@@ -12,14 +12,12 @@ use std::sync::Arc;
 
 use arnet_tensor::{DenseTensor, MemoryOrder, NativeBackend};
 
-/// Logical `[[1,2,3],[4,5,6]]` stored row-major.
+/// Logical `[[1,2,3],[4,5,6]]` stored row-major. The public constructor
+/// pins to the preferred (column-major) order, so the row-major-tagged
+/// tensor is obtained by reordering the column-major one — same logical
+/// content, row-major buffer `[1,2,3,4,5,6]`.
 fn logical_2x3_row_major() -> DenseTensor<f64> {
-    DenseTensor::from_raw_parts(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-        NativeBackend::shared(),
-    )
+    logical_2x3_column_major().reordered(MemoryOrder::RowMajor)
 }
 
 /// Logical `[[1,2,3],[4,5,6]]` stored column-major.
@@ -27,19 +25,20 @@ fn logical_2x3_column_major() -> DenseTensor<f64> {
     DenseTensor::from_raw_parts(
         vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
         NativeBackend::shared(),
     )
 }
 
 #[test]
 fn split_leg_row_major_logical_grouping() {
+    // Rank-1 order is metadata-only (identical buffer either way), so
+    // reordering only flips the tag.
     let t = DenseTensor::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![6],
-        MemoryOrder::RowMajor,
         NativeBackend::shared(),
-    );
+    )
+    .reordered(MemoryOrder::RowMajor);
     let r = t.split_leg(0, &[2, 3]);
 
     assert_eq!(r.shape(), &[2, 3]);
@@ -53,7 +52,6 @@ fn split_leg_column_major_logical_grouping() {
     let t = DenseTensor::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![6],
-        MemoryOrder::ColumnMajor,
         NativeBackend::shared(),
     );
     let r = t.split_leg(0, &[2, 3]);
@@ -105,12 +103,8 @@ fn fuse_then_split_round_trips_column_major() {
     // Arbitrary 2x3x4 content; the round-trip identity is content- and
     // order-independent.
     let data: Vec<f64> = (0..24).map(|x| x as f64).collect();
-    let t = DenseTensor::<f64>::from_raw_parts(
-        data.clone(),
-        vec![2, 3, 4],
-        MemoryOrder::ColumnMajor,
-        NativeBackend::shared(),
-    );
+    let t =
+        DenseTensor::<f64>::from_raw_parts(data.clone(), vec![2, 3, 4], NativeBackend::shared());
 
     let fused = t.fuse_legs(0..2);
     assert_eq!(fused.shape(), &[6, 4]);
@@ -131,12 +125,11 @@ fn check_reshape_logical_multi_group(order: MemoryOrder) {
     // the caller's memory order, so both orders are exercised.
     let total = 2 * 3 * 2 * 4 * 5;
     let data: Vec<f64> = (0..total).map(|x| x as f64).collect();
-    let t = DenseTensor::<f64>::from_raw_parts(
-        data,
-        vec![2, 3, 2, 4, 5],
-        order,
-        NativeBackend::shared(),
-    );
+    // `reordered(order)` is a no-op buffer-wise when `order` is already
+    // the preferred order; for row-major it flips the tag (and buffer)
+    // so both layouts are genuinely exercised.
+    let t = DenseTensor::<f64>::from_raw_parts(data, vec![2, 3, 2, 4, 5], NativeBackend::shared())
+        .reordered(order);
 
     let via_reshape = t.reshape_logical(vec![6, 2, 20]);
     let via_chain = t.fuse_legs(0..2).fuse_legs(2..4);

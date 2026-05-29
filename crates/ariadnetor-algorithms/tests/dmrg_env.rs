@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
 use arnet::contract;
-use arnet::{ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_mps::{Mpo, Mps, TensorChain, braket};
 
@@ -23,12 +23,7 @@ fn product_state_mps(n: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
-            DenseTensor::from_raw_parts(
-                vec![1.0_f64, 0.0],
-                vec![1, 2, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(vec![1.0_f64, 0.0], vec![1, 2, 1], Arc::clone(&backend))
         })
         .collect();
     Mps::from_sites(storages)
@@ -45,12 +40,7 @@ fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            DenseTensor::from_raw_parts(
-                data,
-                vec![1, d, d, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![1, d, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(storages)
@@ -78,12 +68,7 @@ fn random_mps_f64(
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::RngExt::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, d, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
         })
         .collect();
     Mps::from_sites(storages)
@@ -105,12 +90,7 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<DenseStorage<f
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::RngExt::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, d, d, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, d, d, r], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(storages)
