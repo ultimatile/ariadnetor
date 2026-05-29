@@ -237,6 +237,11 @@ where
     /// [`fuse_legs`]: Self::fuse_legs
     /// [`split_leg`]: Self::split_leg
     /// [`reshape`]: Self::reshape
+    ///
+    /// # Panics
+    ///
+    /// Panics if `new_shape`'s total element count differs from the
+    /// tensor's, via [`reshape`].
     pub fn reshape_logical(&self, new_shape: Vec<usize>) -> Self {
         let orig_order = self.order();
         self.reordered(arnet_core::backend::MemoryOrder::RowMajor)
