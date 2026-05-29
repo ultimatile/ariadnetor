@@ -2,9 +2,9 @@
 
 use arnet::{
     BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor,
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, MemoryOrder, Scalar, Sector,
-    TruncSvdParams, contract, contract_block_sparse, diagonal_scale, diagonal_scale_block_sparse,
-    trunc_svd, trunc_svd_block_sparse,
+    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Scalar, Sector, TruncSvdParams,
+    contract, contract_block_sparse, diagonal_scale, diagonal_scale_block_sparse, trunc_svd,
+    trunc_svd_block_sparse,
 };
 use num_traits::{Float, Zero};
 
@@ -101,9 +101,6 @@ where
     B: ComputeBackend,
     C: TensorChain<DenseStorage<T>, DenseLayout, B>,
 {
-    let order = chain.backend().preferred_order();
-    let rm = MemoryOrder::RowMajor;
-
     let (left_storage, right_factor, err) = {
         let site = chain.site(j);
         let rank = site.rank();
@@ -112,14 +109,9 @@ where
         let (u, s, vt, err) =
             trunc_svd(site, rank - 1, params).expect("trunc_svd failed during truncate");
 
-        let chi = u.shape()[1];
-        let mut u_shape = orig_shape[..rank - 1].to_vec();
-        u_shape.push(chi);
-
+        // Split U's fused row leg back into (*orig[..rank-1], chi).
         let reshape_u = |u_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
-            let u_rm = u_2d.reordered(rm);
-            let multi = u_rm.reshape(u_shape.clone());
-            multi.reordered(order)
+            u_2d.split_leg(0, &orig_shape[..rank - 1])
         };
 
         match absorb {
@@ -171,23 +163,15 @@ where
     B: ComputeBackend,
     C: TensorChain<DenseStorage<T>, DenseLayout, B>,
 {
-    let order = chain.backend().preferred_order();
-    let rm = MemoryOrder::RowMajor;
-
     let (right_storage, left_factor, err) = {
         let site = chain.site(j);
         let orig_shape = site.shape().to_vec();
 
         let (u, s, vt, err) = trunc_svd(site, 1, params).expect("trunc_svd failed during truncate");
 
-        let chi = vt.shape()[0];
-        let mut vt_shape = vec![chi];
-        vt_shape.extend_from_slice(&orig_shape[1..]);
-
+        // Split Vt's fused column leg back into (chi, *orig[1..]).
         let reshape_vt = |vt_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
-            let vt_rm = vt_2d.reordered(rm);
-            let multi = vt_rm.reshape(vt_shape.clone());
-            multi.reordered(order)
+            vt_2d.split_leg(1, &orig_shape[1..])
         };
 
         match absorb {
@@ -229,24 +213,13 @@ where
     T: Scalar,
     B: ComputeBackend,
 {
-    let order = next.backend().preferred_order();
-    let rm = MemoryOrder::RowMajor;
-    let next_rm = next.reordered(rm);
-    let next_shape = next_rm.shape().to_vec();
-    let first = next_shape[0];
-    let rest: usize = next_shape[1..].iter().product();
-
-    let next_2d_rm = next_rm.reshape(vec![first, rest]);
-    let next_2d = next_2d_rm.reordered(order);
+    // Fuse next's trailing legs into a matrix, contract left · next,
+    // then split the fused leg back; axis 0 carries the new bond.
+    let next_shape = next.shape().to_vec();
+    let next_2d = next.fuse_legs(1..next_shape.len());
     let result_2d =
         contract(left, &next_2d, "ab,bc->ac").expect("left absorption failed during truncate");
-
-    let result_2d_rm = result_2d.reordered(rm);
-    let k = left.shape()[0];
-    let mut new_shape = next_shape;
-    new_shape[0] = k;
-    let result_multi = result_2d_rm.reshape(new_shape);
-    result_multi.reordered(order)
+    result_2d.split_leg(1, &next_shape[1..])
 }
 
 fn absorb_from_right<T, B>(prev: &DenseTensor<T, B>, right: &DenseTensor<T, B>) -> DenseTensor<T, B>
@@ -254,24 +227,14 @@ where
     T: Scalar,
     B: ComputeBackend,
 {
-    let order = prev.backend().preferred_order();
-    let rm = MemoryOrder::RowMajor;
-    let prev_rm = prev.reordered(rm);
-    let prev_shape = prev_rm.shape().to_vec();
-    let last = *prev_shape.last().unwrap();
-    let rest: usize = prev_shape[..prev_shape.len() - 1].iter().product();
-
-    let prev_2d_rm = prev_rm.reshape(vec![rest, last]);
-    let prev_2d = prev_2d_rm.reordered(order);
+    // Fuse prev's leading legs into a matrix, contract prev · right,
+    // then split the fused leg back; the last axis carries the new bond.
+    let prev_shape = prev.shape().to_vec();
+    let split = prev_shape.len() - 1;
+    let prev_2d = prev.fuse_legs(0..split);
     let result_2d =
         contract(&prev_2d, right, "ab,bc->ac").expect("right absorption failed during truncate");
-
-    let result_2d_rm = result_2d.reordered(rm);
-    let k = right.shape()[1];
-    let mut new_shape = prev_shape;
-    *new_shape.last_mut().unwrap() = k;
-    let result_multi = result_2d_rm.reshape(new_shape);
-    result_multi.reordered(order)
+    result_2d.split_leg(0, &prev_shape[..split])
 }
 
 // ============================================================================

@@ -219,4 +219,85 @@ where
             backend: std::sync::Arc::clone(&self.backend),
         }
     }
+
+    /// Reshape under row-major (C-order) logical semantics while
+    /// preserving the tensor's memory order. Shared core of
+    /// [`fuse_legs`] / [`split_leg`]: it routes the buffer through
+    /// row-major so the logical axis grouping is independent of the
+    /// physical layout, then restores the original order. For a
+    /// row-major tensor every leg is a zero-copy `Arc` share; for a
+    /// column-major tensor it costs the round-trip transpose.
+    ///
+    /// [`fuse_legs`]: Self::fuse_legs
+    /// [`split_leg`]: Self::split_leg
+    fn logical_reshape(&self, new_shape: Vec<usize>) -> Self {
+        let orig_order = self.order();
+        self.reordered(arnet_core::backend::MemoryOrder::RowMajor)
+            .reshape(new_shape)
+            .reordered(orig_order)
+    }
+
+    /// Fuse a contiguous range of axes into a single leg, grouping
+    /// them in row-major (C-order) logical order regardless of the
+    /// tensor's physical memory order.
+    ///
+    /// The fused leg's extent is the product of the fused axes'
+    /// extents and its logical index runs fastest over the last fused
+    /// axis. The result keeps `self`'s memory order. Use [`reshape`]
+    /// instead when a raw, order-preserving buffer reinterpretation is
+    /// wanted. Inverse of [`split_leg`] over the same range.
+    ///
+    /// [`reshape`]: Self::reshape
+    /// [`split_leg`]: Self::split_leg
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `range.start < range.end <= rank`.
+    pub fn fuse_legs(&self, range: std::ops::Range<usize>) -> Self {
+        let shape = self.shape();
+        let rank = shape.len();
+        assert!(
+            range.start < range.end && range.end <= rank,
+            "fuse_legs: range {range:?} out of bounds for rank {rank}",
+        );
+        let fused: usize = shape[range.clone()].iter().product();
+        let mut new_shape = shape[..range.start].to_vec();
+        new_shape.push(fused);
+        new_shape.extend_from_slice(&shape[range.end..]);
+        self.logical_reshape(new_shape)
+    }
+
+    /// Split one axis into multiple axes, distributing the extent in
+    /// row-major (C-order) logical order regardless of the tensor's
+    /// physical memory order.
+    ///
+    /// `into` lists the resulting extents from slowest- to
+    /// fastest-varying. The result keeps `self`'s memory order.
+    /// Inverse of [`fuse_legs`] for a contiguous range.
+    ///
+    /// [`fuse_legs`]: Self::fuse_legs
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `axis < rank`, `into` is non-empty, and
+    /// `into.iter().product() == shape[axis]`.
+    pub fn split_leg(&self, axis: usize, into: &[usize]) -> Self {
+        let shape = self.shape();
+        let rank = shape.len();
+        assert!(
+            axis < rank,
+            "split_leg: axis {axis} out of bounds for rank {rank}",
+        );
+        assert!(!into.is_empty(), "split_leg: `into` must be non-empty");
+        let prod: usize = into.iter().product();
+        assert_eq!(
+            prod, shape[axis],
+            "split_leg: product of {into:?} != axis {axis} extent {}",
+            shape[axis],
+        );
+        let mut new_shape = shape[..axis].to_vec();
+        new_shape.extend_from_slice(into);
+        new_shape.extend_from_slice(&shape[axis + 1..]);
+        self.logical_reshape(new_shape)
+    }
 }

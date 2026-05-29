@@ -28,8 +28,7 @@
 use std::sync::Arc;
 
 use arnet::{
-    ComputeBackend, DenseTensor, MemoryOrder, NativeBackend, Scalar, TruncSvdParams, contract,
-    trunc_svd,
+    ComputeBackend, DenseTensor, NativeBackend, Scalar, TruncSvdParams, contract, trunc_svd,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
@@ -386,15 +385,11 @@ where
     let chi_new = u_2d.shape()[1];
     debug_assert_eq!(vt_2d.shape()[0], chi_new, "U/Vt new bond dim agreement");
 
-    let order = backend.preferred_order();
-    let rm = MemoryOrder::RowMajor;
-    let reshape_to_3d = |t_2d: DenseTensor<T, B>, new_shape: Vec<usize>| -> DenseTensor<T, B> {
-        let rm_view = t_2d.reordered(rm);
-        let multi = rm_view.reshape(new_shape);
-        multi.reordered(order)
-    };
-    let u = reshape_to_3d(u_2d, vec![chi_l, d_i, chi_new]);
-    let vt = reshape_to_3d(vt_2d, vec![chi_new, d_ip1, chi_r]);
+    // Split the SVD factors' fused legs back into site shape:
+    // U (chi_l*d_i, chi_new) -> (chi_l, d_i, chi_new),
+    // Vt (chi_new, d_ip1*chi_r) -> (chi_new, d_ip1, chi_r).
+    let u = u_2d.split_leg(0, &[chi_l, d_i]);
+    let vt = vt_2d.split_leg(1, &[d_ip1, chi_r]);
 
     Ok(TwoSiteStepResult {
         eigenvalue,
