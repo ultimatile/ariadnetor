@@ -6,56 +6,27 @@ use arnet_tensor::TensorError;
 /// Error from a linalg operation.
 ///
 /// Separates linalg-layer argument validation from backend-originated errors.
-/// Backend errors propagate through the `Backend` variant via the `From` impl.
-#[derive(Debug)]
+/// The `Backend` / `Tensor` variants are pure repackages of their child error
+/// types: they add no layer context, so they forward `Display` and `source()`
+/// to the inner error via `#[error(transparent)]`. Keeping the cause out of the
+/// wrapper's own `Display` avoids surfacing it twice in a `source()`-walking
+/// reporter (e.g. `anyhow`'s `{:#}`).
+#[derive(Debug, thiserror::Error)]
 pub enum LinalgError {
     /// Argument validation failed in the linalg layer.
     ///
     /// The backend was never called. Examples: nrow out of range,
     /// non-square matrix where square is required, shape mismatch.
+    #[error("Invalid argument: {0}")]
     InvalidArgument(String),
 
     /// The backend reported an error during execution.
-    Backend(BackendError),
+    #[error(transparent)]
+    Backend(#[from] BackendError),
 
     /// An error raised by an underlying `arnet-tensor` operation.
-    Tensor(TensorError),
-}
-
-impl From<BackendError> for LinalgError {
-    fn from(e: BackendError) -> Self {
-        Self::Backend(e)
-    }
-}
-
-impl From<TensorError> for LinalgError {
-    fn from(e: TensorError) -> Self {
-        Self::Tensor(e)
-    }
-}
-
-impl std::fmt::Display for LinalgError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidArgument(msg) => write!(f, "Invalid argument: {msg}"),
-            Self::Backend(e) => write!(f, "{e}"),
-            Self::Tensor(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl std::error::Error for LinalgError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Backend(e) => Some(e),
-            // Transparent wrap: expose the inner's source, not the inner
-            // itself. Since `Display` already delegates to the inner, also
-            // returning `Some(e)` would surface the same message twice in
-            // an `Error::source()`-walking reporter.
-            Self::Tensor(e) => e.source(),
-            _ => None,
-        }
-    }
+    #[error(transparent)]
+    Tensor(#[from] TensorError),
 }
 
 #[cfg(test)]
@@ -85,6 +56,49 @@ mod tests {
         // inner itself. `TensorError::InvalidArgument` has no inner source,
         // so the wrap's `source()` is `None`.
         let err: LinalgError = TensorError::InvalidArgument("z".to_string()).into();
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn from_backend_error_wraps_in_backend_variant() {
+        let inner = BackendError::ExecutionFailed("boom".to_string());
+        let err: LinalgError = inner.into();
+        match err {
+            LinalgError::Backend(BackendError::ExecutionFailed(msg)) => assert_eq!(msg, "boom"),
+            other => panic!("expected Backend variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn backend_variant_display_delegates_to_inner() {
+        // `#[error(transparent)]` forwards `Display` to the inner error
+        // verbatim — the wrapper adds no text of its own. The distinctive
+        // "Execution failed:" prefix (vs the "Invalid argument:" the other
+        // variants share) makes the delegation observable.
+        let err: LinalgError = BackendError::ExecutionFailed("boom".to_string()).into();
+        assert_eq!(err.to_string(), "Execution failed: boom");
+    }
+
+    #[test]
+    fn backend_variant_source_is_transparent_to_inner() {
+        // `BackendError` is a leaf (empty `Error` impl), so the transparent
+        // wrap's `source()` forwards to the inner's `source()` of `None`.
+        // This is the deliberate behavior change from the previous
+        // hand-written impl, which returned `Some(inner)` here and so
+        // double-printed the cause under a `source()`-walking reporter.
+        let err: LinalgError = BackendError::ExecutionFailed("boom".to_string()).into();
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn transparent_wrapper_does_not_duplicate_cause() {
+        // Non-duplication contract: a transparent wrapper's `Display` is
+        // exactly the inner's `Display`, so a reporter that prints the
+        // wrapper and then walks `source()` cannot surface the cause twice.
+        let inner = BackendError::ExecutionFailed("distinctive-marker".to_string());
+        let inner_display = inner.to_string();
+        let err: LinalgError = inner.into();
+        assert_eq!(err.to_string(), inner_display);
         assert!(err.source().is_none());
     }
 }
