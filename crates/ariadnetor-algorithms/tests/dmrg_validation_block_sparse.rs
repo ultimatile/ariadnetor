@@ -21,8 +21,8 @@
 use std::sync::Arc;
 
 use arnet::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend,
-    DenseTensor, Direction, NativeBackend, QNIndex, Sector, TruncSvdParams, U1Sector, eigh,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseTensor, Direction,
+    NativeBackend, QNIndex, Sector, TruncSvdParams, U1Sector, eigh,
 };
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
@@ -81,12 +81,7 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
             }
         }
     }
-    DenseTensor::from_raw_parts(
-        data,
-        vec![dim, dim],
-        backend.preferred_order(),
-        Arc::clone(&backend),
-    )
+    DenseTensor::from_raw_parts(data, vec![dim, dim], Arc::clone(&backend))
 }
 
 fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {

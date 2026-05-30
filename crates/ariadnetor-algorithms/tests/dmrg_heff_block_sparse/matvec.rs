@@ -56,12 +56,8 @@ fn bsp_heff_matvec_matches_dense_oracle() {
     ];
     let template = template_from_mps_pair(mps.site(0), mps.site(1));
     for (case, v) in test_inputs.iter().enumerate() {
-        let v_dense_flat = DenseTensor::from_raw_parts(
-            v.clone(),
-            vec![dim],
-            MemoryOrder::ColumnMajor,
-            NativeBackend::shared(),
-        );
+        let v_dense_flat =
+            DenseTensor::from_raw_parts(v.clone(), vec![dim], NativeBackend::shared());
         let bsp_out = bsp_heff.apply(&v_dense_flat);
         assert_eq!(bsp_out.shape(), &[dim], "BSP output shape");
 
@@ -136,7 +132,6 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
         let bsp_out = bsp_heff.apply(&DenseTensor::from_raw_parts(
             v.clone(),
             vec![dim],
-            MemoryOrder::ColumnMajor,
             NativeBackend::shared(),
         ));
         let psi_dense = build_dense_psi_from_flat(v, &template);
@@ -200,7 +195,6 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
         let out = bsp_heff.apply(&DenseTensor::from_raw_parts(
             e_j,
             vec![dim],
-            MemoryOrder::ColumnMajor,
             NativeBackend::shared(),
         ));
         for i in 0..dim {
@@ -220,12 +214,7 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
         }
     }
 
-    let h_dense = DenseTensor::from_raw_parts(
-        h_data,
-        vec![dim, dim],
-        MemoryOrder::ColumnMajor,
-        NativeBackend::shared(),
-    );
+    let h_dense = DenseTensor::from_raw_parts(h_data, vec![dim, dim], NativeBackend::shared());
     let (eigvals, _eigvecs) = eigh(&h_dense, 1).expect("eigh");
     let eigh_smallest = eigvals.data_slice()[0];
 

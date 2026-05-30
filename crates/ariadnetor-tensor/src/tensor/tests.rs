@@ -158,24 +158,19 @@ fn block_sparse_tensor_alias_resolves_and_basics_work() {
 }
 
 #[test]
-fn dense_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
-    use arnet_core::backend::MemoryOrder;
+fn dense_tensor_from_raw_parts_pins_order_to_backend_preferred() {
+    use arnet_core::backend::ComputeBackend;
     use arnet_native::NativeBackend;
 
     let data: Vec<f64> = (0..6).map(|i| i as f64).collect();
     let backend = NativeBackend::shared();
-    let t = DenseTensor::<f64>::from_raw_parts(
-        data.clone(),
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-        backend,
-    );
+    let preferred = backend.preferred_order();
+    let t = DenseTensor::<f64>::from_raw_parts(data.clone(), vec![2, 3], backend);
 
     assert_eq!(t.shape(), &[2, 3]);
-    // Layout's order reflects the explicit argument, not the backend
-    // (the joined Tier 1 check that orders agree is a downstream
-    // concern, not enforced at the joined constructor).
-    assert_eq!(t.data().layout().order(), MemoryOrder::RowMajor);
+    // The constructor pins the layout's order to the backend's preferred
+    // order; the public Dense surface cannot tag any other order.
+    assert_eq!(t.data().layout().order(), preferred);
     assert_eq!(t.data_slice(), data.as_slice());
 }
 

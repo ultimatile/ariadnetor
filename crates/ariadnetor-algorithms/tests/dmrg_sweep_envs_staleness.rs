@@ -6,9 +6,7 @@
 use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
-use arnet::{
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams,
-};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_mps::{Mpo, Mps, canonicalize};
@@ -31,12 +29,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, d, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
         })
         .collect();
     let mut mps = Mps::from_sites(sites);
@@ -72,12 +65,7 @@ fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, De
                     h[i + d * j] = acc;
                 }
             }
-            DenseTensor::from_raw_parts(
-                h,
-                vec![1, d, d, 1],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(h, vec![1, d, d, 1], Arc::clone(&backend))
         })
         .collect();
     Mpo::from_sites(sites)

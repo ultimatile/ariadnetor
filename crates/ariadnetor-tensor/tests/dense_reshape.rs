@@ -9,19 +9,17 @@ use std::sync::Arc;
 use arnet_tensor::{DenseTensor, MemoryOrder, NativeBackend};
 
 fn build_2x3_row_major() -> DenseTensor<f64> {
-    DenseTensor::from_raw_parts(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-        MemoryOrder::RowMajor,
-        NativeBackend::shared(),
-    )
+    // The public constructor pins to the preferred (column-major) order, so
+    // build the same logical `[[1,2,3],[4,5,6]]` content as the column-major
+    // fixture, then `reordered` to the row-major tag this test asserts
+    // reshape preserves.
+    build_2x3_column_major().reordered(MemoryOrder::RowMajor)
 }
 
 fn build_2x3_column_major() -> DenseTensor<f64> {
     DenseTensor::from_raw_parts(
         vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
         vec![2, 3],
-        MemoryOrder::ColumnMajor,
         NativeBackend::shared(),
     )
 }

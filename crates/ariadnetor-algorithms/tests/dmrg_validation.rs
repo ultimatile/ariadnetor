@@ -6,9 +6,7 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams, eigh,
-};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams, eigh};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
@@ -85,12 +83,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(
-        data,
-        vec![w_l_dim, D, D, w_r_dim],
-        backend.preferred_order(),
-        Arc::clone(&backend),
-    )
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
 }
 
 // ---------------------------------------------------------------------------
@@ -253,12 +246,7 @@ fn tfi_ed_dense_f64(n: usize, j: f64, h_field: f64) -> DenseTensor<f64> {
             write_offdiag(&mut data, dim, b_out, b, -h_field);
         }
     }
-    DenseTensor::from_raw_parts(
-        data,
-        vec![dim, dim],
-        backend.preferred_order(),
-        Arc::clone(&backend),
-    )
+    DenseTensor::from_raw_parts(data, vec![dim, dim], Arc::clone(&backend))
 }
 
 fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
@@ -286,12 +274,7 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
             }
         }
     }
-    DenseTensor::from_raw_parts(
-        data,
-        vec![dim, dim],
-        backend.preferred_order(),
-        Arc::clone(&backend),
-    )
+    DenseTensor::from_raw_parts(data, vec![dim, dim], Arc::clone(&backend))
 }
 
 fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
@@ -322,12 +305,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(
-                data,
-                vec![l, d, r],
-                backend.preferred_order(),
-                Arc::clone(&backend),
-            )
+            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
         })
         .collect();
     let mut mps = Mps::from_sites(storages);

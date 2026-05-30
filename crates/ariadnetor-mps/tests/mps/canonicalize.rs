@@ -1,6 +1,6 @@
 //! Canonicalization tests.
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, MemoryOrder, NativeBackend};
+use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
@@ -98,12 +98,7 @@ fn test_canonicalize_center_last() {
 
 #[test]
 fn test_canonicalize_single_site() {
-    let site = DenseTensor::from_raw_parts(
-        vec![1.0, 2.0],
-        vec![1, 2, 1],
-        MemoryOrder::ColumnMajor,
-        NativeBackend::shared(),
-    );
+    let site = DenseTensor::from_raw_parts(vec![1.0, 2.0], vec![1, 2, 1], NativeBackend::shared());
     let mut mps: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![site]);
 
     mps::canonicalize(&mut mps, 0);

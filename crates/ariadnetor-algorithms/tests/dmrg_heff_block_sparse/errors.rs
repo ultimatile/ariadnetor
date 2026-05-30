@@ -3,8 +3,7 @@
 
 use arnet::TruncSvdParams;
 use arnet::{
-    BlockCoord, BlockSparseTensor, DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex,
-    Sector, U1Sector,
+    BlockCoord, BlockSparseTensor, DenseTensor, Direction, NativeBackend, QNIndex, Sector, U1Sector,
 };
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2SiteBlockSparse, LocalEigensolverParams,
@@ -266,7 +265,6 @@ fn bsp_heff_complex_path() {
         let out = bsp_heff.apply(&DenseTensor::from_raw_parts(
             e_j,
             vec![dim],
-            MemoryOrder::ColumnMajor,
             NativeBackend::shared(),
         ));
         for i in 0..dim {

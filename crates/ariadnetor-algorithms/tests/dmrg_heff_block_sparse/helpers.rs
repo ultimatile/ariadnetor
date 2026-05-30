@@ -59,11 +59,13 @@ fn densify_bsp_generic<T: arnet::Scalar>(
                 cm_flat += local[axis] * stride;
                 stride *= block_shape[axis];
             }
-            // RM-style global index for the scatter buffer; we
-            // reorder to CM at the end.
+            // CM global index for the scatter buffer, matching the
+            // backend's preferred order so no reorder is needed.
             let mut g = 0_usize;
+            let mut g_stride = 1_usize;
             for axis in 0..rank {
-                g = g * global_dims[axis] + (offsets[axis] + local[axis]);
+                g += (offsets[axis] + local[axis]) * g_stride;
+                g_stride *= global_dims[axis];
             }
             out[g] = block_data[cm_flat];
             for axis in (0..rank).rev() {
@@ -75,13 +77,7 @@ fn densify_bsp_generic<T: arnet::Scalar>(
             }
         }
     }
-    let rm = DenseTensor::from_raw_parts(
-        out,
-        global_dims,
-        MemoryOrder::RowMajor,
-        NativeBackend::shared(),
-    );
-    rm.reordered(MemoryOrder::ColumnMajor)
+    DenseTensor::from_raw_parts(out, global_dims, NativeBackend::shared())
 }
 
 pub fn template_block_offsets(template: &BlockSparseTensor<f64, U1Sector>) -> Vec<usize> {
@@ -184,7 +180,7 @@ pub fn build_dense_psi_from_flat(
     let global_dims: Vec<usize> = template.shape().to_vec();
     let total: usize = global_dims.iter().product();
     let rank = global_dims.len();
-    let mut rm_data = vec![0.0_f64; total];
+    let mut cm_data = vec![0.0_f64; total];
     let prefix_offsets: Vec<Vec<usize>> = template
         .indices()
         .iter()
@@ -217,10 +213,12 @@ pub fn build_dense_psi_from_flat(
                 stride *= block_shape[axis];
             }
             let mut g = 0_usize;
+            let mut g_stride = 1_usize;
             for axis in 0..rank {
-                g = g * global_dims[axis] + (offsets[axis] + local[axis]);
+                g += (offsets[axis] + local[axis]) * g_stride;
+                g_stride *= global_dims[axis];
             }
-            rm_data[g] = flat[lo + cm_flat];
+            cm_data[g] = flat[lo + cm_flat];
             for axis in (0..rank).rev() {
                 local[axis] += 1;
                 if local[axis] < block_shape[axis] {
@@ -230,11 +228,5 @@ pub fn build_dense_psi_from_flat(
             }
         }
     }
-    let rm = DenseTensor::from_raw_parts(
-        rm_data,
-        global_dims,
-        MemoryOrder::RowMajor,
-        NativeBackend::shared(),
-    );
-    rm.reordered(MemoryOrder::ColumnMajor)
+    DenseTensor::from_raw_parts(cm_data, global_dims, NativeBackend::shared())
 }
