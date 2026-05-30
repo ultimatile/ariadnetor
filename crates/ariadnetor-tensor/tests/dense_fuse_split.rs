@@ -31,8 +31,9 @@ fn logical_2x3_column_major() -> DenseTensor<f64> {
 
 #[test]
 fn split_leg_row_major_logical_grouping() {
-    // Rank-1 order is metadata-only (identical buffer either way), so
-    // reordering only flips the tag.
+    // Rank-1 order is metadata-only: the buffer is identical under either
+    // order, so `reordered` changes only the logical tag here (it still
+    // allocates a fresh buffer, since `from != to`).
     let t = DenseTensor::<f64>::from_raw_parts(
         vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         vec![6],
