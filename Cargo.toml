@@ -34,7 +34,7 @@ rand = "0.10"
 rayon = "1"
 
 # Error handling
-thiserror = "1"
+thiserror = "2"
 
 # Dev dependencies
 approx = "0.5"
