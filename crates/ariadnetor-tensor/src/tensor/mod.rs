@@ -185,9 +185,8 @@ where
     /// Construct a Dense tensor from flat data and shape on an explicit
     /// backend `Arc`. The flat `data` is taken to be already laid out in
     /// the backend's preferred order, and the layout is tagged
-    /// accordingly — this constructor cannot tag any other order. (A
-    /// non-preferred layout is still reachable through the `reordered`
-    /// escape hatch, which the order-mismatch rejection tests rely on.)
+    /// accordingly — this constructor cannot tag any other order. Use
+    /// `reordered` to obtain a non-preferred layout.
     pub fn from_raw_parts(data: Vec<T>, shape: Vec<usize>, backend: Arc<B>) -> Self {
         let order = backend.preferred_order();
         let td = DenseTensorData::from_raw_parts(data, shape, order);
