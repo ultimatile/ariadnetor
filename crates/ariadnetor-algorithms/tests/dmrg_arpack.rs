@@ -19,6 +19,7 @@
 
 #![cfg(feature = "arpack")]
 
+use std::error::Error;
 use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
@@ -232,12 +233,11 @@ fn dmrg_arpack_max_iter_one_returns_arpack_error() {
         "expected DmrgHeffError::Arpack(ArpackError::MaxIterReached), got {result:?}",
     );
 
-    // Contract: Display forwards the wrapped ArpackError so callers
-    // who print the top-level error see ARPACK's own diagnostic
-    // payload (iters / nconv / n_matvec for `MaxIterReached`)
-    // without having to traverse `source()`. The wrapped error's
-    // Display contains "ARPACK hit max_iter without convergence",
-    // which must appear in the wrapping error's formatted output.
+    // Contract: the wrapper keeps its Display to its own layer and
+    // exposes the ARPACK diagnostic (iters / nconv / n_matvec for
+    // `MaxIterReached`) through `source()`, not by folding it into
+    // the wrapper's Display — so a `source()`-walking reporter does
+    // not print the diagnostic twice.
     let err = result.expect_err("error path verified above");
     let inner = match &err {
         DmrgHeffError::Arpack(inner) => format!("{inner}"),
@@ -245,8 +245,16 @@ fn dmrg_arpack_max_iter_one_returns_arpack_error() {
     };
     let outer = format!("{err}");
     assert!(
-        outer.contains(&inner),
-        "DmrgHeffError::Arpack Display must forward the wrapped error: \
+        !outer.contains(&inner),
+        "DmrgHeffError::Arpack Display must stay self-layer, not embed the wrapped error: \
          outer = {outer:?}, inner = {inner:?}",
+    );
+    let source = err
+        .source()
+        .expect("Arpack variant must expose its child via source()");
+    assert_eq!(
+        source.to_string(),
+        inner,
+        "source() must reach the ARPACK diagnostic unchanged",
     );
 }
