@@ -31,84 +31,55 @@ use arnet::{
 use arnet_mps::{Mpo, Mps, TensorChain};
 
 /// Errors raised by [`DmrgEnvs`] construction and advance operations.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DmrgEnvError {
     /// MPS / MPO had zero sites.
+    #[error("MPS / MPO has zero sites")]
     EmptyChain,
     /// MPS and MPO site counts differ.
+    #[error("MPS and MPO site counts differ: mps = {mps}, mpo = {mpo}")]
     LengthMismatch { mps: usize, mpo: usize },
     /// `advance_*` was called with a site index outside `0..n_sites`.
+    #[error("site index {index} out of range for chain of length {n_sites}")]
     InvalidSite { index: usize, n_sites: usize },
     /// `advance_*` could not proceed because the predecessor env slot
     /// (`left[i]` for `advance_left(i)`, `right[j+1]` for
     /// `advance_right(j)`) is `None`. Indicates the caller advanced
     /// out of order or never built the initial envs.
+    #[error(
+        "advance prerequisite {side} env at index {index} is stale (None); \
+         build the initial envs or advance in order"
+    )]
     StaleNeighbor { side: &'static str, index: usize },
     /// An underlying `arnet::contract` call failed. The source is
     /// preserved so callers see the real cause (dimension mismatch,
     /// backend failure, etc.) rather than a panic.
-    Contract(LinalgError),
+    #[error("contract failure during DMRG environment update")]
+    Contract(#[from] LinalgError),
     /// An MPS or MPO chain edge bond violated the dim-1 single-sector
     /// contract required by the BlockSparse boundary helper, or the
     /// chosen edge sectors yielded a flux-disallowed boundary block
     /// under `flux = S::identity()`. The `leg` field names the
     /// offending edge (`"mps_left"`, `"mpo_left"`, `"mps_right"`, or
     /// `"mpo_right"`).
+    #[error("malformed edge bond on {leg}: {detail}", detail = edge_bond_detail(.leg))]
     MalformedEdgeBond { leg: &'static str },
 }
 
-impl From<LinalgError> for DmrgEnvError {
-    fn from(e: LinalgError) -> Self {
-        DmrgEnvError::Contract(e)
-    }
-}
-
-impl std::fmt::Display for DmrgEnvError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DmrgEnvError::EmptyChain => write!(f, "MPS / MPO has zero sites"),
-            DmrgEnvError::LengthMismatch { mps, mpo } => write!(
-                f,
-                "MPS and MPO site counts differ: mps = {mps}, mpo = {mpo}"
-            ),
-            DmrgEnvError::InvalidSite { index, n_sites } => write!(
-                f,
-                "site index {index} out of range for chain of length {n_sites}"
-            ),
-            DmrgEnvError::StaleNeighbor { side, index } => write!(
-                f,
-                "advance prerequisite {side} env at index {index} is stale (None); \
-                 build the initial envs or advance in order"
-            ),
-            DmrgEnvError::Contract(_) => {
-                write!(f, "contract failure during DMRG environment update")
-            }
-            DmrgEnvError::MalformedEdgeBond { leg } => {
-                // MPS edges only need dim-1 / single-sector (any charge is
-                // OK because env_leg0 and env_leg2 carry the same MPS sector
-                // with opposite directions and cancel). MPO edges
-                // additionally require an identity-fusing sector to land a
-                // (0,0,0) boundary block under flux=identity.
-                let detail = match *leg {
-                    "mps_left" | "mps_right" => "must be dim-1 / single-sector",
-                    "mpo_left" | "mpo_right" => {
-                        "must be dim-1 / single-sector with sector fusing to identity flux"
-                    }
-                    _ => "must be dim-1 / single-sector",
-                };
-                write!(f, "malformed edge bond on {leg}: {detail}")
-            }
+/// Per-edge well-formedness requirement rendered in
+/// [`DmrgEnvError::MalformedEdgeBond`]'s message. MPS edges only need
+/// dim-1 / single-sector (any charge is OK because `env_leg0` and
+/// `env_leg2` carry the same MPS sector with opposite directions and
+/// cancel). MPO edges additionally require an identity-fusing sector
+/// to land a `(0, 0, 0)` boundary block under `flux = identity`.
+fn edge_bond_detail(leg: &str) -> &'static str {
+    match leg {
+        "mps_left" | "mps_right" => "must be dim-1 / single-sector",
+        "mpo_left" | "mpo_right" => {
+            "must be dim-1 / single-sector with sector fusing to identity flux"
         }
-    }
-}
-
-impl std::error::Error for DmrgEnvError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            DmrgEnvError::Contract(err) => Some(err),
-            _ => None,
-        }
+        _ => "must be dim-1 / single-sector",
     }
 }
 

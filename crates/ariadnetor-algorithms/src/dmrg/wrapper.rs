@@ -58,55 +58,24 @@ use super::env::{DmrgEnvError, DmrgEnvs};
 use super::sweep::{DmrgResult, DmrgSweepError, DmrgSweepParams, sweep_2site};
 
 /// Errors raised by [`dmrg_2site`].
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DmrgError {
     /// Input MPS had zero sites. Surfaced before the wrapper would
     /// invoke `canonicalize`, which asserts `center < n` and would
     /// otherwise panic.
+    #[error("input MPS has zero sites")]
     EmptyMps,
     /// MPO and MPS chain lengths disagreed.
+    #[error("chain length mismatch: mps = {mps}, mpo = {mpo}")]
     LengthMismatch { mps: usize, mpo: usize },
     /// `DmrgEnvs::build` failed (e.g. BlockSparse edge-bond
     /// validation).
-    Env(DmrgEnvError),
+    #[error("DMRG environment build failed")]
+    Env(#[from] DmrgEnvError),
     /// The underlying low-level sweep driver returned an error.
-    Sweep(DmrgSweepError),
-}
-
-impl std::fmt::Display for DmrgError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DmrgError::EmptyMps => write!(f, "input MPS has zero sites"),
-            DmrgError::LengthMismatch { mps, mpo } => {
-                write!(f, "chain length mismatch: mps = {mps}, mpo = {mpo}")
-            }
-            DmrgError::Env(_) => write!(f, "DMRG environment build failed"),
-            DmrgError::Sweep(_) => write!(f, "DMRG sweep driver failed"),
-        }
-    }
-}
-
-impl std::error::Error for DmrgError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            DmrgError::Env(e) => Some(e),
-            DmrgError::Sweep(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<DmrgEnvError> for DmrgError {
-    fn from(e: DmrgEnvError) -> Self {
-        DmrgError::Env(e)
-    }
-}
-
-impl From<DmrgSweepError> for DmrgError {
-    fn from(e: DmrgSweepError) -> Self {
-        DmrgError::Sweep(e)
-    }
+    #[error("DMRG sweep driver failed")]
+    Sweep(#[from] DmrgSweepError),
 }
 
 /// Run a 2-site DMRG calculation with caller-friendly defaults for

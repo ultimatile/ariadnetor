@@ -155,27 +155,33 @@ pub struct DmrgResult<R> {
 }
 
 /// Errors raised by the 2-site DMRG sweep driver [`sweep_2site`].
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DmrgSweepError {
     /// MPS, MPO, and `DmrgEnvs` disagree on `n_sites`.
+    #[error("chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}")]
     LengthMismatch { mps: usize, mpo: usize, envs: usize },
     /// `n_sites < 2`. 2-site sweeps require at least 2 sites.
+    #[error("2-site sweep requires n_sites >= 2, got {n_sites}")]
     TooFewSites { n_sites: usize },
     /// `DmrgSweepParams` failed entry-point validation. `detail`
     /// names the constraint that fired.
+    #[error("invalid DmrgSweepParams: {detail}")]
     InvalidParams { detail: &'static str },
     /// MPS canonical form was not `Right` or `Mixed { center: 0 }`.
     /// `Unknown` is also rejected — see the module-level docs for
     /// the rationale.
+    #[error("MPS must be in Right or Mixed {{ center: 0 }} form before sweep, got {found:?}")]
     MpsNotRightCanonical { found: CanonicalForm },
     /// The per-step driver (`dmrg_2site_step` or
     /// `dmrg_2site_step_block_sparse`) returned an error. Source
     /// preserved.
+    #[error("2-site DMRG step failed at sweep {sweep}, {direction:?}, site {site}")]
     Step {
         sweep: usize,
         direction: SweepDirection,
         site: usize,
+        #[source]
         source: DmrgHeffError,
     },
     /// `DmrgEnvs::advance_left/right` returned an error during a
@@ -184,10 +190,12 @@ pub enum DmrgSweepError {
     /// state became inconsistent". Defense-in-depth — under the
     /// driver's own advance ordering, this branch should never
     /// fire from the public API.
+    #[error("DmrgEnvs advance failed at sweep {sweep}, {direction:?}, site {site}")]
     Env {
         sweep: usize,
         direction: SweepDirection,
         site: usize,
+        #[source]
         source: DmrgEnvError,
     },
     /// The post-step S-absorb (`arnet::diagonal_scale` for
@@ -196,71 +204,14 @@ pub enum DmrgSweepError {
     /// breadcrumbs as `Step` / `Env` so the caller can pin down
     /// where the failure occurred without having to walk the
     /// `DmrgResult::sweeps` history manually.
+    #[error("S-absorb (diagonal scale) failed during sweep {sweep}, {direction:?}, site {site}")]
     Scale {
         sweep: usize,
         direction: SweepDirection,
         site: usize,
+        #[source]
         source: LinalgError,
     },
-}
-
-impl std::fmt::Display for DmrgSweepError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DmrgSweepError::LengthMismatch { mps, mpo, envs } => write!(
-                f,
-                "chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}"
-            ),
-            DmrgSweepError::TooFewSites { n_sites } => {
-                write!(f, "2-site sweep requires n_sites >= 2, got {n_sites}")
-            }
-            DmrgSweepError::InvalidParams { detail } => {
-                write!(f, "invalid DmrgSweepParams: {detail}")
-            }
-            DmrgSweepError::MpsNotRightCanonical { found } => write!(
-                f,
-                "MPS must be in Right or Mixed {{ center: 0 }} form before sweep, got {found:?}"
-            ),
-            DmrgSweepError::Step {
-                sweep,
-                direction,
-                site,
-                ..
-            } => write!(
-                f,
-                "2-site DMRG step failed at sweep {sweep}, {direction:?}, site {site}"
-            ),
-            DmrgSweepError::Env {
-                sweep,
-                direction,
-                site,
-                ..
-            } => write!(
-                f,
-                "DmrgEnvs advance failed at sweep {sweep}, {direction:?}, site {site}"
-            ),
-            DmrgSweepError::Scale {
-                sweep,
-                direction,
-                site,
-                ..
-            } => write!(
-                f,
-                "S-absorb (diagonal scale) failed during sweep {sweep}, {direction:?}, site {site}"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for DmrgSweepError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            DmrgSweepError::Step { source, .. } => Some(source),
-            DmrgSweepError::Env { source, .. } => Some(source),
-            DmrgSweepError::Scale { source, .. } => Some(source),
-            _ => None,
-        }
-    }
 }
 
 /// Run alternating L→R / R→L sweeps until convergence or

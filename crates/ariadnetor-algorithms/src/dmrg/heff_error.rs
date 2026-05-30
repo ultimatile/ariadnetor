@@ -19,23 +19,30 @@ use crate::krylov::ArpackError;
 /// [`DmrgHeffError::QnMismatch`] variant is BlockSparse-specific
 /// and only surfaces from the BlockSparse entry point's QN /
 /// Direction / sector / per-site-flux pre-validation.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DmrgHeffError {
     /// `site + 1` was not a valid two-site index for the chain.
+    #[error("two-site index {site} (with {site}+1) out of range for chain of length {n_sites}")]
     InvalidSite { site: usize, n_sites: usize },
     /// The env slot required for the two-site step (`left(site)` for
     /// the left side, `right(site + 2)` for the right side) was
     /// `None`. Indicates the caller has not built / advanced the
     /// envs into a state where this `site` can be optimized.
+    #[error(
+        "{side} env at index {index} is stale (None); build / advance envs into the right \
+         state before stepping"
+    )]
     StaleEnv { side: &'static str, index: usize },
     /// MPS and MPO chain lengths disagree, or disagree with the
     /// envs the function was given.
+    #[error("chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}")]
     LengthMismatch { mps: usize, mpo: usize, envs: usize },
     /// The selected eigensolver's params (Lanczos or, behind the
     /// `arpack` feature, ARPACK) violated their preconditions.
     /// Surfaced here so callers see a fallible `Result` instead of
     /// the underlying solver panic / upstream error.
+    #[error("invalid local-eigensolver params: {detail}")]
     InvalidEigensolverParams { detail: &'static str },
     /// A bond / physical dimension on one of the inputs to the
     /// 2-site step did not match the expectation derived from the
@@ -43,6 +50,7 @@ pub enum DmrgHeffError {
     /// the operator's `.expect` calls can stay infallible. `field`
     /// names the constraint that failed (e.g.,
     /// `"left.bot_ket vs mps[i].left_bond"`).
+    #[error("shape mismatch at site {site}, {field}: expected {expected}, got {actual}")]
     ShapeMismatch {
         site: usize,
         field: &'static str,
@@ -57,6 +65,7 @@ pub enum DmrgHeffError {
     /// checks), and `detail` carries a human-readable summary of
     /// the offending `(sector list, direction, flux-if-applicable)`
     /// data on each side.
+    #[error("QN mismatch at site {site}, {field}: {detail}")]
     QnMismatch {
         site: usize,
         field: &'static str,
@@ -74,6 +83,10 @@ pub enum DmrgHeffError {
     /// template-derivation-only and not asserted here; PR-level
     /// Tier 2 at the step entry guarantees their layout order
     /// matches the chain backend's already.
+    #[error(
+        "BlockSparse heff operand `{operand}` has layout order {actual:?}, \
+         expected {expected:?} (chain backend preferred_order)"
+    )]
     OrderMismatch {
         operand: &'static str,
         expected: MemoryOrder,
@@ -82,89 +95,14 @@ pub enum DmrgHeffError {
     /// An underlying `arnet` linalg call (currently the truncated
     /// SVD) failed. The matvec body itself is shape-validated up
     /// front and never reaches this branch.
-    Contract(LinalgError),
+    #[error("linalg failure during two-site DMRG step")]
+    Contract(#[from] LinalgError),
     /// The ARPACK-backed local eigensolver returned an upstream
     /// error (parameter validation, ARPACK info codes, max-iter
     /// without convergence, …). Forwarded without information loss
     /// from [`crate::krylov::ArpackError`]. Only present when the
     /// `arpack` feature is enabled.
     #[cfg(feature = "arpack")]
-    Arpack(ArpackError),
-}
-
-impl From<LinalgError> for DmrgHeffError {
-    fn from(e: LinalgError) -> Self {
-        DmrgHeffError::Contract(e)
-    }
-}
-
-#[cfg(feature = "arpack")]
-impl From<ArpackError> for DmrgHeffError {
-    fn from(e: ArpackError) -> Self {
-        DmrgHeffError::Arpack(e)
-    }
-}
-
-impl std::fmt::Display for DmrgHeffError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DmrgHeffError::InvalidSite { site, n_sites } => write!(
-                f,
-                "two-site index {site} (with {site}+1) out of range for chain of length {n_sites}"
-            ),
-            DmrgHeffError::StaleEnv { side, index } => write!(
-                f,
-                "{side} env at index {index} is stale (None); build / advance envs into the right \
-                 state before stepping"
-            ),
-            DmrgHeffError::LengthMismatch { mps, mpo, envs } => write!(
-                f,
-                "chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}"
-            ),
-            DmrgHeffError::ShapeMismatch {
-                site,
-                field,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "shape mismatch at site {site}, {field}: expected {expected}, got {actual}"
-            ),
-            DmrgHeffError::InvalidEigensolverParams { detail } => {
-                write!(f, "invalid local-eigensolver params: {detail}")
-            }
-            DmrgHeffError::QnMismatch {
-                site,
-                field,
-                detail,
-            } => write!(f, "QN mismatch at site {site}, {field}: {detail}"),
-            DmrgHeffError::OrderMismatch {
-                operand,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "BlockSparse heff operand `{operand}` has layout order {actual:?}, \
-                 expected {expected:?} (chain backend preferred_order)"
-            ),
-            DmrgHeffError::Contract(_) => {
-                write!(f, "linalg failure during two-site DMRG step")
-            }
-            #[cfg(feature = "arpack")]
-            DmrgHeffError::Arpack(err) => {
-                write!(f, "ARPACK failure during two-site DMRG step: {err}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for DmrgHeffError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            DmrgHeffError::Contract(err) => Some(err),
-            #[cfg(feature = "arpack")]
-            DmrgHeffError::Arpack(err) => Some(err),
-            _ => None,
-        }
-    }
+    #[error("ARPACK failure during two-site DMRG step")]
+    Arpack(#[from] ArpackError),
 }

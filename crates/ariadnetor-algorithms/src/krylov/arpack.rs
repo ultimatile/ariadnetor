@@ -102,50 +102,34 @@ pub struct ArpackResult<T: Scalar> {
 /// Errors from the ARPACK-backed solver. Mirrors `arpack::Error`
 /// without information loss; the wrapper does not collapse distinct
 /// upstream codes.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ArpackError {
     /// Wrapper-side parameter validation or upstream `InvalidParam`.
+    #[error("invalid parameter: {0}")]
     InvalidParam(&'static str),
     /// `*aupd_c` returned a non-recoverable info code.
+    #[error("ARPACK *aupd returned info = {0}")]
     AupdFailed(i32),
     /// `*eupd_c` returned a non-zero info code.
+    #[error("ARPACK *eupd returned info = {0}")]
     EupdFailed(i32),
     /// `*aupd_c` requested an unsupported `ido` value.
+    #[error("ARPACK requested unsupported ido = {0}")]
     UnexpectedIdo(i32),
     /// `*aupd_c` returned `info = 1`: the iteration hit `max_iter`
     /// before the requested eigenpair converged. The iparam
     /// diagnostic counters are preserved.
+    #[error(
+        "ARPACK hit max_iter without convergence: iters = {iters}, \
+         nconv = {nconv}, n_matvec = {n_matvec}"
+    )]
     MaxIterReached {
         iters: usize,
         nconv: usize,
         n_matvec: usize,
     },
 }
-
-impl std::fmt::Display for ArpackError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ArpackError::InvalidParam(msg) => write!(f, "invalid parameter: {msg}"),
-            ArpackError::AupdFailed(info) => write!(f, "ARPACK *aupd returned info = {info}"),
-            ArpackError::EupdFailed(info) => write!(f, "ARPACK *eupd returned info = {info}"),
-            ArpackError::UnexpectedIdo(ido) => {
-                write!(f, "ARPACK requested unsupported ido = {ido}")
-            }
-            ArpackError::MaxIterReached {
-                iters,
-                nconv,
-                n_matvec,
-            } => write!(
-                f,
-                "ARPACK hit max_iter without convergence: iters = {iters}, \
-                 nconv = {nconv}, n_matvec = {n_matvec}"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ArpackError {}
 
 impl From<arpack::Error> for ArpackError {
     fn from(e: arpack::Error) -> Self {
