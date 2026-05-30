@@ -172,10 +172,9 @@ where
 // ============================================================================
 // Dense generic-backend constructor
 //
-// Tensor-surface entry point for callers that need an explicit memory
-// order and an explicit backend (e.g. mps tests pinning the Tier 1
-// rejection path, internal kernel-output wrapping). Saves callers from
-// reaching into the `DenseTensorData::from_raw_parts` joined surface.
+// Tensor-surface entry point for callers that have a flat buffer and an
+// explicit backend (e.g. internal kernel-output wrapping). Saves callers
+// from reaching into the `DenseTensorData::from_raw_parts` joined surface.
 // ============================================================================
 
 impl<T, B> Tensor<DenseStorage<T>, DenseLayout, B>
@@ -186,8 +185,9 @@ where
     /// Construct a Dense tensor from flat data and shape on an explicit
     /// backend `Arc`. The flat `data` is taken to be already laid out in
     /// the backend's preferred order, and the layout is tagged
-    /// accordingly — the public Dense surface offers no way to construct
-    /// a tensor whose order differs from `backend.preferred_order()`.
+    /// accordingly — this constructor cannot tag any other order. (A
+    /// non-preferred layout is still reachable through the `reordered`
+    /// escape hatch, which the order-mismatch rejection tests rely on.)
     pub fn from_raw_parts(data: Vec<T>, shape: Vec<usize>, backend: Arc<B>) -> Self {
         let order = backend.preferred_order();
         let td = DenseTensorData::from_raw_parts(data, shape, order);
