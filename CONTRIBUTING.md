@@ -96,7 +96,7 @@ Concretely, when a variant wraps another error type:
 Step {
     site: usize,
     #[source]
-    source: HeffError,
+    source: DmrgHeffError,
 },
 ```
 
