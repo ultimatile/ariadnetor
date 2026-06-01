@@ -67,6 +67,81 @@ Rationale:
 - Aligns with the standard library's `sort` (in-place) /
   `sorted` (out-of-place, on iterators) pattern.
 
+### Error types
+
+All error enums in the workspace derive their `Display` / `Error` /
+`From` impls with [`thiserror`](https://docs.rs/thiserror) rather than
+hand-writing them. The conventions below keep error chains free of
+duplicated cause text under a `source()`-walking reporter (e.g.
+`anyhow`'s `{:#}`).
+
+#### `Display` describes this layer; `source()` links the cause
+
+Per the [`std::error::Error` guideline][std-error-guideline], an inner
+error is exposed through **either** the outer error's `source()` **or**
+its `Display` — never both. Doing both makes a reporter that prints the
+wrapper and then walks `source()` surface the same cause twice.
+
+Concretely, when a variant wraps another error type:
+
+- Expose the cause with `#[from]` (source is the only field) or
+  `#[source]` (source plus self-layer context fields).
+- Write the variant's `#[error("...")]` for **this layer only** — do
+  not interpolate the wrapped error's `Display` (no `: {0}` /
+  `: {source}` that re-renders the cause).
+
+```rust
+// Good: self-layer context in Display, cause reachable via source().
+#[error("step failed at site {site}")]
+Step {
+    site: usize,
+    #[source]
+    source: DmrgHeffError,
+},
+```
+
+#### Pure repackaging is `transparent`
+
+A variant that adds no context of its own — it only re-tags a child
+error into this layer's enum — uses `#[error(transparent)]` with
+`#[from]`, delegating both `Display` and `source()` to the child:
+
+```rust
+#[error(transparent)]
+Backend(#[from] BackendError),
+```
+
+A fixed self-layer string (e.g. `#[error("backend operation failed")]`)
+still counts as context, so it is **not** transparent. Reserve
+`transparent` for pure re-tagging with no distinguishing text.
+
+#### Leaf errors
+
+An error that carries all its context in its own fields (strings,
+sizes, labels) and wraps no structured inner error is a leaf: its
+`source()` is always `None`. Write the full message in `#[error("...")]`
+and add nothing else. `BackendError`, `ContractionError`, and
+`TensorError` are leaves.
+
+#### `#[from]` vs `#[source]`
+
+Both expose the cause via `source()`; the choice is about field shape,
+independent of the `Display` rules above:
+
+- `#[from]` — source is the variant's **only** field; also generates
+  the `From<Child>` conversion for `?`.
+- `#[source]` — the variant carries additional context fields alongside
+  the source, so `From` cannot be derived.
+
+#### One-line cause display
+
+If a one-line message that includes the cause is needed, build it at the
+final display boundary by walking the `source()` chain — do not fold the
+cause into an error type's `Display`. With `anyhow`, `{:#}` already does
+this.
+
+[std-error-guideline]: https://doc.rust-lang.org/std/error/trait.Error.html
+
 ## Profiling
 
 The workspace `[profile.bench]` is configured for sampling-profiler

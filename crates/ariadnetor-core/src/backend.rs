@@ -287,13 +287,18 @@ pub trait ComputeBackend: Send + Sync {
 /// All variants represent conditions detected by or attributed to the backend.
 /// Linalg-layer validation (nrow range, square matrix checks, etc.) should use
 /// a separate error mechanism, not `BackendError`.
-#[derive(Debug)]
+///
+/// Every variant carries its full context in its own `Display` message; none
+/// wraps a structured inner error. `BackendError` is therefore a leaf in the
+/// error chain — its `source()` is always `None`.
+#[derive(Debug, thiserror::Error)]
 pub enum BackendError {
     /// The backend does not support this operation.
     ///
     /// Returned when an operation is fundamentally unavailable on this backend
     /// (e.g., a GPU backend that lacks an eigenvalue solver). Upper layers
     /// should consider fallback strategies or alternative computation paths.
+    #[error("Not supported: {0}")]
     NotSupported(String),
 
     /// The descriptor passed to the backend violates its contract.
@@ -301,6 +306,7 @@ pub enum BackendError {
     /// This indicates a bug in the calling layer (typically linalg), not a user
     /// error. For example, buffer sizes inconsistent with declared dimensions.
     /// Callers should treat this as a panic-worthy condition in debug builds.
+    #[error("Invalid argument: {0}")]
     InvalidArgument(String),
 
     /// The computation failed at runtime.
@@ -308,17 +314,6 @@ pub enum BackendError {
     /// The operation was supported and the arguments were valid, but execution
     /// failed due to numerical issues, resource exhaustion, or other runtime
     /// conditions (e.g., a matrix factorization that fails to converge).
+    #[error("Execution failed: {0}")]
     ExecutionFailed(String),
 }
-
-impl std::fmt::Display for BackendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotSupported(msg) => write!(f, "Not supported: {msg}"),
-            Self::InvalidArgument(msg) => write!(f, "Invalid argument: {msg}"),
-            Self::ExecutionFailed(msg) => write!(f, "Execution failed: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for BackendError {}
