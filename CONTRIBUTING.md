@@ -123,37 +123,6 @@ sizes, labels) and wraps no structured inner error is a leaf: its
 and add nothing else. `BackendError`, `ContractionError`, and
 `TensorError` are leaves.
 
-#### Exception: mirroring an external leaf error
-
-The wrap-and-expose pattern is the default for an inner error. One case
-departs from it deliberately: `ArpackError` (`krylov/arpack.rs`)
-**mirrors** the upstream `arpack::Error` variant-for-variant and
-re-materializes its data into its own fields, instead of holding it via
-`#[from]` / `#[source]`. The result is itself a leaf (`source()` is
-`None`), and the `From<arpack::Error>` conversion is hand-written.
-
-This is allowed only because all three conditions hold:
-
-1. **No cause is lost.** `arpack::Error` is itself a leaf — its variants
-   carry only primitive diagnostics (`&'static str`, `i32`, iparam
-   counters) and its own `source()` is `None`. Re-materializing that
-   data into typed fields drops no link in the chain; a `source()` link
-   would preserve nothing the mirrored fields do not.
-2. **It decouples the public surface from an unstable dependency.**
-   `arpack` is a pre-1.0, `#[non_exhaustive]`, FFI-bound crate. Holding
-   it via `#[from]` would put `arpack::Error` on this crate's public
-   API, making every upstream bump a breaking change here. The mirror
-   lets `ArpackError` own a stable surface and choose its own
-   `#[non_exhaustive]` policy.
-3. **`#[from]` cannot express the remap.** `#[from]` forwards one inner
-   value whole; the per-variant remap — including the catch-all that
-   absorbs future upstream variants — requires a hand-written `From`.
-
-Do not generalize this to an inner error that has its own `source()`
-chain: re-materializing such an error would drop causes, which is
-exactly what the wrap-and-expose rule prevents. Mirroring is reserved
-for an external leaf at a dependency boundary.
-
 #### `#[from]` vs `#[source]`
 
 Both expose the cause via `source()`; the choice is about field shape,
