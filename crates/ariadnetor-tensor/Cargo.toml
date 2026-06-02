@@ -33,3 +33,6 @@ harness = false
 [lib]
 name = "arnet_tensor"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

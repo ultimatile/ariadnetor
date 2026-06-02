@@ -20,3 +20,6 @@ rayon = { workspace = true }
 [lib]
 name = "arnet_native"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

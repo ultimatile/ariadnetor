@@ -1,7 +1,8 @@
 //! BlockSparse 2-site DMRG sweep driver integration tests.
 //!
 //! Mirrors `dmrg_sweep.rs` for the BlockSparse / U(1) path. Reuses
-//! the XY hopping fixtures from `dmrg_heff_block_sparse/fixtures.rs`.
+//! the XY hopping fixtures from the `test-utils` crate's `fixtures`
+//! module.
 //! The XY chain `H = J (S+_a S-_{a+1} + S-_a S+_{a+1})` is
 //! U(1)-symmetric — every sweep step preserves the chain's total
 //! flux, so a fixture built in U(1)=1 stays in U(1)=1 throughout.
@@ -13,8 +14,7 @@
 //! T8 verifies Lanczos non-convergence blocks the driver's
 //! convergence flag.
 
-#[path = "dmrg_heff_block_sparse/fixtures.rs"]
-mod fixtures;
+use test_utils::fixtures;
 
 use arnet::TruncSvdParams;
 use arnet::{
