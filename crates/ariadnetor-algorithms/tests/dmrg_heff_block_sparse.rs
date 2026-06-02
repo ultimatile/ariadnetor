@@ -14,16 +14,12 @@
 //! - complex `BlockSparseTensorData<Complex<f64>, U1Sector>` coverage
 //!
 //! Test fixtures use the XY hopping interaction
-//! `H = J (S+_a S-_{a+1} + S-_a S+_{a+1})`. See
-//! `dmrg_heff_block_sparse/fixtures.rs` for the concrete chain
+//! `H = J (S+_a S-_{a+1} + S-_a S+_{a+1})`. See the `fixtures`
+//! module of the `test-utils` crate for the concrete chain
 //! constructions; matvec / step / canonical / flux tests live in
 //! `matvec.rs` and error / complex tests live in `errors.rs`.
 
-#[path = "dmrg_heff_block_sparse/helpers.rs"]
-mod helpers;
-
-#[path = "dmrg_heff_block_sparse/fixtures.rs"]
-mod fixtures;
+use test_utils::{fixtures, helpers};
 
 #[path = "dmrg_heff_block_sparse/matvec.rs"]
 mod matvec;

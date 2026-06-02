@@ -23,6 +23,7 @@ approx = { workspace = true }
 criterion = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }
+test-utils = { path = "../../test-utils" }
 
 [lib]
 name = "arnet_algorithms"
@@ -31,3 +32,6 @@ path = "src/lib.rs"
 [[bench]]
 name = "dmrg_local_eigensolver"
 harness = false
+
+[lints]
+workspace = true

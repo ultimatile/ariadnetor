@@ -14,3 +14,6 @@ ariadnetor-native = { path = "../ariadnetor-native" }
 [lib]
 name = "arnet"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

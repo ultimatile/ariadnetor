@@ -8,8 +8,6 @@
 //! overlapping. A complex variant of the n=2 fixture exercises the
 //! `Scalar = Complex<f64>` matvec path.
 
-#![allow(dead_code)]
-
 use arnet::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
     Sector, U1Sector,

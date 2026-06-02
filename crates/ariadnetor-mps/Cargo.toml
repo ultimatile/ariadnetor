@@ -15,3 +15,6 @@ approx = { workspace = true }
 [lib]
 name = "arnet_mps"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

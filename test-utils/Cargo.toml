@@ -1,0 +1,15 @@
+[package]
+name = "test-utils"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+ariadnetor = { path = "../crates/ariadnetor" }
+ariadnetor-algorithms = { path = "../crates/ariadnetor-algorithms" }
+ariadnetor-mps = { path = "../crates/ariadnetor-mps" }
+num-complex = { workspace = true }
+
+[lints]
+workspace = true

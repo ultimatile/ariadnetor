@@ -4,8 +4,6 @@
 //! convert back and forth between flat-template-aware vectors and
 //! Dense rank-4 tensors in the global shape.
 
-#![allow(dead_code)]
-
 use arnet::{BlockSparseTensor, DenseTensor, MemoryOrder, NativeBackend, Sector, U1Sector};
 use num_complex::Complex;
 

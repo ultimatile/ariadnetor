@@ -15,3 +15,6 @@ thiserror = { workspace = true }
 [lib]
 name = "arnet_core"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

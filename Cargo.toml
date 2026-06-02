@@ -7,6 +7,7 @@ members = [
   "crates/ariadnetor-mps",
   "crates/ariadnetor-algorithms",
   "crates/ariadnetor",
+  "test-utils",
 ]
 resolver = "2"
 
@@ -14,6 +15,9 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+
+[workspace.lints.rust]
+dead_code = "forbid"
 
 [workspace.dependencies]
 # Linear algebra
