@@ -2,10 +2,11 @@
 
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseTensor, DenseLayout, DenseStorage,
-    DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, U1Sector, contract,
-    contract_block_sparse, transpose,
+    DenseTensor, Direction, NativeBackend, QNIndex, U1Sector, contract, contract_block_sparse,
+    transpose,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_tensor::MemoryOrder;
 
 /// Build a `DenseTensor<f64>` from data already laid out in the active
 /// backend's preferred order (NativeBackend → ColumnMajor).

@@ -212,6 +212,15 @@ where
     /// Return a tensor with flat data reordered to `to`. Result shares
     /// the input's backend `Arc`. When `self.data().order() == to`,
     /// the underlying buffer is shared via `Arc` rather than copied.
+    ///
+    /// This is a **workspace-internal escape hatch**, not a user entry
+    /// point. The public `Tensor` surface hides memory layout: constructors
+    /// take no order, and the linalg / algorithm layers normalize to the
+    /// backend's preferred order internally. The only in-tree callers are
+    /// that internal plumbing (and the order-mismatch rejection tests).
+    /// End users should never need to choose a `MemoryOrder`; as an inherent
+    /// method on a re-exported type it cannot be hidden from umbrella users,
+    /// hence this note.
     pub fn reordered(&self, to: arnet_core::backend::MemoryOrder) -> Self {
         let reordered = crate::reorder::reorder_data(&self.data, to);
         Self {

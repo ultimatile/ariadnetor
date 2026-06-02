@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use arnet::{
-    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, MemoryOrder,
+    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage,
     NativeBackend, Scalar, Sector, Storage, StorageFor, Tensor, TensorLayout, TruncSvdParams,
 };
 
@@ -139,13 +139,15 @@ where
     B: ComputeBackend;
 
 // ============================================================================
-// Per-flavor order accessor (crate-private)
+// Per-flavor order check (crate-private)
 //
 // `TensorLayout` doesn't expose `order()` (only shape / storage_extent),
 // so the Tier 1 order assertion routes through this trait. One impl per
-// concrete (Storage, Layout) flavor exposes the order accessor that the
-// generic constructor below uses to verify per-site order against the
-// backend's preferred order.
+// concrete (Storage, Layout) flavor compares the site's layout order against
+// the backend's preferred order. The comparison is folded inside the trait
+// (rather than returning a `MemoryOrder` for the caller to compare) so the
+// layout-order type never appears in this crate's surface — keeping it off
+// the umbrella's public API.
 // ============================================================================
 
 #[doc(hidden)]
@@ -153,18 +155,20 @@ pub trait LayoutOrderCheck<L>
 where
     L: TensorLayout,
 {
-    fn site_order(layout: &L) -> MemoryOrder;
+    /// Returns `true` if `layout`'s memory order matches `backend`'s
+    /// preferred order.
+    fn order_matches<B: ComputeBackend>(layout: &L, backend: &B) -> bool;
 }
 
 impl<T: Scalar> LayoutOrderCheck<DenseLayout> for DenseStorage<T> {
-    fn site_order(layout: &DenseLayout) -> MemoryOrder {
-        layout.order()
+    fn order_matches<B: ComputeBackend>(layout: &DenseLayout, backend: &B) -> bool {
+        layout.order() == backend.preferred_order()
     }
 }
 
 impl<T: Scalar, S: Sector> LayoutOrderCheck<BlockSparseLayout<S>> for BlockSparseStorage<T> {
-    fn site_order(layout: &BlockSparseLayout<S>) -> MemoryOrder {
-        layout.order()
+    fn order_matches<B: ComputeBackend>(layout: &BlockSparseLayout<S>, backend: &B) -> bool {
+        layout.order() == backend.preferred_order()
     }
 }
 
@@ -266,10 +270,9 @@ fn assert_sites_match_backend_order<St, L, B>(
 {
     let expected = backend.preferred_order();
     for (i, s) in sites.iter().enumerate() {
-        let got = St::site_order(s.data().layout());
-        assert_eq!(
-            got, expected,
-            "{ctx}: site {i} layout order ({got:?}) does not match backend.preferred_order() ({expected:?})",
+        assert!(
+            St::order_matches(s.data().layout(), backend.as_ref()),
+            "{ctx}: site {i} layout order does not match backend.preferred_order() ({expected:?})",
         );
         // The site's cached backend Arc need not be `Arc::ptr_eq` with the
         // chain backend, but its preferred_order must agree — otherwise

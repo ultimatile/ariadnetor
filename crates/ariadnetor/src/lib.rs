@@ -5,7 +5,9 @@
 //! Each layer depends only on the layers listed earlier:
 //!
 //! - [`arnet_core`] — backend-agnostic abstractions (`Scalar`,
-//!   `ComputeBackend`, `EinsumExpr`, `MemoryOrder`).
+//!   `ComputeBackend`, `EinsumExpr`). The `MemoryOrder` layout type
+//!   is intentionally *not* re-exported: the umbrella's public API
+//!   hides memory layout from end users.
 //! - [`arnet_native`] — `NativeBackend`: faer + hptt-rs.
 //! - [`arnet_tensor`] — user-facing `Tensor`, `DenseTensor`,
 //!   `BlockSparseTensor`, `Sector`, `QNIndex`.
@@ -46,9 +48,7 @@ pub use arnet_tensor::{
 };
 
 // Re-export from ariadnetor-core
-pub use arnet_core::{
-    Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, MemoryOrder, Scalar,
-};
+pub use arnet_core::{Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};
 
 // High-level free functions (backend extracted from Tensor)
 pub use arnet_tensor::{add_all, linear_combine};

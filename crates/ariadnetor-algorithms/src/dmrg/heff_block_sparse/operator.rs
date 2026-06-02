@@ -96,8 +96,9 @@ where
             if actual != expected {
                 return Err(DmrgHeffError::OrderMismatch {
                     operand,
-                    expected,
-                    actual,
+                    detail: format!(
+                        "layout order {actual:?}, expected {expected:?} (chain backend preferred_order)"
+                    ),
                 });
             }
         }

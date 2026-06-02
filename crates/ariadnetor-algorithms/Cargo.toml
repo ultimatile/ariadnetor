@@ -20,6 +20,10 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
+# Leaf-crate dev dep: tests reach the `reordered` escape hatch, which names
+# the `MemoryOrder` layout type. That type is deliberately not re-exported
+# from the `arnet` umbrella, so tests pull it from the tensor leaf directly.
+ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 criterion = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }

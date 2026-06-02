@@ -195,6 +195,11 @@ pub trait ComputeBackend: Send + Sync {
     ///
     /// Descriptor data (input/output slices) is expected in this order.
     /// The linalg layer converts tensors to this order before constructing descriptors.
+    ///
+    /// This is an **implementor-facing contract**, not a user entry point:
+    /// backend implementors must report the layout their kernels assume so
+    /// the linalg / algorithm layers can normalize to it. End users never
+    /// call it — the public `Tensor` surface hides memory layout entirely.
     fn preferred_order(&self) -> MemoryOrder;
 
     /// Check if backend is available
