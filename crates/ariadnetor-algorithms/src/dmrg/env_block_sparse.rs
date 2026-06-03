@@ -38,7 +38,6 @@ fn flip(d: Direction) -> Direction {
 /// `lhs_free | rhs_free` order, so the BlockSparse counterpart
 /// receives `(c, b, a)` and must swap to `(a, b, c)` to match the env
 /// axis convention.
-///
 fn swap_axes_0_and_2<T, S, B>(t: &BlockSparseTensor<T, S, B>) -> BlockSparseTensor<T, S, B>
 where
     T: Scalar,

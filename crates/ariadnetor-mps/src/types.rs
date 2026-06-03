@@ -139,7 +139,8 @@ where
     B: ComputeBackend;
 
 // ============================================================================
-// Per-flavor order check (crate-private)
+// Per-flavor order check (doc-hidden, but `pub` — see module docs: it
+// appears in the public constructor `where`-bounds)
 //
 // `TensorLayout` doesn't expose `order()` (only shape / storage_extent),
 // so the Tier 1 order assertion routes through this trait. One impl per
