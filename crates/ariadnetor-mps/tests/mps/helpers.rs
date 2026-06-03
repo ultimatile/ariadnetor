@@ -94,7 +94,7 @@ pub fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet::flat_index(&[i, j], qtq.shape(), order);
+            let idx = arnet_tensor::flat_index(&[i, j], qtq.shape(), order);
             if (qtq.data_slice()[idx] - expected).abs() > tol {
                 return false;
             }
@@ -118,7 +118,7 @@ pub fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet::flat_index(&[i, j], qqt.shape(), order);
+            let idx = arnet_tensor::flat_index(&[i, j], qqt.shape(), order);
             if (qqt.data_slice()[idx] - expected).abs() > tol {
                 return false;
             }

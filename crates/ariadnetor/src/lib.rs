@@ -67,12 +67,11 @@ pub use arnet_linalg::{
     svd_block_sparse, trunc_svd_block_sparse,
 };
 
-// Coordinate-to-flat index helper used by downstream callers for
-// memory-order-aware index math. The actual reorder routine lives as
-// the `DenseTensor::reordered` inherent method on the joined surface
-// (see `arnet_tensor::dense_ops`); the `DenseTensorData`-typed
-// `reorder_data` is intentionally not re-exported here.
-pub use arnet_tensor::flat_index;
+// `flat_index` is intentionally not re-exported: it takes a `MemoryOrder`
+// argument, so exposing it on the umbrella would reintroduce the
+// memory-order leak that the rest of this surface closes. End users do not
+// need memory-order-aware index math; in-tree code that does (tests) depends
+// on `arnet-tensor` directly.
 
 // Linalg-level error type and SVD parameters.
 pub use arnet_linalg::{LinalgError, TruncSvdParams};
