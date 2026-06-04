@@ -19,7 +19,7 @@ use std::sync::Arc;
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage,
     BlockSparseTensor, ComputeBackend, Direction, LinalgError, QNIndex, Scalar, Sector, Tensor,
-    contract_block_sparse, flat_index,
+    contract_block_sparse, permute_block_sparse,
 };
 
 use super::env::{DmrgEnvError, DmrgEnvOps};
@@ -38,11 +38,6 @@ fn flip(d: Direction) -> Direction {
 /// `lhs_free | rhs_free` order, so the BlockSparse counterpart
 /// receives `(c, b, a)` and must swap to `(a, b, c)` to match the env
 /// axis convention.
-///
-/// Per-block buffers share the new tensor's backend `preferred_order()`
-/// (both old and new are bound to the same backend), so the index
-/// arithmetic uses that single layout for either RowMajor or
-/// ColumnMajor without code changes.
 fn swap_axes_0_and_2<T, S, B>(t: &BlockSparseTensor<T, S, B>) -> BlockSparseTensor<T, S, B>
 where
     T: Scalar,
@@ -50,39 +45,11 @@ where
     B: ComputeBackend,
 {
     debug_assert_eq!(t.rank(), 3, "swap_axes_0_and_2 expects rank-3");
-    let new_indices = vec![
-        t.indices()[2].clone(),
-        t.indices()[1].clone(),
-        t.indices()[0].clone(),
-    ];
-    let backend_arc = Arc::clone(t.backend_arc());
-    let mut out = BlockSparseTensor::<T, S, B>::zeros_with_backend(
-        new_indices,
-        t.flux().clone(),
-        Arc::clone(&backend_arc),
-    );
-    let out_order = out.backend().preferred_order();
-    for meta in t.block_metas() {
-        let old_coord = &meta.coord;
-        let new_coord = BlockCoord(vec![old_coord.0[2], old_coord.0[1], old_coord.0[0]]);
-        let old_data = t.block_data(old_coord).expect("allocated block");
-        let old_shape = t.block_shape(old_coord).expect("block shape");
-        let new_shape = vec![old_shape[2], old_shape[1], old_shape[0]];
-        let new_block = out
-            .block_data_mut(&new_coord)
-            .expect("flux-allowed under axis swap");
-        let (d0, d1, d2) = (old_shape[0], old_shape[1], old_shape[2]);
-        for a in 0..d2 {
-            for b in 0..d1 {
-                for c in 0..d0 {
-                    let old_idx = flat_index(&[c, b, a], &old_shape, out_order);
-                    let new_idx = flat_index(&[a, b, c], &new_shape, out_order);
-                    new_block[new_idx] = old_data[old_idx];
-                }
-            }
-        }
-    }
-    out
+    // `[2, 1, 0]` reverses axes 0 and 2 while keeping the W-bond axis 1;
+    // `permute_block_sparse` reorders indices, block coordinates, and
+    // transposes each block's data. The permutation is fixed and valid for
+    // any rank-3 input, so the fallible result is unwrapped here.
+    permute_block_sparse(t, &[2, 1, 0]).expect("[2, 1, 0] is a valid rank-3 permutation")
 }
 
 /// Verify that `idx` is a dim-1 single-sector edge bond.

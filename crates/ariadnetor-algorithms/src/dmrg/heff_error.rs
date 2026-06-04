@@ -7,7 +7,7 @@
 //! Dense `heff.rs` under the per-file size cap as the operator + the
 //! ARPACK arm grow.
 
-use arnet::{LinalgError, MemoryOrder};
+use arnet::LinalgError;
 
 #[cfg(feature = "arpack")]
 use crate::krylov::ArpackError;
@@ -79,18 +79,17 @@ pub enum DmrgHeffError {
     /// calls cannot fire on a mixed-order operand set. `operand`
     /// names which of the four contracted operands (`"left_env"`,
     /// `"w_i"`, `"w_ip1"`, `"right_env"`) carried a non-matching
-    /// layout order. The MPS sites passed to `new` are
-    /// template-derivation-only and not asserted here; PR-level
-    /// Tier 2 at the step entry guarantees their layout order
-    /// matches the chain backend's already.
-    #[error(
-        "BlockSparse heff operand `{operand}` has layout order {actual:?}, \
-         expected {expected:?} (chain backend preferred_order)"
-    )]
+    /// layout order, and `detail` carries a human-readable summary
+    /// of the offending vs expected layout order. The MPS sites
+    /// passed to `new` are template-derivation-only and not asserted
+    /// here; PR-level Tier 2 at the step entry guarantees their
+    /// layout order matches the chain backend's already. `detail`
+    /// holds a rendered `MemoryOrder` to keep that layout type off
+    /// the public error surface (it is workspace-internal).
+    #[error("BlockSparse heff operand `{operand}` has layout order mismatch: {detail}")]
     OrderMismatch {
         operand: &'static str,
-        expected: MemoryOrder,
-        actual: MemoryOrder,
+        detail: String,
     },
     /// An underlying `arnet` linalg call (currently the truncated
     /// SVD) failed. The matvec body itself is shape-validated up

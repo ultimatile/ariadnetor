@@ -5,7 +5,9 @@
 //! Each layer depends only on the layers listed earlier:
 //!
 //! - [`arnet_core`] — backend-agnostic abstractions (`Scalar`,
-//!   `ComputeBackend`, `EinsumExpr`, `MemoryOrder`).
+//!   `ComputeBackend`, `EinsumExpr`). The `MemoryOrder` layout type
+//!   is intentionally *not* re-exported: the umbrella's public API
+//!   hides memory layout from end users.
 //! - [`arnet_native`] — `NativeBackend`: faer + hptt-rs.
 //! - [`arnet_tensor`] — user-facing `Tensor`, `DenseTensor`,
 //!   `BlockSparseTensor`, `Sector`, `QNIndex`.
@@ -46,9 +48,7 @@ pub use arnet_tensor::{
 };
 
 // Re-export from ariadnetor-core
-pub use arnet_core::{
-    Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, MemoryOrder, Scalar,
-};
+pub use arnet_core::{Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};
 
 // High-level free functions (backend extracted from Tensor)
 pub use arnet_tensor::{add_all, linear_combine};
@@ -67,12 +67,11 @@ pub use arnet_linalg::{
     svd_block_sparse, trunc_svd_block_sparse,
 };
 
-// Coordinate-to-flat index helper used by downstream callers for
-// memory-order-aware index math. The actual reorder routine lives as
-// the `DenseTensor::reordered` inherent method on the joined surface
-// (see `arnet_tensor::dense_ops`); the `DenseTensorData`-typed
-// `reorder_data` is intentionally not re-exported here.
-pub use arnet_tensor::flat_index;
+// `flat_index` is intentionally not re-exported: it takes a `MemoryOrder`
+// argument, so exposing it on the umbrella would reintroduce the
+// memory-order leak that the rest of this surface closes. End users do not
+// need memory-order-aware index math; in-tree code that does (tests) depends
+// on `arnet-tensor` directly.
 
 // Linalg-level error type and SVD parameters.
 pub use arnet_linalg::{LinalgError, TruncSvdParams};

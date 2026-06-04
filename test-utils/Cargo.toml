@@ -9,6 +9,10 @@ publish = false
 ariadnetor = { path = "../crates/ariadnetor" }
 ariadnetor-algorithms = { path = "../crates/ariadnetor-algorithms" }
 ariadnetor-mps = { path = "../crates/ariadnetor-mps" }
+# Leaf-crate dep: fixtures reach the `reordered` escape hatch, which names
+# the `MemoryOrder` layout type. That type is deliberately not re-exported
+# from the `arnet` umbrella, so it is pulled from the tensor leaf directly.
+ariadnetor-tensor = { path = "../crates/ariadnetor-tensor" }
 num-complex = { workspace = true }
 
 [lints]

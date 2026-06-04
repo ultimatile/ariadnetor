@@ -2,10 +2,11 @@
 
 use arnet::{
     BlockCoord, BlockSparseContractResult, BlockSparseTensor, DenseLayout, DenseStorage,
-    DenseTensor, Direction, MemoryOrder, NativeBackend, QNIndex, U1Sector, contract,
-    contract_block_sparse, transpose,
+    DenseTensor, Direction, NativeBackend, QNIndex, U1Sector, contract, contract_block_sparse,
+    transpose,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_tensor::MemoryOrder;
 
 /// Build a `DenseTensor<f64>` from data already laid out in the active
 /// backend's preferred order (NativeBackend → ColumnMajor).
@@ -93,7 +94,7 @@ pub fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet::flat_index(&[i, j], qtq.shape(), order);
+            let idx = arnet_tensor::flat_index(&[i, j], qtq.shape(), order);
             if (qtq.data_slice()[idx] - expected).abs() > tol {
                 return false;
             }
@@ -117,7 +118,7 @@ pub fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet::flat_index(&[i, j], qqt.shape(), order);
+            let idx = arnet_tensor::flat_index(&[i, j], qqt.shape(), order);
             if (qqt.data_slice()[idx] - expected).abs() > tol {
                 return false;
             }
