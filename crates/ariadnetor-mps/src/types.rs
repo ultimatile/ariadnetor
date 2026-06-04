@@ -4,10 +4,13 @@
 //! tensors plus a cached `Arc<B>` backend. The Tier 1 ordering
 //! invariant — every site's `layout().order()` matches
 //! `backend.preferred_order()` — is enforced by the constructors
-//! below via the doc-hidden [`LayoutOrderCheck`] trait (`pub` so the
-//! `where`-bound on the constructor impl is satisfiable from
-//! downstream crates without naming the trait), so downstream linalg
-//! kernels never have to defensively align site memory order.
+//! below via the doc-hidden [`LayoutOrderCheck`] trait, so downstream
+//! linalg kernels never have to defensively align site memory order. The
+//! trait lives in a private module and is not re-exported, so it is not
+//! nameable downstream; it stays `pub` (rather than `pub(crate)`) only so
+//! the `private_bounds` lint stays quiet on the public constructors, whose
+//! `where`-bounds reference it. Callers satisfy the bound through the
+//! in-crate impls without naming the trait.
 
 use std::sync::Arc;
 
