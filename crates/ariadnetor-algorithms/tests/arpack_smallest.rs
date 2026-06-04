@@ -370,12 +370,26 @@ fn arpack_error_from_arpack_preserves_variant_and_display() {
     assert_round_trip(Error::InvalidParam("dummy"), "dummy", |e| {
         matches!(e, ArpackError::InvalidParam("dummy"))
     });
-    assert_round_trip(Error::AupdFailed(7), "7", |e| {
-        matches!(e, ArpackError::AupdFailed(7))
-    });
-    assert_round_trip(Error::EupdFailed(-3), "-3", |e| {
-        matches!(e, ArpackError::EupdFailed(-3))
-    });
+    assert_round_trip(
+        Error::AupdFailed {
+            info: 7,
+            iters: 0,
+            nconv: 0,
+            n_matvec: 0,
+        },
+        "7",
+        |e| matches!(e, ArpackError::AupdFailed(7)),
+    );
+    assert_round_trip(
+        Error::EupdFailed {
+            info: -3,
+            iters: 0,
+            nconv: 0,
+            n_matvec: 0,
+        },
+        "-3",
+        |e| matches!(e, ArpackError::EupdFailed(-3)),
+    );
     assert_round_trip(Error::UnexpectedIdo(99), "99", |e| {
         matches!(e, ArpackError::UnexpectedIdo(99))
     });

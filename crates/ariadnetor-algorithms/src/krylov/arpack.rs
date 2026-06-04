@@ -135,8 +135,8 @@ impl From<arpack::Error> for ArpackError {
     fn from(e: arpack::Error) -> Self {
         match e {
             arpack::Error::InvalidParam(m) => ArpackError::InvalidParam(m),
-            arpack::Error::AupdFailed(i) => ArpackError::AupdFailed(i),
-            arpack::Error::EupdFailed(i) => ArpackError::EupdFailed(i),
+            arpack::Error::AupdFailed { info, .. } => ArpackError::AupdFailed(info),
+            arpack::Error::EupdFailed { info, .. } => ArpackError::EupdFailed(info),
             arpack::Error::UnexpectedIdo(i) => ArpackError::UnexpectedIdo(i),
             arpack::Error::MaxIterReached {
                 iters,
