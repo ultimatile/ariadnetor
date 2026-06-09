@@ -5,6 +5,7 @@
 //! compute backend.
 
 mod block_sparse;
+mod capability;
 mod dense;
 mod error;
 mod layout;
@@ -25,6 +26,7 @@ pub use block_sparse::{
     BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, Direction,
     QNIndex,
 };
+pub use capability::{Host, OpsFor};
 pub use dense::{DenseLayout, DenseStorage, DenseTensorData};
 pub use error::TensorError;
 pub use layout::{StorageFor, TensorLayout};

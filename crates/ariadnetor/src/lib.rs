@@ -47,6 +47,10 @@ pub use arnet_tensor::{
     Direction, QNIndex, Sector, Storage, StorageFor, TensorLayout, U1Sector, Z2Sector,
 };
 
+// Backend-capability scaffolding: the `OpsFor<St>` marker and the `Host`
+// substrate alias.
+pub use arnet_tensor::{Host, OpsFor};
+
 // Re-export from ariadnetor-core
 pub use arnet_core::{Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};
 
