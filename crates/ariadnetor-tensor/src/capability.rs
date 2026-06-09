@@ -6,9 +6,9 @@
 //! deliberately not sealed, so out-of-tree backends (e.g. a future GPU
 //! backend) can declare their own capability by implementing it.
 //!
-//! [`Host`] aliases the default host backend, giving signatures a stable
-//! name for the substrate that does not commit to the concrete backend
-//! type.
+//! [`Host`] aliases the default host backend, so signatures can name the
+//! substrate through one stable alias instead of spelling the concrete
+//! backend type; repointing the substrate is then a one-line change.
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
@@ -24,8 +24,9 @@ pub trait OpsFor<St>: ComputeBackend {}
 impl<T: Scalar> OpsFor<DenseStorage<T>> for NativeBackend {}
 impl<T: Scalar> OpsFor<BlockSparseStorage<T>> for NativeBackend {}
 
-/// The default host compute substrate, aliased so signatures can name the
-/// substrate through a stable alias rather than the concrete backend type.
+/// The default host compute substrate, aliased so signatures name it
+/// through one stable alias rather than spelling the concrete backend
+/// type; repointing the substrate is then a one-line change.
 pub type Host = NativeBackend;
 
 #[cfg(test)]
