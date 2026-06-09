@@ -63,8 +63,8 @@ pub struct TruncSvdParams {
 }
 
 mod lq;
-pub(crate) use lq::lq_with_policy_dense;
 pub use lq::{LqResult, lq, lq_with_policy};
+pub(crate) use lq::{lq_dense, lq_with_policy_dense};
 
 /// Reshape tensor to 2D (m x n) using row-major axis merge, then convert to target order.
 ///

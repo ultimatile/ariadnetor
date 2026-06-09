@@ -60,6 +60,14 @@ pub use ops::{
     contract, diag, eig, eigh, eigvals, eigvalsh, einsum, expm, expm_antihermitian, expm_hermitian,
     inverse, lq, qr, solve, svd, trace, transpose, trunc_svd,
 };
+// Explicit-backend dense free functions (backend supplied at the call site).
+pub use ops::{
+    contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
+    eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
+    expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
+    inverse_with_backend, lq_with_backend, qr_with_backend, solve_with_backend, svd_with_backend,
+    trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
+};
 
 // Block-sparse low-level free functions and result types. Needed by
 // downstream crates (`arnet-mps`, `arnet-algorithms`) whose internals
@@ -69,6 +77,13 @@ pub use arnet_linalg::{
     BlockSparseTruncSvdResult, contract_block_sparse, diagonal_scale, diagonal_scale_block_sparse,
     fuse_legs_block_sparse, lq_block_sparse, permute_block_sparse, qr_block_sparse,
     svd_block_sparse, trunc_svd_block_sparse,
+};
+// Explicit-backend block-sparse free functions (backend supplied at the call site).
+pub use arnet_linalg::{
+    contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
+    fuse_legs_block_sparse_with_backend, lq_block_sparse_with_backend,
+    permute_block_sparse_with_backend, qr_block_sparse_with_backend, svd_block_sparse_with_backend,
+    trunc_svd_block_sparse_with_backend,
 };
 
 // `flat_index` is intentionally not re-exported: it takes a `MemoryOrder`
