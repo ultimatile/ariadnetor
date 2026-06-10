@@ -86,6 +86,9 @@ pub use arnet_linalg::{
     trunc_svd_block_sparse_with_backend,
 };
 
+// Ergonomic Host-defaulting method surface over the explicit-backend paths.
+pub use arnet_linalg::{BlockSparseHostOps, DenseHostOps};
+
 // `flat_index` is intentionally not re-exported: it takes a `MemoryOrder`
 // argument, so exposing it on the umbrella would reintroduce the
 // memory-order leak that the rest of this surface closes. End users do not
