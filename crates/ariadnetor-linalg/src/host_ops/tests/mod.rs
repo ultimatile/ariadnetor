@@ -184,11 +184,14 @@ fn eig_uses_shared_host() {
     let (rw, _rv) = eig_with_backend(&shared(), &t, 1).unwrap();
     approx_eq_pairs(&sorted_eigvals(&w), &sorted_eigvals(&rw));
     // Eigenvectors verified by residual A v - w v = 0 per pair (column-major
-    // 2x2: A[i][k] = a[k * 2 + i], v[:, j] = vd[j * 2..][..2]).
+    // 2x2: A[i][k] = a[k * 2 + i], v[:, j] = vd[j * 2..][..2]). A zero vector
+    // would satisfy the residual vacuously, so each column must be nonzero.
     let a = t.data().data();
     let wd = w.data().data();
     let vd = v.data().data();
     for j in 0..2 {
+        let norm = (vd[2 * j].norm_sqr() + vd[2 * j + 1].norm_sqr()).sqrt();
+        assert!(norm > 1e-6, "eigenvector {j} must be nonzero, norm {norm}");
         for i in 0..2 {
             let av = a[i] * vd[2 * j] + a[2 + i] * vd[2 * j + 1];
             let res = av - wd[j] * vd[2 * j + i];
@@ -337,11 +340,27 @@ fn rank2(b: &Arc<NativeBackend>) -> BlockSparseTensor<f64, U1Sector> {
     BlockSparseTensor::with_backend(rank2_data(b.preferred_order()), b.clone())
 }
 
-/// Compare two block-sparse tensors' joined data block by block, exactly.
-fn bsp_eq(a: &BlockSparseTensor<f64, U1Sector>, b: &BlockSparseTensor<f64, U1Sector>) {
+/// Compare two block-sparse tensors' structural metadata: shape, block
+/// count, flux, memory order, and indices (sectors / dims / directions;
+/// `QNIndex` has no `PartialEq`, so indices compare via `Debug`).
+fn bsp_meta_eq(a: &BlockSparseTensor<f64, U1Sector>, b: &BlockSparseTensor<f64, U1Sector>) {
     let (da, db) = (a.data(), b.data());
     assert_eq!(da.shape(), db.shape(), "shape mismatch");
     assert_eq!(da.num_blocks(), db.num_blocks(), "block count mismatch");
+    assert_eq!(da.flux(), db.flux(), "flux mismatch");
+    assert_eq!(da.order(), db.order(), "order mismatch");
+    assert_eq!(
+        format!("{:?}", da.indices()),
+        format!("{:?}", db.indices()),
+        "indices mismatch"
+    );
+}
+
+/// Compare two block-sparse tensors' metadata and data block by block,
+/// exactly.
+fn bsp_eq(a: &BlockSparseTensor<f64, U1Sector>, b: &BlockSparseTensor<f64, U1Sector>) {
+    bsp_meta_eq(a, b);
+    let (da, db) = (a.data(), b.data());
     for meta in da.block_metas() {
         let xa = da.block_data(&meta.coord).unwrap();
         let xb = db.block_data(&meta.coord).unwrap();
@@ -351,9 +370,8 @@ fn bsp_eq(a: &BlockSparseTensor<f64, U1Sector>, b: &BlockSparseTensor<f64, U1Sec
 
 /// Like [`bsp_eq`] but with tolerance, for FP-reduction results.
 fn bsp_approx_eq(a: &BlockSparseTensor<f64, U1Sector>, b: &BlockSparseTensor<f64, U1Sector>) {
+    bsp_meta_eq(a, b);
     let (da, db) = (a.data(), b.data());
-    assert_eq!(da.shape(), db.shape(), "shape mismatch");
-    assert_eq!(da.num_blocks(), db.num_blocks(), "block count mismatch");
     for meta in da.block_metas() {
         let xa = da.block_data(&meta.coord).unwrap();
         let xb = db.block_data(&meta.coord).unwrap();
@@ -364,15 +382,28 @@ fn bsp_approx_eq(a: &BlockSparseTensor<f64, U1Sector>, b: &BlockSparseTensor<f64
     }
 }
 
+/// Compare two singular-value sets sector by sector, with tolerance.
+fn sv_approx_eq(a: &BlockSingularValues<f64, U1Sector>, b: &BlockSingularValues<f64, U1Sector>) {
+    assert_eq!(a.values.len(), b.values.len(), "sector count mismatch");
+    for ((sa, va), (sb, vb)) in a.values.iter().zip(&b.values) {
+        assert_eq!(sa, sb, "sector mismatch");
+        assert_eq!(va.len(), vb.len(), "singular-value count mismatch");
+        for (x, y) in va.iter().zip(vb) {
+            assert!((x - y).abs() < 1e-10, "singular value mismatch: {x} vs {y}");
+        }
+    }
+}
+
 #[test]
 fn bsp_svd_uses_shared_host() {
     let b = own();
     let t = rank2(&b);
-    let (u, _s, vt) = t.svd(1).unwrap();
+    let (u, s, vt) = t.svd(1).unwrap();
     assert_shared_authority(&u, &b);
     assert_shared_authority(&vt, &b);
-    let (ru, _rs, rvt) = svd_block_sparse_with_backend(&shared(), &t, 1).unwrap();
+    let (ru, rs, rvt) = svd_block_sparse_with_backend(&shared(), &t, 1).unwrap();
     bsp_approx_eq(&u, &ru);
+    sv_approx_eq(&s, &rs);
     bsp_approx_eq(&vt, &rvt);
 }
 
@@ -384,13 +415,15 @@ fn bsp_trunc_svd_uses_shared_host() {
         chi_max: None,
         target_trunc_err: None,
     };
-    let (u, _s, vt, _err) = t.trunc_svd(1, &params).unwrap();
+    let (u, s, vt, err) = t.trunc_svd(1, &params).unwrap();
     assert_shared_authority(&u, &b);
     assert_shared_authority(&vt, &b);
-    let (ru, _rs, rvt, _rerr) =
+    let (ru, rs, rvt, rerr) =
         trunc_svd_block_sparse_with_backend(&shared(), &t, 1, &params).unwrap();
     bsp_approx_eq(&u, &ru);
+    sv_approx_eq(&s, &rs);
     bsp_approx_eq(&vt, &rvt);
+    assert!((err - rerr).abs() < 1e-10, "truncation error mismatch");
 }
 
 #[test]
