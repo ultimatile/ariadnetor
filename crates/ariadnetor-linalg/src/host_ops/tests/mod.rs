@@ -286,7 +286,9 @@ fn inverse_uses_shared_host() {
 #[test]
 fn expm_uses_shared_host() {
     let b = own();
-    let t = sym2(&b);
+    // Non-symmetric input: the Hermitian sibling would compute a different
+    // (triangle-trusting) result here, so cross-wiring fails the equivalence.
+    let t = mat22(&b);
     let out = t.expm(1).unwrap();
     assert_shared_authority(&out, &b);
     let r = expm_with_backend(&shared(), &t, 1).unwrap();
@@ -301,6 +303,53 @@ fn expm_hermitian_uses_shared_host() {
     assert_shared_authority(&out, &b);
     let r = expm_hermitian_with_backend(&shared(), &t, 1).unwrap();
     approx_eq(out.data().data(), r.data().data());
+}
+
+#[test]
+fn expm_hermitian_is_not_cross_wired_to_expm() {
+    // On a Hermitian input the general and Hermitian exponentials coincide,
+    // so the equivalence test above cannot detect a delegation swap. A
+    // non-Hermitian input discriminates: the Hermitian path trusts
+    // hermiticity (eigh-based), so the method's outcome must match the
+    // Hermitian twin's — and must differ from the general exponential.
+    let b = own();
+    let t = mat22(&b);
+    let method = t.expm_hermitian(1);
+    let twin = expm_hermitian_with_backend(&shared(), &t, 1);
+    match (method, twin) {
+        (Ok(m), Ok(tw)) => {
+            approx_eq(m.data().data(), tw.data().data());
+            let general = expm_with_backend(&shared(), &t, 1).unwrap();
+            let coincide = m
+                .data()
+                .data()
+                .iter()
+                .zip(general.data().data())
+                .all(|(x, y)| (x - y).abs() < 1e-10);
+            assert!(
+                !coincide,
+                "hermitian path unexpectedly equals the general exponential \
+                 on a non-Hermitian input; the fixture cannot discriminate"
+            );
+        }
+        // Both rejecting identically also proves the method follows the
+        // Hermitian twin (the general twin succeeds on this input).
+        (Err(_), Err(_)) => {}
+        (m, tw) => panic!("method/twin disagree on non-Hermitian input: {m:?} vs {tw:?}"),
+    }
+}
+
+#[test]
+fn expm_antihermitian_rejects_real_input() {
+    // The anti-Hermitian path rejects real element types; its siblings
+    // accept them, so this discriminates the delegation target.
+    let b = own();
+    let t = mat22(&b);
+    let err = t.expm_antihermitian(1).unwrap_err();
+    assert!(
+        matches!(err, LinalgError::InvalidArgument(_)),
+        "expected InvalidArgument, got {err:?}"
+    );
 }
 
 #[test]
