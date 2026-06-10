@@ -35,6 +35,7 @@ mod block_sparse_decomp;
 mod block_sparse_fuse;
 mod block_sparse_permute;
 mod block_sparse_scale;
+mod block_sparse_with_backend;
 mod contract;
 mod decomposition;
 mod eigen;
@@ -45,6 +46,7 @@ mod scalar_ops;
 mod solve;
 mod tensor_bridge;
 mod transpose;
+mod with_backend;
 
 #[cfg(test)]
 pub(crate) mod test_util;
@@ -73,3 +75,18 @@ pub use expm::{expm, expm_antihermitian, expm_hermitian};
 pub use scalar_ops::{diag, diagonal_scale, trace};
 pub use solve::{inverse, solve, solve_with_policy};
 pub use transpose::{transpose, transpose_with_policy};
+
+// Explicit-backend operation paths (backend supplied at the call site).
+pub use block_sparse_with_backend::{
+    contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
+    fuse_legs_block_sparse_with_backend, lq_block_sparse_with_backend,
+    permute_block_sparse_with_backend, qr_block_sparse_with_backend, svd_block_sparse_with_backend,
+    trunc_svd_block_sparse_with_backend,
+};
+pub use with_backend::{
+    contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
+    eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
+    expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
+    inverse_with_backend, lq_with_backend, qr_with_backend, solve_with_backend, svd_with_backend,
+    trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
+};
