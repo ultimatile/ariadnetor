@@ -42,6 +42,7 @@ mod eigen;
 mod einsum;
 mod error;
 mod expm;
+mod host_ops;
 mod scalar_ops;
 mod solve;
 mod tensor_bridge;
@@ -90,3 +91,6 @@ pub use with_backend::{
     inverse_with_backend, lq_with_backend, qr_with_backend, solve_with_backend, svd_with_backend,
     trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
 };
+
+// Ergonomic Host-defaulting method surface over the explicit-backend paths.
+pub use host_ops::{BlockSparseHostOps, DenseHostOps};
