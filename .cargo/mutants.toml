@@ -16,7 +16,13 @@ exclude_re = [
     # step = 0, `total + 0 ≡ total - 0`, so this mutation is structurally a no-op.
     # The `+ → *` mutation on the same line is NOT equivalent (multiplying by 0
     # zeros the accumulator) and remains in scope.
-    "truncate.rs:354:37: replace \\+ with - in truncate_bsp",
+    "truncate.rs:286:37: replace \\+ with - in truncate_bsp",
+    # truncate_dense final right sweep accumulator (the former
+    # restore_center_sweep_dense helper, now inlined): same structurally-zero
+    # error argument as the truncate_bsp pattern above. Line:col anchored
+    # because the first two sweeps' accumulators in the same function are
+    # killable and must stay in scope.
+    "truncate.rs:68:37: replace \\+ with - in truncate_dense",
 
     # --- Function-name-based patterns (stable across line changes) ---
     # norm_1: tie-breaking order doesn't affect max value
@@ -36,11 +42,6 @@ exclude_re = [
     "replace > with >= in compute_scaling_decision",
     "replace / with \\* in compute_scaling_decision",
     "replace <= with > in compute_scaling_decision",
-    # restore_center_sweep_dense: prior right and left sweeps already truncate every bond
-    # to chi_max (and to target_trunc_err if set), so each step's err is structurally 0
-    # in exact arithmetic. Subtracting 0 is a no-op, hence + with - is equivalent. The peer
-    # + with * mutation is NOT equivalent (would zero the prior accumulator) and remains.
-    "replace \\+ with - in restore_center_sweep_dense",
     # sweep_2site L→R trailing-advance skip is a perf optimization, not a
     # correctness gate: the mutated extra advance_left(n-2) sets
     # left[n-1] = Some(stale) and right[n-1] = None. The next R→L step

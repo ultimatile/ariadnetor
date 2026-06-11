@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, DenseTensor, NativeBackend, Scalar, eigh};
+use arnet::{ComputeBackend, DenseTensor, NativeBackend, Scalar, eigh_with_backend};
 use num_traits::{One, Zero};
 use rand::RngExt;
 use rand::rngs::StdRng;
@@ -138,7 +138,7 @@ where
         }
     }
     let matrix = DenseTensor::from_raw_parts(data, vec![m, m], Arc::clone(&backend_arc));
-    let (eigvals, eigvecs) = eigh(&matrix, 1).expect("tridiagonal eigh");
+    let (eigvals, eigvecs) = eigh_with_backend(&backend_arc, &matrix, 1).expect("tridiagonal eigh");
     let lambda = eigvals.data_slice()[0];
     let z_data = eigvecs.data_slice()[0..m].to_vec();
     (

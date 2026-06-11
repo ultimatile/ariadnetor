@@ -44,7 +44,7 @@ use std::sync::Arc;
 
 use arnet::{
     BlockSingularValues, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend,
-    NativeBackend, Scalar, Sector, TruncSvdParams, trunc_svd_block_sparse,
+    NativeBackend, Scalar, Sector, TruncSvdParams, trunc_svd_block_sparse_with_backend,
 };
 use arnet_mps::{Mpo, Mps};
 
@@ -94,8 +94,8 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector, B: ComputeBackend 
 /// local eigensolver (per [`LocalEigensolverParams`] — Lanczos by
 /// default, ARPACK behind the `arpack` feature) via the flat-buffer
 /// adapter, then splits the optimized two-site block via
-/// [`trunc_svd_block_sparse`] with `nrow = 2`. Caller advances envs
-/// separately.
+/// [`trunc_svd_block_sparse_with_backend`] with `nrow = 2`. Caller
+/// advances envs separately.
 ///
 /// # Errors
 ///
@@ -199,7 +199,7 @@ where
         &heff.block_offsets,
         &heff.block_coords,
     );
-    let (u, s, vt, trunc_err) = trunc_svd_block_sparse(&psi_4d, 2, trunc)?;
+    let (u, s, vt, trunc_err) = trunc_svd_block_sparse_with_backend(&v.backend, &psi_4d, 2, trunc)?;
 
     Ok(TwoSiteStepResultBlockSparse {
         eigenvalue,

@@ -1,10 +1,13 @@
 //! Canonicalize: move the orthogonality center of a tensor chain via
 //! QR / LQ sweeps.
 
+use std::sync::Arc;
+
 use arnet::{
     BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor,
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Scalar, Sector, contract,
-    contract_block_sparse, lq, lq_block_sparse, qr, qr_block_sparse,
+    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Scalar, Sector,
+    contract_block_sparse_with_backend, contract_with_backend, lq_block_sparse_with_backend,
+    lq_with_backend, qr_block_sparse_with_backend, qr_with_backend,
 };
 
 use super::chain::TensorChain;
@@ -33,21 +36,23 @@ where
         "center {center} out of range for chain of length {n}",
     );
 
+    let backend = Arc::clone(chain.backend_arc());
+
     // Left-to-right QR sweep: make sites 0..center left-canonical.
     for j in 0..center {
-        left_qr_step(chain, j);
+        left_qr_step(chain, j, &backend);
     }
 
     // Right-to-left LQ sweep: make sites center+1..N right-canonical.
     for j in (center + 1..n).rev() {
-        right_lq_step(chain, j);
+        right_lq_step(chain, j, &backend);
     }
 
     chain.set_canonical_form(CanonicalForm::Mixed { center });
 }
 
 /// QR step: decompose site j, replace with Q, absorb R into site j+1.
-fn left_qr_step<T, B, C>(chain: &mut C, j: usize)
+fn left_qr_step<T, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
 where
     T: Scalar,
     B: ComputeBackend,
@@ -58,7 +63,8 @@ where
         let rank = site.rank();
         let orig_shape = site.shape().to_vec();
 
-        let (q, r) = qr(site, rank - 1).expect("QR: validated by entry point");
+        let (q, r) =
+            qr_with_backend(backend, site, rank - 1).expect("QR: validated by entry point");
 
         // Split Q's fused row leg (m, k) back into (*orig[..rank-1], k).
         let q_back = q.split_leg(0, &orig_shape[..rank - 1]);
@@ -71,14 +77,14 @@ where
     // Absorb R into site j+1.
     let new_next = {
         let next = chain.site(j + 1);
-        absorb_from_left(&r, next)
+        absorb_from_left(&r, next, backend)
     };
 
     *chain.site_mut(j + 1) = new_next;
 }
 
 /// LQ step: decompose site j, replace with Q, absorb L into site j-1.
-fn right_lq_step<T, B, C>(chain: &mut C, j: usize)
+fn right_lq_step<T, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
 where
     T: Scalar,
     B: ComputeBackend,
@@ -88,7 +94,7 @@ where
         let site = chain.site(j);
         let orig_shape = site.shape().to_vec();
 
-        let (l, q) = lq(site, 1).expect("LQ: validated by entry point");
+        let (l, q) = lq_with_backend(backend, site, 1).expect("LQ: validated by entry point");
 
         // Split Q's fused column leg (k, m) back into (k, *orig[1..]).
         let q_back = q.split_leg(1, &orig_shape[1..]);
@@ -100,7 +106,7 @@ where
 
     let new_prev = {
         let prev = chain.site(j - 1);
-        absorb_from_right(prev, &l)
+        absorb_from_right(prev, &l, backend)
     };
 
     *chain.site_mut(j - 1) = new_prev;
@@ -110,7 +116,11 @@ where
 /// Fuses next's trailing legs to a matrix for the matmul, then splits the
 /// result's fused leg back to restore the original rank. The logical leg
 /// operations handle the memory-order round-trip internally.
-fn absorb_from_left<T, B>(r: &DenseTensor<T, B>, next: &DenseTensor<T, B>) -> DenseTensor<T, B>
+fn absorb_from_left<T, B>(
+    r: &DenseTensor<T, B>,
+    next: &DenseTensor<T, B>,
+    backend: &Arc<B>,
+) -> DenseTensor<T, B>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -119,13 +129,17 @@ where
     // split the fused leg back; axis 0 carries R's new bond.
     let next_shape = next.shape().to_vec();
     let next_2d = next.fuse_legs(1..next_shape.len());
-    let result_2d =
-        contract(r, &next_2d, "ab,bc->ac").expect("R absorption: validated by entry point");
+    let result_2d = contract_with_backend(backend, r, &next_2d, "ab,bc->ac")
+        .expect("R absorption: validated by entry point");
     result_2d.split_leg(1, &next_shape[1..])
 }
 
 /// Multiply L matrix into the previous site: `prev(..., d) × L(d, k) → (..., k)`.
-fn absorb_from_right<T, B>(prev: &DenseTensor<T, B>, l: &DenseTensor<T, B>) -> DenseTensor<T, B>
+fn absorb_from_right<T, B>(
+    prev: &DenseTensor<T, B>,
+    l: &DenseTensor<T, B>,
+    backend: &Arc<B>,
+) -> DenseTensor<T, B>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -135,8 +149,8 @@ where
     let prev_shape = prev.shape().to_vec();
     let split = prev_shape.len() - 1;
     let prev_2d = prev.fuse_legs(0..split);
-    let result_2d =
-        contract(&prev_2d, l, "ab,bc->ac").expect("L absorption: validated by entry point");
+    let result_2d = contract_with_backend(backend, &prev_2d, l, "ab,bc->ac")
+        .expect("L absorption: validated by entry point");
     result_2d.split_leg(0, &prev_shape[..split])
 }
 
@@ -178,18 +192,20 @@ where
         "center {center} out of range for chain of length {n}",
     );
 
+    let backend = Arc::clone(chain.backend_arc());
+
     for j in 0..center {
-        left_qr_step_bsp(chain, j);
+        left_qr_step_bsp(chain, j, &backend);
     }
 
     for j in (center + 1..n).rev() {
-        right_lq_step_bsp(chain, j);
+        right_lq_step_bsp(chain, j, &backend);
     }
 
     chain.set_canonical_form(CanonicalForm::Mixed { center });
 }
 
-fn left_qr_step_bsp<T, S, B, C>(chain: &mut C, j: usize)
+fn left_qr_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
 where
     T: Scalar,
     S: Sector,
@@ -199,20 +215,20 @@ where
     let (q, r) = {
         let site = chain.site(j);
         let rank = site.rank();
-        qr_block_sparse(site, rank - 1).expect("QR: validated by entry point")
+        qr_block_sparse_with_backend(backend, site, rank - 1).expect("QR: validated by entry point")
     };
 
     *chain.site_mut(j) = q;
 
     let new_next = {
         let next = chain.site(j + 1);
-        absorb_from_left_bsp(&r, next)
+        absorb_from_left_bsp(&r, next, backend)
     };
 
     *chain.site_mut(j + 1) = new_next;
 }
 
-fn right_lq_step_bsp<T, S, B, C>(chain: &mut C, j: usize)
+fn right_lq_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
 where
     T: Scalar,
     S: Sector,
@@ -221,14 +237,14 @@ where
 {
     let (l, q) = {
         let site = chain.site(j);
-        lq_block_sparse(site, 1).expect("LQ: validated by entry point")
+        lq_block_sparse_with_backend(backend, site, 1).expect("LQ: validated by entry point")
     };
 
     *chain.site_mut(j) = q;
 
     let new_prev = {
         let prev = chain.site(j - 1);
-        absorb_from_right_bsp(prev, &l)
+        absorb_from_right_bsp(prev, &l, backend)
     };
 
     *chain.site_mut(j - 1) = new_prev;
@@ -237,13 +253,14 @@ where
 fn absorb_from_left_bsp<T, S, B>(
     r: &BlockSparseTensor<T, S, B>,
     next: &BlockSparseTensor<T, S, B>,
+    backend: &Arc<B>,
 ) -> BlockSparseTensor<T, S, B>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    match contract_block_sparse(r, next, &[1], &[0])
+    match contract_block_sparse_with_backend(backend, r, next, &[1], &[0])
         .expect("R absorption: validated by entry point")
     {
         BlockSparseContractResult::Tensor(t) => t,
@@ -256,6 +273,7 @@ where
 fn absorb_from_right_bsp<T, S, B>(
     prev: &BlockSparseTensor<T, S, B>,
     l: &BlockSparseTensor<T, S, B>,
+    backend: &Arc<B>,
 ) -> BlockSparseTensor<T, S, B>
 where
     T: Scalar,
@@ -263,7 +281,7 @@ where
     B: ComputeBackend,
 {
     let last = prev.rank() - 1;
-    match contract_block_sparse(prev, l, &[last], &[0])
+    match contract_block_sparse_with_backend(backend, prev, l, &[last], &[0])
         .expect("L absorption: validated by entry point")
     {
         BlockSparseContractResult::Tensor(t) => t,

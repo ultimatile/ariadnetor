@@ -7,9 +7,11 @@ use std::sync::Arc;
 use arnet::{
     BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor,
     ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Direction, Scalar, Sector,
-    TruncSvdParams, contract, contract_block_sparse, diagonal_scale, diagonal_scale_block_sparse,
-    fuse_legs_block_sparse, permute_block_sparse, qr, qr_block_sparse, trunc_svd,
-    trunc_svd_block_sparse,
+    TruncSvdParams, contract_block_sparse_with_backend, contract_with_backend,
+    diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
+    fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
+    qr_block_sparse_with_backend, qr_with_backend, trunc_svd_block_sparse_with_backend,
+    trunc_svd_with_backend,
 };
 
 use super::chain::TensorChain;
@@ -69,7 +71,7 @@ where
     for j in 0..n {
         let w = op.site(j);
         let a = psi.site(j);
-        let local = contract(w, a, "abcd,ebf->aecdf")
+        let local = contract_with_backend(&backend_arc, w, a, "abcd,ebf->aecdf")
             .expect("MPO-MPS contraction: validated by entry point");
         // Fuse the (w_l, chi_l) and (w_r, chi_r) boundary pairs, keeping
         // the physical bra leg: (w_l*chi_l, d_bra, w_r*chi_r). A two-group
@@ -80,7 +82,8 @@ where
         let mut p = local.reshape_logical(vec![w_l * chi_l, d_bra, w_r * chi_r]);
 
         if let Some(c) = carry.as_ref() {
-            p = contract(c, &p, "ab,bcd->acd").expect("carry absorption: validated by entry point");
+            p = contract_with_backend(&backend_arc, c, &p, "ab,bcd->acd")
+                .expect("carry absorption: validated by entry point");
         }
 
         if j < n - 1 {
@@ -94,7 +97,8 @@ where
             };
 
             if !use_svd {
-                let (q, r) = qr(&p, 2).expect("QR: validated by entry point");
+                let (q, r) =
+                    qr_with_backend(&backend_arc, &p, 2).expect("QR: validated by entry point");
                 // Split Q's fused row leg back into (left, d, k).
                 let q_site = q.split_leg(0, &[left, d]);
                 tensors.push(q_site);
@@ -104,13 +108,13 @@ where
                     chi_max: chi_max_forward,
                     target_trunc_err: cutoff,
                 };
-                let (u, s_vec, vt, _err) =
-                    trunc_svd(&p, 2, &svd_params).expect("trunc_svd: validated by entry point");
+                let (u, s_vec, vt, _err) = trunc_svd_with_backend(&backend_arc, &p, 2, &svd_params)
+                    .expect("trunc_svd: validated by entry point");
                 // Split U's fused row leg back into (left, d, k).
                 let u_site = u.split_leg(0, &[left, d]);
                 tensors.push(u_site);
 
-                let svt = diagonal_scale(&vt, s_vec.data_slice(), 0)
+                let svt = diagonal_scale_with_backend(&backend_arc, &vt, s_vec.data_slice(), 0)
                     .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }
@@ -139,6 +143,7 @@ where
 fn local_product_bsp<T, S, B>(
     w: &BlockSparseTensor<T, S, B>,
     a: &BlockSparseTensor<T, S, B>,
+    backend: &Arc<B>,
 ) -> BlockSparseTensor<T, S, B>
 where
     T: Scalar,
@@ -147,7 +152,7 @@ where
 {
     // Contract over physical index (d_ket = W axis 1, d = A axis 1):
     // Output: [w_L, d_bra, w_R, χ_L, χ_R]
-    let contracted = match contract_block_sparse(w, a, &[1], &[1])
+    let contracted = match contract_block_sparse_with_backend(backend, w, a, &[1], &[1])
         .expect("MPO-MPS contraction: validated by entry point")
     {
         BlockSparseContractResult::Tensor(t) => t,
@@ -157,15 +162,15 @@ where
     };
 
     // Permute to [w_L, χ_L, d_bra, w_R, χ_R].
-    let permuted = permute_block_sparse(&contracted, &[0, 3, 1, 2, 4])
+    let permuted = permute_block_sparse_with_backend(backend, &contracted, &[0, 3, 1, 2, 4])
         .expect("permute: validated by entry point");
 
     // Fuse left bond: (w_L, χ_L) → single Out leg.
-    let fused_left = fuse_legs_block_sparse(&permuted, 0, 2, Direction::Out)
+    let fused_left = fuse_legs_block_sparse_with_backend(backend, &permuted, 0, 2, Direction::Out)
         .expect("left bond fusion: validated by entry point");
 
     // Fuse right bond: (w_R, χ_R) → single In leg.
-    fuse_legs_block_sparse(&fused_left, 2, 2, Direction::In)
+    fuse_legs_block_sparse_with_backend(backend, &fused_left, 2, 2, Direction::In)
         .expect("right bond fusion: validated by entry point")
 }
 
@@ -204,10 +209,10 @@ where
     let mut carry: Option<BlockSparseTensor<T, S, B>> = None;
 
     for j in 0..n {
-        let mut p = local_product_bsp(op.site(j), psi.site(j));
+        let mut p = local_product_bsp(op.site(j), psi.site(j), &backend_arc);
 
         if let Some(c) = carry.as_ref() {
-            p = match contract_block_sparse(c, &p, &[1], &[0])
+            p = match contract_block_sparse_with_backend(&backend_arc, c, &p, &[1], &[0])
                 .expect("carry absorption: validated by entry point")
             {
                 BlockSparseContractResult::Tensor(t) => t,
@@ -225,7 +230,8 @@ where
             };
 
             if !use_svd {
-                let (q, r) = qr_block_sparse(&p, 2).expect("QR: validated by entry point");
+                let (q, r) = qr_block_sparse_with_backend(&backend_arc, &p, 2)
+                    .expect("QR: validated by entry point");
                 tensors.push(q);
                 carry = Some(r);
             } else {
@@ -233,11 +239,12 @@ where
                     chi_max: chi_max_forward,
                     target_trunc_err: cutoff,
                 };
-                let (u, s_vec, vt, _err) = trunc_svd_block_sparse(&p, 2, &svd_params)
-                    .expect("trunc_svd: validated by entry point");
+                let (u, s_vec, vt, _err) =
+                    trunc_svd_block_sparse_with_backend(&backend_arc, &p, 2, &svd_params)
+                        .expect("trunc_svd: validated by entry point");
                 tensors.push(u);
 
-                let svt = diagonal_scale_block_sparse(&vt, &s_vec, 0)
+                let svt = diagonal_scale_block_sparse_with_backend(&backend_arc, &vt, &s_vec, 0)
                     .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }

@@ -28,7 +28,8 @@
 use std::sync::Arc;
 
 use arnet::{
-    ComputeBackend, DenseTensor, NativeBackend, Scalar, TruncSvdParams, contract, trunc_svd,
+    ComputeBackend, DenseTensor, NativeBackend, Scalar, TruncSvdParams, contract_with_backend,
+    trunc_svd_with_backend,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
@@ -143,13 +144,13 @@ impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T, NativeBackend>
         let v_b = rebind::<T, NativeBackend, B>(v, &self.backend);
         let psi = v_b.reshape(vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
 
-        let tmp1 = contract(self.left, &psi, "abc,cijf->abijf")
+        let tmp1 = contract_with_backend(&self.backend, self.left, &psi, "abc,cijf->abijf")
             .expect("heff matvec step 1: shape pre-validated");
-        let tmp2 = contract(&tmp1, self.w_i, "abijf,bism->asmjf")
+        let tmp2 = contract_with_backend(&self.backend, &tmp1, self.w_i, "abijf,bism->asmjf")
             .expect("heff matvec step 2: shape pre-validated");
-        let tmp3 = contract(&tmp2, self.w_ip1, "asmjf,mjtg->astgf")
+        let tmp3 = contract_with_backend(&self.backend, &tmp2, self.w_ip1, "asmjf,mjtg->astgf")
             .expect("heff matvec step 3: shape pre-validated");
-        let out = contract(&tmp3, self.right, "astgf,hgf->asth")
+        let out = contract_with_backend(&self.backend, &tmp3, self.right, "astgf,hgf->asth")
             .expect("heff matvec step 4: shape pre-validated");
 
         let out_flat = out.reshape(vec![self.dim()]);
@@ -387,7 +388,7 @@ where
     let eigenvector = rebind::<T, NativeBackend, B>(&eigenvector_native, &backend);
 
     let psi_4d = eigenvector.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
-    let (u_2d, s, vt_2d, trunc_err) = trunc_svd(&psi_4d, 2, trunc)?;
+    let (u_2d, s, vt_2d, trunc_err) = trunc_svd_with_backend(&backend, &psi_4d, 2, trunc)?;
 
     let chi_new = u_2d.shape()[1];
     debug_assert_eq!(vt_2d.shape()[0], chi_new, "U/Vt new bond dim agreement");

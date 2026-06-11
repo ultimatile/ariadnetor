@@ -15,6 +15,10 @@ approx = { workspace = true }
 # the `MemoryOrder` layout type. That type is deliberately not re-exported
 # from the `arnet` umbrella, so tests pull it from the tensor leaf directly.
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
+# Leaf-crate dev dep: the authority-routing tests implement a delegating
+# ComputeBackend whose kernel methods name the descriptor types. Those
+# types are deliberately not re-exported from the `arnet` umbrella.
+ariadnetor-core = { path = "../ariadnetor-core" }
 
 [lib]
 name = "arnet_mps"

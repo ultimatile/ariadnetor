@@ -488,7 +488,7 @@ where
     };
 
     let absorbed =
-        <L as DmrgOps<T, B>>::commit_step(&**backend, result, direction).map_err(scale_err)?;
+        <L as DmrgOps<T, B>>::commit_step(backend, result, direction).map_err(scale_err)?;
     *mps.site_mut(site) = absorbed.site_i;
     *mps.site_mut(site + 1) = absorbed.site_ip1;
 

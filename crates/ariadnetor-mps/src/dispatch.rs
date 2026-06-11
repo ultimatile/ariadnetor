@@ -7,6 +7,19 @@
 //! Tier 2 defensive scan of all participating site orders against the
 //! chain's backend's `preferred_order()`. Algorithms parameterized over
 //! `L: MpsOps<T>` work uniformly across both flavors.
+//!
+//! # Operation authority
+//!
+//! Every operation below derives its compute backend once from the
+//! entry chain (`psi` for the cross-chain operations) and dispatches
+//! all kernels through that handle via the explicit-backend
+//! (`*_with_backend`) paths. The `Arc` a site tensor carries is a
+//! result label only on these paths and never receives kernel
+//! dispatch. On chains whose sites hold a different backend instance
+//! than the chain handle (constructible — site validation compares
+//! memory order, not `Arc` identity), this is the operative contract:
+//! the chain handle is the single authority, per the call-site
+//! backend-supply design.
 
 use std::num::NonZeroUsize;
 
