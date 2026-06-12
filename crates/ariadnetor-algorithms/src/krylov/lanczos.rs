@@ -104,9 +104,10 @@ pub struct LanczosResult<T: Scalar> {
 pub fn lanczos_smallest<T, Op>(op: &Op, dim: usize, params: &LanczosParams) -> LanczosResult<T>
 where
     T: Scalar,
-    // The tridiagonal eigenproblem is real symmetric, so we run `eigh::<T::Real>`
-    // and need the inner real type to coincide with T::Real itself. This holds
-    // for all valid `Scalar` impls (f32, f64, Complex<f32>, Complex<f64>).
+    // The tridiagonal eigenproblem is real symmetric, so we run
+    // `eigh_with_backend::<T::Real, _>` and need the inner real type to
+    // coincide with T::Real itself. This holds for all valid `Scalar`
+    // impls (f32, f64, Complex<f32>, Complex<f64>).
     T::Real: Scalar<Real = T::Real>,
     Op: LinearOp<T, NativeBackend>,
 {

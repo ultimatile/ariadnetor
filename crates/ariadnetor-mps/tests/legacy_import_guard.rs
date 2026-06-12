@@ -291,3 +291,30 @@ fn production_code_references_no_legacy_backend_derived_ops() {
         hits.join("\n"),
     );
 }
+
+/// A renamed Cargo dependency (`legacy = { package = "ariadnetor" }`)
+/// would change the crate root the source scan keys on, reopening the
+/// legacy surface under a name `SCANNED_ROOTS` does not list. The
+/// canonical manifests never use a `package` key for the workspace
+/// crates, so any such rename is rejected.
+#[test]
+fn manifest_does_not_rename_scanned_crates() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let text = fs::read_to_string(&manifest).expect("readable manifest");
+    let renames: Vec<String> = text
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| {
+            line.contains("package")
+                && (line.contains("\"ariadnetor\"") || line.contains("\"ariadnetor-linalg\""))
+        })
+        .map(|(idx, _)| {
+            format!(
+                "{}:{}: dependency rename of a scanned crate defeats the source scan",
+                manifest.display(),
+                idx + 1,
+            )
+        })
+        .collect();
+    assert!(renames.is_empty(), "{}", renames.join("\n"));
+}
