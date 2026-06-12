@@ -151,6 +151,22 @@ fn scan_file(path: &Path, hits: &mut Vec<String>) {
                 ));
             }
         }
+        // A raw identifier (`arnet::r#contract`) tokenizes as
+        // `arnet`, `r`, `<name>`; catch that spelling too.
+        for triple in toks.windows(3) {
+            if SCANNED_ROOTS.contains(&triple[0])
+                && triple[1] == "r"
+                && FORBIDDEN.contains(&triple[2])
+            {
+                hits.push(format!(
+                    "{}:{}: qualified legacy reference `{}::r#{}`",
+                    path.display(),
+                    idx + 1,
+                    triple[0],
+                    triple[2],
+                ));
+            }
+        }
         // `extern crate arnet as x;` would alias a scanned root past
         // both the import scan and the qualified-reference scan; the
         // 2018+ editions never need the form, so reject it wholesale.

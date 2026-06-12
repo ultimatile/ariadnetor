@@ -263,7 +263,8 @@ where
     let mps_i = mps.site(site);
     let mps_ip1 = mps.site(site + 1);
 
-    let backend: Arc<B> = mps.backend_arc().clone();
+    // Reuse the entry-derived chain handle rather than deriving again.
+    let backend: Arc<B> = chain_backend;
     let check_eq =
         |expected: usize, actual: usize, field: &'static str| -> Result<(), DmrgHeffError> {
             if expected == actual {

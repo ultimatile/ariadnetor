@@ -103,11 +103,12 @@ where
             got, expected,
             "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
         );
-        // Linalg kernels invoked through a site's cached backend would
-        // honor that backend's preferred order, so per-site cached backend
-        // preferred_order must agree with the chain backend's; otherwise
-        // post-`site_mut` mutations could rebind a foreign backend whose
-        // assumed layout disagrees with the layout the chain enforced.
+        // The internal operation paths dispatch through the chain
+        // handle (see the module doc), but the legacy public wrappers
+        // still dispatch through a tensor's cached backend until they
+        // are removed, and `site_mut` can rebind a foreign backend.
+        // Per-site cached backend preferred_order must therefore still
+        // agree with the chain backend's.
         let site_backend_order = chain.site(i).backend().preferred_order();
         assert_eq!(
             site_backend_order, expected,

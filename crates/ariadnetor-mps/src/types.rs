@@ -278,10 +278,13 @@ fn assert_sites_match_backend_order<St, L, B>(
             St::order_matches(s.data().layout(), backend.as_ref()),
             "{ctx}: site {i} layout order does not match backend.preferred_order() ({expected:?})",
         );
-        // The site's cached backend Arc need not be `Arc::ptr_eq` with the
-        // chain backend, but its preferred_order must agree — otherwise
-        // linalg kernels invoked via the site's backend would assume a
-        // layout different from the one the chain enforced.
+        // The site's cached backend Arc need not be `Arc::ptr_eq` with
+        // the chain backend, but its preferred_order must agree: the
+        // chain's operation paths dispatch through the chain handle,
+        // yet the legacy public wrappers still dispatch through a
+        // tensor's cached backend until they are removed, and that
+        // backend would assume a layout different from the one the
+        // chain enforced.
         let site_backend_order = s.backend().preferred_order();
         assert_eq!(
             site_backend_order, expected,
