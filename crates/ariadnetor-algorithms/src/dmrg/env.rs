@@ -52,9 +52,9 @@ pub enum DmrgEnvError {
          build the initial envs or advance in order"
     )]
     StaleNeighbor { side: &'static str, index: usize },
-    /// An underlying `arnet::contract` call failed. The source is
-    /// preserved so callers see the real cause (dimension mismatch,
-    /// backend failure, etc.) rather than a panic.
+    /// An underlying `arnet::contract_with_backend` call failed. The
+    /// source is preserved so callers see the real cause (dimension
+    /// mismatch, backend failure, etc.) rather than a panic.
     #[error("contract failure during DMRG environment update")]
     Contract(#[from] LinalgError),
     /// An MPS or MPO chain edge bond violated the dim-1 single-sector

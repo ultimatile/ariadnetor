@@ -18,7 +18,7 @@
 //!    match the psi template derived from the MPS sites at
 //!    `(site, site+1)`.
 //! 2. **Contract** through the env / W tensors using
-//!    [`arnet::contract_block_sparse`] in four steps. The
+//!    [`arnet::contract_block_sparse_with_backend`] in four steps. The
 //!    axis convention mirrors `arnet_mps::inner::braket_bsp` and
 //!    the Phase 6.1 `extend_*_step` kernels; the natural output
 //!    order `lhs_free | rhs_free` ends in

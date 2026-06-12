@@ -159,9 +159,11 @@ fn check_decl(path: &Path, lineno: usize, decl: &str, hits: &mut Vec<String>) {
     if !SCANNED_ROOTS.iter().any(|root| toks.contains(root)) {
         return;
     }
-    // A glob import would let a bare legacy call escape the name scan,
-    // so it is rejected outright, like a crate alias.
-    if decl.contains("::*") {
+    // A glob import (`::*` or a `*` inside a brace list) would let a
+    // bare legacy call escape the name scan, so it is rejected
+    // outright, like a crate alias. `*` has no other meaning inside a
+    // `use` declaration.
+    if decl.contains('*') {
         hits.push(format!(
             "{}:{lineno}: glob import from a scanned crate defeats the legacy-name scan",
             path.display()
