@@ -4,10 +4,14 @@
 //! Sources are parsed with `syn`, so every reference form — import
 //! (including renames, globs, and brace lists), qualified path
 //! (including turbofish, function values, and raw identifiers), crate
-//! alias, `extern crate`, and paths inside macro invocations — is
-//! resolved syntactically rather than by text matching. The guard is
-//! transitional: it ends with the legacy wrappers themselves, whose
-//! removal deletes every name below.
+//! alias, `extern crate`, and literal `root::name` paths inside macro
+//! invocations — is resolved syntactically rather than by text
+//! matching; a manifest check rejects dependency renames of the
+//! scanned crates. The guard targets accidental, review-missed
+//! reintroduction: a macro that assembles the path from separate
+//! tokens is deliberate obfuscation and stays review territory. The
+//! guard is transitional: it ends with the legacy wrappers themselves,
+//! whose removal deletes every name below.
 //!
 //! This file is the single source; the other guarded crate compiles it
 //! via a `#[path]` include, so the `env!`-based paths resolve against
@@ -292,34 +296,57 @@ fn production_code_references_no_legacy_backend_derived_ops() {
     );
 }
 
-/// A renamed Cargo dependency (`legacy = { package = "ariadnetor" }`)
-/// would change the crate root the source scan keys on, reopening the
-/// legacy surface under a name `SCANNED_ROOTS` does not list. The
-/// canonical manifests never use a `package` key for the workspace
-/// crates, so any such rename is rejected.
-#[test]
-fn manifest_does_not_rename_scanned_crates() {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
-    let text = fs::read_to_string(&manifest).expect("readable manifest");
-    let renames: Vec<String> = text
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| {
-            // String-level scan covering both TOML quote styles; the
-            // inline and multiline dependency forms both put the
-            // `package` key and its value on one line.
-            line.contains("package")
-                && ["ariadnetor", "ariadnetor-linalg"].iter().any(|name| {
-                    line.contains(&format!("\"{name}\"")) || line.contains(&format!("'{name}'"))
-                })
-        })
-        .map(|(idx, _)| {
-            format!(
+fn scan_manifest_for_renames(manifest: &Path, renames: &mut Vec<String>) {
+    let text = fs::read_to_string(manifest).expect("readable manifest");
+    for (idx, line) in text.lines().enumerate() {
+        // String-level scan covering both TOML quote styles; the
+        // inline and multiline dependency forms both put the
+        // `package` key and its value on one line.
+        let renames_scanned = line.contains("package")
+            && ["ariadnetor", "ariadnetor-linalg"].iter().any(|name| {
+                line.contains(&format!("\"{name}\"")) || line.contains(&format!("'{name}'"))
+            });
+        if renames_scanned {
+            renames.push(format!(
                 "{}:{}: dependency rename of a scanned crate defeats the source scan",
                 manifest.display(),
                 idx + 1,
-            )
-        })
-        .collect();
+            ));
+        }
+    }
+}
+
+/// The nearest ancestor manifest declaring `[workspace]`; a renamed
+/// dependency can also live there and be inherited via
+/// `name.workspace = true`.
+fn workspace_root_manifest(member_dir: &Path) -> Option<PathBuf> {
+    let mut dir = member_dir.parent();
+    while let Some(d) = dir {
+        let candidate = d.join("Cargo.toml");
+        if candidate.exists()
+            && fs::read_to_string(&candidate)
+                .expect("readable manifest")
+                .contains("[workspace]")
+        {
+            return Some(candidate);
+        }
+        dir = d.parent();
+    }
+    None
+}
+
+/// A renamed Cargo dependency (`legacy = { package = "ariadnetor" }`),
+/// whether declared on the member or inherited from the workspace
+/// manifest, would change the crate root the source scan keys on,
+/// reopening the legacy surface under a name `SCANNED_ROOTS` does not
+/// list. The canonical manifests never use a `package` key for the
+/// workspace crates, so any such rename is rejected.
+#[test]
+fn manifests_do_not_rename_scanned_crates() {
+    let member_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut renames = Vec::new();
+    scan_manifest_for_renames(&member_dir.join("Cargo.toml"), &mut renames);
+    let root = workspace_root_manifest(member_dir).expect("workspace root manifest found");
+    scan_manifest_for_renames(&root, &mut renames);
     assert!(renames.is_empty(), "{}", renames.join("\n"));
 }
