@@ -24,6 +24,11 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
+# The legacy-import guard (a #[path] include of the mps crate's single
+# source) parses production sources syntactically; span-locations
+# supplies the line numbers in its failure report.
+proc-macro2 = { workspace = true }
+syn = { workspace = true }
 # Leaf-crate dev dep: tests reach the `reordered` escape hatch, which names
 # the `MemoryOrder` layout type. That type is deliberately not re-exported
 # from the `arnet` umbrella, so tests pull it from the tensor leaf directly.

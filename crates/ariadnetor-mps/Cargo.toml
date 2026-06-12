@@ -19,6 +19,10 @@ ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 # ComputeBackend whose kernel methods name the descriptor types. Those
 # types are deliberately not re-exported from the `arnet` umbrella.
 ariadnetor-core = { path = "../ariadnetor-core" }
+# The legacy-import guard parses production sources syntactically;
+# span-locations supplies the line numbers in its failure report.
+proc-macro2 = { workspace = true }
+syn = { workspace = true }
 
 [lib]
 name = "arnet_mps"

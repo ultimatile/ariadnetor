@@ -303,7 +303,8 @@ where
         }
     }
 
-    let backend: Arc<B> = mps.backend_arc().clone();
+    // Reuse the entry-derived chain handle rather than deriving again.
+    let backend: Arc<B> = chain_backend_arc;
     let mut sweeps: Vec<DmrgSweepRecord<T::Real>> = Vec::with_capacity(params.max_sweeps);
     let mut last_energy: Option<T::Real> = None;
     let mut converged = false;
