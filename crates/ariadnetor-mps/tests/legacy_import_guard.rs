@@ -305,8 +305,13 @@ fn manifest_does_not_rename_scanned_crates() {
         .lines()
         .enumerate()
         .filter(|(_, line)| {
+            // String-level scan covering both TOML quote styles; the
+            // inline and multiline dependency forms both put the
+            // `package` key and its value on one line.
             line.contains("package")
-                && (line.contains("\"ariadnetor\"") || line.contains("\"ariadnetor-linalg\""))
+                && ["ariadnetor", "ariadnetor-linalg"].iter().any(|name| {
+                    line.contains(&format!("\"{name}\"")) || line.contains(&format!("'{name}'"))
+                })
         })
         .map(|(idx, _)| {
             format!(

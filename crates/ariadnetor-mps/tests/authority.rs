@@ -1,13 +1,14 @@
 //! Authority-routing tests for the explicit-backend call-graph migration.
 //!
-//! Each test splits the operand tensors across two `CountingBackend`
-//! instances so the legacy authority source and the entry-derived handle
-//! are distinguishable: `canonicalize` / `truncate` build the site
-//! tensors on instance A and hand the chain constructor instance B,
-//! while `apply` puts the MPO entirely on A and the MPS (sites and
-//! chain) on B. The migrated operation paths must dispatch every kernel
-//! through the entry-derived handle (B) and never through the legacy
-//! source (A). Before the migration the legacy wrappers derived their
+//! Each test splits the operand tensors across distinct
+//! `CountingBackend` instances so the legacy authority sources and the
+//! entry-derived handle are distinguishable: `canonicalize` /
+//! `truncate` build the site tensors on one instance and hand the
+//! chain constructor another, while `apply` uses three — the MPO on
+//! one, the psi sites on a second, and the psi chain handle on a
+//! third. The migrated operation paths must dispatch every kernel
+//! through the entry-derived chain handle and never through any other
+//! instance. Before the migration the legacy wrappers derived their
 //! authority from the operand tensors, so these assertions fail on the
 //! pre-migration code for every kernel-dispatching operation
 //! (decompositions and contractions). Allocation-only operations
