@@ -148,34 +148,71 @@ impl Scan<'_> {
         }
     }
 
-    /// Scan a macro invocation's token stream for `root::name` pairs;
-    /// macro arguments are tokens, not parsed paths, so `visit_path`
-    /// does not see them.
+    /// Scan a macro invocation's token stream; macro arguments are
+    /// tokens, not parsed paths, so `visit_path` does not see them.
+    /// After a scanned root and `::`, every following path segment is
+    /// checked, and a brace group in segment position (an embedded
+    /// `use` list) is checked for forbidden identifiers wholesale.
     fn scan_tokens(&mut self, stream: TokenStream) {
         let tokens: Vec<TokenTree> = stream.into_iter().collect();
         for (i, token) in tokens.iter().enumerate() {
             match token {
                 TokenTree::Group(group) => self.scan_tokens(group.stream()),
                 TokenTree::Ident(ident) if is_scanned_root(&ident_name(ident)) => {
-                    let colons = matches!(
-                        (tokens.get(i + 1), tokens.get(i + 2)),
-                        (Some(TokenTree::Punct(a)), Some(TokenTree::Punct(b)))
-                            if a.as_char() == ':' && b.as_char() == ':'
-                    );
-                    if !colons {
-                        continue;
-                    }
-                    if let Some(TokenTree::Ident(next)) = tokens.get(i + 3) {
-                        let name = ident_name(next);
-                        if is_forbidden(&name) {
-                            self.hit(
-                                next.span().start().line,
-                                &format!(
-                                    "qualified legacy reference `{}::{name}` in a macro invocation",
-                                    ident_name(ident),
-                                ),
-                            );
+                    let root = ident_name(ident);
+                    let mut j = i;
+                    loop {
+                        let colons = matches!(
+                            (tokens.get(j + 1), tokens.get(j + 2)),
+                            (Some(TokenTree::Punct(a)), Some(TokenTree::Punct(b)))
+                                if a.as_char() == ':' && b.as_char() == ':'
+                        );
+                        if !colons {
+                            break;
                         }
+                        match tokens.get(j + 3) {
+                            Some(TokenTree::Ident(segment)) => {
+                                let name = ident_name(segment);
+                                if is_forbidden(&name) {
+                                    self.hit(
+                                        segment.span().start().line,
+                                        &format!(
+                                            "qualified legacy reference `{root}::{name}` \
+                                             in a macro invocation",
+                                        ),
+                                    );
+                                }
+                                j += 3;
+                            }
+                            Some(TokenTree::Group(group)) => {
+                                self.scan_group_for_forbidden(&root, group.stream());
+                                break;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Flag any forbidden identifier inside a brace group that follows
+    /// a scanned root path (an embedded `use root::{...}` list).
+    fn scan_group_for_forbidden(&mut self, root: &str, stream: TokenStream) {
+        for token in stream {
+            match token {
+                TokenTree::Group(group) => self.scan_group_for_forbidden(root, group.stream()),
+                TokenTree::Ident(ident) => {
+                    let name = ident_name(&ident);
+                    if is_forbidden(&name) {
+                        self.hit(
+                            ident.span().start().line,
+                            &format!(
+                                "qualified legacy reference `{root}::{{.., {name}, ..}}` \
+                                 in a macro invocation",
+                            ),
+                        );
                     }
                 }
                 _ => {}

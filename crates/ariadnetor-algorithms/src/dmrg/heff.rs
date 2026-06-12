@@ -21,9 +21,10 @@
 //! drive either Krylov solver in [`crate::krylov`] (which keep their
 //! 1-D basis vectors in `NativeBackend`) without materializing
 //! `H_eff` as a dense matrix. The implementation rebinds Krylov-side
-//! inputs / outputs across the backend `Arc` boundary so the
-//! contracts over the chain backend `B` retain that backend's
-//! `Arc` provenance for downstream linalg dispatch.
+//! inputs / outputs across the backend `Arc` boundary; the matvec's
+//! contractions dispatch through the operator's stored chain handle,
+//! and the rebind keeps the result tensors' `Arc` labels consistent
+//! with the chain they re-enter.
 
 use std::sync::Arc;
 
