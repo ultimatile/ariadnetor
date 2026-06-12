@@ -179,9 +179,9 @@ where
 ///
 /// See [`apply_streaming_naive_dense`] for the algorithm description; the
 /// BlockSparse variant mirrors it via [`local_product_bsp`],
-/// `qr_block_sparse`, and `trunc_svd_block_sparse`, then delegates the
-/// final canonicalization + truncation to `canonicalize_bsp` +
-/// `truncate_bsp`.
+/// `qr_block_sparse_with_backend`, and `trunc_svd_block_sparse_with_backend`,
+/// then delegates the final canonicalization + truncation to
+/// `canonicalize_bsp` + `truncate_bsp`.
 pub(super) fn apply_streaming_naive_bsp<T, S, B>(
     op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
     psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,

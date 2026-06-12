@@ -24,7 +24,7 @@
 //!
 //! After each full L→R + R→L cycle we record the **normalized**
 //! post-truncation expectation `<psi|H|psi>.re() / <psi|psi>`.
-//! `trunc_svd` keeps unrenormalized singular values, so without
+//! The truncated SVD keeps unrenormalized singular values, so without
 //! the `<psi|psi>` divisor the sweep energy drifts toward zero
 //! whenever truncation happens — the divisor strips that
 //! norm-artifact away. Convergence requires energy delta within

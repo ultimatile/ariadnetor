@@ -34,7 +34,7 @@ fn flip(d: Direction) -> Direction {
 /// Swap axes 0 and 2 of a rank-3 BlockSparseTensor. The Dense
 /// `extend_right_step` kernel ends with an einsum reorder
 /// (`"ecbd,ade->abc"`) that places the bra's free axis first;
-/// `contract_block_sparse` emits axes in the natural
+/// `contract_block_sparse_with_backend` emits axes in the natural
 /// `lhs_free | rhs_free` order, so the BlockSparse counterpart
 /// receives `(c, b, a)` and must swap to `(a, b, c)` to match the env
 /// axis convention.

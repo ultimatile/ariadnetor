@@ -30,7 +30,7 @@
 //!    in the contracted output by coordinate.
 //!
 //! Symmetry preservation is structural: the psi template only
-//! allocates flux-allowed blocks, and `contract_block_sparse`
+//! allocates flux-allowed blocks, and `contract_block_sparse_with_backend`
 //! propagates flux as `lhs.flux().fuse(rhs.flux())`. With env /
 //! MPO fluxes pre-validated to identity at the entry point, the
 //! matvec output's flux equals `psi.flux()` by construction.

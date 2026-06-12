@@ -166,11 +166,12 @@ where
 ///
 /// # Per-site flux under asymmetric QR / LQ
 ///
-/// - `qr_block_sparse` returns an isometric `Q` with `flux = identity()`
+/// - `qr_block_sparse_with_backend` returns an isometric `Q` with
+///   `flux = identity()`
 ///   and a residual `R` carrying the original flux. The left-to-right
 ///   sweep therefore accumulates per-site charges onto the
 ///   orthogonality center.
-/// - `lq_block_sparse` puts the original flux on the isometric `Q` and
+/// - `lq_block_sparse_with_backend` puts the original flux on the isometric `Q` and
 ///   returns an identity-flux `L`. The right-to-left sweep preserves
 ///   each site's flux.
 ///

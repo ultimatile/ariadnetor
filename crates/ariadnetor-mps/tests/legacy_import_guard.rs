@@ -151,6 +151,18 @@ fn scan_file(path: &Path, hits: &mut Vec<String>) {
                 ));
             }
         }
+        // `extern crate arnet as x;` would alias a scanned root past
+        // both the import scan and the qualified-reference scan; the
+        // 2018+ editions never need the form, so reject it wholesale.
+        for triple in toks.windows(3) {
+            if triple[0] == "extern" && triple[1] == "crate" && SCANNED_ROOTS.contains(&triple[2]) {
+                hits.push(format!(
+                    "{}:{}: extern-crate declaration of a scanned crate defeats the scan",
+                    path.display(),
+                    idx + 1,
+                ));
+            }
+        }
     }
 }
 
