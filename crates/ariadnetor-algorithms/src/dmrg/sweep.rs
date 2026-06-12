@@ -24,7 +24,7 @@
 //!
 //! After each full L→R + R→L cycle we record the **normalized**
 //! post-truncation expectation `<psi|H|psi>.re() / <psi|psi>`.
-//! `trunc_svd` keeps unrenormalized singular values, so without
+//! The truncated SVD keeps unrenormalized singular values, so without
 //! the `<psi|psi>` divisor the sweep energy drifts toward zero
 //! whenever truncation happens — the divisor strips that
 //! norm-artifact away. Convergence requires energy delta within
@@ -198,9 +198,9 @@ pub enum DmrgSweepError {
         #[source]
         source: DmrgEnvError,
     },
-    /// The post-step S-absorb (`arnet::diagonal_scale` for
-    /// Dense or `arnet::diagonal_scale_block_sparse` for BlockSparse)
-    /// failed. Carries the same `(sweep, direction, site)`
+    /// The post-step S-absorb (`arnet::diagonal_scale_with_backend`
+    /// for Dense or `arnet::diagonal_scale_block_sparse_with_backend`
+    /// for BlockSparse) failed. Carries the same `(sweep, direction, site)`
     /// breadcrumbs as `Step` / `Env` so the caller can pin down
     /// where the failure occurred without having to walk the
     /// `DmrgResult::sweeps` history manually.
@@ -303,7 +303,8 @@ where
         }
     }
 
-    let backend: Arc<B> = mps.backend_arc().clone();
+    // Reuse the entry-derived chain handle rather than deriving again.
+    let backend: Arc<B> = chain_backend_arc;
     let mut sweeps: Vec<DmrgSweepRecord<T::Real>> = Vec::with_capacity(params.max_sweeps);
     let mut last_energy: Option<T::Real> = None;
     let mut converged = false;
@@ -488,7 +489,7 @@ where
     };
 
     let absorbed =
-        <L as DmrgOps<T, B>>::commit_step(&**backend, result, direction).map_err(scale_err)?;
+        <L as DmrgOps<T, B>>::commit_step(backend, result, direction).map_err(scale_err)?;
     *mps.site_mut(site) = absorbed.site_i;
     *mps.site_mut(site + 1) = absorbed.site_ip1;
 

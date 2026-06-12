@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use arnet::{
     ComputeBackend, DenseLayout, DenseStorage, LinalgError, NativeBackend, Scalar, Storage,
-    StorageFor, Tensor, TensorLayout, contract,
+    StorageFor, Tensor, TensorLayout, contract_with_backend,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 
@@ -52,9 +52,9 @@ pub enum DmrgEnvError {
          build the initial envs or advance in order"
     )]
     StaleNeighbor { side: &'static str, index: usize },
-    /// An underlying `arnet::contract` call failed. The source is
-    /// preserved so callers see the real cause (dimension mismatch,
-    /// backend failure, etc.) rather than a panic.
+    /// An underlying `arnet::contract_with_backend` call failed. The
+    /// source is preserved so callers see the real cause (dimension
+    /// mismatch, backend failure, etc.) rather than a panic.
     #[error("contract failure during DMRG environment update")]
     Contract(#[from] LinalgError),
     /// An MPS or MPO chain edge bond violated the dim-1 single-sector
@@ -196,28 +196,28 @@ impl<T: Scalar> DmrgEnvOps<T> for DenseLayout {
     /// body of `arnet_mps::inner::braket_dense`: bra = `site.conj()`,
     /// then a 3-step contraction `(env, bra) → (·, mpo) → (·, site)`.
     fn extend_left_step<B: ComputeBackend>(
-        _backend: &Arc<B>,
+        backend: &Arc<B>,
         env: &Tensor<Self::Storage, Self, B>,
         site: &Tensor<Self::Storage, Self, B>,
         mpo_site: &Tensor<Self::Storage, Self, B>,
     ) -> Result<Tensor<Self::Storage, Self, B>, LinalgError> {
         let bra = site.conj();
-        let t1 = contract(env, &bra, "abc,ade->bcde")?;
-        let t2 = contract(&t1, mpo_site, "bcde,bfdg->cefg")?;
-        contract(&t2, site, "cefg,cfh->egh")
+        let t1 = contract_with_backend(backend, env, &bra, "abc,ade->bcde")?;
+        let t2 = contract_with_backend(backend, &t1, mpo_site, "bcde,bfdg->cefg")?;
+        contract_with_backend(backend, &t2, site, "cefg,cfh->egh")
     }
 
     /// Per-site right extension for `DenseLayout`.
     fn extend_right_step<B: ComputeBackend>(
-        _backend: &Arc<B>,
+        backend: &Arc<B>,
         env: &Tensor<Self::Storage, Self, B>,
         site: &Tensor<Self::Storage, Self, B>,
         mpo_site: &Tensor<Self::Storage, Self, B>,
     ) -> Result<Tensor<Self::Storage, Self, B>, LinalgError> {
         let bra = site.conj();
-        let t1 = contract(env, site, "egh,cfh->egcf")?;
-        let t2 = contract(&t1, mpo_site, "egcf,bfdg->ecbd")?;
-        contract(&t2, &bra, "ecbd,ade->abc")
+        let t1 = contract_with_backend(backend, env, site, "egh,cfh->egcf")?;
+        let t2 = contract_with_backend(backend, &t1, mpo_site, "egcf,bfdg->ecbd")?;
+        contract_with_backend(backend, &t2, &bra, "ecbd,ade->abc")
     }
 }
 

@@ -7,6 +7,19 @@
 //! Tier 2 defensive scan of all participating site orders against the
 //! chain's backend's `preferred_order()`. Algorithms parameterized over
 //! `L: MpsOps<T>` work uniformly across both flavors.
+//!
+//! # Operation authority
+//!
+//! Every operation below derives its compute backend once from the
+//! entry chain (`psi` for the cross-chain operations) and dispatches
+//! all kernels through that handle via the explicit-backend
+//! (`*_with_backend`) paths. The `Arc` a site tensor carries is a
+//! result label only on these paths and never receives kernel
+//! dispatch. On chains whose sites hold a different backend instance
+//! than the chain handle (constructible — site validation compares
+//! memory order, not `Arc` identity), this is the operative contract:
+//! the chain handle is the single authority, per the call-site
+//! backend-supply design.
 
 use std::num::NonZeroUsize;
 
@@ -90,11 +103,12 @@ where
             got, expected,
             "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
         );
-        // Linalg kernels invoked through a site's cached backend would
-        // honor that backend's preferred order, so per-site cached backend
-        // preferred_order must agree with the chain backend's; otherwise
-        // post-`site_mut` mutations could rebind a foreign backend whose
-        // assumed layout disagrees with the layout the chain enforced.
+        // The internal operation paths dispatch through the chain
+        // handle (see the module doc), but the legacy public wrappers
+        // still dispatch through a tensor's cached backend until they
+        // are removed, and `site_mut` can rebind a foreign backend.
+        // Per-site cached backend preferred_order must therefore still
+        // agree with the chain backend's.
         let site_backend_order = chain.site(i).backend().preferred_order();
         assert_eq!(
             site_backend_order, expected,

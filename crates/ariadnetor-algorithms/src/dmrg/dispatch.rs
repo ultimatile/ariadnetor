@@ -6,10 +6,12 @@
 //! `arnet-mps`: each implementation is a thin delegation to the
 //! existing layout-specific free functions, with no logic duplication.
 
+use std::sync::Arc;
+
 use arnet::{
     BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, LinalgError,
     NativeBackend, Scalar, Sector, Storage, StorageFor, Tensor, TensorLayout, TruncSvdParams,
-    diagonal_scale, diagonal_scale_block_sparse,
+    diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
 };
 use arnet_mps::{Mpo, Mps, MpsOps};
 
@@ -69,9 +71,11 @@ pub trait DmrgOps<T: Scalar, B: ComputeBackend = NativeBackend>:
     ) -> Result<Self::StepResult, DmrgHeffError>;
 
     /// Consume the step result, absorb `S`, project to
-    /// [`AbsorbedStep`].
+    /// [`AbsorbedStep`]. Takes the backend as `&Arc<B>` because the
+    /// explicit-backend scaling paths need an owned handle to wrap
+    /// their results.
     fn commit_step(
-        backend: &B,
+        backend: &Arc<B>,
         result: Self::StepResult,
         direction: SweepDirection,
     ) -> Result<AbsorbedStep<<Self as MpsOps<T>>::Storage, Self, B>, LinalgError>;
@@ -109,18 +113,20 @@ where
     }
 
     fn commit_step(
-        _backend: &B,
+        backend: &Arc<B>,
         result: Self::StepResult,
         direction: SweepDirection,
     ) -> Result<AbsorbedStep<DenseStorage<T>, Self, B>, LinalgError> {
         let bond_dim = result.s.shape()[0];
         let (site_i, site_ip1) = match direction {
             SweepDirection::LeftToRight => {
-                let s_vt = diagonal_scale(&result.vt, result.s.data_slice(), 0)?;
+                let s_vt =
+                    diagonal_scale_with_backend(backend, &result.vt, result.s.data_slice(), 0)?;
                 (result.u, s_vt)
             }
             SweepDirection::RightToLeft => {
-                let u_s = diagonal_scale(&result.u, result.s.data_slice(), 2)?;
+                let u_s =
+                    diagonal_scale_with_backend(backend, &result.u, result.s.data_slice(), 2)?;
                 (u_s, result.vt)
             }
         };
@@ -167,7 +173,7 @@ where
     }
 
     fn commit_step(
-        _backend: &B,
+        backend: &Arc<B>,
         result: Self::StepResult,
         direction: SweepDirection,
     ) -> Result<AbsorbedStep<BlockSparseStorage<T>, Self, B>, LinalgError> {
@@ -176,11 +182,13 @@ where
         let bond_dim: usize = result.s.values.iter().map(|(_, v)| v.len()).sum();
         let (site_i, site_ip1) = match direction {
             SweepDirection::LeftToRight => {
-                let s_vt = diagonal_scale_block_sparse(&result.vt, &result.s, 0)?;
+                let s_vt =
+                    diagonal_scale_block_sparse_with_backend(backend, &result.vt, &result.s, 0)?;
                 (result.u, s_vt)
             }
             SweepDirection::RightToLeft => {
-                let u_s = diagonal_scale_block_sparse(&result.u, &result.s, 2)?;
+                let u_s =
+                    diagonal_scale_block_sparse_with_backend(backend, &result.u, &result.s, 2)?;
                 (u_s, result.vt)
             }
         };

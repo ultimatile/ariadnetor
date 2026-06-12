@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Tensor-network algorithms (DMRG, TEBD, ...) built on Ariadnetor"
+# The legacy-import guard stub `#[path]`-includes its single source from
+# the sibling mps crate, which a packaged .crate cannot reach; keep the
+# workspace-internal guard out of the package.
+exclude = ["tests/legacy_import_guard.rs"]
 
 [features]
 default = []
@@ -20,6 +24,13 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
+# The legacy-import guard (a #[path] include of the mps crate's single
+# source) parses production sources syntactically; span-locations
+# supplies the line numbers in its failure report. The features are
+# restated here so the guard's contract survives a narrowing of the
+# workspace defaults.
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+syn = { workspace = true, features = ["full", "visit"] }
 # Leaf-crate dev dep: tests reach the `reordered` escape hatch, which names
 # the `MemoryOrder` layout type. That type is deliberately not re-exported
 # from the `arnet` umbrella, so tests pull it from the tensor leaf directly.
