@@ -4,12 +4,14 @@
 use std::sync::Arc;
 
 use arnet::{
-    BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor,
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Scalar, Sector,
-    contract_block_sparse_with_backend, contract_with_backend, lq_block_sparse_with_backend,
-    lq_with_backend, qr_block_sparse_with_backend, qr_with_backend,
+    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, Scalar,
+    Sector, lq_block_sparse_with_backend, lq_with_backend, qr_block_sparse_with_backend,
+    qr_with_backend,
 };
 
+use super::absorb::{
+    absorb_from_left, absorb_from_left_bsp, absorb_from_right, absorb_from_right_bsp,
+};
 use super::chain::TensorChain;
 use super::types::CanonicalForm;
 
@@ -112,48 +114,6 @@ where
     *chain.site_mut(j - 1) = new_prev;
 }
 
-/// Multiply R matrix into the next site: `R(k, d) × next(d, ...) → (k, ...)`.
-/// Fuses next's trailing legs to a matrix for the matmul, then splits the
-/// result's fused leg back to restore the original rank. The logical leg
-/// operations handle the memory-order round-trip internally.
-fn absorb_from_left<T, B>(
-    r: &DenseTensor<T, B>,
-    next: &DenseTensor<T, B>,
-    backend: &Arc<B>,
-) -> DenseTensor<T, B>
-where
-    T: Scalar,
-    B: ComputeBackend,
-{
-    // Fuse next's trailing legs into a matrix, contract R · next, then
-    // split the fused leg back; axis 0 carries R's new bond.
-    let next_shape = next.shape().to_vec();
-    let next_2d = next.fuse_legs(1..next_shape.len());
-    let result_2d = contract_with_backend(backend, r, &next_2d, "ab,bc->ac")
-        .expect("R absorption: validated by entry point");
-    result_2d.split_leg(1, &next_shape[1..])
-}
-
-/// Multiply L matrix into the previous site: `prev(..., d) × L(d, k) → (..., k)`.
-fn absorb_from_right<T, B>(
-    prev: &DenseTensor<T, B>,
-    l: &DenseTensor<T, B>,
-    backend: &Arc<B>,
-) -> DenseTensor<T, B>
-where
-    T: Scalar,
-    B: ComputeBackend,
-{
-    // Fuse prev's leading legs into a matrix, contract prev · L, then
-    // split the fused leg back; the last axis carries L's new bond.
-    let prev_shape = prev.shape().to_vec();
-    let split = prev_shape.len() - 1;
-    let prev_2d = prev.fuse_legs(0..split);
-    let result_2d = contract_with_backend(backend, &prev_2d, l, "ab,bc->ac")
-        .expect("L absorption: validated by entry point");
-    result_2d.split_leg(0, &prev_shape[..split])
-}
-
 // ============================================================================
 // BlockSparse canonicalize.
 // ============================================================================
@@ -249,45 +209,4 @@ where
     };
 
     *chain.site_mut(j - 1) = new_prev;
-}
-
-fn absorb_from_left_bsp<T, S, B>(
-    r: &BlockSparseTensor<T, S, B>,
-    next: &BlockSparseTensor<T, S, B>,
-    backend: &Arc<B>,
-) -> BlockSparseTensor<T, S, B>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    match contract_block_sparse_with_backend(backend, r, next, &[1], &[0])
-        .expect("R absorption: validated by entry point")
-    {
-        BlockSparseContractResult::Tensor(t) => t,
-        BlockSparseContractResult::Scalar(_) => {
-            unreachable!("left absorption contraction always produces a tensor")
-        }
-    }
-}
-
-fn absorb_from_right_bsp<T, S, B>(
-    prev: &BlockSparseTensor<T, S, B>,
-    l: &BlockSparseTensor<T, S, B>,
-    backend: &Arc<B>,
-) -> BlockSparseTensor<T, S, B>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    let last = prev.rank() - 1;
-    match contract_block_sparse_with_backend(backend, prev, l, &[last], &[0])
-        .expect("L absorption: validated by entry point")
-    {
-        BlockSparseContractResult::Tensor(t) => t,
-        BlockSparseContractResult::Scalar(_) => {
-            unreachable!("right absorption contraction always produces a tensor")
-        }
-    }
 }

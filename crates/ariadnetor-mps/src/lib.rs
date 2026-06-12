@@ -8,6 +8,7 @@
 //! - **MPS**: `(χ_L, d, χ_R)` — left-bond, physical, right-bond
 //! - **MPO**: `(χ_L, d_ket, d_bra, χ_R)` — left-bond, ket, bra, right-bond
 
+mod absorb;
 mod apply;
 mod canonicalize;
 mod chain;
