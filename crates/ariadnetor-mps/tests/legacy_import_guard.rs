@@ -6,12 +6,13 @@
 //! (including turbofish, function values, and raw identifiers), crate
 //! alias, `extern crate`, and literal `root::name` paths inside macro
 //! invocations — is resolved syntactically rather than by text
-//! matching; a manifest check rejects dependency renames of the
-//! scanned crates. The guard targets accidental, review-missed
+//! matching; a string-level manifest check rejects dependency renames
+//! of the scanned crates. The guard targets accidental, review-missed
 //! reintroduction: a macro that assembles the path from separate
-//! tokens is deliberate obfuscation and stays review territory. The
-//! guard is transitional: it ends with the legacy wrappers themselves,
-//! whose removal deletes every name below.
+//! tokens, or a manifest hiding a rename behind TOML escape sequences,
+//! is deliberate obfuscation and stays review territory. The guard is
+//! transitional: it ends with the legacy wrappers themselves, whose
+//! removal deletes every name below.
 //!
 //! This file is the single source; the other guarded crate compiles it
 //! via a `#[path]` include, so the `env!`-based paths resolve against
