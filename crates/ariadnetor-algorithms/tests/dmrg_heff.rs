@@ -15,16 +15,15 @@
 use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
-use arnet::Scalar;
-use arnet::{
-    DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams, contract,
-    diagonal_scale, eigh,
-};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, EffectiveHamiltonian2Site, LocalEigensolverParams, dmrg_2site_step,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
+use arnet_core::Scalar;
+use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh};
 use arnet_mps::{Mpo, Mps};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use num_complex::Complex;
 use rand::RngExt;
 use rand::SeedableRng;
@@ -175,7 +174,7 @@ fn hermitian_local_mpo_c64(
 fn build_heff_dense<T, B>(heff: &EffectiveHamiltonian2Site<'_, T, B>) -> DenseTensor<T>
 where
     T: Scalar,
-    B: arnet::ComputeBackend,
+    B: arnet_core::ComputeBackend,
 {
     let dim = heff.dim();
     let mut data = vec![T::zero(); dim * dim];

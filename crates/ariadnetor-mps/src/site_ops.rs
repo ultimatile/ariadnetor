@@ -4,7 +4,9 @@
 //! `ColumnMajor` (`NativeBackend`'s preferred order). For a 2×2 matrix
 //! `[[a, b], [c, d]]`, the flat layout is `[a, c, b, d]`.
 
-use arnet::{DenseTensor, NativeBackend, Scalar};
+use arnet_core::Scalar;
+use arnet_native::NativeBackend;
+use arnet_tensor::DenseTensor;
 use num_traits::{NumCast, Zero};
 
 /// Trait for site-local operator dictionaries.

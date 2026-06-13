@@ -20,13 +20,15 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseTensor, Direction,
-    NativeBackend, QNIndex, Sector, TruncSvdParams, U1Sector, eigh,
-};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_native::NativeBackend;
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseTensor, Direction,
+    QNIndex, Sector, U1Sector,
+};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

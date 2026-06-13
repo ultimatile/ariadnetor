@@ -5,13 +5,13 @@
 //! invariants (per-sector isometry, flux preservation, block-level
 //! state comparison).
 
-use arnet::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
-    U1Sector,
-};
 use arnet_mps::{
     CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams, canonicalize,
     truncate,
+};
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
+    U1Sector,
 };
 
 use super::helpers::{
@@ -197,7 +197,7 @@ fn truncate_bsp_absorb_both_sets_unknown() {
 
 #[test]
 fn truncate_bsp_single_site() {
-    use arnet::{BlockCoord, Direction, QNIndex};
+    use arnet_tensor::{BlockCoord, Direction, QNIndex};
 
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);

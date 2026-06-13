@@ -1,16 +1,17 @@
 //! Error-path tests for `dmrg_2site_step_block_sparse` and a
 //! complex-storage smoke test.
 
-use arnet::TruncSvdParams;
-use arnet::{
-    BlockCoord, BlockSparseTensor, DenseTensor, Direction, NativeBackend, QNIndex, Sector, U1Sector,
-};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2SiteBlockSparse, LocalEigensolverParams,
     dmrg_2site_step_block_sparse,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, TensorChain};
+use arnet_native::NativeBackend;
+use arnet_tensor::{
+    BlockCoord, BlockSparseTensor, DenseTensor, Direction, QNIndex, Sector, U1Sector,
+};
 use num_complex::Complex;
 
 use arnet_mps::Mps;

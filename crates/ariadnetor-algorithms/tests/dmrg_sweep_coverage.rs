@@ -17,14 +17,15 @@
 use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
-use arnet::Scalar;
-use arnet::TruncSvdParams;
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_core::Scalar;
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps, braket, canonicalize, norm};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

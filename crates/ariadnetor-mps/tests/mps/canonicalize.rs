@@ -1,7 +1,8 @@
 //! Canonicalization tests.
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 

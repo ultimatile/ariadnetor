@@ -13,10 +13,10 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockCoord, BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseTensor,
-    NativeBackend, Scalar, Sector, contract_block_sparse_with_backend,
-};
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{BlockSparseContractResult, contract_block_sparse_with_backend};
+use arnet_native::NativeBackend;
+use arnet_tensor::{BlockCoord, BlockSparseTensor, DenseTensor, Sector};
 
 use super::super::heff_error::DmrgHeffError;
 use crate::krylov::LinearOp;

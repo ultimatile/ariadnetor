@@ -12,11 +12,9 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend, QNIndex, Scalar,
-    Sector,
-};
+use arnet_core::{ComputeBackend, Scalar};
 use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, QNIndex, Sector};
 
 use super::super::env::DmrgEnvs;
 use super::super::heff_error::DmrgHeffError;

@@ -1,8 +1,9 @@
 //! MPS/MPO construction, accessors, canonical form, and edge case tests.
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
+use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use std::sync::Arc;
 
 /// Build a simple 3-site MPS with shapes (1,2,4), (4,2,4), (4,2,1).

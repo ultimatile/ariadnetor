@@ -14,13 +14,14 @@
 
 use std::sync::Arc;
 
-use arnet::TruncSvdParams;
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
 #[cfg(feature = "arpack")]
 use arnet_algorithms::krylov::ArpackParams;
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::RngExt;
 use rand::SeedableRng;

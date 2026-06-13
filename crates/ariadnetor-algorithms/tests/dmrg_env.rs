@@ -7,10 +7,11 @@
 use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
-use arnet::contract;
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
+use arnet_linalg::contract;
 use arnet_mps::{Mpo, Mps, TensorChain, braket};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 // ---------------------------------------------------------------------------
 // Test fixtures

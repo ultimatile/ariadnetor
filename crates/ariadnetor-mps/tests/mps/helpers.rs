@@ -1,16 +1,17 @@
 //! Shared test helpers for MPS tests.
 
-use arnet::{
-    BlockCoord, BlockSparseContractResult, BlockSparseTensor, DenseLayout, DenseStorage,
-    DenseTensor, Direction, NativeBackend, QNIndex, U1Sector, contract, contract_block_sparse,
-    transpose,
-};
+use arnet_linalg::{BlockSparseContractResult, contract, contract_block_sparse, transpose};
 use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
+use arnet_tensor::{
+    BlockCoord, BlockSparseTensor, DenseLayout, DenseStorage, DenseTensor, Direction, QNIndex,
+    U1Sector,
+};
 
 /// Build a `DenseTensor<f64>` from data already laid out in the active
 /// backend's preferred order (NativeBackend → ColumnMajor).
-pub fn cm_dense_tensor<T: arnet::Scalar>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
+pub fn cm_dense_tensor<T: arnet_core::Scalar>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     DenseTensor::from_raw_parts(data, shape, NativeBackend::shared())
 }
 
@@ -227,7 +228,7 @@ fn make_u1_site(
 /// `make_4site_u1_mps`) collapse forward and backward SVDs into the same
 /// matrix, hiding the cap's effect.
 pub fn make_3site_u1_mps_multipath_middle()
--> Mps<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>> {
+-> Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
     let mut counter: f64 = 0.1;
 
     let site0 = make_u1_site(
@@ -259,8 +260,8 @@ pub fn make_3site_u1_mps_multipath_middle()
 }
 
 /// Build a 4-site U(1)-symmetric MPS with `f64` storage and per-site flux 0.
-pub fn make_4site_u1_mps() -> Mps<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>>
-{
+pub fn make_4site_u1_mps()
+-> Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
     let mut counter: f64 = 0.1;
 
     let site0 = make_u1_site(
@@ -377,7 +378,7 @@ pub fn is_right_canonical_bsp(site: &BlockSparseTensor<f64, U1Sector>, tol: f64)
 
 /// Contract an entire block-sparse MPS into a single tensor.
 pub fn bsp_mps_contract_full(
-    mps: &Mps<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>>,
+    mps: &Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>>,
 ) -> BlockSparseTensor<f64, U1Sector> {
     let n = mps.len();
     assert!(n > 0, "cannot contract an empty MPS");
@@ -463,7 +464,7 @@ pub fn assert_block_sparse_close(
 
 /// Build a 2-site U(1)-symmetric MPS in the total-charge-1 sector.
 pub fn make_2site_entangled_u1_mps()
--> Mps<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>> {
+-> Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
     let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
@@ -498,7 +499,7 @@ pub fn make_2site_entangled_u1_mps()
 /// Build a U(1) total-particle-number MPO `N = Σ_j n_j` over `n` sites.
 pub fn make_total_n_u1_mpo(
     n: usize,
-) -> Mpo<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>> {
+) -> Mpo<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
     assert!(n >= 1, "need at least one site");
     let mut sites = Vec::with_capacity(n);
     for j in 0..n {
@@ -567,7 +568,7 @@ pub fn make_total_n_u1_mpo(
 /// Build a U(1) identity MPO for the given number of sites.
 pub fn make_identity_u1_mpo(
     n: usize,
-) -> Mpo<arnet::BlockSparseStorage<f64>, arnet::BlockSparseLayout<U1Sector>> {
+) -> Mpo<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
     let sites = (0..n)
         .map(|_| {
             let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);

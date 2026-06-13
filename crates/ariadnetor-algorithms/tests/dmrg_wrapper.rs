@@ -14,13 +14,14 @@
 
 use std::sync::Arc;
 
-use arnet::TruncSvdParams;
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

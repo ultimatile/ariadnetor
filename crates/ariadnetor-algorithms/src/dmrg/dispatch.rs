@@ -8,12 +8,17 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, LinalgError,
-    NativeBackend, Scalar, Sector, Storage, StorageFor, Tensor, TensorLayout, TruncSvdParams,
-    diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{
+    LinalgError, TruncSvdParams, diagonal_scale_block_sparse_with_backend,
+    diagonal_scale_with_backend,
 };
 use arnet_mps::{Mpo, Mps, MpsOps};
+use arnet_native::NativeBackend;
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, Storage, StorageFor,
+    Tensor, TensorLayout,
+};
 
 use super::env::{DmrgEnvOps, DmrgEnvs};
 use super::heff::{TwoSiteStepResult, dmrg_2site_step};

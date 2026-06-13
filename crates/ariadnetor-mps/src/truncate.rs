@@ -2,10 +2,13 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, DenseTensor,
-    Scalar, Sector, TruncSvdParams, diagonal_scale_block_sparse_with_backend,
-    diagonal_scale_with_backend, trunc_svd_block_sparse_with_backend, trunc_svd_with_backend,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{
+    TruncSvdParams, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
+    trunc_svd_block_sparse_with_backend, trunc_svd_with_backend,
+};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, Sector,
 };
 use num_traits::{Float, Zero};
 

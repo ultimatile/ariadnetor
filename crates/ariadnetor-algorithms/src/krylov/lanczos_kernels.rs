@@ -7,7 +7,10 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, DenseTensor, NativeBackend, Scalar, eigh_with_backend};
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::eigh_with_backend;
+use arnet_native::NativeBackend;
+use arnet_tensor::DenseTensor;
 use num_traits::{One, Zero};
 use rand::RngExt;
 use rand::rngs::StdRng;

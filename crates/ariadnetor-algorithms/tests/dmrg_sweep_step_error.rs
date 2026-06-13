@@ -3,12 +3,14 @@
 
 use std::sync::Arc;
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps, canonicalize};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 fn standard_params_f64(seed: u64) -> DmrgSweepParams {
     DmrgSweepParams {

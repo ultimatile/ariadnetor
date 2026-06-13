@@ -11,10 +11,11 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseContractResult, BlockSparseTensor, ComputeBackend, DenseTensor, Scalar, Sector,
-    contract_block_sparse_with_backend, contract_with_backend,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{
+    BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
 };
+use arnet_tensor::{BlockSparseTensor, DenseTensor, Sector};
 
 /// Multiply a factor matrix into the next site: `factor(k, d) × next(d, ...) → (k, ...)`.
 /// Fuses next's trailing legs to a matrix for the matmul, then splits the

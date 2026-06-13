@@ -50,7 +50,7 @@
 //! [`DmrgSweepError`] are unreachable through the wrapper but kept
 //! visible as defense-in-depth.
 
-use arnet::{ComputeBackend, Scalar};
+use arnet_core::{ComputeBackend, Scalar};
 use arnet_mps::{Mpo, Mps, MpsOps, TensorChain, canonicalize};
 
 use super::dispatch::DmrgOps;

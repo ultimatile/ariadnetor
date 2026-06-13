@@ -28,11 +28,11 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    ComputeBackend, DenseTensor, NativeBackend, Scalar, TruncSvdParams, contract_with_backend,
-    trunc_svd_with_backend,
-};
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{TruncSvdParams, contract_with_backend, trunc_svd_with_backend};
 use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_native::NativeBackend;
+use arnet_tensor::DenseTensor;
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -202,9 +202,9 @@ pub struct TwoSiteStepResult<T: Scalar, B: ComputeBackend = NativeBackend> {
 
 /// Run a single 2-site DMRG step at sites `(site, site+1)`.
 pub fn dmrg_2site_step<T, B>(
-    envs: &DmrgEnvs<arnet::DenseStorage<T>, arnet::DenseLayout, B>,
-    mps: &Mps<arnet::DenseStorage<T>, arnet::DenseLayout, B>,
-    mpo: &Mpo<arnet::DenseStorage<T>, arnet::DenseLayout, B>,
+    envs: &DmrgEnvs<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout, B>,
+    mps: &Mps<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout, B>,
+    mpo: &Mpo<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout, B>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
@@ -232,12 +232,12 @@ where
         mpo.backend().preferred_order(),
         "dmrg_2site_step: mps/mpo backend preferred_order mismatch",
     );
-    <arnet::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
+    <arnet_tensor::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
         &chain_backend,
         mps.sites(),
         "dmrg_2site_step.mps",
     );
-    <arnet::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
+    <arnet_tensor::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
         &chain_backend,
         mpo.sites(),
         "dmrg_2site_step.mpo",

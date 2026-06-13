@@ -11,10 +11,10 @@
 
 use std::error::Error;
 
-use arnet::LinalgError;
 use arnet_algorithms::dmrg::{
     DmrgEnvError, DmrgError, DmrgHeffError, DmrgSweepError, SweepDirection,
 };
+use arnet_linalg::LinalgError;
 
 /// A `LinalgError` carrying a distinctive marker token, so a
 /// "wrapper Display does not contain the child message" assertion

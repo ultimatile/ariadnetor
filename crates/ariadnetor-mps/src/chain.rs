@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, Storage, StorageFor, Tensor, TensorLayout};
+use arnet_core::ComputeBackend;
+use arnet_tensor::{Storage, StorageFor, Tensor, TensorLayout};
 
 use super::types::{CanonicalForm, Mpo, Mps};
 

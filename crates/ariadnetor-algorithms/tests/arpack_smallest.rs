@@ -2,15 +2,17 @@
 //!
 //! Strategy: build a small dense Hermitian matrix, drive
 //! `arpack_smallest` via a closure, compare the eigenvalue against
-//! `arnet::eigh` ground truth and the eigenvector against the
+//! `arnet_linalg::eigh` ground truth and the eigenvector against the
 //! eigenpair contract `||H psi - lambda psi|| ≈ 0`.
 
 #![cfg(feature = "arpack")]
 
 use approx::assert_abs_diff_eq;
-use arnet::Scalar;
-use arnet::{DenseTensor, NativeBackend, eigh};
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
+use arnet_core::Scalar;
+use arnet_linalg::eigh;
+use arnet_native::NativeBackend;
+use arnet_tensor::DenseTensor;
 use num_complex::Complex;
 use num_traits::{Float, NumCast, One, Zero};
 use rand::SeedableRng;

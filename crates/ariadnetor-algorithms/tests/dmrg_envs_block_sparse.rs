@@ -11,9 +11,10 @@ use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use std::sync::Arc;
 
-use arnet::{
+use arnet_native::NativeBackend;
+use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
-    DenseStorage, DenseTensor, Direction, NativeBackend, QNIndex, Sector, U1Sector,
+    DenseStorage, DenseTensor, Direction, QNIndex, Sector, U1Sector,
 };
 
 /// Run `DmrgEnvs::build` and assert it returns an error. Equivalent to

@@ -7,7 +7,7 @@
 //! Dense `heff.rs` under the per-file size cap as the operator + the
 //! ARPACK arm grow.
 
-use arnet::LinalgError;
+use arnet_linalg::LinalgError;
 
 #[cfg(feature = "arpack")]
 use crate::krylov::ArpackError;

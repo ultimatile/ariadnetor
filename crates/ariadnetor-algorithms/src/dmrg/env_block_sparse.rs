@@ -16,10 +16,14 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockCoord, BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage,
-    BlockSparseTensor, ComputeBackend, Direction, LinalgError, QNIndex, Scalar, Sector, Tensor,
-    contract_block_sparse_with_backend, permute_block_sparse_with_backend,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{
+    BlockSparseContractResult, LinalgError, contract_block_sparse_with_backend,
+    permute_block_sparse_with_backend,
+};
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
+    Sector, Tensor,
 };
 
 use super::env::{DmrgEnvError, DmrgEnvOps};

@@ -14,8 +14,9 @@
 //! - [`arnet_linalg`] — backend-agnostic linear algebra over
 //!   `&Tensor` (contract, svd, qr, eigh, expm, …).
 //!
-//! `arnet_mps` and `arnet_algorithms` are *separate* consumer crates
-//! that build on this umbrella; they are not re-exported here.
+//! `arnet_mps` and `arnet_algorithms` are separate consumer crates that
+//! depend on the leaf crates directly rather than on this umbrella; they
+//! are not re-exported here.
 //!
 //! # Example
 //!
@@ -69,22 +70,11 @@ pub use ops::{
     trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
 };
 
-// Block-sparse low-level free functions and result types. Needed by
-// downstream crates (`arnet-mps`, `arnet-algorithms`) whose internals
-// perform per-site block-sparse contractions and decompositions.
-pub use arnet_linalg::{
-    BlockSingularValues, BlockSparseContractResult, BlockSparseQrResult, BlockSparseSvdResult,
-    BlockSparseTruncSvdResult, contract_block_sparse, diagonal_scale, diagonal_scale_block_sparse,
-    fuse_legs_block_sparse, lq_block_sparse, permute_block_sparse, qr_block_sparse,
-    svd_block_sparse, trunc_svd_block_sparse,
-};
-// Explicit-backend block-sparse free functions (backend supplied at the call site).
-pub use arnet_linalg::{
-    contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
-    fuse_legs_block_sparse_with_backend, lq_block_sparse_with_backend,
-    permute_block_sparse_with_backend, qr_block_sparse_with_backend, svd_block_sparse_with_backend,
-    trunc_svd_block_sparse_with_backend,
-};
+// Dense diagonal-scale free function. The block-sparse low-level free
+// functions and their result types are intentionally not re-exported:
+// they are consumer-internal API that `arnet-mps` / `arnet-algorithms`
+// reach through a direct `arnet-linalg` dependency, not this umbrella.
+pub use arnet_linalg::diagonal_scale;
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.
 pub use arnet_linalg::{BlockSparseHostOps, DenseHostOps};

@@ -4,8 +4,9 @@
 //! convert back and forth between flat-template-aware vectors and
 //! Dense rank-4 tensors in the global shape.
 
-use arnet::{BlockSparseTensor, DenseTensor, NativeBackend, Sector, U1Sector};
+use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
+use arnet_tensor::{BlockSparseTensor, DenseTensor, Sector, U1Sector};
 use num_complex::Complex;
 
 pub fn densify_bsp_f64(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
@@ -18,7 +19,7 @@ pub fn densify_bsp_c64(
     densify_bsp_generic(bsp, Complex::new(0.0, 0.0))
 }
 
-fn densify_bsp_generic<T: arnet::Scalar>(
+fn densify_bsp_generic<T: arnet_core::Scalar>(
     bsp: &BlockSparseTensor<T, U1Sector>,
     zero: T,
 ) -> DenseTensor<T> {

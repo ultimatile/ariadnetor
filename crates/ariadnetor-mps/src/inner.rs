@@ -2,10 +2,13 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockCoord, BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage,
-    BlockSparseTensor, ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Direction, QNIndex,
-    Scalar, Sector, contract_block_sparse_with_backend, contract_with_backend,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{
+    BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
+};
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
+    DenseStorage, DenseTensor, Direction, QNIndex, Sector,
 };
 use num_traits::{Float, One};
 

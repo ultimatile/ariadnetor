@@ -4,14 +4,17 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseContractResult, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor,
-    ComputeBackend, DenseLayout, DenseStorage, DenseTensor, Direction, Scalar, Sector,
-    TruncSvdParams, contract_block_sparse_with_backend, contract_with_backend,
-    diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{
+    BlockSparseContractResult, TruncSvdParams, contract_block_sparse_with_backend,
+    contract_with_backend, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
     fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
     qr_block_sparse_with_backend, qr_with_backend, trunc_svd_block_sparse_with_backend,
     trunc_svd_with_backend,
+};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
+    DenseTensor, Direction, Sector,
 };
 
 use super::chain::TensorChain;
