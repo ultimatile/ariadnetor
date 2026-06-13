@@ -15,6 +15,18 @@ use std::collections::{HashMap, HashSet};
 /// // Matrix multiplication
 /// let expr = EinsumExpr::parse("ij,jk->ik").unwrap();
 /// assert_eq!(expr.num_inputs(), 2);
+/// assert!(expr.is_matrix_multiply());
+/// assert_eq!(expr.infer_output_shape(&[&[10, 20], &[20, 30]]).unwrap(), vec![10, 30]);
+///
+/// // Higher-dimensional contraction (not a plain matmul)
+/// let expr = EinsumExpr::parse("ijk,jkl->il").unwrap();
+/// assert_eq!(expr.out_indices(), &[b'i', b'l']);
+/// assert_eq!(expr.contracted_indices(), vec![b'j', b'k']);
+/// assert!(!expr.is_matrix_multiply());
+///
+/// // Element-wise: every index appears in the output, nothing is contracted
+/// let expr = EinsumExpr::parse("ij,ij->ij").unwrap();
+/// assert!(expr.contracted_indices().is_empty());
 ///
 /// // Implicit output inference
 /// let expr = EinsumExpr::parse("ij,jk").unwrap();
@@ -23,6 +35,10 @@ use std::collections::{HashMap, HashSet};
 /// // Single tensor trace
 /// let expr = EinsumExpr::parse("ii->").unwrap();
 /// assert_eq!(expr.num_inputs(), 1);
+///
+/// // Errors: an output index absent from every input, or a non-alphabetic index
+/// assert!(EinsumExpr::parse("ij,jk->im").is_err());
+/// assert!(EinsumExpr::parse("i1,jk->ik").is_err());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EinsumExpr {
@@ -168,6 +184,14 @@ impl EinsumExpr {
 
     /// Get contracted indices (appear in inputs but not in output),
     /// preserving the order of first appearance across inputs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arnet_core::EinsumExpr;
+    /// let expr = EinsumExpr::parse("ijk,jkl->il").unwrap();
+    /// assert_eq!(expr.contracted_indices(), vec![b'j', b'k']);
+    /// ```
     pub fn contracted_indices(&self) -> Vec<u8> {
         let output_set: HashSet<u8> = self.out_indices.iter().copied().collect();
         let mut contracted = Vec::new();
@@ -187,6 +211,14 @@ impl EinsumExpr {
     /// Check if this is a matrix multiplication pattern:
     /// 2 inputs, 3 unique indices, each input has 2 indices, output has 2 indices,
     /// exactly 1 contracted index.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arnet_core::EinsumExpr;
+    /// assert!(EinsumExpr::parse("ij,jk->ik").unwrap().is_matrix_multiply());
+    /// assert!(!EinsumExpr::parse("ijk,jkl->il").unwrap().is_matrix_multiply());
+    /// ```
     pub fn is_matrix_multiply(&self) -> bool {
         if self.inputs.len() != 2 {
             return false;
@@ -217,6 +249,14 @@ impl EinsumExpr {
     /// The number of shapes must match `num_inputs()`, and each shape's rank
     /// must match its corresponding input index count. Shared indices must
     /// have matching dimensions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arnet_core::EinsumExpr;
+    /// let expr = EinsumExpr::parse("ij,jk->ik").unwrap();
+    /// assert_eq!(expr.infer_output_shape(&[&[10, 20], &[20, 30]]).unwrap(), vec![10, 30]);
+    /// ```
     pub fn infer_output_shape(&self, shapes: &[&[usize]]) -> Result<Vec<usize>, String> {
         if shapes.len() != self.inputs.len() {
             return Err(format!(

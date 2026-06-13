@@ -8,9 +8,9 @@ description = "Backend-agnostic linear algebra API for Ariadnetor"
 [features]
 # `native-hptt` is a passthrough that keeps the dev-dep `ariadnetor-native`
 # building with its `hptt` feature on. Default-on preserves existing
-# `cargo test` / `cargo run --example` behavior; pass `--no-default-features`
-# to build dev-dep code (tests, examples, benches) without HPTT — required
-# for calibration sweeps that must exercise the naive transpose fallback.
+# `cargo test` / `cargo bench` behavior; pass `--no-default-features`
+# to build dev-dep code (tests, benches) without HPTT — required
+# for the calibration sweep benches that must exercise the naive transpose fallback.
 default = ["native-hptt"]
 native-hptt = ["ariadnetor-native/hptt"]
 
@@ -26,12 +26,36 @@ ariadnetor-native = { path = "../ariadnetor-native", default-features = false }
 criterion = { workspace = true }
 rand = { workspace = true }
 
+# Criterion regression benches.
 [[bench]]
 name = "scalar_ops"
 harness = false
 
 [[bench]]
 name = "block_sparse_ops"
+harness = false
+
+# Threshold-sweep instruments: each is a plain `fn main()` that measures the
+# `ExecPolicy::Sequential` vs `Parallel(0)` crossover, run on demand via
+# `cargo bench --bench sweep_*`. Distinct from the criterion regression benches above.
+[[bench]]
+name = "sweep_decomp_par"
+harness = false
+
+[[bench]]
+name = "sweep_decomp_rect_par"
+harness = false
+
+[[bench]]
+name = "sweep_gemm_par"
+harness = false
+
+[[bench]]
+name = "sweep_solve_par"
+harness = false
+
+[[bench]]
+name = "sweep_transpose_par"
 harness = false
 
 [lib]

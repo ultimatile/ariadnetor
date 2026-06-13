@@ -38,7 +38,7 @@ pub struct ThresholdTable {
 impl ThresholdTable {
     /// Thresholds calibrated for laptop-class CPUs (Apple M2 8-core).
     ///
-    /// Values come from `crates/ariadnetor-linalg/examples/sweep_{decomp,
+    /// Values come from `crates/ariadnetor-linalg/benches/sweep_{decomp,
     /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
     ///
     /// `transpose` is calibrated per backend at compile time. Under the

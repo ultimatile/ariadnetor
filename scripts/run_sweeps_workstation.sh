@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build all five calibration sweep examples in release mode and run each,
+# Build all five calibration sweep benches and run each,
 # capturing output to sweep_*.log in the working directory. Designed for
 # workstation-class CPUs (Xeon NUMA, 112 cores).
 set -euo pipefail
@@ -20,7 +20,7 @@ fi
 
 cd "$WORKDIR_RESOLVED"
 
-EXAMPLES=(
+SWEEPS=(
     sweep_decomp_par
     sweep_decomp_rect_par
     sweep_gemm_par
@@ -29,17 +29,17 @@ EXAMPLES=(
 )
 
 BUILD_ARGS=()
-for ex in "${EXAMPLES[@]}"; do
-    BUILD_ARGS+=(--example "$ex")
+for ex in "${SWEEPS[@]}"; do
+    BUILD_ARGS+=(--bench "$ex")
 done
 
-echo "==> cargo build --release (all sweep examples)"
-cargo build --release -p ariadnetor-linalg "${BUILD_ARGS[@]}" --quiet
+echo "==> cargo bench --no-run (all sweep benches)"
+cargo bench --no-run -p ariadnetor-linalg "${BUILD_ARGS[@]}" --quiet
 
 echo "==> available cores: $(nproc)"
 echo "==> rayon will read RAYON_NUM_THREADS / std::thread::available_parallelism"
 
-for ex in "${EXAMPLES[@]}"; do
+for ex in "${SWEEPS[@]}"; do
     log="sweep_${ex#sweep_}.log"
     {
         echo "================================================================"
@@ -49,7 +49,7 @@ for ex in "${EXAMPLES[@]}"; do
     } > "$log"
 
     echo "==> ${ex} → ${log}"
-    cargo run --release --quiet -p ariadnetor-linalg --example "${ex}" >> "$log" 2>&1
+    cargo bench --quiet -p ariadnetor-linalg --bench "${ex}" >> "$log" 2>&1
 done
 
 echo "==> all sweeps complete"

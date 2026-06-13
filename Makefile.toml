@@ -39,15 +39,6 @@ command = "cargo"
 args = ["test", "--test", "einsum_tests"]
 
 # ============================================================================
-# Example tasks
-# ============================================================================
-
-[tasks.example-parser]
-description = "Run einsum parser demo"
-command = "cargo"
-args = ["run", "--example", "einsum_parser_demo"]
-
-# ============================================================================
 # Utility tasks
 # ============================================================================
 
@@ -90,7 +81,7 @@ args = ["doc", "--workspace", "--no-deps", "--open"]
 # ============================================================================
 
 [tasks.bench]
-description = "Run all benchmarks"
+description = "Run the Criterion benchmarks"
 dependencies = ["bench-tensor", "bench-linalg"]
 
 [tasks.bench-tensor]
@@ -98,10 +89,13 @@ description = "Run Dense benchmarks"
 command = "cargo"
 args = ["bench", "-p", "ariadnetor-tensor"]
 
+# Only the criterion regression benches; the `sweep_*` threshold instruments are
+# on-demand (`cargo bench --bench sweep_*`) and excluded here so the regression
+# run does not fire their expensive matrix-size sweeps.
 [tasks.bench-linalg]
-description = "Run linalg scalar_ops benchmarks"
+description = "Run the linalg Criterion benchmarks"
 command = "cargo"
-args = ["bench", "-p", "ariadnetor-linalg"]
+args = ["bench", "-p", "ariadnetor-linalg", "--bench", "scalar_ops", "--bench", "block_sparse_ops"]
 
 # ============================================================================
 # Composite tasks
