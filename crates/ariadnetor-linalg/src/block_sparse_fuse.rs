@@ -1,15 +1,13 @@
 //! Block-sparse tensor leg fusion.
 //!
-//! Fuses consecutive legs of a [`BlockSparseTensor<T, S, B>`] tensor into
+//! Fuses consecutive legs of a `BlockSparseTensor<T, S>` tensor into
 //! a single leg via Kronecker-product sector fusion.
 
 use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{
-    BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, QNIndex, Sector,
-};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, Sector};
 
 use crate::block_sparse_decomp::fused_sector::enumerate_fused_tuples;
 use crate::error::LinalgError;
@@ -33,31 +31,10 @@ use crate::error::LinalgError;
 /// Returns `LinalgError::InvalidArgument` if:
 /// - `count < 2`
 /// - `start + count > tensor.rank()`
-pub fn fuse_legs_block_sparse<T, S, B>(
-    tensor: &BlockSparseTensor<T, S, B>,
-    start: usize,
-    count: usize,
-    fused_direction: Direction,
-) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "fuse_legs_block_sparse");
-    let backend_arc = tensor.backend_arc().clone();
-    let result = fuse_legs_block_sparse_dense(
-        tensor.backend(),
-        tensor.data(),
-        start,
-        count,
-        fused_direction,
-    )?;
-    Ok(BlockSparseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`fuse_legs_block_sparse`] on joined-form
-/// [`BlockSparseTensorData<T, S>`].
+///
+/// Internal kernel for the block-sparse leg fusion on joined-form
+/// [`BlockSparseTensorData<T, S>`]. The public entry point is
+/// [`crate::fuse_legs_block_sparse_with_backend`].
 pub(crate) fn fuse_legs_block_sparse_dense<T, S, B>(
     backend: &B,
     tensor: &BlockSparseTensorData<T, S>,

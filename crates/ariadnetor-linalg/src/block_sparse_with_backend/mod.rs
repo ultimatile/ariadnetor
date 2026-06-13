@@ -1,16 +1,14 @@
 //! Explicit-backend operation paths for block-sparse tensors.
 //!
-//! Call-site-backend counterparts of the legacy tensor-derived block-sparse
-//! operations. As with the dense paths, the backend is supplied as `&Arc<B>`
-//! and the tensor's own backend is never consulted.
+//! Call-site-backend counterparts for block-sparse operations: the backend is
+//! supplied as `&B` and the tensor's own backend is never consulted (tensors
+//! no longer carry one).
 //!
-//! The legacy paths guard `layout.order() == backend.preferred_order()` with a
-//! `debug_assert!` against the tensor's own (construction-pinned) backend. Here
-//! the backend is not pinned to the tensor, so the invariant is enforced with
-//! the release-active [`check_bsp_data_layout_order_matches`] against the
-//! supplied backend, returning [`LinalgError`] on mismatch.
-
-use std::sync::Arc;
+//! Block-sparse kernels read the per-sector packed buffer under the backend's
+//! preferred order and have no internal reorder step. The layout-order
+//! invariant is therefore enforced with the release-active
+//! [`check_bsp_data_layout_order_matches`] against the supplied backend,
+//! returning [`LinalgError`] on mismatch.
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy};
@@ -35,94 +33,90 @@ use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 #[cfg(test)]
 mod tests;
 
-/// Explicit-backend counterpart of [`crate::svd_block_sparse`].
+/// Block-sparse thin SVD via the fused sector method, using the supplied backend.
 pub fn svd_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
-    backend: &Arc<B>,
-    tensor: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
-) -> Result<BlockSparseSvdResult<T, S, B>, LinalgError> {
-    check_bsp_data_layout_order_matches(tensor.data(), &**backend, "svd_block_sparse")?;
-    let (u, s, vt) = svd_block_sparse_with_policy_dense(
-        &**backend,
-        tensor.data(),
-        nrow,
-        ExecPolicy::Sequential,
-    )?;
+) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "svd_block_sparse")?;
+    let (u, s, vt) =
+        svd_block_sparse_with_policy_dense(backend, tensor.data(), nrow, ExecPolicy::Sequential)?;
     Ok((
-        BlockSparseTensor::with_backend(u, backend.clone()),
+        BlockSparseTensor::from_data(u),
         s,
-        BlockSparseTensor::with_backend(vt, backend.clone()),
+        BlockSparseTensor::from_data(vt),
     ))
 }
 
-/// Explicit-backend counterpart of [`crate::trunc_svd_block_sparse`].
+/// Block-sparse truncated SVD via the fused sector method, using the supplied backend.
 pub fn trunc_svd_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
-    backend: &Arc<B>,
-    tensor: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
     params: &TruncSvdParams,
-) -> Result<BlockSparseTruncSvdResult<T, S, B>, LinalgError> {
-    check_bsp_data_layout_order_matches(tensor.data(), &**backend, "trunc_svd_block_sparse")?;
+) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "trunc_svd_block_sparse")?;
     let (u, s, vt, err) = trunc_svd_block_sparse_with_policy_dense(
-        &**backend,
+        backend,
         tensor.data(),
         nrow,
         params,
         ExecPolicy::Sequential,
     )?;
     Ok((
-        BlockSparseTensor::with_backend(u, backend.clone()),
+        BlockSparseTensor::from_data(u),
         s,
-        BlockSparseTensor::with_backend(vt, backend.clone()),
+        BlockSparseTensor::from_data(vt),
         err,
     ))
 }
 
-/// Explicit-backend counterpart of [`crate::qr_block_sparse`].
+/// Block-sparse QR via the fused sector method, using the supplied backend.
 pub fn qr_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
-    backend: &Arc<B>,
-    tensor: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
-) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
-    check_bsp_data_layout_order_matches(tensor.data(), &**backend, "qr_block_sparse")?;
+) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "qr_block_sparse")?;
     let (q, r) =
-        qr_block_sparse_with_policy_dense(&**backend, tensor.data(), nrow, ExecPolicy::Sequential)?;
+        qr_block_sparse_with_policy_dense(backend, tensor.data(), nrow, ExecPolicy::Sequential)?;
     Ok((
-        BlockSparseTensor::with_backend(q, backend.clone()),
-        BlockSparseTensor::with_backend(r, backend.clone()),
+        BlockSparseTensor::from_data(q),
+        BlockSparseTensor::from_data(r),
     ))
 }
 
-/// Explicit-backend counterpart of [`crate::lq_block_sparse`].
+/// Block-sparse LQ via the fused sector method, using the supplied backend.
 pub fn lq_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
-    backend: &Arc<B>,
-    tensor: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
-) -> Result<BlockSparseQrResult<T, S, B>, LinalgError> {
-    check_bsp_data_layout_order_matches(tensor.data(), &**backend, "lq_block_sparse")?;
+) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "lq_block_sparse")?;
     let (l, q) =
-        lq_block_sparse_with_policy_dense(&**backend, tensor.data(), nrow, ExecPolicy::Sequential)?;
+        lq_block_sparse_with_policy_dense(backend, tensor.data(), nrow, ExecPolicy::Sequential)?;
     Ok((
-        BlockSparseTensor::with_backend(l, backend.clone()),
-        BlockSparseTensor::with_backend(q, backend.clone()),
+        BlockSparseTensor::from_data(l),
+        BlockSparseTensor::from_data(q),
     ))
 }
 
-/// Explicit-backend counterpart of [`crate::contract_block_sparse`].
+/// Block-sparse contraction over the given axis pairs, using the supplied backend.
 ///
 /// The layout-order invariant is checked against the supplied backend for both
 /// operands before the per-sector GEMMs.
 pub fn contract_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
-    backend: &Arc<B>,
-    lhs: &BlockSparseTensor<T, S, B>,
-    rhs: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    lhs: &BlockSparseTensor<T, S>,
+    rhs: &BlockSparseTensor<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
-) -> Result<BlockSparseContractResult<T, S, B>, LinalgError> {
-    check_bsp_data_layout_order_matches(lhs.data(), &**backend, "contract_block_sparse: lhs")?;
-    check_bsp_data_layout_order_matches(rhs.data(), &**backend, "contract_block_sparse: rhs")?;
+) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+    check_bsp_data_layout_order_matches(lhs.data(), backend, "contract_block_sparse: lhs")?;
+    check_bsp_data_layout_order_matches(rhs.data(), backend, "contract_block_sparse: rhs")?;
     let result = contract_block_sparse_with_policy_dense(
-        &**backend,
+        backend,
         lhs.data(),
         rhs.data(),
         axes_lhs,
@@ -131,60 +125,60 @@ pub fn contract_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBacken
     )?;
     match result {
         BlockSparseContractResultBsp::Tensor(t) => Ok(BlockSparseContractResult::Tensor(
-            BlockSparseTensor::with_backend(t, backend.clone()),
+            BlockSparseTensor::from_data(t),
         )),
         BlockSparseContractResultBsp::Scalar(s) => Ok(BlockSparseContractResult::Scalar(s)),
     }
 }
 
-/// Explicit-backend counterpart of [`crate::permute_block_sparse`].
+/// Block-sparse axis permutation, using the supplied backend.
 pub fn permute_block_sparse_with_backend<T, S, B>(
-    backend: &Arc<B>,
-    tensor: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
     perm: &[usize],
-) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    check_bsp_data_layout_order_matches(tensor.data(), &**backend, "permute_block_sparse")?;
-    let result = permute_block_sparse_dense(&**backend, tensor.data(), perm)?;
-    Ok(BlockSparseTensor::with_backend(result, backend.clone()))
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "permute_block_sparse")?;
+    let result = permute_block_sparse_dense(backend, tensor.data(), perm)?;
+    Ok(BlockSparseTensor::from_data(result))
 }
 
-/// Explicit-backend counterpart of [`crate::fuse_legs_block_sparse`].
+/// Block-sparse consecutive leg fusion, using the supplied backend.
 pub fn fuse_legs_block_sparse_with_backend<T, S, B>(
-    backend: &Arc<B>,
-    tensor: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
     start: usize,
     count: usize,
     fused_direction: Direction,
-) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    check_bsp_data_layout_order_matches(tensor.data(), &**backend, "fuse_legs_block_sparse")?;
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "fuse_legs_block_sparse")?;
     let result =
-        fuse_legs_block_sparse_dense(&**backend, tensor.data(), start, count, fused_direction)?;
-    Ok(BlockSparseTensor::with_backend(result, backend.clone()))
+        fuse_legs_block_sparse_dense(backend, tensor.data(), start, count, fused_direction)?;
+    Ok(BlockSparseTensor::from_data(result))
 }
 
-/// Explicit-backend counterpart of [`crate::diagonal_scale_block_sparse`].
+/// Block-sparse per-sector diagonal scaling, using the supplied backend.
 pub fn diagonal_scale_block_sparse_with_backend<T, S, B>(
-    backend: &Arc<B>,
-    tensor: &BlockSparseTensor<T, S, B>,
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
     weights: &BlockSingularValues<T::Real, S>,
     axis: usize,
-) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
 where
     T: Scalar,
     S: Sector,
     B: ComputeBackend,
 {
-    check_bsp_data_layout_order_matches(tensor.data(), &**backend, "diagonal_scale_block_sparse")?;
-    let result = diagonal_scale_block_sparse_dense(&**backend, tensor.data(), weights, axis)?;
-    Ok(BlockSparseTensor::with_backend(result, backend.clone()))
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "diagonal_scale_block_sparse")?;
+    let result = diagonal_scale_block_sparse_dense(backend, tensor.data(), weights, axis)?;
+    Ok(BlockSparseTensor::from_data(result))
 }

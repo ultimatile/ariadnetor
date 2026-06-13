@@ -1,6 +1,6 @@
 //! Block-sparse tensor contraction.
 //!
-//! Contracts two [`BlockSparseTensor<T, S, B>`] tensors over specified axis
+//! Contracts two `BlockSparseTensor<T, S>` tensors over specified axis
 //! pairs, performing QN compatibility validation, block pairing, and dense
 //! GEMM per block pair.
 
@@ -14,9 +14,9 @@ use arnet_tensor::{BlockCoord, BlockSparseTensor, BlockSparseTensorData, QNIndex
 use crate::error::LinalgError;
 
 /// Result of a block-sparse tensor contraction.
-pub enum BlockSparseContractResult<T, S: Sector, B: ComputeBackend> {
+pub enum BlockSparseContractResult<T, S: Sector> {
     /// Partial contraction produced a block-sparse tensor.
-    Tensor(BlockSparseTensor<T, S, B>),
+    Tensor(BlockSparseTensor<T, S>),
     /// Full contraction produced a scalar.
     Scalar(T),
 }
@@ -28,84 +28,11 @@ pub(crate) enum BlockSparseContractResultBsp<T, S: Sector> {
     Scalar(T),
 }
 
-/// Contract two block-sparse tensors over specified axis pairs.
-///
-/// The backend is taken from `lhs` and a tensor result is wrapped against
-/// `lhs`'s backend Arc. Callers must ensure `lhs` and `rhs` share the same
-/// backend Arc; a mismatch silently runs on `lhs`'s backend and labels the
-/// output with `lhs`'s backend, which is wrong for backends carrying state.
-///
-/// # Partial contraction (free axes remain)
-///
-/// Returns `BlockSparseTensor` with indices `[lhs_free..., rhs_free...]` and
-/// `flux = lhs.flux().fuse(rhs.flux())`.
-///
-/// # Full contraction (all axes contracted)
-///
-/// Returns a scalar. If `lhs.flux().fuse(rhs.flux()) != identity`, the
-/// result is `T::zero()` (symmetry selection rule).
-///
-/// # Errors
-///
-/// Returns `LinalgError::InvalidArgument` if axis pairs are invalid:
-/// length mismatch, out-of-range, duplicates, sector/dimension mismatch,
-/// or non-opposite directions.
-pub fn contract_block_sparse<T: Scalar, S: Sector, B: ComputeBackend>(
-    lhs: &BlockSparseTensor<T, S, B>,
-    rhs: &BlockSparseTensor<T, S, B>,
-    axes_lhs: &[usize],
-    axes_rhs: &[usize],
-) -> Result<BlockSparseContractResult<T, S, B>, LinalgError> {
-    contract_block_sparse_with_policy(lhs, rhs, axes_lhs, axes_rhs, ExecPolicy::Sequential)
-}
-
-/// Block-sparse tensor contraction with caller-specified execution policy
-/// for per-sector GEMM.
-///
-/// Expert-layer counterpart of [`contract_block_sparse`]. The default wrapper
-/// hardcodes `ExecPolicy::Sequential` (conservative for typical small-sector
-/// cases and compatible with future outer parallelism); this entry point lets
-/// a caller opt a large-sector case into `Parallel`. The policy is forwarded
-/// to every per-sector GEMM descriptor.
-///
-/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
-/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
-/// Arc; a mismatch silently runs on `lhs`'s backend and labels the output
-/// with `lhs`'s backend, which is wrong for backends carrying state.
-pub(crate) fn contract_block_sparse_with_policy<T: Scalar, S: Sector, B: ComputeBackend>(
-    lhs: &BlockSparseTensor<T, S, B>,
-    rhs: &BlockSparseTensor<T, S, B>,
-    axes_lhs: &[usize],
-    axes_rhs: &[usize],
-    policy: ExecPolicy,
-) -> Result<BlockSparseContractResult<T, S, B>, LinalgError> {
-    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(
-        lhs,
-        "contract_block_sparse: lhs",
-    );
-    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(
-        rhs,
-        "contract_block_sparse: rhs",
-    );
-    let backend_arc = lhs.backend_arc().clone();
-    let result = contract_block_sparse_with_policy_dense(
-        lhs.backend(),
-        lhs.data(),
-        rhs.data(),
-        axes_lhs,
-        axes_rhs,
-        policy,
-    )?;
-    match result {
-        BlockSparseContractResultBsp::Tensor(t) => Ok(BlockSparseContractResult::Tensor(
-            BlockSparseTensor::with_backend(t, backend_arc),
-        )),
-        BlockSparseContractResultBsp::Scalar(s) => Ok(BlockSparseContractResult::Scalar(s)),
-    }
-}
-
-/// Internal kernel for [`contract_block_sparse_with_policy`] on joined-form
-/// [`BlockSparseTensorData<T, S>`].
+/// Internal kernel for the block-sparse contraction on joined-form
+/// [`BlockSparseTensorData<T, S>`]. The public entry point is
+/// [`crate::contract_block_sparse_with_backend`], which hardcodes
+/// `ExecPolicy::Sequential`; this kernel takes `policy` directly and forwards
+/// it to every per-sector GEMM descriptor.
 pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     lhs: &BlockSparseTensorData<T, S>,

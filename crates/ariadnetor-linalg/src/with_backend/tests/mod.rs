@@ -1,14 +1,20 @@
 //! Authority-routing tests for the dense explicit-backend paths.
 //!
-//! Each twin is exercised with a backend `a2` distinct from the one the input
-//! tensor was built with (`a1`). The central invariant proved here is that the
-//! tensor's own backend is never used for the computation: `a1` must record no
-//! kernel call. Ops that dispatch a recorded kernel additionally show `a2`
-//! receiving the call, and every result is checked to carry `a2` (pointer
-//! identity) and to match the legacy backend-derived wrapper numerically.
+//! Each kernel-dispatching twin is exercised with a [`RecordingBackend`] and
+//! the central invariant proved here is that the operation routes its kernel
+//! to the call-site-supplied backend — the recorder must register the call,
+//! catching a regression where a twin ignores its `backend` argument and falls
+//! back to a hardcoded `Host`. Results are checked against an independent
+//! `NativeBackend` run for numerical agreement.
+//!
+//! Tensors no longer carry a backend, so the former "the tensor's own backend
+//! is never consulted" half of the invariant is structurally unviolable and is
+//! dropped. For the allocation-only ops (`trace`, `diag`, `diagonal_scale`)
+//! the backend drives no observable kernel, so only numerical correctness is
+//! checked; the behaviorally-distinct routing proof is the Stage C
+//! pluggability litmus.
 
-use std::sync::Arc;
-
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 use crate::test_util::RecordingBackend;
@@ -27,33 +33,21 @@ fn total_recorded(b: &RecordingBackend) -> usize {
         + b.transpose_policies.lock().unwrap().len()
 }
 
-fn pair() -> (Arc<RecordingBackend>, Arc<RecordingBackend>) {
-    (
-        Arc::new(RecordingBackend::new()),
-        Arc::new(RecordingBackend::new()),
-    )
+fn tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
+    DenseTensor::from_raw_parts(data, shape)
 }
 
-/// Build a dense tensor pinned to backend `a1`.
-fn tensor(
-    data: Vec<f64>,
-    shape: Vec<usize>,
-    a1: &Arc<RecordingBackend>,
-) -> DenseTensor<f64, RecordingBackend> {
-    DenseTensor::from_raw_parts(data, shape, a1.clone())
-}
-
-fn sym2(a1: &Arc<RecordingBackend>) -> DenseTensor<f64, RecordingBackend> {
+fn sym2() -> DenseTensor<f64> {
     // Symmetric, so eigh / expm_hermitian have a real spectrum.
-    tensor(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2], a1)
+    tensor(vec![2.0, 1.0, 1.0, 2.0], vec![2, 2])
 }
 
-fn mat23(a1: &Arc<RecordingBackend>) -> DenseTensor<f64, RecordingBackend> {
-    tensor(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3], a1)
+fn mat23() -> DenseTensor<f64> {
+    tensor(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3])
 }
 
-fn mat22(a1: &Arc<RecordingBackend>) -> DenseTensor<f64, RecordingBackend> {
-    tensor(vec![4.0, 1.0, 2.0, 3.0], vec![2, 2], a1)
+fn mat22() -> DenseTensor<f64> {
+    tensor(vec![4.0, 1.0, 2.0, 3.0], vec![2, 2])
 }
 
 fn approx_eq(a: &[f64], b: &[f64]) {
@@ -63,263 +57,255 @@ fn approx_eq(a: &[f64], b: &[f64]) {
     }
 }
 
+/// Compare two complex eigenvalue multisets order-insensitively: the backend
+/// contract promises no eigenvalue ordering, so sort both by `(re, im)` before
+/// the element-wise tolerance check.
+fn eigvals_eq(a: &[arnet_core::Complex<f64>], b: &[arnet_core::Complex<f64>]) {
+    assert_eq!(a.len(), b.len(), "length mismatch");
+    let key = |z: &arnet_core::Complex<f64>| (z.re, z.im);
+    let mut a: Vec<_> = a.to_vec();
+    let mut b: Vec<_> = b.to_vec();
+    a.sort_by(|x, y| key(x).partial_cmp(&key(y)).unwrap());
+    b.sort_by(|x, y| key(x).partial_cmp(&key(y)).unwrap());
+    for (x, y) in a.iter().zip(&b) {
+        assert!((x - y).norm() < 1e-10, "value mismatch: {x} vs {y}");
+    }
+}
+
 #[test]
 fn svd_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat23(&a1);
-    let (u, s, vt) = svd_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(
-        total_recorded(&a1),
-        0,
-        "tensor backend must not be consulted"
-    );
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat23();
+    let (u, s, vt) = svd_with_backend(&rec, &t, 1).unwrap();
     assert!(
-        total_recorded(&a2) > 0,
+        total_recorded(&rec) > 0,
         "passed backend must run the kernel"
     );
-    assert!(Arc::ptr_eq(u.backend_arc(), &a2));
-    assert!(Arc::ptr_eq(s.backend_arc(), &a2));
-    assert!(Arc::ptr_eq(vt.backend_arc(), &a2));
-    let (lu, ls, lvt) = svd(&t, 1).unwrap();
-    approx_eq(u.data().data(), lu.data().data());
-    approx_eq(s.data().data(), ls.data().data());
-    approx_eq(vt.data().data(), lvt.data().data());
+    let (hu, hs, hvt) = svd_with_backend(&host, &t, 1).unwrap();
+    approx_eq(u.data().data(), hu.data().data());
+    approx_eq(s.data().data(), hs.data().data());
+    approx_eq(vt.data().data(), hvt.data().data());
 }
 
 #[test]
 fn trunc_svd_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat23(&a1);
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat23();
     let params = TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     };
-    let (u, s, vt, err) = trunc_svd_with_backend(&a2, &t, 1, &params).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(u.backend_arc(), &a2));
-    let (lu, ls, lvt, lerr) = trunc_svd(&t, 1, &params).unwrap();
-    approx_eq(u.data().data(), lu.data().data());
-    approx_eq(s.data().data(), ls.data().data());
-    approx_eq(vt.data().data(), lvt.data().data());
-    assert!((err - lerr).abs() < 1e-10);
+    let (u, s, vt, err) = trunc_svd_with_backend(&rec, &t, 1, &params).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let (hu, hs, hvt, herr) = trunc_svd_with_backend(&host, &t, 1, &params).unwrap();
+    approx_eq(u.data().data(), hu.data().data());
+    approx_eq(s.data().data(), hs.data().data());
+    approx_eq(vt.data().data(), hvt.data().data());
+    assert!((err - herr).abs() < 1e-10);
 }
 
 #[test]
 fn qr_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat23(&a1);
-    let (q, r) = qr_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(q.backend_arc(), &a2));
-    assert!(Arc::ptr_eq(r.backend_arc(), &a2));
-    let (lq, lr) = qr(&t, 1).unwrap();
-    approx_eq(q.data().data(), lq.data().data());
-    approx_eq(r.data().data(), lr.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat23();
+    let (q, r) = qr_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let (hq, hr) = qr_with_backend(&host, &t, 1).unwrap();
+    approx_eq(q.data().data(), hq.data().data());
+    approx_eq(r.data().data(), hr.data().data());
 }
 
 #[test]
 fn lq_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat23(&a1);
-    let (l, q) = lq_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(l.backend_arc(), &a2));
-    assert!(Arc::ptr_eq(q.backend_arc(), &a2));
-    let (ll, lq) = lq(&t, 1).unwrap();
-    approx_eq(l.data().data(), ll.data().data());
-    approx_eq(q.data().data(), lq.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat23();
+    let (l, q) = lq_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let (hl, hq) = lq_with_backend(&host, &t, 1).unwrap();
+    approx_eq(l.data().data(), hl.data().data());
+    approx_eq(q.data().data(), hq.data().data());
 }
 
 #[test]
 fn eigh_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = sym2(&a1);
-    let (w, v) = eigh_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(w.backend_arc(), &a2));
-    assert!(Arc::ptr_eq(v.backend_arc(), &a2));
-    let (lw, lv) = eigh(&t, 1).unwrap();
-    approx_eq(w.data().data(), lw.data().data());
-    approx_eq(v.data().data(), lv.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = sym2();
+    let (w, v) = eigh_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let (hw, hv) = eigh_with_backend(&host, &t, 1).unwrap();
+    approx_eq(w.data().data(), hw.data().data());
+    approx_eq(v.data().data(), hv.data().data());
 }
 
 #[test]
 fn eigvalsh_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = sym2(&a1);
-    let w = eigvalsh_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(w.backend_arc(), &a2));
-    approx_eq(w.data().data(), eigvalsh(&t, 1).unwrap().data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = sym2();
+    let w = eigvalsh_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    approx_eq(
+        w.data().data(),
+        eigvalsh_with_backend(&host, &t, 1).unwrap().data().data(),
+    );
 }
 
 #[test]
 fn eig_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat22(&a1);
-    let (w, v) = eig_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(w.backend_arc(), &a2));
-    assert!(Arc::ptr_eq(v.backend_arc(), &a2));
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat22();
+    let (w, _v) = eig_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let (hw, _hv) = eig_with_backend(&host, &t, 1).unwrap();
+    eigvals_eq(w.data().data(), hw.data().data());
 }
 
 #[test]
 fn eigvals_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat22(&a1);
-    let w = eigvals_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(w.backend_arc(), &a2));
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat22();
+    let w = eigvals_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hw = eigvals_with_backend(&host, &t, 1).unwrap();
+    eigvals_eq(w.data().data(), hw.data().data());
 }
 
 #[test]
 fn contract_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let lhs = mat22(&a1);
-    let rhs = mat22(&a1);
-    let out = contract_with_backend(&a2, &lhs, &rhs, "ab,bc->ac").unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = contract(&lhs, &rhs, "ab,bc->ac").unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let lhs = mat22();
+    let rhs = mat22();
+    let out = contract_with_backend(&rec, &lhs, &rhs, "ab,bc->ac").unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = contract_with_backend(&host, &lhs, &rhs, "ab,bc->ac").unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
 #[test]
 fn einsum_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let lhs = mat22(&a1);
-    let rhs = mat22(&a1);
-    let out = einsum_with_backend(&a2, &[&lhs, &rhs], "ab,bc->ac").unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = einsum(&[&lhs, &rhs], "ab,bc->ac").unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let lhs = mat22();
+    let rhs = mat22();
+    let out = einsum_with_backend(&rec, &[&lhs, &rhs], "ab,bc->ac").unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = einsum_with_backend(&host, &[&lhs, &rhs], "ab,bc->ac").unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
 #[test]
 fn transpose_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat23(&a1);
-    let out = transpose_with_backend(&a2, &t, &[1, 0]).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = transpose(&t, &[1, 0]).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat23();
+    let out = transpose_with_backend(&rec, &t, &[1, 0]).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = transpose_with_backend(&host, &t, &[1, 0]).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
 #[test]
 fn solve_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let a = mat22(&a1);
-    let b = mat22(&a1);
-    let out = solve_with_backend(&a2, &a, &b, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = solve(&a, &b, 1).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let a = mat22();
+    let b = mat22();
+    let out = solve_with_backend(&rec, &a, &b, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = solve_with_backend(&host, &a, &b, 1).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
 #[test]
 fn inverse_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat22(&a1);
-    let out = inverse_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = inverse(&t, 1).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat22();
+    let out = inverse_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = inverse_with_backend(&host, &t, 1).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
 #[test]
 fn expm_hermitian_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = sym2(&a1);
-    let out = expm_hermitian_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = expm_hermitian(&t, 1).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = sym2();
+    let out = expm_hermitian_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = expm_hermitian_with_backend(&host, &t, 1).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
 #[test]
 fn expm_antihermitian_routes_to_passed_backend() {
     use arnet_core::Complex;
-    let (a1, a2) = pair();
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
     // expm_antihermitian requires a complex element type; a real anti-symmetric
     // matrix embedded in the complex field is anti-Hermitian.
     let z = |re: f64| Complex::new(re, 0.0);
     let data = vec![z(0.0), z(1.0), z(-1.0), z(0.0)];
-    let t: DenseTensor<Complex<f64>, RecordingBackend> =
-        DenseTensor::from_raw_parts(data, vec![2, 2], a1.clone());
-    let out = expm_antihermitian_with_backend(&a2, &t, 1).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(total_recorded(&a2) > 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = expm_antihermitian(&t, 1).unwrap();
-    for (x, y) in out.data().data().iter().zip(lout.data().data()) {
+    let t: DenseTensor<Complex<f64>> = DenseTensor::from_raw_parts(data, vec![2, 2]);
+    let out = expm_antihermitian_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = expm_antihermitian_with_backend(&host, &t, 1).unwrap();
+    for (x, y) in out.data().data().iter().zip(hout.data().data()) {
         assert!((x - y).norm() < 1e-10, "value mismatch: {x} vs {y}");
     }
 }
 
 #[test]
 fn expm_routes_to_passed_backend() {
-    let (a1, a2) = pair();
-    let t = sym2(&a1);
-    let out = expm_with_backend(&a2, &t, 1).unwrap();
-    // expm may dispatch via a recorded kernel; the universal guarantee is that
-    // the tensor's backend is not consulted and the result carries `a2`.
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = expm(&t, 1).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = sym2();
+    let out = expm_with_backend(&rec, &t, 1).unwrap();
+    assert!(total_recorded(&rec) > 0);
+    let hout = expm_with_backend(&host, &t, 1).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
-// --- Backend used only to allocate the result; kernel routing is unobservable
-// here, so pointer identity of the result is the available authority proof. ---
+// --- Allocation-only ops: the backend drives no observable kernel, so only
+// numerical correctness is checked here; the behaviorally-distinct routing
+// proof is the Stage C pluggability litmus. ---
 
 #[test]
-fn trace_carries_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat22(&a1);
-    let out = trace_with_backend(&a2, &t, &[(0, 1)]).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = trace(&t, &[(0, 1)]).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
-}
-
-#[test]
-fn diag_carries_passed_backend() {
-    let (a1, a2) = pair();
-    let t = tensor(vec![1.0, 2.0, 3.0], vec![3], &a1);
-    let out = diag_with_backend(&a2, &t).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = diag(&t).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+fn trace_matches_host() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat22();
+    let out = trace_with_backend(&rec, &t, &[(0, 1)]).unwrap();
+    let hout = trace_with_backend(&host, &t, &[(0, 1)]).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }
 
 #[test]
-fn diagonal_scale_carries_passed_backend() {
-    let (a1, a2) = pair();
-    let t = mat23(&a1);
+fn diag_matches_host() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = tensor(vec![1.0, 2.0, 3.0], vec![3]);
+    let out = diag_with_backend(&rec, &t).unwrap();
+    let hout = diag_with_backend(&host, &t).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
+}
+
+#[test]
+fn diagonal_scale_matches_host() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = mat23();
     let weights = [10.0, 20.0];
-    let out = diagonal_scale_with_backend(&a2, &t, &weights, 0).unwrap();
-    assert_eq!(total_recorded(&a1), 0);
-    assert!(Arc::ptr_eq(out.backend_arc(), &a2));
-    let lout = diagonal_scale(&t, &weights, 0).unwrap();
-    approx_eq(out.data().data(), lout.data().data());
+    let out = diagonal_scale_with_backend(&rec, &t, &weights, 0).unwrap();
+    let hout = diagonal_scale_with_backend(&host, &t, &weights, 0).unwrap();
+    approx_eq(out.data().data(), hout.data().data());
 }

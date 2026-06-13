@@ -1,5 +1,4 @@
-use arnet_linalg::{diagonal_scale, trace};
-use arnet_native::NativeBackend;
+use arnet_linalg::DenseHostOps;
 use arnet_tensor::DenseTensor;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
@@ -26,7 +25,7 @@ fn shapes_square() -> Vec<TensorShape> {
     ]
 }
 
-fn random_tensor(shape: Vec<usize>) -> DenseTensor<f64, NativeBackend> {
+fn random_tensor(shape: Vec<usize>) -> DenseTensor<f64> {
     DenseTensor::random(shape, &mut rng())
 }
 
@@ -41,20 +40,20 @@ fn bench_trace(c: &mut Criterion) {
     for s in &shapes_square() {
         let tensor = random_tensor(s.shape.clone());
         group.bench_with_input(BenchmarkId::new("full", s.label), &tensor, |b, t| {
-            b.iter_with_large_drop(|| trace(t, &[(0, 1)]).unwrap());
+            b.iter_with_large_drop(|| t.trace(&[(0, 1)]).unwrap());
         });
     }
 
     // Partial trace of rank-3 tensor: trace over axes (0, 2) -> vector
     let tensor = random_tensor(vec![64, 4, 64]);
     group.bench_with_input(BenchmarkId::new("partial", "64x4x64"), &tensor, |b, t| {
-        b.iter_with_large_drop(|| trace(t, &[(0, 2)]).unwrap());
+        b.iter_with_large_drop(|| t.trace(&[(0, 2)]).unwrap());
     });
 
     // Partial trace of rank-4 tensor: trace over axes (0, 3) -> rank-2
     let tensor = random_tensor(vec![32, 4, 4, 32]);
     group.bench_with_input(BenchmarkId::new("partial", "32x4x4x32"), &tensor, |b, t| {
-        b.iter_with_large_drop(|| trace(t, &[(0, 3)]).unwrap());
+        b.iter_with_large_drop(|| t.trace(&[(0, 3)]).unwrap());
     });
 
     group.finish();
@@ -75,7 +74,7 @@ fn bench_diagonal_scale(c: &mut Criterion) {
             BenchmarkId::new("axis0", s.label),
             &(&tensor, &weights),
             |b, (t, w)| {
-                b.iter_with_large_drop(|| diagonal_scale(t, w, 0).unwrap());
+                b.iter_with_large_drop(|| t.diagonal_scale(w, 0).unwrap());
             },
         );
     }
@@ -88,7 +87,7 @@ fn bench_diagonal_scale(c: &mut Criterion) {
             BenchmarkId::new("axis1", s.label),
             &(&tensor, &weights),
             |b, (t, w)| {
-                b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
+                b.iter_with_large_drop(|| t.diagonal_scale(w, 1).unwrap());
             },
         );
     }
@@ -100,7 +99,7 @@ fn bench_diagonal_scale(c: &mut Criterion) {
         BenchmarkId::new("axis1", "64x4x64"),
         &(&tensor, &weights),
         |b, (t, w)| {
-            b.iter_with_large_drop(|| diagonal_scale(t, w, 1).unwrap());
+            b.iter_with_large_drop(|| t.diagonal_scale(w, 1).unwrap());
         },
     );
 

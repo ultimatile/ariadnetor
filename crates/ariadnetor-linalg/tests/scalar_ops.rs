@@ -1,13 +1,12 @@
-use arnet_linalg::{diag, trace};
-use arnet_native::NativeBackend;
+use arnet_linalg::DenseHostOps;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
-/// Wrap a `DenseTensorData<T>` into a `DenseTensor<T, NativeBackend>`
-/// pinned to the shared `NativeBackend`. Tests build `DenseTensorData`
-/// directly (often with a specific `MemoryOrder` that is not
-/// `preferred_order()`) and feed it to linalg pub fns through this wrapper.
-fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
-    DenseTensor::with_backend(d, NativeBackend::shared())
+/// Wrap a `DenseTensorData<T>` into a `DenseTensor<T>`. Tests build
+/// `DenseTensorData` directly (often with a specific `MemoryOrder` that is
+/// not `preferred_order()`) and feed it to the linalg host-ext methods
+/// through this wrapper.
+fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T> {
+    DenseTensor::from_data(d)
 }
 
 // --- Trace tests ---
@@ -23,7 +22,7 @@ fn test_trace_matrix() {
         vec![2, 2],
         MemoryOrder::RowMajor,
     ));
-    let result = trace(&mat, &[(0, 1)]).unwrap();
+    let result = mat.trace(&[(0, 1)]).unwrap();
     assert_eq!(result.shape(), &[1]);
     assert_eq!(result.data_slice()[0], 5.0);
 }
@@ -40,7 +39,7 @@ fn test_trace_3x3_identity() {
         vec![3, 3],
         MemoryOrder::ColumnMajor,
     ));
-    let result = trace(&mat, &[(0, 1)]).unwrap();
+    let result = mat.trace(&[(0, 1)]).unwrap();
     assert_eq!(result.data_slice()[0], 3.0);
 }
 
@@ -62,7 +61,7 @@ fn test_trace_partial_rank3() {
         vec![2, 3, 3],
         MemoryOrder::RowMajor,
     ));
-    let result = trace(&tensor, &[(1, 2)]).unwrap();
+    let result = tensor.trace(&[(1, 2)]).unwrap();
     assert_eq!(result.shape(), &[2]);
     assert_eq!(result.data_slice()[0], 6.0);
     assert_eq!(result.data_slice()[1], 15.0);
@@ -93,7 +92,7 @@ fn test_trace_tci_example() {
         shape,
         MemoryOrder::RowMajor,
     ));
-    let result = trace(&tensor, &[(1, 3), (2, 4)]).unwrap();
+    let result = tensor.trace(&[(1, 3), (2, 4)]).unwrap();
     assert_eq!(result.shape(), &[3]);
     assert_eq!(result.data_slice()[0], 3.0);
     assert_eq!(result.data_slice()[1], 5.0);
@@ -118,7 +117,7 @@ fn test_trace_full_contraction() {
         shape,
         MemoryOrder::RowMajor,
     ));
-    let result = trace(&tensor, &[(0, 2), (1, 3)]).unwrap();
+    let result = tensor.trace(&[(0, 2), (1, 3)]).unwrap();
     assert_eq!(result.shape(), &[1]);
     assert_eq!(result.data_slice()[0], 6.0);
 }
@@ -130,7 +129,7 @@ fn test_trace_empty_pairs() {
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     ));
-    let result = trace(&tensor, &[]).unwrap();
+    let result = tensor.trace(&[]).unwrap();
     assert_eq!(result.shape(), &[2, 2]);
     assert_eq!(result.data_slice(), tensor.data_slice());
 }
@@ -142,7 +141,7 @@ fn test_trace_dimension_mismatch() {
         vec![2, 3],
         MemoryOrder::ColumnMajor,
     ));
-    assert!(trace(&tensor, &[(0, 1)]).is_err());
+    assert!(tensor.trace(&[(0, 1)]).is_err());
 }
 
 #[test]
@@ -152,7 +151,7 @@ fn test_trace_index_out_of_range() {
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     ));
-    assert!(trace(&tensor, &[(0, 5)]).is_err());
+    assert!(tensor.trace(&[(0, 5)]).is_err());
 }
 
 #[test]
@@ -162,7 +161,7 @@ fn test_trace_self_pair() {
         vec![2, 2],
         MemoryOrder::ColumnMajor,
     ));
-    assert!(trace(&tensor, &[(1, 1)]).is_err());
+    assert!(tensor.trace(&[(1, 1)]).is_err());
 }
 
 #[test]
@@ -172,7 +171,7 @@ fn test_trace_duplicate_index() {
         vec![2, 2, 2],
         MemoryOrder::ColumnMajor,
     ));
-    assert!(trace(&tensor, &[(0, 1), (1, 2)]).is_err());
+    assert!(tensor.trace(&[(0, 1), (1, 2)]).is_err());
 }
 
 // --- Diag tests ---
@@ -184,7 +183,7 @@ fn test_diag_extract_3x3() {
         vec![3, 3],
         MemoryOrder::ColumnMajor,
     ));
-    let d = diag(&a).unwrap();
+    let d = a.diag().unwrap();
     assert_eq!(d.shape(), &[3]);
     assert_eq!(d.data_slice(), &[1.0, 5.0, 9.0]);
 }
@@ -196,7 +195,7 @@ fn test_diag_construct_3x3() {
         vec![3],
         MemoryOrder::ColumnMajor,
     ));
-    let m = diag(&v).unwrap();
+    let m = v.diag().unwrap();
     assert_eq!(m.shape(), &[3, 3]);
     assert_eq!(
         m.data_slice(),
@@ -207,7 +206,7 @@ fn test_diag_construct_3x3() {
 #[test]
 fn test_diag_identity() {
     let id = DenseTensor::<f64>::eye(3);
-    let d = diag(&id).unwrap();
+    let d = id.diag().unwrap();
     assert_eq!(d.data_slice(), &[1.0, 1.0, 1.0]);
 }
 
@@ -218,8 +217,8 @@ fn test_diag_round_trip() {
         vec![2],
         MemoryOrder::ColumnMajor,
     ));
-    let m = diag(&v).unwrap();
-    let v2 = diag(&m).unwrap();
+    let m = v.diag().unwrap();
+    let v2 = m.diag().unwrap();
     assert_eq!(v2.data_slice(), v.data_slice());
 }
 
@@ -232,7 +231,7 @@ fn test_diag_complex() {
         vec![2],
         MemoryOrder::ColumnMajor,
     ));
-    let m = diag(&v).unwrap();
+    let m = v.diag().unwrap();
     assert_eq!(m.shape(), &[2, 2]);
     assert_eq!(m.get(&[0, 0]), Complex::new(1.0, 2.0));
     assert_eq!(m.get(&[0, 1]), Complex::new(0.0, 0.0));
@@ -247,7 +246,7 @@ fn test_diag_nonsquare_error() {
         vec![2, 3],
         MemoryOrder::ColumnMajor,
     ));
-    assert!(diag(&a).is_err());
+    assert!(a.diag().is_err());
 }
 
 #[test]
@@ -257,5 +256,5 @@ fn test_diag_rank3_error() {
         vec![2, 2, 2],
         MemoryOrder::ColumnMajor,
     ));
-    assert!(diag(&a).is_err());
+    assert!(a.diag().is_err());
 }

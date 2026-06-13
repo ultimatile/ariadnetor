@@ -1,12 +1,11 @@
 //! Tests for diagonal_scale.
 
-use arnet_linalg::diagonal_scale;
-use arnet_native::NativeBackend;
+use arnet_linalg::DenseHostOps;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Wrap a `DenseTensorData<f64>` into a `DenseTensor` so the new pub API accepts it.
-fn t(d: DenseTensorData<f64>) -> DenseTensor<f64, NativeBackend> {
-    DenseTensor::with_backend(d, NativeBackend::shared())
+fn t(d: DenseTensorData<f64>) -> DenseTensor<f64> {
+    DenseTensor::from_data(d)
 }
 
 #[test]
@@ -18,7 +17,7 @@ fn test_diagonal_scale_axis0() {
         vec![2, 3],
         MemoryOrder::ColumnMajor,
     ));
-    let result = diagonal_scale(&t_in, &[2.0, 3.0], 0).unwrap();
+    let result = t_in.diagonal_scale(&[2.0, 3.0], 0).unwrap();
     // Scale row 0 by 2, row 1 by 3 -> [[2,4,6],[12,15,18]]
     // CM: col0=[2,12], col1=[4,15], col2=[6,18]
     assert_eq!(result.data_slice(), &[2.0, 12.0, 4.0, 15.0, 6.0, 18.0]);
@@ -32,7 +31,7 @@ fn test_diagonal_scale_axis1() {
         vec![2, 3],
         MemoryOrder::ColumnMajor,
     ));
-    let result = diagonal_scale(&t_in, &[1.0, 2.0, 3.0], 1).unwrap();
+    let result = t_in.diagonal_scale(&[1.0, 2.0, 3.0], 1).unwrap();
     // Scale col 0 by 1, col 1 by 2, col 2 by 3 -> [[1,4,9],[4,10,18]]
     // CM: col0=[1,4], col1=[4,10], col2=[9,18]
     assert_eq!(result.data_slice(), &[1.0, 4.0, 4.0, 10.0, 9.0, 18.0]);
@@ -45,7 +44,7 @@ fn test_diagonal_scale_rank1() {
         vec![3],
         MemoryOrder::ColumnMajor,
     ));
-    let result = diagonal_scale(&t_in, &[2.0, 0.5, 3.0], 0).unwrap();
+    let result = t_in.diagonal_scale(&[2.0, 0.5, 3.0], 0).unwrap();
     assert_eq!(result.data_slice(), &[20.0, 10.0, 90.0]);
 }
 
@@ -57,9 +56,9 @@ fn test_diagonal_scale_error_cases() {
         MemoryOrder::ColumnMajor,
     ));
     // axis out of range
-    assert!(diagonal_scale(&t_in, &[1.0, 2.0], 2).is_err());
+    assert!(t_in.diagonal_scale(&[1.0, 2.0], 2).is_err());
     // matching weights length for axis 0
-    assert!(diagonal_scale(&t_in, &[1.0, 2.0], 0).is_ok());
+    assert!(t_in.diagonal_scale(&[1.0, 2.0], 0).is_ok());
     // wrong weights length for axis 1
-    assert!(diagonal_scale(&t_in, &[1.0, 2.0], 1).is_err());
+    assert!(t_in.diagonal_scale(&[1.0, 2.0], 1).is_err());
 }

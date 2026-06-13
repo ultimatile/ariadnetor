@@ -27,7 +27,7 @@ use arnet_linalg::{lq_with_policy, qr_with_policy, svd_with_policy};
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
-fn random_rect(m: usize, n: usize, seed: u64) -> DenseTensor<f64, NativeBackend> {
+fn random_rect(m: usize, n: usize, seed: u64) -> DenseTensor<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     DenseTensor::random(vec![m, n], &mut rng)
 }
@@ -54,7 +54,7 @@ fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
 
 fn run_sweep_rect<OF>(label: &str, grid: &[(usize, usize)], op: OF)
 where
-    OF: Fn(&DenseTensor<f64, NativeBackend>, ExecPolicy),
+    OF: Fn(&DenseTensor<f64>, ExecPolicy),
 {
     eprintln!("\n=== {label} ===");
     eprintln!(
@@ -97,6 +97,7 @@ where
 }
 
 fn main() {
+    let backend = NativeBackend::new();
     // Tall grid: (m, n) with m >= n. Each n-block spans aspect ratios
     // {1, 2, 4, 8} so rows within a block share min(m,n) but vary in
     // cbrt_work — the comparison axis for sub-issue D.
@@ -116,13 +117,13 @@ fn main() {
     ];
 
     run_sweep_rect("SVD (thin)", grid, |mat, policy| {
-        let _ = svd_with_policy(mat, 1, policy).unwrap();
+        let _ = svd_with_policy(&backend, mat, 1, policy).unwrap();
     });
     run_sweep_rect("QR", grid, |mat, policy| {
-        let _ = qr_with_policy(mat, 1, policy).unwrap();
+        let _ = qr_with_policy(&backend, mat, 1, policy).unwrap();
     });
     run_sweep_rect("LQ", grid, |mat, policy| {
-        let _ = lq_with_policy(mat, 1, policy).unwrap();
+        let _ = lq_with_policy(&backend, mat, 1, policy).unwrap();
     });
 
     eprintln!(

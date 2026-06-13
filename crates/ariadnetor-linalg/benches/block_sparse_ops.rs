@@ -12,8 +12,9 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 
 use arnet_linalg::{
-    TruncSvdParams, contract, contract_block_sparse, lq, lq_block_sparse, qr, qr_block_sparse, svd,
-    svd_block_sparse, trunc_svd, trunc_svd_block_sparse,
+    DenseHostOps, TruncSvdParams, contract_block_sparse_with_backend, lq_block_sparse_with_backend,
+    qr_block_sparse_with_backend, svd_block_sparse_with_backend,
+    trunc_svd_block_sparse_with_backend,
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparseTensor, DenseTensor, Direction, QNIndex, U1Sector};
@@ -54,7 +55,7 @@ fn singh_sweep() -> Vec<Params> {
 }
 
 /// Build a rank-2 `BlockSparseTensor` with q U(1) sectors of degeneracy d each.
-fn random_bsp_matrix(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector, NativeBackend> {
+fn random_bsp_matrix(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sectors: Vec<(U1Sector, usize)> = (0..q as i32).map(|i| (U1Sector(i), d)).collect();
     let row = QNIndex::new(sectors.clone(), Direction::Out);
@@ -63,7 +64,7 @@ fn random_bsp_matrix(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector, Nat
 }
 
 /// Build a rank-3 `BlockSparseTensor`: (bond_left, physical, bond_right).
-fn random_bsp_rank3(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector, NativeBackend> {
+fn random_bsp_rank3(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let bond_sectors: Vec<(U1Sector, usize)> = (0..q as i32).map(|i| (U1Sector(i), d)).collect();
     let phys_sectors = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
@@ -73,7 +74,7 @@ fn random_bsp_rank3(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector, Nati
     BlockSparseTensor::random(vec![left, phys, right], U1Sector(0), &mut rng)
 }
 
-fn random_dense_matrix(total_dim: usize) -> DenseTensor<f64, NativeBackend> {
+fn random_dense_matrix(total_dim: usize) -> DenseTensor<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     DenseTensor::random(vec![total_dim, total_dim], &mut rng)
 }
@@ -83,6 +84,7 @@ fn random_dense_matrix(total_dim: usize) -> DenseTensor<f64, NativeBackend> {
 // ---------------------------------------------------------------------------
 
 fn bench_contract(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("contract_bsp_rank2");
 
     for p in &standard_sweep() {
@@ -92,7 +94,9 @@ fn bench_contract(c: &mut Criterion) {
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract_block_sparse(a, b, &[1], &[0]).unwrap());
+                bench.iter_with_large_drop(|| {
+                    contract_block_sparse_with_backend(&backend, a, b, &[1], &[0]).unwrap()
+                });
             },
         );
 
@@ -103,7 +107,7 @@ fn bench_contract(c: &mut Criterion) {
             BenchmarkId::new("dense", &p.label),
             &(&a_dense, &b_dense),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract(a, b, "ij,jk->ik").unwrap());
+                bench.iter_with_large_drop(|| a.contract(b, "ij,jk->ik").unwrap());
             },
         );
     }
@@ -113,6 +117,7 @@ fn bench_contract(c: &mut Criterion) {
 
 /// Contraction with non-standard axis pairing that forces internal permutation.
 fn bench_contract_permuted(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("contract_bsp_permuted");
 
     for p in &standard_sweep() {
@@ -122,7 +127,9 @@ fn bench_contract_permuted(c: &mut Criterion) {
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract_block_sparse(a, b, &[0], &[1]).unwrap());
+                bench.iter_with_large_drop(|| {
+                    contract_block_sparse_with_backend(&backend, a, b, &[0], &[1]).unwrap()
+                });
             },
         );
 
@@ -133,7 +140,7 @@ fn bench_contract_permuted(c: &mut Criterion) {
             BenchmarkId::new("dense", &p.label),
             &(&a_dense, &b_dense),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract(a, b, "ij,ki->jk").unwrap());
+                bench.iter_with_large_drop(|| a.contract(b, "ij,ki->jk").unwrap());
             },
         );
     }
@@ -142,6 +149,7 @@ fn bench_contract_permuted(c: &mut Criterion) {
 }
 
 fn bench_contract_rank3(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("contract_bsp_rank3");
 
     for p in &standard_sweep() {
@@ -152,7 +160,9 @@ fn bench_contract_rank3(c: &mut Criterion) {
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract_block_sparse(a, b, &[2], &[0]).unwrap());
+                bench.iter_with_large_drop(|| {
+                    contract_block_sparse_with_backend(&backend, a, b, &[2], &[0]).unwrap()
+                });
             },
         );
     }
@@ -165,18 +175,19 @@ fn bench_contract_rank3(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_svd(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("svd_bsp");
 
     for p in &standard_sweep() {
         let a = random_bsp_matrix(p.q, p.d);
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| svd_block_sparse(a, 1).unwrap());
+            bench.iter_with_large_drop(|| svd_block_sparse_with_backend(&backend, a, 1).unwrap());
         });
 
         let total = p.q * p.d;
         let a_dense = random_dense_matrix(total);
         group.bench_with_input(BenchmarkId::new("dense", &p.label), &a_dense, |bench, a| {
-            bench.iter_with_large_drop(|| svd(a, 1).unwrap());
+            bench.iter_with_large_drop(|| a.svd(1).unwrap());
         });
     }
 
@@ -184,6 +195,7 @@ fn bench_svd(c: &mut Criterion) {
 }
 
 fn bench_trunc_svd(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("trunc_svd_bsp");
 
     for p in &standard_sweep() {
@@ -195,13 +207,15 @@ fn bench_trunc_svd(c: &mut Criterion) {
         };
 
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| trunc_svd_block_sparse(a, 1, &params).unwrap());
+            bench.iter_with_large_drop(|| {
+                trunc_svd_block_sparse_with_backend(&backend, a, 1, &params).unwrap()
+            });
         });
 
         let total = p.q * p.d;
         let a_dense = random_dense_matrix(total);
         group.bench_with_input(BenchmarkId::new("dense", &p.label), &a_dense, |bench, a| {
-            bench.iter_with_large_drop(|| trunc_svd(a, 1, &params).unwrap());
+            bench.iter_with_large_drop(|| a.trunc_svd(1, &params).unwrap());
         });
     }
 
@@ -213,18 +227,19 @@ fn bench_trunc_svd(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_qr(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("qr_bsp");
 
     for p in &standard_sweep() {
         let a = random_bsp_matrix(p.q, p.d);
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| qr_block_sparse(a, 1).unwrap());
+            bench.iter_with_large_drop(|| qr_block_sparse_with_backend(&backend, a, 1).unwrap());
         });
 
         let total = p.q * p.d;
         let a_dense = random_dense_matrix(total);
         group.bench_with_input(BenchmarkId::new("dense", &p.label), &a_dense, |bench, a| {
-            bench.iter_with_large_drop(|| qr(a, 1).unwrap());
+            bench.iter_with_large_drop(|| a.qr(1).unwrap());
         });
     }
 
@@ -232,18 +247,19 @@ fn bench_qr(c: &mut Criterion) {
 }
 
 fn bench_lq(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("lq_bsp");
 
     for p in &standard_sweep() {
         let a = random_bsp_matrix(p.q, p.d);
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| lq_block_sparse(a, 1).unwrap());
+            bench.iter_with_large_drop(|| lq_block_sparse_with_backend(&backend, a, 1).unwrap());
         });
 
         let total = p.q * p.d;
         let a_dense = random_dense_matrix(total);
         group.bench_with_input(BenchmarkId::new("dense", &p.label), &a_dense, |bench, a| {
-            bench.iter_with_large_drop(|| lq(a, 1).unwrap());
+            bench.iter_with_large_drop(|| a.lq(1).unwrap());
         });
     }
 
@@ -255,6 +271,7 @@ fn bench_lq(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_singh_reference(c: &mut Criterion) {
+    let backend = NativeBackend::new();
     let mut group = c.benchmark_group("singh_fig13");
 
     for p in &singh_sweep() {
@@ -269,26 +286,28 @@ fn bench_singh_reference(c: &mut Criterion) {
             BenchmarkId::new("matmul_bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract_block_sparse(a, b, &[1], &[0]).unwrap());
+                bench.iter_with_large_drop(|| {
+                    contract_block_sparse_with_backend(&backend, a, b, &[1], &[0]).unwrap()
+                });
             },
         );
         group.bench_with_input(
             BenchmarkId::new("matmul_dense", &p.label),
             &(&a_dense, &b_dense),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| contract(a, b, "ij,jk->ik").unwrap());
+                bench.iter_with_large_drop(|| a.contract(b, "ij,jk->ik").unwrap());
             },
         );
 
         // SVD
         group.bench_with_input(BenchmarkId::new("svd_bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| svd_block_sparse(a, 1).unwrap());
+            bench.iter_with_large_drop(|| svd_block_sparse_with_backend(&backend, a, 1).unwrap());
         });
         group.bench_with_input(
             BenchmarkId::new("svd_dense", &p.label),
             &a_dense,
             |bench, a| {
-                bench.iter_with_large_drop(|| svd(a, 1).unwrap());
+                bench.iter_with_large_drop(|| a.svd(1).unwrap());
             },
         );
     }

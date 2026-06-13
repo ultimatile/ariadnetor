@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{DenseTensor, DenseTensorData};
+use arnet_tensor::DenseTensorData;
 use std::ops::Mul;
 
 use crate::error::LinalgError;
@@ -28,28 +28,9 @@ use arnet_tensor::{flat_index, normalize_to_data};
 /// - Paired bonds have different dimensions
 /// - `a == b` in any pair
 ///
-/// # Examples
-///
-/// ```rust,ignore
-/// use arnet_linalg::trace;
-/// use arnet_tensor::DenseTensor;
-///
-/// // Matrix trace: tr(I_2) = 2 (eye preserves the active backend's preferred order)
-/// let mat = DenseTensor::<f64>::eye(2);
-/// let result = trace(&mat, &[(0, 1)]).unwrap();
-/// assert_eq!(result.shape(), &[1]);
-/// ```
-pub fn trace<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-    pairs: &[(usize, usize)],
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = tensor.backend_arc().clone();
-    let result = trace_dense(tensor.data(), pairs)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`trace`] operating on the joined
-/// [`DenseTensorData<T>`] form.
+/// Internal kernel for the partial trace operating on the joined
+/// [`DenseTensorData<T>`] form. The public entry point is
+/// [`crate::trace_with_backend`].
 pub(crate) fn trace_dense<T: Scalar>(
     tensor: &DenseTensorData<T>,
     pairs: &[(usize, usize)],
@@ -186,16 +167,10 @@ pub(crate) fn decode_coords(mut flat: usize, shape: &[usize], coords: &mut [usiz
 ///
 /// Returns an error if the input is a non-square matrix (rank 2 with mismatched dimensions)
 /// or has rank > 2.
-pub fn diag<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = tensor.backend_arc().clone();
-    let result = diag_dense(tensor.data())?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`diag`] operating on the joined
-/// [`DenseTensorData<T>`] form.
+///
+/// Internal kernel for the diagonal operation on the joined
+/// [`DenseTensorData<T>`] form. The public entry point is
+/// [`crate::diag_with_backend`].
 pub(crate) fn diag_dense<T: Scalar>(
     tensor: &DenseTensorData<T>,
 ) -> Result<DenseTensorData<T>, LinalgError> {
@@ -255,32 +230,9 @@ pub(crate) fn diag_dense<T: Scalar>(
 /// Returns [`LinalgError::InvalidArgument`] if `axis` is out of range or
 /// `weights.len()` does not match the dimension along `axis`.
 ///
-/// # Examples
-///
-/// ```rust,ignore
-/// use arnet_linalg::diagonal_scale;
-/// use arnet_tensor::DenseTensor;
-///
-/// let m = DenseTensor::<f64>::ones(vec![2, 3]);
-/// let scaled = diagonal_scale(&m, &[1.0, 2.0, 3.0], 1).unwrap();
-/// ```
-pub fn diagonal_scale<T, S, B>(
-    tensor: &DenseTensor<T, B>,
-    weights: &[S],
-    axis: usize,
-) -> Result<DenseTensor<T, B>, LinalgError>
-where
-    T: Clone + Mul<S, Output = T> + 'static,
-    S: Clone,
-    B: ComputeBackend,
-{
-    let backend_arc = tensor.backend_arc().clone();
-    let result = diagonal_scale_dense(tensor.backend(), tensor.data(), weights, axis)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`diagonal_scale`] operating on the joined
-/// [`DenseTensorData<T>`] form.
+/// Internal kernel for the diagonal-scale operation on the joined
+/// [`DenseTensorData<T>`] form. The public entry point is
+/// [`crate::diagonal_scale_with_backend`].
 pub(crate) fn diagonal_scale_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,

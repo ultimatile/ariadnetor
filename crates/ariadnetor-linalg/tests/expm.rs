@@ -1,25 +1,24 @@
-use arnet_linalg::{EighResult, contract, eigh, expm, expm_antihermitian, expm_hermitian};
-use arnet_native::NativeBackend;
+use arnet_linalg::{DenseHostOps, EighResult};
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
 }
 
 /// Convert column-major Dense back to row-major so `.get()` returns correct values.
-fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+fn to_rm<T: Clone>(tensor: &DenseTensor<T>) -> DenseTensor<T> {
     let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm, NativeBackend::shared())
+    DenseTensor::from_data(rm)
 }
 
 #[test]
 fn test_expm_hermitian_diagonal_f64() {
     // exp(diag(1, 2)) = diag(e, e²)
     let a = cm(vec![1.0_f64, 0.0, 0.0, 2.0], vec![2, 2]);
-    let result = expm_hermitian(&a, 1).unwrap();
+    let result = a.expm_hermitian(1).unwrap();
 
     assert_eq!(result.shape(), &[2, 2]);
     let e = std::f64::consts::E;
@@ -34,7 +33,7 @@ fn test_expm_hermitian_2x2_symmetric() {
     // A = [[0, 1], [1, 0]] (Pauli X), eigenvalues ±1
     // exp(A) = cosh(1)*I + sinh(1)*A
     let a = cm(vec![0.0_f64, 1.0, 1.0, 0.0], vec![2, 2]);
-    let result = expm_hermitian(&a, 1).unwrap();
+    let result = a.expm_hermitian(1).unwrap();
 
     let c = 1.0f64.cosh();
     let s = 1.0f64.sinh();
@@ -60,7 +59,7 @@ fn test_expm_hermitian_c64() {
         ],
         vec![2, 2],
     );
-    let result = expm_hermitian(&a, 1).unwrap();
+    let result = a.expm_hermitian(1).unwrap();
 
     // exp(A) should be Hermitian: result[i,j] = conj(result[j,i])
     let r00 = result.get(&[0, 0]);
@@ -79,7 +78,7 @@ fn test_expm_hermitian_c64() {
     );
 
     // Verify via eigenvalue comparison: tr(exp(A)) = exp(λ₁) + exp(λ₂)
-    let (w, _): EighResult<Complex<f64>, NativeBackend> = eigh(&a, 1).unwrap();
+    let (w, _): EighResult<Complex<f64>> = a.eigh(1).unwrap();
     let expected_trace: f64 = w.data_slice()[0].exp() + w.data_slice()[1].exp();
     let actual_trace: f64 = r00.re + r11.re;
     assert!(
@@ -92,7 +91,7 @@ fn test_expm_hermitian_c64() {
 fn test_expm_hermitian_f32() {
     // exp(diag(1, 2)) = diag(e, e²)
     let a = cm(vec![1.0_f32, 0.0, 0.0, 2.0], vec![2, 2]);
-    let result = expm_hermitian(&a, 1).unwrap();
+    let result = a.expm_hermitian(1).unwrap();
 
     let e = std::f32::consts::E;
     assert!((result.get(&[0, 0]) - e).abs() < 1e-4);
@@ -102,14 +101,14 @@ fn test_expm_hermitian_f32() {
 #[test]
 fn test_expm_hermitian_invalid_nonsquare() {
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    assert!(expm_hermitian(&a, 1).is_err());
+    assert!(a.expm_hermitian(1).is_err());
 }
 
 #[test]
 fn test_expm_hermitian_invalid_nrow() {
     let a = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
-    assert!(expm_hermitian(&a, 0).is_err());
-    assert!(expm_hermitian(&a, 2).is_err());
+    assert!(a.expm_hermitian(0).is_err());
+    assert!(a.expm_hermitian(2).is_err());
 }
 
 // --- expm_antihermitian tests ---
@@ -129,7 +128,7 @@ fn test_expm_antihermitian_unitarity_c64() {
         ],
         vec![2, 2],
     );
-    let u = expm_antihermitian(&a, 1).unwrap();
+    let u = a.expm_antihermitian(1).unwrap();
 
     // exp(A) should be unitary: U†U = I
     let u_rm = to_rm(&u);
@@ -140,7 +139,7 @@ fn test_expm_antihermitian_unitarity_c64() {
         }
     }
     let u_dagger = cm(uh_data, vec![2, 2]);
-    let product = to_rm(&contract(&u_dagger, &u, "ij,jk->ik").unwrap());
+    let product = to_rm(&u_dagger.contract(&u, "ij,jk->ik").unwrap());
 
     // Should be identity
     for i in 0..2 {
@@ -171,7 +170,7 @@ fn test_expm_antihermitian_pauli_z() {
         ],
         vec![2, 2],
     );
-    let result = expm_antihermitian(&a, 1).unwrap();
+    let result = a.expm_antihermitian(1).unwrap();
 
     // exp(-it) = cos(t) - i*sin(t)
     let exp_neg_it = Complex::new(t.cos(), -t.sin());
@@ -195,10 +194,10 @@ fn test_expm_antihermitian_pauli_z() {
 fn test_expm_antihermitian_real_type_error() {
     // Real types should return error
     let a_f64 = cm(vec![0.0_f64; 4], vec![2, 2]);
-    assert!(expm_antihermitian(&a_f64, 1).is_err());
+    assert!(a_f64.expm_antihermitian(1).is_err());
 
     let a_f32 = cm(vec![0.0_f32; 4], vec![2, 2]);
-    assert!(expm_antihermitian(&a_f32, 1).is_err());
+    assert!(a_f32.expm_antihermitian(1).is_err());
 }
 
 #[test]
@@ -206,15 +205,12 @@ fn test_expm_antihermitian_invalid_nonsquare() {
     use num_complex::Complex;
     use num_traits::Zero;
 
-    let a = DenseTensor::with_backend(
-        DenseTensorData::from_raw_parts(
-            vec![Complex::<f64>::zero(); 6],
-            vec![2, 3],
-            MemoryOrder::ColumnMajor,
-        ),
-        NativeBackend::shared(),
-    );
-    assert!(expm_antihermitian(&a, 1).is_err());
+    let a = DenseTensor::from_data(DenseTensorData::from_raw_parts(
+        vec![Complex::<f64>::zero(); 6],
+        vec![2, 3],
+        MemoryOrder::ColumnMajor,
+    ));
+    assert!(a.expm_antihermitian(1).is_err());
 }
 
 // --- expm (general) tests ---
@@ -223,7 +219,7 @@ fn test_expm_antihermitian_invalid_nonsquare() {
 fn test_expm_diagonal_f64() {
     // exp(diag(1, 2)) = diag(e, e²)
     let a = cm(vec![1.0_f64, 0.0, 0.0, 2.0], vec![2, 2]);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     let e = std::f64::consts::E;
     assert!((result.get(&[0, 0]) - e).abs() < 1e-10);
@@ -237,7 +233,7 @@ fn test_expm_nilpotent_f64() {
     // N = [[0, 1], [0, 0]] is nilpotent (N² = 0)
     // exp(N) = I + N = [[1, 1], [0, 1]]
     let a = cm(vec![0.0_f64, 1.0, 0.0, 0.0], vec![2, 2]);
-    let result = to_rm(&expm(&a, 1).unwrap());
+    let result = to_rm(&a.expm(1).unwrap());
 
     assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
     assert!((result.get(&[0, 1]) - 1.0).abs() < 1e-10);
@@ -251,7 +247,7 @@ fn test_expm_general_2x2_f64() {
     // eigenvalues: λ = (5 ± √33) / 2
     // tr(exp(A)) = exp(λ₁) + exp(λ₂)
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     let sqrt33 = 33.0f64.sqrt();
     let l1 = (5.0 - sqrt33) / 2.0;
@@ -281,7 +277,7 @@ fn test_expm_general_3x3_f64() {
         vec![0.0_f64, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
         vec![3, 3],
     );
-    let result = to_rm(&expm(&a, 1).unwrap());
+    let result = to_rm(&a.expm(1).unwrap());
 
     assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
     assert!((result.get(&[0, 1]) - 1.0).abs() < 1e-10);
@@ -305,7 +301,7 @@ fn test_expm_complex_f64() {
         ],
         vec![2, 2],
     );
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     // exp(i) = cos(1) + i*sin(1)
     let exp_i = Complex::new(1.0f64.cos(), 1.0f64.sin());
@@ -322,7 +318,7 @@ fn test_expm_large_norm_f64() {
     // A = 10*I — triggers scaling (||A||_1 = 10 > θ_13)
     // exp(10*I) = e^10 * I
     let a = cm(vec![10.0_f64, 0.0, 0.0, 10.0], vec![2, 2]);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     let e10 = 10.0f64.exp();
     assert!(
@@ -342,7 +338,7 @@ fn test_expm_large_norm_f64() {
 #[test]
 fn test_expm_f32() {
     let a = cm(vec![1.0_f32, 0.0, 0.0, 2.0], vec![2, 2]);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     let e = std::f32::consts::E;
     assert!((result.get(&[0, 0]) - e).abs() < 1e-4);
@@ -352,20 +348,20 @@ fn test_expm_f32() {
 #[test]
 fn test_expm_invalid_nonsquare() {
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    assert!(expm(&a, 1).is_err());
+    assert!(a.expm(1).is_err());
 }
 
 #[test]
 fn test_expm_invalid_nrow() {
     let a = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
-    assert!(expm(&a, 0).is_err());
-    assert!(expm(&a, 2).is_err());
+    assert!(a.expm(0).is_err());
+    assert!(a.expm(2).is_err());
 }
 
 // --- Mutation testing: norm_1, Pade orders, scaling/squaring ---
 
 /// Helper to build a square `DenseTensor` matrix from a row-major flat vector.
-fn mat(data: Vec<f64>, n: usize) -> DenseTensor<f64, NativeBackend> {
+fn mat(data: Vec<f64>, n: usize) -> DenseTensor<f64> {
     cm(data, vec![n, n])
 }
 
@@ -382,7 +378,7 @@ fn test_expm_norm_1_known_matrices() {
     // This matrix has norm_1 = 4 which is above theta_9=2.097 but below theta_13=5.371,
     // so it should use Pade 13 without scaling.
     let a = mat(vec![1.0, 3.0, 2.0, 1.0], 2);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     // Verify via known eigenvalues: A has eigenvalues 1±sqrt(6)
     // tr(exp(A)) = exp(1+sqrt(6)) + exp(1-sqrt(6))
@@ -401,7 +397,7 @@ fn test_expm_norm_1_asymmetric_columns() {
     // This is nilpotent: N^2 = 0, so exp(A) = I + A = [[1, 10], [0, 1]]
     // The norm_1=10 forces scaling/squaring path.
     let a = mat(vec![0.0, 10.0, 0.0, 0.0], 2);
-    let result = to_rm(&expm(&a, 1).unwrap());
+    let result = to_rm(&a.expm(1).unwrap());
 
     assert!((result.get(&[0, 0]) - 1.0).abs() < 1e-10);
     assert!((result.get(&[0, 1]) - 10.0).abs() < 1e-9);
@@ -415,7 +411,7 @@ fn test_expm_large_scaling_factor() {
     // A = 50 * I → exp(50*I) = e^50 * I
 
     let a = mat(vec![50.0, 0.0, 0.0, 50.0], 2);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     let e50 = 50.0f64.exp();
     assert!(
@@ -441,7 +437,7 @@ fn test_expm_scaling_boundary_norm_equals_theta13() {
 
     let theta13 = 5.371_920_351_148_152;
     let a = mat(vec![theta13, 0.0, 0.0, 0.0], 2);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     let expected = theta13.exp();
     assert!(
@@ -468,7 +464,7 @@ fn test_expm_3x3_rotation() {
         ],
         vec![3, 3]
     );
-    let r = expm(&a, 1).unwrap();
+    let r = a.expm(1).unwrap();
 
     // Check R^T R ≈ I
     for i in 0..3 {
@@ -508,7 +504,7 @@ fn test_expm_different_pade_orders_agree() {
     let test_values = [0.01, 0.1, 0.5, 1.5, 3.0, 8.0];
     for &t in &test_values {
         let a = mat(vec![0.0, t, -t, 0.0], 2);
-        let result = to_rm(&expm(&a, 1).unwrap());
+        let result = to_rm(&a.expm(1).unwrap());
         let c = t.cos();
         let s = t.sin();
         let expected = [[c, s], [-s, c]];
@@ -530,7 +526,7 @@ fn test_expm_1x1_matrix() {
     // Requires rank-2 tensor. exp([[x]]) = [[exp(x)]]
 
     let a = cm(vec![2.0_f64], vec![1, 1]);
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
     assert!(
         (result.get(&[0, 0]) - 2.0f64.exp()).abs() < 1e-12,
         "r00={}, expected {}",
@@ -554,7 +550,7 @@ fn test_expm_3x3_large_lower_rows() {
         ],
         vec![3, 3]
     );
-    let result = expm(&a, 1).unwrap();
+    let result = a.expm(1).unwrap();
 
     // tr(exp(A)) = sum of exp(eigenvalues)
     // A has eigenvalues ≈ 0.001, 0, 10.001 (nearly diagonal-dominant)
@@ -591,10 +587,10 @@ fn test_expm_satisfies_exp_property() {
     let b = mat(vec![3.0, 0.0, 0.0, 4.0], 2);
     let ab = mat(vec![4.0, 0.0, 0.0, 6.0], 2);
 
-    let exp_a = expm(&a, 1).unwrap();
-    let exp_b = expm(&b, 1).unwrap();
-    let exp_ab = expm(&ab, 1).unwrap();
-    let product = contract(&exp_a, &exp_b, "ij,jk->ik").unwrap();
+    let exp_a = a.expm(1).unwrap();
+    let exp_b = b.expm(1).unwrap();
+    let exp_ab = ab.expm(1).unwrap();
+    let product = exp_a.contract(&exp_b, "ij,jk->ik").unwrap();
 
     for i in 0..2 {
         for j in 0..2 {

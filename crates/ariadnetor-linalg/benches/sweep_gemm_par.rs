@@ -23,7 +23,7 @@ use arnet_linalg::contract_with_policy;
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
-fn random_dense(n: usize, seed: u64) -> DenseTensor<f64, NativeBackend> {
+fn random_dense(n: usize, seed: u64) -> DenseTensor<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     DenseTensor::random(vec![n, n], &mut rng)
 }
@@ -75,6 +75,7 @@ where
 }
 
 fn main() {
+    let backend = NativeBackend::new();
     let sizes = [16usize, 32, 64, 128, 256, 512, 1024];
 
     run_sweep(
@@ -82,7 +83,7 @@ fn main() {
         &sizes,
         |n| (random_dense(n, 42), random_dense(n, 43)),
         |(a, b), policy| {
-            let _ = contract_with_policy(a, b, "ij,jk->ik", policy).unwrap();
+            let _ = contract_with_policy(&backend, a, b, "ij,jk->ik", policy).unwrap();
         },
     );
 
