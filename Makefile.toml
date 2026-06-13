@@ -1,6 +1,19 @@
 # cargo-make configuration for Ariadnetor
 # Usage: cargo make <task>
 # Install: cargo install cargo-make
+#
+# What earns a task: a command is registered when it is long, composite,
+# or has non-obvious / order-sensitive flags; when it must be
+# discoverable; or when it has a canonical form that must not drift
+# run-to-run. Short commands whose flags are routinely varied stay ad hoc
+# (a fixed task there only removes flexibility). Ad-hoc QA tools that sit
+# outside the gate (public-api, semver-checks, mutation testing) are
+# listed in CONTRIBUTING.md rather than registered here.
+#
+# Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
+# with --all-targets, so it COMPILES benches; its test step runs unit +
+# integration + doctests but does NOT compile benches. No step in `gate`
+# runs benchmarks — those are on demand via the bench* tasks.
 
 [config]
 default_to_workspace = false
@@ -10,12 +23,12 @@ default_to_workspace = false
 # ============================================================================
 
 [tasks.build]
-description = "Build entire workspace"
+description = "Build the whole workspace (debug)"
 command = "cargo"
 args = ["build", "--workspace"]
 
 [tasks.build-release]
-description = "Build entire workspace in release mode"
+description = "Build the whole workspace in release mode"
 command = "cargo"
 args = ["build", "--workspace", "--release"]
 
@@ -24,46 +37,41 @@ args = ["build", "--workspace", "--release"]
 # ============================================================================
 
 [tasks.test]
-description = "Run all tests (unit + integration)"
+description = "Run unit + integration + doctests across the workspace (does not compile benches)"
 command = "cargo"
 args = ["test", "--workspace"]
 
 [tasks.test-lib]
-description = "Run unit tests only (lib, no integration)"
+description = "Run unit tests only (--lib): no integration tests, no doctests"
 command = "cargo"
 args = ["test", "--workspace", "--lib"]
-
-[tasks.test-einsum]
-description = "Run einsum-specific tests"
-command = "cargo"
-args = ["test", "--test", "einsum_tests"]
 
 # ============================================================================
 # Utility tasks
 # ============================================================================
 
 [tasks.clean]
-description = "Clean build artifacts"
+description = "Remove build artifacts (cargo clean)"
 command = "cargo"
 args = ["clean"]
 
 [tasks.check]
-description = "Check code without building"
+description = "Type-check the workspace (no codegen; does not compile benches)"
 command = "cargo"
 args = ["check", "--workspace"]
 
 [tasks.clippy]
-description = "Run clippy linter"
+description = "Lint the workspace including all targets (benches, examples, tests)"
 command = "cargo"
 args = ["clippy", "--workspace", "--all-targets"]
 
 [tasks.fmt]
-description = "Format code with rustfmt"
+description = "Format the workspace with rustfmt"
 command = "cargo"
 args = ["fmt", "--all"]
 
 [tasks.fmt-check]
-description = "Check code formatting"
+description = "Check workspace formatting without modifying files"
 command = "cargo"
 args = ["fmt", "--all", "--check"]
 
@@ -72,7 +80,7 @@ args = ["fmt", "--all", "--check"]
 # ============================================================================
 
 [tasks.doc]
-description = "Generate documentation"
+description = "Build workspace docs (no deps) and open them in a browser"
 command = "cargo"
 args = ["doc", "--workspace", "--no-deps", "--open"]
 
@@ -81,11 +89,11 @@ args = ["doc", "--workspace", "--no-deps", "--open"]
 # ============================================================================
 
 [tasks.bench]
-description = "Run the Criterion benchmarks"
-dependencies = ["bench-tensor", "bench-linalg"]
+description = "Run all Criterion regression benches (tensor + linalg + algorithms)"
+dependencies = ["bench-tensor", "bench-linalg", "bench-algorithms"]
 
 [tasks.bench-tensor]
-description = "Run Dense benchmarks"
+description = "Run the tensor crate's Criterion benches (dense_ops, dense_tensor_scalar_ops)"
 command = "cargo"
 args = ["bench", "-p", "ariadnetor-tensor"]
 
@@ -93,18 +101,25 @@ args = ["bench", "-p", "ariadnetor-tensor"]
 # on-demand (`cargo bench --bench sweep_*`) and excluded here so the regression
 # run does not fire their expensive matrix-size sweeps.
 [tasks.bench-linalg]
-description = "Run the linalg Criterion benchmarks"
+description = "Run the linalg Criterion regression benches (scalar_ops, block_sparse_ops); excludes the on-demand sweep_* instruments"
 command = "cargo"
 args = ["bench", "-p", "ariadnetor-linalg", "--bench", "scalar_ops", "--bench", "block_sparse_ops"]
+
+# Lanczos arm by default; the ARPACK arm is feature-gated, run ad hoc via
+# `cargo bench -p ariadnetor-algorithms --features arpack`.
+[tasks.bench-algorithms]
+description = "Run the algorithms Criterion regression bench (dmrg_local_eigensolver, Lanczos arm)"
+command = "cargo"
+args = ["bench", "-p", "ariadnetor-algorithms"]
 
 # ============================================================================
 # Composite tasks
 # ============================================================================
 
-[tasks.ci]
-description = "Run CI checks (fmt, clippy, test)"
+[tasks.gate]
+description = "Local pre-PR gate: fmt-check + clippy (--all-targets, compiles benches) + test (unit/integration/doctests); does not run benchmarks"
 dependencies = ["fmt-check", "clippy", "test"]
 
 [tasks.dev]
-description = "Quick development check (fmt, check, test)"
+description = "Fast local loop: fmt + check + test (skips clippy and benches)"
 dependencies = ["fmt", "check", "test"]
