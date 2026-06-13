@@ -1,7 +1,5 @@
-# Ariadnetor
-
 <p align="center">
-  <img src="logo/CoronaBorealis/corona_lockup.png" alt="ariadnetor" width="480">
+  <img src="logo/CoronaBorealis/corona_lockup.png" alt="ariadnetor" width="360">
 </p>
 
 > [!WARNING]
