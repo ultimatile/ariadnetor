@@ -1,5 +1,9 @@
 # Ariadnetor
 
+<p align="center">
+  <img src="logo/CoronaBorealis/corona_lockup.png" alt="ariadnetor" width="480">
+</p>
+
 > [!WARNING]
 > This project is in early development.
 > APIs are unstable and subject to breaking changes.
