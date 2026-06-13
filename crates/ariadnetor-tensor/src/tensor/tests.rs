@@ -125,7 +125,7 @@ fn add_all_sums_with_unit_coefs() {
 
 #[test]
 fn linear_combine_rejects_empty_list() {
-    let err = crate::linear_combine::<f64, crate::NativeBackend>(&[], &[]).unwrap_err();
+    let err = crate::linear_combine::<f64>(&[], &[]).unwrap_err();
     assert!(err.to_string().contains("empty"), "got: {err}");
 }
 
@@ -158,29 +158,27 @@ fn block_sparse_tensor_alias_resolves_and_basics_work() {
 }
 
 #[test]
-fn dense_tensor_from_raw_parts_pins_order_to_backend_preferred() {
+fn dense_tensor_from_raw_parts_pins_order_to_host_preferred() {
     use arnet_core::backend::ComputeBackend;
     use arnet_native::NativeBackend;
 
     let data: Vec<f64> = (0..6).map(|i| i as f64).collect();
-    let backend = NativeBackend::shared();
-    let preferred = backend.preferred_order();
-    let t = DenseTensor::<f64>::from_raw_parts(data.clone(), vec![2, 3], backend);
+    let preferred = NativeBackend::shared().preferred_order();
+    let t = DenseTensor::<f64>::from_raw_parts(data.clone(), vec![2, 3]);
 
     assert_eq!(t.shape(), &[2, 3]);
-    // The constructor pins the layout's order to the backend's preferred
-    // order; the public Dense surface cannot tag any other order.
+    // The constructor pins the layout's order to the host substrate's
+    // preferred order; the public Dense surface cannot tag any other order.
     assert_eq!(t.data().layout().order(), preferred);
     assert_eq!(t.data_slice(), data.as_slice());
 }
 
 #[test]
-fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
+fn block_sparse_tensor_from_raw_parts_pairs_data_with_order() {
     use crate::block_sparse::BlockMeta;
     use crate::{Direction, U1Sector};
     use arnet_core::backend::ComputeBackend;
     use arnet_native::NativeBackend;
-    use std::sync::Arc;
 
     // 2x2 diagonal: blocks at (0,0) and (1,1), one element each.
     let row = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
@@ -207,7 +205,7 @@ fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
         U1Sector(0),
         vec![2, 2],
         order,
-        Arc::clone(&backend),
+        &*backend,
     );
 
     assert_eq!(t.shape(), &[2, 2]);
@@ -224,7 +222,6 @@ fn block_sparse_tensor_from_raw_parts_pairs_data_with_backend_and_order() {
     );
     // block_index derived internally — block_data lookup proves the
     // coord→index mapping was built consistently with the blocks vec.
-    assert!(Arc::ptr_eq(t.backend_arc(), &backend));
 }
 
 #[test]
@@ -234,7 +231,6 @@ fn block_sparse_tensor_from_raw_parts_panics_on_order_mismatch() {
     use crate::{Direction, U1Sector};
     use arnet_core::backend::{ComputeBackend, MemoryOrder};
     use arnet_native::NativeBackend;
-    use std::sync::Arc;
 
     let row = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
@@ -255,18 +251,17 @@ fn block_sparse_tensor_from_raw_parts_panics_on_order_mismatch() {
         U1Sector(0),
         vec![2, 2],
         wrong_order,
-        Arc::clone(&backend),
+        &*backend,
     );
 }
 
 #[test]
-fn dense_tensor_zeros_with_backend_uses_backend_order() {
+fn dense_tensor_zeros_pins_order_to_host_preferred() {
     use arnet_core::backend::ComputeBackend;
     use arnet_native::NativeBackend;
 
-    let backend = NativeBackend::shared();
-    let expected_order = backend.preferred_order();
-    let t = DenseTensor::<f64>::zeros_with_backend(vec![2, 3], backend);
+    let expected_order = NativeBackend::shared().preferred_order();
+    let t = DenseTensor::<f64>::zeros(vec![2, 3]);
 
     assert_eq!(t.shape(), &[2, 3]);
     assert_eq!(t.data().layout().order(), expected_order);
@@ -274,35 +269,27 @@ fn dense_tensor_zeros_with_backend_uses_backend_order() {
 }
 
 #[test]
-fn block_sparse_tensor_zeros_with_backend_uses_backend_order() {
+fn block_sparse_tensor_zeros_pins_order_to_host_preferred() {
     use crate::{Direction, U1Sector};
     use arnet_core::backend::ComputeBackend;
     use arnet_native::NativeBackend;
 
     let idx = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let backend = NativeBackend::shared();
-    let expected_order = backend.preferred_order();
-    let t = BlockSparseTensor::<f64, U1Sector>::zeros_with_backend(
-        vec![idx.clone(), idx],
-        U1Sector(0),
-        backend,
-    );
+    let expected_order = NativeBackend::shared().preferred_order();
+    let t = BlockSparseTensor::<f64, U1Sector>::zeros(vec![idx.clone(), idx], U1Sector(0));
 
     assert_eq!(t.rank(), 2);
     assert_eq!(t.data().layout().order(), expected_order);
 }
 
 #[test]
-fn dense_tensor_conj_real_path_is_identity_and_shares_backend() {
-    use std::sync::Arc;
-
+fn dense_tensor_conj_real_path_is_identity() {
     let mut t = DenseTensor::<f64>::zeros(vec![3, 3]);
     t.fill(2.5);
     let c = t.conj();
 
     assert_eq!(c.shape(), t.shape());
     assert_eq!(c.data_slice(), t.data_slice());
-    assert!(Arc::ptr_eq(t.backend_arc(), c.backend_arc()));
 }
 
 #[test]
@@ -323,10 +310,9 @@ fn block_sparse_tensor_dagger_is_involutive() {
 }
 
 #[test]
-fn block_sparse_tensor_dagger_conjugates_complex_and_shares_backend() {
+fn block_sparse_tensor_dagger_conjugates_complex() {
     use crate::{Direction, U1Sector};
     use num_complex::Complex;
-    use std::sync::Arc;
 
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
@@ -354,9 +340,6 @@ fn block_sparse_tensor_dagger_conjugates_complex_and_shares_backend() {
     // Leg directions flipped.
     assert_eq!(d.indices()[0].direction(), Direction::In);
     assert_eq!(d.indices()[1].direction(), Direction::Out);
-
-    // Backend Arc shared.
-    assert!(Arc::ptr_eq(t.backend_arc(), d.backend_arc()));
 }
 
 #[test]

@@ -1,8 +1,8 @@
 //! Tensor storage library
 //!
 //! Provides backend-agnostic data structures for tensor storage and
-//! the user-facing [`Tensor<St, L, B>`] type that pairs them with a
-//! compute backend.
+//! the user-facing [`Tensor<St, L>`] type that joins them. The tensor
+//! carries no backend; operations take it explicitly at the call site.
 
 mod block_sparse;
 mod capability;
@@ -46,9 +46,8 @@ pub use arnet_native::NativeBackend;
 ///
 /// Provides tensor constructors on any `ComputeBackend` that produce
 /// `DenseTensorData<T>` whose `order()` matches the backend's
-/// `preferred_order()`, so downstream linalg operations on the
-/// joined `Tensor<DenseStorage, DenseLayout, B>` find the storage
-/// already in the layout they expect.
+/// `preferred_order()`, so downstream linalg operations driven by that
+/// backend find the storage already in the layout they expect.
 pub trait ComputeBackendTensorExt: ComputeBackend {
     /// Construct a `DenseTensorData` from data in this backend's
     /// preferred memory order.
