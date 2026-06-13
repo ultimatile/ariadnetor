@@ -1,27 +1,22 @@
-//! Pass-through inherent accessors on `BlockSparseTensor<T, S, B>`.
+//! Pass-through inherent accessors on `BlockSparseTensor<T, S>`.
 //!
-//! The joined-form `Tensor` wraps a `TensorData<St, L>` plus a backend
-//! Arc; for block-sparse tensors the same per-block / per-leg
-//! introspection that `BlockSparseTensorData::block_data` and
-//! `BlockSparseLayout::indices` already expose is needed by downstream
-//! callers without forcing them to drill through `.data().layout().…`.
-//! The pass-throughs below thread the joined form's accessors back up
-//! to the `Tensor` surface so consumers can write `t.indices()`,
-//! `t.block_data(&coord)`, etc.
-
-use std::sync::Arc;
+//! The joined-form `Tensor` wraps a `TensorData<St, L>`; for block-sparse
+//! tensors the same per-block / per-leg introspection that
+//! `BlockSparseTensorData::block_data` and `BlockSparseLayout::indices`
+//! already expose is needed by downstream callers without forcing them to
+//! drill through `.data().layout().…`. The pass-throughs below thread the
+//! joined form's accessors back up to the `Tensor` surface so consumers
+//! can write `t.indices()`, `t.block_data(&coord)`, etc.
 
 use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
 use num_traits::Float;
 
 use super::Tensor;
 use crate::{BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, QNIndex, Sector};
 
-impl<T, S, B> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
+impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     S: Sector,
-    B: ComputeBackend,
 {
     /// Memory order this tensor's flat block data is laid out in.
     ///
@@ -77,11 +72,10 @@ where
     }
 }
 
-impl<T, S, B> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
+impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
     /// Frobenius norm: `sqrt(Σ |x|^2)` over the packed flat buffer.
     pub fn norm(&self) -> T::Real {
@@ -94,22 +88,15 @@ where
     }
 
     /// Hermitian adjoint: element-wise conjugation, leg-direction flip,
-    /// and flux dualization. Result shares the input's backend `Arc`.
+    /// and flux dualization.
     pub fn dagger(&self) -> Self {
         let td = self.data.dagger();
-        Self {
-            data: td,
-            backend: Arc::clone(&self.backend),
-        }
+        Self { data: td }
     }
 
-    /// Element-wise complex conjugate. Result shares the input's
-    /// backend `Arc`.
+    /// Element-wise complex conjugate.
     pub fn conj(&self) -> Self {
         let td = self.data.conj();
-        Self {
-            data: td,
-            backend: Arc::clone(&self.backend),
-        }
+        Self { data: td }
     }
 }

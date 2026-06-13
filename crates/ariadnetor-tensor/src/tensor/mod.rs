@@ -1,28 +1,28 @@
-//! Tensor type combining storage, layout, and compute backend.
+//! Tensor type combining storage and layout.
 //!
-//! `Tensor<St, L, B>` joins a [`TensorData<St, L>`](crate::TensorData)
-//! bundle with an `Arc<B>` compute backend. Concrete user-facing
+//! `Tensor<St, L>` is a thin wrapper over a
+//! [`TensorData<St, L>`](crate::TensorData) bundle. Concrete user-facing
 //! aliases:
 //!
-//! - [`DenseTensor<T, B>`] = `Tensor<DenseStorage<T>, DenseLayout, B>`
-//! - [`BlockSparseTensor<T, S, B>`] =
-//!   `Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>`
+//! - [`DenseTensor<T>`] = `Tensor<DenseStorage<T>, DenseLayout>`
+//! - [`BlockSparseTensor<T, S>`] =
+//!   `Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`
 //!
-//! The backend type parameter defaults to
-//! [`NativeBackend`](arnet_native::NativeBackend), so CPU users can
-//! write `DenseTensor<f64>` without naming a backend.
+//! The tensor carries no compute backend: operations take the backend
+//! explicitly at the call site (see `arnet-linalg`). Convenience
+//! constructors that need a memory order read it from the host substrate
+//! ([`Host`](crate::Host)) without binding the tensor to any backend.
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
 
 use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_native::NativeBackend;
+use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use num_traits::Zero;
 use rand::RngExt;
 
 use crate::block_sparse::BlockMeta;
+use crate::capability::Host;
 use crate::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, DenseLayout,
     DenseStorage, DenseTensorData, QNIndex, Sector, Storage, StorageFor, TensorData, TensorLayout,
@@ -35,39 +35,43 @@ mod block_sparse_ops;
 #[cfg(test)]
 mod tests;
 
-/// Tensor combining a [`TensorData`] bundle with a compute backend.
+/// Memory order for host-resident convenience constructors.
+///
+/// Read through the [`Host`](crate::Host) substrate alias rather than a
+/// `NativeBackend` literal so the host order has a single source and the
+/// substrate can be repointed in one place.
+fn host_order() -> MemoryOrder {
+    Host::shared().preferred_order()
+}
+
+/// Tensor wrapping a [`TensorData`] bundle.
 ///
 /// # Type Parameters
 ///
 /// * `St` - Storage half ([`DenseStorage<T>`] or [`BlockSparseStorage<T>`])
 /// * `L`  - Layout half ([`DenseLayout`] or [`BlockSparseLayout<S>`])
-/// * `B`  - Compute backend (default: [`NativeBackend`])
 ///
 /// # Examples
 ///
 /// ```
 /// use arnet_tensor::DenseTensor;
 ///
-/// // CPU tensor: DenseStorage<f64> + DenseLayout + NativeBackend
 /// let a = DenseTensor::<f64>::zeros(vec![2, 2]);
 /// assert_eq!(a.shape(), &[2, 2]);
 /// ```
-pub struct Tensor<St, L, B = NativeBackend>
+pub struct Tensor<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
     data: TensorData<St, L>,
-    backend: Arc<B>,
 }
 
-/// Backend-aware Dense tensor alias.
-pub type DenseTensor<T = f64, B = NativeBackend> = Tensor<DenseStorage<T>, DenseLayout, B>;
+/// Dense tensor alias.
+pub type DenseTensor<T = f64> = Tensor<DenseStorage<T>, DenseLayout>;
 
-/// Backend-aware BlockSparse tensor alias.
-pub type BlockSparseTensor<T, S, B = NativeBackend> =
-    Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>;
+/// BlockSparse tensor alias.
+pub type BlockSparseTensor<T, S> = Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>;
 
 // ============================================================================
 // Manual Clone / Debug
@@ -77,25 +81,22 @@ pub type BlockSparseTensor<T, S, B = NativeBackend> =
 // only where needed.
 // ============================================================================
 
-impl<St, L, B> Clone for Tensor<St, L, B>
+impl<St, L> Clone for Tensor<St, L>
 where
     St: Storage + StorageFor<L> + Clone,
     L: TensorLayout + Clone,
-    B: ComputeBackend,
 {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
-            backend: Arc::clone(&self.backend),
         }
     }
 }
 
-impl<St, L, B> fmt::Debug for Tensor<St, L, B>
+impl<St, L> fmt::Debug for Tensor<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Tensor")
@@ -108,15 +109,14 @@ where
 // Generic methods (all storage / layout combinations)
 // ============================================================================
 
-impl<St, L, B> Tensor<St, L, B>
+impl<St, L> Tensor<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
-    /// Build a tensor from a pre-bundled [`TensorData`] and a backend.
-    pub fn with_backend(data: TensorData<St, L>, backend: Arc<B>) -> Self {
-        Self { data, backend }
+    /// Build a tensor from a pre-bundled [`TensorData`].
+    pub fn from_data(data: TensorData<St, L>) -> Self {
+        Self { data }
     }
 
     /// Internal escape hatch: reference to the joined [`TensorData`]
@@ -136,16 +136,6 @@ where
     /// that need to mutate raw storage / layout state.
     pub fn data_mut(&mut self) -> &mut TensorData<St, L> {
         &mut self.data
-    }
-
-    /// Reference to the compute backend.
-    pub fn backend(&self) -> &B {
-        &self.backend
-    }
-
-    /// Shared reference to the backend `Arc`.
-    pub fn backend_arc(&self) -> &Arc<B> {
-        &self.backend
     }
 
     /// Logical shape (delegates to the layout).
@@ -170,59 +160,41 @@ where
 }
 
 // ============================================================================
-// Dense generic-backend constructor
+// Dense raw constructor
 //
-// Tensor-surface entry point for callers that have a flat buffer and an
-// explicit backend (e.g. internal kernel-output wrapping). Saves callers
-// from reaching into the `DenseTensorData::from_raw_parts` joined surface.
+// Tensor-surface entry point for callers that have a flat buffer (e.g.
+// internal kernel-output wrapping). Saves callers from reaching into the
+// `DenseTensorData::from_raw_parts` joined surface.
 // ============================================================================
 
-impl<T, B> Tensor<DenseStorage<T>, DenseLayout, B>
+impl<T> Tensor<DenseStorage<T>, DenseLayout>
 where
     T: Clone,
-    B: ComputeBackend,
 {
-    /// Construct a Dense tensor from flat data and shape on an explicit
-    /// backend `Arc`. The flat `data` is taken to be already laid out in
-    /// the backend's preferred order, and the layout is tagged
-    /// accordingly — this constructor cannot tag any other order. Use
-    /// `reordered` to obtain a non-preferred layout.
-    pub fn from_raw_parts(data: Vec<T>, shape: Vec<usize>, backend: Arc<B>) -> Self {
-        let order = backend.preferred_order();
-        let td = DenseTensorData::from_raw_parts(data, shape, order);
-        Self::with_backend(td, backend)
-    }
-}
-
-impl<T, B> Tensor<DenseStorage<T>, DenseLayout, B>
-where
-    T: Clone + Zero,
-    B: ComputeBackend,
-{
-    /// Create a zero-filled `DenseTensor` anchored on an explicit
-    /// backend. The layout's memory order is taken from the backend's
-    /// preferred order so dispatch paths that require per-tensor
-    /// preferred-order alignment find it satisfied at construction.
-    ///
-    /// Mirror of [`BlockSparseTensor::zeros_with_backend`] for the
-    /// dense storage half.
-    pub fn zeros_with_backend(shape: Vec<usize>, backend: Arc<B>) -> Self {
-        let order = backend.preferred_order();
-        let len: usize = shape.iter().product();
-        let td = DenseTensorData::from_raw_parts(vec![T::zero(); len], shape, order);
-        Self::with_backend(td, backend)
+    /// Construct a Dense tensor from flat data and shape. The flat `data`
+    /// is taken to be already laid out in the host substrate's preferred
+    /// order, and the layout is tagged accordingly — this constructor
+    /// cannot tag any other order. To wrap a flat buffer already laid out
+    /// in some other order, build `DenseTensorData` with that explicit
+    /// order and call [`Tensor::from_data`]; `reordered` is for converting
+    /// an already-valid tensor to a different layout, not for reinterpreting
+    /// a raw buffer (it would permute values under the wrong source order).
+    pub fn from_raw_parts(data: Vec<T>, shape: Vec<usize>) -> Self {
+        let td = DenseTensorData::from_raw_parts(data, shape, host_order());
+        Self::from_data(td)
     }
 }
 
 // ============================================================================
-// Dense-specific constructors with the NativeBackend pin
+// Dense-specific host constructors
 //
-// `ComputeBackend` exposes no constructor, so the impl cannot
-// generalize over `B`. The pin is intentional and preserved from the
-// pre-split shape.
+// The memory order is taken from the host substrate's preferred order so
+// dispatch paths that require preferred-order alignment find it satisfied
+// at construction. These build host-resident data and bind the tensor to
+// no backend.
 // ============================================================================
 
-impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout, NativeBackend> {
+impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout> {
     /// Create a Dense tensor filled with zeros.
     pub fn zeros(shape: Vec<usize>) -> Self {
         Self::dense_filled(shape, S::zero())
@@ -240,8 +212,7 @@ impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout, NativeBackend> {
 
     /// Create an n×n identity matrix.
     pub fn eye(n: usize) -> Self {
-        let backend = NativeBackend::shared();
-        let order = backend.preferred_order();
+        let order = host_order();
         let mut data = vec![S::zero(); n * n];
         // The identity matrix is symmetric, so the flat data is the
         // same regardless of memory order; only the layout's `order()`
@@ -250,7 +221,7 @@ impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout, NativeBackend> {
             data[i * n + i] = S::one();
         }
         let td = DenseTensorData::from_raw_parts(data, vec![n, n], order);
-        Self::with_backend(td, backend)
+        Self::from_data(td)
     }
 
     /// Create a Dense tensor filled with values drawn from the
@@ -259,33 +230,30 @@ impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout, NativeBackend> {
     where
         rand::distr::StandardUniform: rand::distr::Distribution<S>,
     {
-        let backend = NativeBackend::shared();
-        let order = backend.preferred_order();
+        let order = host_order();
         let total: usize = shape.iter().product();
         let data: Vec<S> = (0..total).map(|_| rng.random()).collect();
         let td = DenseTensorData::from_raw_parts(data, shape, order);
-        Self::with_backend(td, backend)
+        Self::from_data(td)
     }
 
     fn dense_filled(shape: Vec<usize>, value: S) -> Self {
-        let backend = NativeBackend::shared();
-        let order = backend.preferred_order();
+        let order = host_order();
         let len: usize = shape.iter().product();
         let data = DenseTensorData::from_raw_parts(vec![value; len], shape, order);
-        Self::with_backend(data, backend)
+        Self::from_data(data)
     }
 }
 
 // ============================================================================
-// BlockSparse-specific constructors with the NativeBackend pin
+// BlockSparse-specific host constructors
 //
-// As with Dense, `ComputeBackend` exposes no constructor, so the pin
-// to `NativeBackend` is intentional. The memory order is taken from
-// `NativeBackend::preferred_order()`; users needing arbitrary order
-// must go through the joined-path `TensorData::new` route.
+// As with Dense, the memory order is taken from the host substrate's
+// preferred order; users needing arbitrary order must go through the
+// joined-path `TensorData::new` route.
 // ============================================================================
 
-impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, NativeBackend>
+impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Clone + Zero,
     S: Sector,
@@ -293,32 +261,13 @@ where
     /// Create a zero-filled `BlockSparseTensor` enumerating every
     /// flux-allowed block of the supplied `QNIndex` legs.
     pub fn zeros(indices: Vec<QNIndex<S>>, flux: S) -> Self {
-        let backend = NativeBackend::shared();
-        let order = backend.preferred_order();
+        let order = host_order();
         let td = BlockSparseTensorData::zeros(indices, flux, order);
-        Self::with_backend(td, backend)
+        Self::from_data(td)
     }
 }
 
-impl<T, S, B> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
-where
-    T: Clone + Zero,
-    S: Sector,
-    B: ComputeBackend,
-{
-    /// Create a zero-filled `BlockSparseTensor` anchored on an explicit
-    /// backend. The layout's memory order is taken from the backend's
-    /// preferred order so that the per-tensor Tier 1 invariant
-    /// (`layout.order() == backend.preferred_order()`) holds at
-    /// construction.
-    pub fn zeros_with_backend(indices: Vec<QNIndex<S>>, flux: S, backend: Arc<B>) -> Self {
-        let order = backend.preferred_order();
-        let td = BlockSparseTensorData::zeros(indices, flux, order);
-        Self::with_backend(td, backend)
-    }
-}
-
-impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, NativeBackend>
+impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Clone,
     S: Sector,
@@ -328,14 +277,13 @@ where
     /// filled with values drawn from the standard distribution via the
     /// supplied RNG.
     pub fn random<R: rand::Rng>(indices: Vec<QNIndex<S>>, flux: S, rng: &mut R) -> Self {
-        let backend = NativeBackend::shared();
-        let order = backend.preferred_order();
+        let order = host_order();
         let td = BlockSparseTensorData::random(indices, flux, order, rng);
-        Self::with_backend(td, backend)
+        Self::from_data(td)
     }
 }
 
-impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, NativeBackend>
+impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Clone + Zero,
     S: Sector,
@@ -347,31 +295,36 @@ where
     where
         F: FnMut(&BlockCoord, &[usize]) -> Vec<T>,
     {
-        let backend = NativeBackend::shared();
-        let order = backend.preferred_order();
+        let order = host_order();
         let td = BlockSparseTensorData::from_block_fn(indices, flux, order, f);
-        Self::with_backend(td, backend)
+        Self::from_data(td)
     }
 }
 
 // ============================================================================
-// BlockSparse generic-backend raw constructor
+// BlockSparse raw constructor
 //
 // Tensor-surface entry point for callers that need pre-validated raw
-// parts with an explicit memory order and backend. Symmetric with
-// `DenseTensor::from_raw_parts`; primary consumers are internal
-// kernel-output wrapping (block-sparse decomposition / matvec pipelines)
-// and tests that pin the Tier 1 rejection path with a fabricated layout.
+// parts with an explicit memory order. Unlike `DenseTensor::from_raw_parts`
+// it takes the operating backend explicitly: dense paths self-normalize
+// (`reordered` round-trips through any target order), so dense construction
+// can fix the host order and let downstream ops reorder, whereas
+// block-sparse kernels have no reorder step and must read the buffer under
+// the operating backend's preferred order — so that order is validated at
+// construction against the call-site backend, not the host. Primary
+// consumers are internal kernel-output wrapping (block-sparse decomposition
+// / matvec pipelines) and tests that pin the Tier 1 rejection path with a
+// fabricated layout.
 // ============================================================================
 
-impl<T, S, B> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
+impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Clone,
     S: Sector,
-    B: ComputeBackend,
 {
     /// Construct a BlockSparse tensor from pre-validated raw parts,
-    /// an explicit memory order, and an explicit backend `Arc`.
+    /// an explicit memory order, and a backend supplied only to check the
+    /// order (the backend is not stored).
     ///
     /// `block_index` is derived from `blocks` internally to avoid the
     /// duplication-mismatch risk of passing both. Caller is responsible
@@ -388,14 +341,14 @@ where
     /// and have no internal reorder step; a mismatch here would yield
     /// silently wrong output. This is the same Tier 1 invariant the
     /// `Mps` / `Mpo` constructors enforce on their sites.
-    pub fn from_raw_parts(
+    pub fn from_raw_parts<B: ComputeBackend>(
         data: Vec<T>,
         blocks: Vec<BlockMeta>,
         indices: Vec<QNIndex<S>>,
         flux: S,
         shape: Vec<usize>,
-        order: arnet_core::backend::MemoryOrder,
-        backend: Arc<B>,
+        order: MemoryOrder,
+        backend: &B,
     ) -> Self {
         assert_eq!(
             order,
@@ -418,6 +371,6 @@ where
             shape,
             order,
         );
-        Self::with_backend(td, backend)
+        Self::from_data(td)
     }
 }

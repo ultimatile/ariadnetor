@@ -1,7 +1,6 @@
 //! Benchmarks for the inherent unary scalar ops on the joined
 //! `DenseTensor` surface (`scaled`, `norm`, `normalized`).
 
-use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
@@ -57,7 +56,7 @@ fn shapes_normalized() -> Vec<TensorShape> {
     ]
 }
 
-fn random_tensor(shape: Vec<usize>) -> DenseTensor<f64, NativeBackend> {
+fn random_tensor(shape: Vec<usize>) -> DenseTensor<f64> {
     DenseTensor::random(shape, &mut rng())
 }
 

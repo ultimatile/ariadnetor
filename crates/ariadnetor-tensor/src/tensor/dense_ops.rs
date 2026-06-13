@@ -1,15 +1,12 @@
-//! Dense-specific inherent methods on `Tensor<DenseStorage<S>, DenseLayout, B>`.
+//! Dense-specific inherent methods on `Tensor<DenseStorage<S>, DenseLayout>`.
 //!
 //! Covers element access, in-place fills / scales, Frobenius-norm-based
 //! normalization, conjugation, zero-copy reshape, and reorder. These
-//! operations are storage-local: they do not need the backend for
-//! dispatch, so they work uniformly over any `B: ComputeBackend`.
+//! operations are storage-local: they do not need a backend for dispatch.
 
 use std::ops::Mul;
-use std::sync::Arc;
 
 use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
 use num_traits::{One, Zero};
 
 use super::Tensor;
@@ -19,7 +16,7 @@ use crate::{DenseLayout, DenseStorage, DenseTensorData, TensorData};
 // Dense-specific data access (all backends)
 // ============================================================================
 
-impl<S, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
+impl<S> Tensor<DenseStorage<S>, DenseLayout> {
     /// Get a reference to the underlying contiguous data buffer.
     pub fn data_slice(&self) -> &[S] {
         self.data.storage().data()
@@ -35,9 +32,9 @@ impl<S, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
     }
 
     /// Reshape to `new_shape` (zero-copy). Preserves the layout's memory
-    /// order and the backend `Arc`. The flat data buffer is `Arc`-shared
-    /// via `DenseStorage::Clone`, so the result aliases the same
-    /// allocation as `self`.
+    /// order. The flat data buffer is `Arc`-shared via
+    /// `DenseStorage::Clone`, so the result aliases the same allocation
+    /// as `self`.
     ///
     /// Under non-adjacent axis fusion the logical mapping differs
     /// between row-major and column-major; callers fusing such axes
@@ -51,14 +48,11 @@ impl<S, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
     pub fn reshape(&self, new_shape: Vec<usize>) -> Self {
         let new_layout = DenseLayout::new(new_shape, self.data.layout().order());
         let new_storage = self.data.storage().clone();
-        Self::with_backend(
-            TensorData::new(new_storage, new_layout),
-            Arc::clone(&self.backend),
-        )
+        Self::from_data(TensorData::new(new_storage, new_layout))
     }
 }
 
-impl<S: Scalar, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
+impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout> {
     /// Memory order this tensor's flat data is laid out in.
     pub fn order(&self) -> arnet_core::backend::MemoryOrder {
         self.data.layout().order()
@@ -128,7 +122,7 @@ impl<S: Scalar, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
 // Dense-specific arithmetic operations (all backends)
 // ============================================================================
 
-impl<S: Clone, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
+impl<S: Clone> Tensor<DenseStorage<S>, DenseLayout> {
     /// Scale every element by a factor (in-place).
     pub fn scale<F>(&mut self, factor: F)
     where
@@ -156,7 +150,7 @@ impl<S: Clone, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
         let shape = self.shape().to_vec();
         let order = self.data.layout().order();
         let td = DenseTensorData::from_raw_parts(new_data, shape, order);
-        Self::with_backend(td, Arc::clone(&self.backend))
+        Self::from_data(td)
     }
 }
 
@@ -164,7 +158,7 @@ impl<S: Clone, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B> {
 // Dense-specific norm / normalization (all backends)
 // ============================================================================
 
-impl<S, B: ComputeBackend> Tensor<DenseStorage<S>, DenseLayout, B>
+impl<S> Tensor<DenseStorage<S>, DenseLayout>
 where
     S: Scalar,
 {
@@ -200,18 +194,17 @@ where
         (clone, n)
     }
 
-    /// Element-wise complex conjugate. Result shares the input's
-    /// backend `Arc`. Symmetric with [`BlockSparseTensor::conj`].
+    /// Element-wise complex conjugate. Symmetric with
+    /// [`BlockSparseTensor::conj`].
     pub fn conj(&self) -> Self {
         Self {
             data: self.data.conj(),
-            backend: std::sync::Arc::clone(&self.backend),
         }
     }
 
-    /// Return a tensor with flat data reordered to `to`. Result shares
-    /// the input's backend `Arc`. When `self.data().order() == to`,
-    /// the underlying buffer is shared via `Arc` rather than copied.
+    /// Return a tensor with flat data reordered to `to`. When
+    /// `self.data().order() == to`, the underlying buffer is shared via
+    /// `Arc` rather than copied.
     ///
     /// This is a **workspace-internal escape hatch**, not a user entry
     /// point. The public `Tensor` surface hides memory layout: constructors
@@ -223,10 +216,7 @@ where
     /// hence this note.
     pub fn reordered(&self, to: arnet_core::backend::MemoryOrder) -> Self {
         let reordered = crate::reorder::reorder_data(&self.data, to);
-        Self {
-            data: reordered,
-            backend: std::sync::Arc::clone(&self.backend),
-        }
+        Self { data: reordered }
     }
 
     /// General logical (C-order) reshape to an arbitrary target shape,

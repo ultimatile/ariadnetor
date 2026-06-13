@@ -1,12 +1,11 @@
-use arnet_native::NativeBackend;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder, linear_combine};
 
-/// Wrap a `DenseTensorData<T>` into a `DenseTensor<T, NativeBackend>`
-/// pinned to the shared `NativeBackend`. Tests build `DenseTensorData`
-/// directly (often with a specific `MemoryOrder` that is not
-/// `preferred_order()`) and feed it to the free fn through this wrapper.
-fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
-    DenseTensor::with_backend(d, NativeBackend::shared())
+/// Wrap a `DenseTensorData<T>` into the joined `DenseTensor<T>` surface.
+/// Tests build `DenseTensorData` directly (often with a specific
+/// `MemoryOrder` that is not `preferred_order()`) and feed it to the free
+/// fn through this wrapper, which preserves the data's order.
+fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T> {
+    DenseTensor::from_data(d)
 }
 
 #[test]
@@ -27,7 +26,7 @@ fn test_linear_combine_shape_mismatch() {
 
 #[test]
 fn test_linear_combine_empty() {
-    let result = linear_combine::<f64, NativeBackend>(&[], &[]);
+    let result = linear_combine::<f64>(&[], &[]);
     assert!(result.is_err());
 }
 
