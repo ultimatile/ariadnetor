@@ -16,16 +16,16 @@
 
 use test_utils::fixtures;
 
-use arnet::TruncSvdParams;
-use arnet::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
-    Sector, U1Sector,
-};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, norm};
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
+    Sector, U1Sector,
+};
 use num_complex::Complex;
 
 use fixtures::{

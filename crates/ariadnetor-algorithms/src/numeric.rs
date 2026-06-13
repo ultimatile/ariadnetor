@@ -6,7 +6,7 @@
 //! directly; callers that have already pre-validated their input can
 //! `.expect(...)` on the returned `Option`.
 
-use arnet::Scalar;
+use arnet_core::Scalar;
 use num_traits::{Float, NumCast};
 
 /// Attempt to cast `x: f64` into the `T::Real` real type.

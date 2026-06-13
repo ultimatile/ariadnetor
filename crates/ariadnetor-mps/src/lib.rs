@@ -29,4 +29,4 @@ pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use types::{ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
 // Re-export TruncSvdParams for convenience
-pub use arnet::TruncSvdParams;
+pub use arnet_linalg::TruncSvdParams;

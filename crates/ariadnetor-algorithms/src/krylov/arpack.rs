@@ -17,7 +17,9 @@
 
 use std::sync::Arc;
 
-use arnet::{DenseTensor, NativeBackend, Scalar, linear_combine};
+use arnet_core::Scalar;
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseTensor, linear_combine};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 

@@ -23,13 +23,14 @@ use std::error::Error;
 use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
-use arnet::TruncSvdParams;
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgHeffError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, dmrg_2site_step,
 };
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, LanczosParams};
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

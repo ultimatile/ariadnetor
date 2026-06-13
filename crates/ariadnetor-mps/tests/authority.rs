@@ -28,18 +28,20 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use arnet::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend,
-    DenseLayout, DenseStorage, DenseTensor, Direction, NativeBackend, QNIndex, Scalar,
-    TruncSvdParams, U1Sector,
-};
 use arnet_core::backend::{
     BackendError, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor,
     MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor,
 };
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{
     ApplyMethod, CanonicalForm, Mpo, Mps, TensorChain, TruncateParams, apply, apply_with_method,
     canonicalize, truncate,
+};
+use arnet_native::NativeBackend;
+use arnet_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
+    DenseStorage, DenseTensor, Direction, QNIndex, U1Sector,
 };
 
 // ---------------------------------------------------------------------------

@@ -23,9 +23,10 @@
 
 use std::num::NonZeroUsize;
 
-use arnet::{
-    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, Scalar,
-    Sector, Storage, StorageFor, TensorLayout,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, Storage, StorageFor,
+    TensorLayout,
 };
 
 use super::chain::TensorChain;

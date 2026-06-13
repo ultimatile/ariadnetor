@@ -14,9 +14,12 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage,
-    NativeBackend, Scalar, Sector, Storage, StorageFor, Tensor, TensorLayout, TruncSvdParams,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::TruncSvdParams;
+use arnet_native::NativeBackend;
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, Storage, StorageFor,
+    Tensor, TensorLayout,
 };
 
 /// Canonical form of a tensor chain.

@@ -6,10 +6,12 @@
 
 use std::sync::Arc;
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams, eigh};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

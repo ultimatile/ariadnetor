@@ -33,7 +33,8 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, LinalgError, Scalar};
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::LinalgError;
 use arnet_mps::{CanonicalForm, Mpo, Mps, MpsOps, TensorChain, braket, norm};
 
 use crate::numeric::try_real_from_f64;
@@ -85,7 +86,7 @@ pub struct DmrgSweepParams {
     /// Truncated-SVD parameters, forwarded to the per-step driver
     /// (Dense `dmrg_2site_step` or BlockSparse
     /// `dmrg_2site_step_block_sparse`).
-    pub trunc: arnet::TruncSvdParams,
+    pub trunc: arnet_linalg::TruncSvdParams,
 }
 
 /// Per-step diagnostics record.
@@ -198,8 +199,8 @@ pub enum DmrgSweepError {
         #[source]
         source: DmrgEnvError,
     },
-    /// The post-step S-absorb (`arnet::diagonal_scale_with_backend`
-    /// for Dense or `arnet::diagonal_scale_block_sparse_with_backend`
+    /// The post-step S-absorb (`arnet_linalg::diagonal_scale_with_backend`
+    /// for Dense or `arnet_linalg::diagonal_scale_block_sparse_with_backend`
     /// for BlockSparse) failed. Carries the same `(sweep, direction, site)`
     /// breadcrumbs as `Step` / `Env` so the caller can pin down
     /// where the failure occurred without having to walk the

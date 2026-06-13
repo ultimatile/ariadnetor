@@ -1,11 +1,11 @@
 //! Inner product and norm tests for block-sparse MPS.
 
 use approx::assert_abs_diff_eq;
-use arnet::U1Sector;
-use arnet::{
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, inner, norm};
+use arnet_tensor::U1Sector;
+use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
 };
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, inner, norm};
 
 use super::helpers::{
     bsp_mps_contract_full, make_2site_entangled_u1_mps, make_4site_u1_mps, make_identity_u1_mpo,

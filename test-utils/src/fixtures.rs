@@ -8,12 +8,12 @@
 //! overlapping. A complex variant of the n=2 fixture exercises the
 //! `Scalar = Complex<f64>` matvec path.
 
-use arnet::{
+use arnet_algorithms::dmrg::DmrgEnvs;
+use arnet_mps::{Mpo, Mps};
+use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
     Sector, U1Sector,
 };
-use arnet_algorithms::dmrg::DmrgEnvs;
-use arnet_mps::{Mpo, Mps};
 use num_complex::Complex;
 
 // ---------------------------------------------------------------------------

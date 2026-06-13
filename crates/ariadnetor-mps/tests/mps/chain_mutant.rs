@@ -1,7 +1,8 @@
 //! Targeted mutation-testing coverage for chain.rs accessors.
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend};
 use arnet_mps::{Mps, TensorChain};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 fn empty_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
     Mps::<DenseStorage<f64>, DenseLayout, NativeBackend>::empty(NativeBackend::shared())

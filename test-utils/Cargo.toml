@@ -6,13 +6,15 @@ license.workspace = true
 publish = false
 
 [dependencies]
-ariadnetor = { path = "../crates/ariadnetor" }
-ariadnetor-algorithms = { path = "../crates/ariadnetor-algorithms" }
-ariadnetor-mps = { path = "../crates/ariadnetor-mps" }
-# Leaf-crate dep: fixtures reach the `reordered` escape hatch, which names
-# the `MemoryOrder` layout type. That type is deliberately not re-exported
-# from the `arnet` umbrella, so it is pulled from the tensor leaf directly.
+ariadnetor-core = { path = "../crates/ariadnetor-core" }
 ariadnetor-tensor = { path = "../crates/ariadnetor-tensor" }
+# Default features (hptt) kept on: unlike the tensor / linalg leaves
+# (which inherit hptt from a higher crate), this consumer crate tops its
+# own standalone build graph, so it enables the native transpose kernel
+# directly. `default-features = false` here would drop hptt from `-p` builds.
+ariadnetor-native = { path = "../crates/ariadnetor-native" }
+ariadnetor-mps = { path = "../crates/ariadnetor-mps" }
+ariadnetor-algorithms = { path = "../crates/ariadnetor-algorithms" }
 num-complex = { workspace = true }
 
 [lints]

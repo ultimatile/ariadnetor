@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSparseLayout, BlockSparseStorage, ComputeBackend, DenseLayout, DenseStorage, Scalar,
-    Sector, lq_block_sparse_with_backend, lq_with_backend, qr_block_sparse_with_backend,
-    qr_with_backend,
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{
+    lq_block_sparse_with_backend, lq_with_backend, qr_block_sparse_with_backend, qr_with_backend,
 };
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector};
 
 use super::absorb::{
     absorb_from_left, absorb_from_left_bsp, absorb_from_right, absorb_from_right_bsp,

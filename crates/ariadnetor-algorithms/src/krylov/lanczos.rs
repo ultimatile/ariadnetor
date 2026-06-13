@@ -3,7 +3,9 @@
 
 use std::sync::Arc;
 
-use arnet::{ComputeBackend, DenseTensor, NativeBackend, Scalar, linear_combine};
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseTensor, linear_combine};
 use num_traits::{Float, One, Zero};
 use rand::SeedableRng;
 use rand::rngs::{StdRng, SysRng};

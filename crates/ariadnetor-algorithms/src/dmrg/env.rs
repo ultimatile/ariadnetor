@@ -24,11 +24,11 @@
 
 use std::sync::Arc;
 
-use arnet::{
-    ComputeBackend, DenseLayout, DenseStorage, LinalgError, NativeBackend, Scalar, Storage,
-    StorageFor, Tensor, TensorLayout, contract_with_backend,
-};
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{LinalgError, contract_with_backend};
 use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, Storage, StorageFor, Tensor, TensorLayout};
 
 /// Errors raised by [`DmrgEnvs`] construction and advance operations.
 #[derive(Debug, thiserror::Error)]
@@ -52,7 +52,7 @@ pub enum DmrgEnvError {
          build the initial envs or advance in order"
     )]
     StaleNeighbor { side: &'static str, index: usize },
-    /// An underlying `arnet::contract_with_backend` call failed. The
+    /// An underlying `arnet_linalg::contract_with_backend` call failed. The
     /// source is preserved so callers see the real cause (dimension
     /// mismatch, backend failure, etc.) rather than a panic.
     #[error("contract failure during DMRG environment update")]
@@ -226,7 +226,11 @@ where
     T: Scalar,
     B: ComputeBackend,
 {
-    arnet::DenseTensor::<T, B>::from_raw_parts(vec![T::one()], vec![1, 1, 1], Arc::clone(backend))
+    arnet_tensor::DenseTensor::<T, B>::from_raw_parts(
+        vec![T::one()],
+        vec![1, 1, 1],
+        Arc::clone(backend),
+    )
 }
 
 // ============================================================================

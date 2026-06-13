@@ -14,7 +14,14 @@ default = []
 arpack = ["dep:arpack", "dep:num-complex"]
 
 [dependencies]
-ariadnetor = { path = "../ariadnetor" }
+ariadnetor-core = { path = "../ariadnetor-core" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg" }
+# Default features (hptt) kept on: unlike the tensor / linalg leaves
+# (which inherit hptt from a higher crate), this consumer crate tops its
+# own standalone build graph, so it enables the native transpose kernel
+# directly. `default-features = false` here would drop hptt from `-p` builds.
+ariadnetor-native = { path = "../ariadnetor-native" }
 ariadnetor-mps = { path = "../ariadnetor-mps" }
 num-traits = { workspace = true }
 num-complex = { workspace = true, optional = true }
@@ -31,10 +38,6 @@ approx = { workspace = true }
 # workspace defaults.
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 syn = { workspace = true, features = ["full", "visit"] }
-# Leaf-crate dev dep: tests reach the `reordered` escape hatch, which names
-# the `MemoryOrder` layout type. That type is deliberately not re-exported
-# from the `arnet` umbrella, so tests pull it from the tensor leaf directly.
-ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 criterion = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }

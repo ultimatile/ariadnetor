@@ -18,7 +18,7 @@
 //!    match the psi template derived from the MPS sites at
 //!    `(site, site+1)`.
 //! 2. **Contract** through the env / W tensors using
-//!    [`arnet::contract_block_sparse_with_backend`] in four steps. The
+//!    [`arnet_linalg::contract_block_sparse_with_backend`] in four steps. The
 //!    axis convention mirrors `arnet_mps::inner::braket_bsp` and
 //!    the Phase 6.1 `extend_*_step` kernels; the natural output
 //!    order `lhs_free | rhs_free` ends in
@@ -42,11 +42,11 @@ pub use operator::EffectiveHamiltonian2SiteBlockSparse;
 
 use std::sync::Arc;
 
-use arnet::{
-    BlockSingularValues, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackend,
-    NativeBackend, Scalar, Sector, TruncSvdParams, trunc_svd_block_sparse_with_backend,
-};
+use arnet_core::{ComputeBackend, Scalar};
+use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse_with_backend};
 use arnet_mps::{Mpo, Mps};
+use arnet_native::NativeBackend;
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Sector};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;

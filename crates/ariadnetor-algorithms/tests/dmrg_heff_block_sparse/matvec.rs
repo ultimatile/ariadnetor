@@ -2,14 +2,16 @@
 //! n=2 fixture (boundary envs) and the n=3 fixture (one extended
 //! env via `extend_right_step`).
 
-use arnet::{DenseTensor, NativeBackend, Sector, TruncSvdParams, U1Sector, eigh};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, EffectiveHamiltonian2Site, EffectiveHamiltonian2SiteBlockSparse,
     LocalEigensolverParams, dmrg_2site_step_block_sparse,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
+use arnet_linalg::{TruncSvdParams, eigh};
 use arnet_mps::TensorChain;
+use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
+use arnet_tensor::{DenseTensor, Sector, U1Sector};
 
 use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_f64, make_n2_mps_f64, make_n3_mpo_f64, make_n3_mps_f64,

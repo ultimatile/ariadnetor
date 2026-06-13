@@ -6,8 +6,8 @@
 //! (multi-element sector blocks), which is essential for catching mutants in
 //! the per-sector sweep logic.
 
-use arnet::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, U1Sector};
 use arnet_mps::{CanonicalForm, Mps, TensorChain, canonicalize};
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, U1Sector};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, is_left_canonical_bsp,
@@ -168,7 +168,7 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
 /// the contract that charged input is not silently rejected.
 #[test]
 fn canonicalize_bsp_accepts_charged_single_site() {
-    use arnet::{BlockCoord, Direction, QNIndex};
+    use arnet_tensor::{BlockCoord, Direction, QNIndex};
 
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);

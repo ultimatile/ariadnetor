@@ -5,10 +5,12 @@
 
 use std::sync::Arc;
 
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let backend = NativeBackend::shared();

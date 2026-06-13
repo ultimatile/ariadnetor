@@ -6,10 +6,12 @@
 use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
-use arnet::{DenseLayout, DenseStorage, DenseTensor, NativeBackend, TruncSvdParams};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
+use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps, canonicalize};
+use arnet_native::NativeBackend;
+use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 fn random_mps_center_zero_f64(
     n: usize,
