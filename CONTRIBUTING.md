@@ -8,9 +8,24 @@ follow when adding or modifying code in this repository.
 `cargo make` aliases defined in `Makefile.toml`:
 
 ```bash
-cargo make build       # Build workspace
-cargo make test        # Run unit tests
-cargo make ci          # Full CI checks (fmt, clippy, test)
+cargo make build       # Build the whole workspace (debug)
+cargo make test        # Run unit + integration + doctests
+cargo make gate        # Local pre-PR gate: fmt-check + clippy + test
+```
+
+`cargo make gate` is the local pre-PR gate. Its `clippy --all-targets`
+step compiles benches; its `test` step runs unit, integration, and
+doctests but does not compile or run benches. Run
+`cargo make --list-all-steps` for the full task surface.
+
+### Ad-hoc QA tools (outside the gate)
+
+These are run on demand, not wired into `cargo make`:
+
+```bash
+cargo public-api diff  # review public API surface changes
+cargo semver-checks    # semver-compatibility check (once a baseline is published)
+cargo mutants          # mutation testing
 ```
 
 ## Coding Conventions
