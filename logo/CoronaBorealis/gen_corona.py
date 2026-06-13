@@ -189,19 +189,25 @@ def render_mark(pts, ox=0.0, oy=0.0, scale=1.0,
     return s
 
 
-def generate_icon(pts) -> str:
+def generate_icon(pts, background=COLOR_BG) -> str:
+    """Square icon. background=None leaves it transparent; the node/edge/diamond
+    colours read on both light and dark canvases, so one transparent icon serves
+    both themes (no text to invert)."""
     s = ['<?xml version="1.0" encoding="UTF-8"?>']
     s.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {ICON} {ICON}"'
              f' width="{ICON}" height="{ICON}">')
-    s.append(f'  <rect width="{ICON}" height="{ICON}" fill="{COLOR_BG}"/>')
+    if background:
+        s.append(f'  <rect width="{ICON}" height="{ICON}" fill="{background}"/>')
     s += render_mark(pts)
     s.append("</svg>")
     return "\n".join(s)
 
 
-def generate_lockup(pts) -> str:
+def generate_lockup(pts, background=COLOR_BG, text_color=COLOR_TEXT) -> str:
     # The icon is enlarged (LOCKUP_ICON_SCALE) so the constellation holds its own
     # next to the wordmark; the SVG height is the taller of icon vs text.
+    # background=None + a theme-appropriate text_color yields the light/dark
+    # variants paired via <picture> (only the wordmark colour need invert).
     icon_h = ICON * LOCKUP_ICON_SCALE
     avg = FONT_SIZE * 0.55  # Lexend lowercase avg advance
     text_w = len(WORD) * avg + (len(WORD) - 1) * LETTER_SPACING
@@ -211,7 +217,8 @@ def generate_lockup(pts) -> str:
     s = ['<?xml version="1.0" encoding="UTF-8"?>']
     s.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_w:.0f} {svg_h:.0f}"'
              f' width="{svg_w:.0f}" height="{svg_h:.0f}">')
-    s.append(f'  <rect width="{svg_w:.0f}" height="{svg_h:.0f}" fill="{COLOR_BG}"/>')
+    if background:
+        s.append(f'  <rect width="{svg_w:.0f}" height="{svg_h:.0f}" fill="{background}"/>')
     # vertically center the icon in the canvas
     s += render_mark(pts, ox=0, oy=(svg_h - icon_h) / 2, scale=LOCKUP_ICON_SCALE)
 
@@ -221,7 +228,7 @@ def generate_lockup(pts) -> str:
     s.append(f'  <text x="{tx:.0f}" y="{ty:.0f}" font-family="{FONT_FAMILY}"'
              f' font-size="{FONT_SIZE}" font-weight="{FONT_WEIGHT}"'
              f' style="{style}" text-anchor="start" dominant-baseline="central"'
-             f' fill="{COLOR_TEXT}">{WORD}</text>')
+             f' fill="{text_color}">{WORD}</text>')
     s.append("</svg>")
     return "\n".join(s)
 
@@ -254,18 +261,25 @@ def main():
     here = Path(__file__).parent
     pts = projected_points()
 
-    icon_svg = here / "corona_icon.svg"
-    icon_svg.write_text(generate_icon(pts))
-    print(f"wrote {icon_svg.name}")
-    if args.png:
-        svg_to_png(icon_svg, icon_svg.with_suffix(".png"), scale=args.scale)
-
+    # Each entry: filename stem -> SVG string. The navy-background versions are
+    # the standalone assets; the _transparent / _dark / _light variants are for
+    # theme-aware <picture> embedding (transparent icon serves both themes; the
+    # lockup needs a dark/light pair because only the wordmark colour inverts).
+    assets = {
+        "corona_icon": generate_icon(pts),
+        "corona_icon_transparent": generate_icon(pts, background=None),
+    }
     if args.wordmark:
-        lock_svg = here / "corona_lockup.svg"
-        lock_svg.write_text(generate_lockup(pts))
-        print(f"wrote {lock_svg.name}")
+        assets["corona_lockup"] = generate_lockup(pts)
+        assets["corona_lockup_dark"] = generate_lockup(pts, background=None, text_color=COLOR_TEXT)
+        assets["corona_lockup_light"] = generate_lockup(pts, background=None, text_color=COLOR_BG)
+
+    for stem, svg in assets.items():
+        svg_path = here / f"{stem}.svg"
+        svg_path.write_text(svg)
+        print(f"wrote {svg_path.name}")
         if args.png:
-            svg_to_png(lock_svg, lock_svg.with_suffix(".png"), scale=args.scale)
+            svg_to_png(svg_path, svg_path.with_suffix(".png"), scale=args.scale)
 
 
 if __name__ == "__main__":

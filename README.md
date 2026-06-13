@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="logo/CoronaBorealis/corona_lockup.png" alt="ariadnetor" width="360">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo/CoronaBorealis/corona_lockup_dark.png">
+    <img src="logo/CoronaBorealis/corona_lockup_light.png" alt="ariadnetor" width="600">
+  </picture>
 </p>
 
 > [!WARNING]

@@ -1,6 +1,9 @@
 # Corona Borealis mark
 
-![ariadnetor lockup](corona_lockup.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="corona_lockup_dark.png">
+  <img src="corona_lockup_light.png" alt="ariadnetor" width="520">
+</picture>
 
 The ariadnetor logo: the constellation Corona Borealis as a node-and-edge graph,
 its brightest star Alphecca picked out in red.
@@ -9,7 +12,11 @@ In myth, Corona Borealis is **Ariadne's Crown** — the constellation already bo
 the name. Alphecca's diamond echoes how tensor-network diagrams single out a
 distinguished node.
 
-![icon](corona_icon.png)
+<img src="corona_icon_transparent.png" alt="Corona Borealis icon" width="160">
+
+The icon is transparent, so one file works on both light and dark backgrounds;
+the lockup ships as a light/dark pair (above) since only the wordmark colour
+needs to invert.
 
 ## Generate
 
