@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 918 290" width="918" height="290">
+  <g stroke="#2d4a6f" stroke-width="3.62" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 211.65,76.70 L 240.70,134.87 L 201.74,196.59 L 155.94,207.41 L 116.63,213.30 L 71.17,192.38 L 49.30,115.63"/>
+  </g>
+  <circle cx="211.65" cy="76.70" r="8.70" fill="#4a90d9"/>
+  <circle cx="240.70" cy="134.87" r="8.70" fill="#4a90d9"/>
+  <circle cx="155.94" cy="207.41" r="8.70" fill="#4a90d9"/>
+  <circle cx="116.63" cy="213.30" r="8.70" fill="#4a90d9"/>
+  <circle cx="71.17" cy="192.38" r="8.70" fill="#4a90d9"/>
+  <circle cx="49.30" cy="115.63" r="8.70" fill="#4a90d9"/>
+  <polygon points="189.93,205.02 193.31,184.79 213.54,188.17 210.16,208.40" fill="#e06040" stroke-linejoin="round"/>
+  <text x="318" y="145" font-family="'Lexend'" font-size="104" font-weight="500" style="letter-spacing: 2px;" text-anchor="start" dominant-baseline="central" fill="#1a1a2e">ariadnetor</text>
+</svg>
