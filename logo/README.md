@@ -1,12 +1,12 @@
-# Corona Borealis mark
+# The ariadnetor logo
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="corona_lockup_dark.png">
   <img src="corona_lockup_light.png" alt="ariadnetor" width="520">
 </picture>
 
-The ariadnetor logo: the constellation Corona Borealis as a node-and-edge graph,
-its brightest star Alphecca picked out in red.
+The constellation Corona Borealis as a node-and-edge graph, its brightest star
+Alphecca picked out in red.
 
 <img src="corona_icon_transparent.png" alt="Corona Borealis icon" width="160">
 
