@@ -1,8 +1,6 @@
 //! Step-error propagation case for `sweep_2site`, split out from
 //! `dmrg_sweep.rs` to keep the per-test-file line cap.
 
-use std::sync::Arc;
-
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
@@ -39,7 +37,6 @@ fn random_mps_center_zero_f64(
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -47,11 +44,11 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(sites);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     mps
 }
 
@@ -62,21 +59,18 @@ fn t6_step_error_propagated() {
     let n = 3;
     let d_mps = 2;
     let d_mpo = 3; // <- mismatch
-    let backend = NativeBackend::shared();
     let mps_storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|_| {
-            DenseTensor::from_raw_parts(vec![1.0_f64, 0.0], vec![1, d_mps, 1], Arc::clone(&backend))
-        })
+        .map(|_| DenseTensor::from_raw_parts(vec![1.0_f64, 0.0], vec![1, d_mps, 1]))
         .collect();
     let mut mps = Mps::from_sites(mps_storages);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     let mpo_storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut m = vec![0.0_f64; d_mpo * d_mpo];
             for k in 0..d_mpo {
                 m[k * d_mpo + k] = 1.0;
             }
-            DenseTensor::from_raw_parts(m, vec![1, d_mpo, d_mpo, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(m, vec![1, d_mpo, d_mpo, 1])
         })
         .collect();
     let mpo = Mpo::from_sites(mpo_storages);
@@ -87,11 +81,7 @@ fn t6_step_error_propagated() {
         for k in 0..d_mpo {
             m[k * d_mpo + k] = 1.0;
         }
-        env_mpo_storages.push(DenseTensor::from_raw_parts(
-            m,
-            vec![1, d_mpo, d_mpo, 1],
-            Arc::clone(&backend),
-        ));
+        env_mpo_storages.push(DenseTensor::from_raw_parts(m, vec![1, d_mpo, d_mpo, 1]));
     }
     let env_mpo = Mpo::from_sites(env_mpo_storages);
     let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =

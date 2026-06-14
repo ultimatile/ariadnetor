@@ -5,36 +5,31 @@
 //! the minimum needed to drive the predicate paths — no oracles or
 //! cross-checks.
 
-use std::sync::Arc;
-
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend: Arc<NativeBackend> = NativeBackend::shared();
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            DenseTensor::from_raw_parts(data, vec![1, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![1, d, 1])
         })
         .collect();
     Mps::from_sites(sites)
 }
 
 fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let backend: Arc<NativeBackend> = NativeBackend::shared();
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            DenseTensor::from_raw_parts(data, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(sites)
@@ -46,9 +41,8 @@ fn heff_2site_step_asymmetric_length_and_zero_tol() {
     let d = 2;
     let mps_4 = product_state_mps(n, d);
     let mpo_4 = identity_mpo(n, d);
-    let envs_4 =
-        DmrgEnvs::<DenseStorage<f64>, DenseLayout, NativeBackend>::build::<f64>(&mps_4, &mpo_4)
-            .expect("build envs n=4");
+    let envs_4 = DmrgEnvs::<DenseStorage<f64>, DenseLayout>::build::<f64>(&mps_4, &mpo_4)
+        .expect("build envs n=4");
 
     let mps_3 = product_state_mps(3, d);
     let mpo_3 = identity_mpo(3, d);
