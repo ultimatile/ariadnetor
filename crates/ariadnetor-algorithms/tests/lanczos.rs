@@ -7,7 +7,7 @@
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::krylov::{LanczosParams, lanczos_smallest};
 use arnet_core::Scalar;
-use arnet_linalg::eigh;
+use arnet_linalg::eigh_with_backend;
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 use num_complex::Complex;
@@ -31,7 +31,7 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
             *out_i = *out_i + h_data[i + n * j] * vj;
         }
     }
-    DenseTensor::from_raw_parts(out, vec![n], NativeBackend::shared())
+    DenseTensor::from_raw_parts(out, vec![n])
 }
 
 /// Build a random Hermitian matrix `H = (A + A^H) / 2` of size `n×n`,
@@ -48,7 +48,7 @@ fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensor<f64> {
             data[i + n * j] = 0.5 * (aij + aji);
         }
     }
-    DenseTensor::from_raw_parts(data, vec![n, n], NativeBackend::shared())
+    DenseTensor::from_raw_parts(data, vec![n, n])
 }
 
 fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>> {
@@ -65,12 +65,12 @@ fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>
             data[i + n * j] = (aij + aji.conj()) * 0.5;
         }
     }
-    DenseTensor::from_raw_parts(data, vec![n, n], NativeBackend::shared())
+    DenseTensor::from_raw_parts(data, vec![n, n])
 }
 
 /// Smallest eigenvalue of a Hermitian matrix via dense `eigh`.
 fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
-    let (eigvals, _) = eigh(h, 1).expect("eigh");
+    let (eigvals, _) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
     eigvals.data_slice()[0]
 }
 
@@ -86,7 +86,7 @@ fn lanczos_diagonal_returns_min_eigenvalue() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = DenseTensor::from_raw_parts(data, vec![n, n], NativeBackend::shared());
+    let h = DenseTensor::from_raw_parts(data, vec![n, n]);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -142,7 +142,7 @@ fn lanczos_near_degenerate_cluster() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = DenseTensor::from_raw_parts(data, vec![n, n], NativeBackend::shared());
+    let h = DenseTensor::from_raw_parts(data, vec![n, n]);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -201,7 +201,7 @@ fn lanczos_complex_hermitian_matches_eigh() {
 
 #[test]
 fn lanczos_n1_returns_iters_one() {
-    let h = DenseTensor::from_raw_parts(vec![5.0_f64], vec![1, 1], NativeBackend::shared());
+    let h = DenseTensor::from_raw_parts(vec![5.0_f64], vec![1, 1]);
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, 1, v),
         1,

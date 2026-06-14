@@ -18,11 +18,9 @@
 //!
 //! Test-internal helpers; no public API additions.
 
-use std::sync::Arc;
-
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
@@ -63,7 +61,6 @@ fn write_offdiag(h: &mut [f64], dim: usize, b_out: usize, b_in: usize, value: f6
 // ---------------------------------------------------------------------------
 
 fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let dim = 1usize << n;
     let mut data = vec![0.0_f64; dim * dim];
     for b in 0..dim {
@@ -83,11 +80,11 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![dim, dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![dim, dim])
 }
 
 fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
-    let (eigvals, _v) = eigh(h, 1).expect("eigh");
+    let (eigvals, _v) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
     eigvals
         .data_slice()
         .iter()
@@ -351,7 +348,7 @@ fn random_mps_bsp_center_zero_f64(
     }
 
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     assert_eq!(
         *mps.canonical_form(),
         CanonicalForm::Mixed { center: 0 },

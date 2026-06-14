@@ -1,7 +1,7 @@
 //! Tensor-network algorithms. Currently provides DMRG and the Krylov
 //! solvers it relies on.
 //!
-//! Builds on [`arnet`] for tensor operations and [`arnet_mps`] for
+//! Builds on [`arnet_tensor`] for tensor operations and [`arnet_mps`] for
 //! MPS / MPO data structures.
 
 pub mod dmrg;

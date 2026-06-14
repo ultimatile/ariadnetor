@@ -72,8 +72,8 @@ pub enum DmrgHeffError {
         detail: String,
     },
     /// The layout `MemoryOrder` of one of the BlockSparse 2-site
-    /// step's four contracted operands diverged from the chain
-    /// backend's `preferred_order()`. Surfaced by
+    /// step's four contracted operands diverged from the host
+    /// substrate's `preferred_order()`. Surfaced by
     /// [`super::heff_block_sparse::EffectiveHamiltonian2SiteBlockSparse::new`]
     /// before any contract runs so the `apply` body's `.expect`
     /// calls cannot fire on a mixed-order operand set. `operand`
@@ -82,10 +82,10 @@ pub enum DmrgHeffError {
     /// layout order, and `detail` carries a human-readable summary
     /// of the offending vs expected layout order. The MPS sites
     /// passed to `new` are template-derivation-only and not asserted
-    /// here; PR-level Tier 2 at the step entry guarantees their
-    /// layout order matches the chain backend's already. `detail`
-    /// holds a rendered `MemoryOrder` to keep that layout type off
-    /// the public error surface (it is workspace-internal).
+    /// here; the psi template they derive is built in host order, so
+    /// the matvec stays self-consistent. `detail` holds a rendered
+    /// `MemoryOrder` to keep that layout type off the public error
+    /// surface (it is workspace-internal).
     #[error("BlockSparse heff operand `{operand}` has layout order mismatch: {detail}")]
     OrderMismatch {
         operand: &'static str,

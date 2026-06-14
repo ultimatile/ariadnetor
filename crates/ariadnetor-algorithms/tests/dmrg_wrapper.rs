@@ -12,8 +12,6 @@
 //! BlockSparse path is already implied by the Dense equivalence
 //! tests plus the BlockSparse `sweep_2site` validation suite.
 
-use std::sync::Arc;
-
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
 };
@@ -66,7 +64,6 @@ fn build_mpo_site_f64(
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
 ) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
     for &(vl, vr, op, scale) in cells {
@@ -77,7 +74,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
@@ -129,7 +126,6 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
 /// Build a random MPS with no canonical form set (`CanonicalForm::Unknown`).
 /// The wrapper is responsible for canonicalizing internally.
 fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -137,7 +133,7 @@ fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, D, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, D, r])
         })
         .collect();
     Mps::from_sites(storages)
@@ -173,7 +169,7 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
 
     // Manual composition (mirroring the wrapper body).
     let mut psi_manual = psi0.clone();
-    canonicalize(&mut psi_manual, 0);
+    canonicalize(&NativeBackend::new(), &mut psi_manual, 0);
     let mut envs_manual = DmrgEnvs::build(&psi_manual, &mpo).expect("manual envs build");
     let result_manual =
         sweep_2site(&mut envs_manual, &mut psi_manual, &mpo, &params).expect("manual sweep");
@@ -247,9 +243,8 @@ fn wrapper_accepts_unknown_canonical() {
 
 #[test]
 fn wrapper_rejects_empty_mps() {
-    let backend = NativeBackend::shared();
-    let mpo: Mpo<DenseStorage<f64>, DenseLayout> = Mpo::empty(Arc::clone(&backend));
-    let psi0: Mps<DenseStorage<f64>, DenseLayout> = Mps::empty(Arc::clone(&backend));
+    let mpo: Mpo<DenseStorage<f64>, DenseLayout> = Mpo::empty();
+    let psi0: Mps<DenseStorage<f64>, DenseLayout> = Mps::empty();
     let params = small_params(0xACED);
 
     match dmrg_2site(&mpo, &psi0, &params) {

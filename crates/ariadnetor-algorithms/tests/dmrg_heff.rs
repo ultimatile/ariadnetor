@@ -12,15 +12,15 @@
 //! Hamiltonian construction (H_eff lives in the local projected
 //! subspace).
 
-use std::sync::Arc;
-
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
     DmrgEnvs, EffectiveHamiltonian2Site, LocalEigensolverParams, dmrg_2site_step,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh};
+use arnet_linalg::{
+    TruncSvdParams, contract_with_backend, diagonal_scale_with_backend, eigh_with_backend,
+};
 use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
@@ -35,12 +35,11 @@ use rand::rngs::StdRng;
 
 /// Product state |0...0⟩ with bond dim 1 at every internal bond.
 fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            DenseTensor::from_raw_parts(data, vec![1, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![1, d, 1])
         })
         .collect();
     Mps::from_sites(storages)
@@ -48,14 +47,13 @@ fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> 
 
 /// Identity MPO at every site, bond dim 1.
 fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d * d];
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            DenseTensor::from_raw_parts(data, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(storages)
@@ -68,7 +66,6 @@ fn random_mps_f64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -76,7 +73,7 @@ fn random_mps_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, d, r])
         })
         .collect();
     Mps::from_sites(storages)
@@ -88,7 +85,6 @@ fn random_mps_c64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<Complex<f64>>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<Complex<f64>>> = (0..n)
         .map(|i| {
@@ -102,7 +98,7 @@ fn random_mps_c64(
                     Complex::new(re, im)
                 })
                 .collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, d, r])
         })
         .collect();
     Mps::from_sites(storages)
@@ -113,7 +109,6 @@ fn random_mps_c64(
 /// H = h_0 ⊗ h_1 ⊗ ... ⊗ h_{n-1} is Hermitian for any choice of
 /// per-site Hermitian h_i, so the projected H_eff is also Hermitian.
 fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
@@ -132,7 +127,7 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
             // MPO axis order [W_l=1, d_ket=s, d_bra=t, W_r=1]. The
             // local Hermitian operator h satisfies h[s,t] = conj(h[t,s]),
             // and we identify W[0, s, t, 0] = h[s, t].
-            DenseTensor::from_raw_parts(m, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(m, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(storages)
@@ -143,7 +138,6 @@ fn hermitian_local_mpo_c64(
     d: usize,
     seed: u64,
 ) -> Mpo<DenseStorage<Complex<f64>>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<Complex<f64>>> = (0..n)
         .map(|_| {
@@ -160,7 +154,7 @@ fn hermitian_local_mpo_c64(
                     m[s * d + t] = (r[s * d + t] + r[t * d + s].conj()) * 0.5;
                 }
             }
-            DenseTensor::from_raw_parts(m, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(m, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(storages)
@@ -171,24 +165,23 @@ fn hermitian_local_mpo_c64(
 /// vector. Storage convention is column-major: entry `(i, k)`
 /// (the `i`-th component of `H_eff @ e_k`) lives at flat index
 /// `i + dim * k`.
-fn build_heff_dense<T, B>(heff: &EffectiveHamiltonian2Site<'_, T, B>) -> DenseTensor<T>
+fn build_heff_dense<T>(heff: &EffectiveHamiltonian2Site<'_, T>) -> DenseTensor<T>
 where
     T: Scalar,
-    B: arnet_core::ComputeBackend,
 {
     let dim = heff.dim();
     let mut data = vec![T::zero(); dim * dim];
     for k in 0..dim {
         let mut e = vec![T::zero(); dim];
         e[k] = T::one();
-        let e_dense = DenseTensor::from_raw_parts(e, vec![dim], NativeBackend::shared());
+        let e_dense = DenseTensor::from_raw_parts(e, vec![dim]);
         let col = heff.apply(&e_dense);
         let col_data = col.data_slice();
         for i in 0..dim {
             data[i + dim * k] = col_data[i];
         }
     }
-    DenseTensor::from_raw_parts(data, vec![dim, dim], NativeBackend::shared())
+    DenseTensor::from_raw_parts(data, vec![dim, dim])
 }
 
 /// Construct an `EffectiveHamiltonian2Site` from a freshly built
@@ -216,17 +209,7 @@ where
     let d_i = mps_i.shape()[1];
     let d_ip1 = mps_ip1.shape()[1];
 
-    EffectiveHamiltonian2Site::new(
-        left,
-        w_i,
-        w_ip1,
-        right,
-        chi_l,
-        d_i,
-        d_ip1,
-        chi_r,
-        mps.backend_arc().clone(),
-    )
+    EffectiveHamiltonian2Site::new(left, w_i, w_ip1, right, chi_l, d_i, d_ip1, chi_r)
 }
 
 // ---------------------------------------------------------------------------
@@ -293,7 +276,7 @@ fn heff_matvec_matches_dense_apply() {
     // Apply on a random vector via the operator and compare to `H_dense @ v`.
     let mut rng = StdRng::seed_from_u64(0xABCD_1234);
     let v_data: Vec<f64> = (0..dim).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-    let v = DenseTensor::from_raw_parts(v_data.clone(), vec![dim], NativeBackend::shared());
+    let v = DenseTensor::from_raw_parts(v_data.clone(), vec![dim]);
 
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data_slice();
@@ -326,7 +309,7 @@ fn heff_lanczos_eigvalue_matches_eigh() {
     let site = 1;
     let heff = make_heff(&envs, &mps, &mpo, site);
     let h_dense = build_heff_dense(&heff);
-    let (eigvals, _) = eigh(&h_dense, 1).expect("eigh");
+    let (eigvals, _) = eigh_with_backend(&NativeBackend::new(), &h_dense, 1).expect("eigh");
     let reference = eigvals.data_slice()[0];
 
     let result = dmrg_2site_step(
@@ -382,7 +365,8 @@ fn heff_svd_split_is_canonical() {
 
     // U^T U: contract `[chi_l, d, chi_new]` with itself, summing the
     // (chi_l, d) axes → Identity on the chi_new axis.
-    let utu = contract(&result.u, &result.u, "abc,abd->cd").expect("U^T U");
+    let utu = contract_with_backend(&NativeBackend::new(), &result.u, &result.u, "abc,abd->cd")
+        .expect("U^T U");
     let chi_new = result.u.shape()[2];
     assert_eq!(utu.shape(), &[chi_new, chi_new]);
     let utu_data = utu.data_slice();
@@ -394,7 +378,8 @@ fn heff_svd_split_is_canonical() {
     }
     // Vt Vt^T: contract `[chi_new, d, chi_r]` with itself summing
     // the (d, chi_r) axes → Identity on the chi_new axis.
-    let vvt = contract(&result.vt, &result.vt, "abc,dbc->ad").expect("Vt Vt^T");
+    let vvt = contract_with_backend(&NativeBackend::new(), &result.vt, &result.vt, "abc,dbc->ad")
+        .expect("Vt Vt^T");
     assert_eq!(vvt.shape(), &[chi_new, chi_new]);
     let vvt_data = vvt.data_slice();
     for i in 0..chi_new {
@@ -456,8 +441,11 @@ fn heff_svd_reconstruction_round_trips() {
     // Reconstruct U · diag(S) · Vt and verify it is a valid 2-site
     // block of the original eigenvector (re-running Lanczos with
     // the same seed is deterministic, so we can compare exactly).
-    let us = diagonal_scale(&result.u, result.s.data_slice(), 2).expect("U·diag(S)");
-    let recon = contract(&us, &result.vt, "aik,kjb->aijb").expect("U·S·Vt");
+    let us =
+        diagonal_scale_with_backend(&NativeBackend::new(), &result.u, result.s.data_slice(), 2)
+            .expect("U·diag(S)");
+    let recon = contract_with_backend(&NativeBackend::new(), &us, &result.vt, "aik,kjb->aijb")
+        .expect("U·S·Vt");
 
     let heff = make_heff(&envs, &mps, &mpo, site);
     let dim = heff.dim();
@@ -590,7 +578,7 @@ fn heff_matvec_matches_dense_apply_complex() {
             Complex::new(re, im)
         })
         .collect();
-    let v = DenseTensor::from_raw_parts(v_data.clone(), vec![dim], NativeBackend::shared());
+    let v = DenseTensor::from_raw_parts(v_data.clone(), vec![dim]);
     let apply_out = heff.apply(&v);
     let apply_data = apply_out.data_slice();
     let mut dense_out = vec![Complex::new(0.0, 0.0); dim];

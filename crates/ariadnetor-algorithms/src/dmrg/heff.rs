@@ -17,22 +17,17 @@
 //!   physical legs occupying the inner axes.
 //!
 //! [`EffectiveHamiltonian2Site`] borrows the env / MPO references and
-//! implements [`LinearOp<T, NativeBackend>`] so the local matvec can
-//! drive either Krylov solver in [`crate::krylov`] (which keep their
-//! 1-D basis vectors in `NativeBackend`) without materializing
-//! `H_eff` as a dense matrix. The implementation rebinds Krylov-side
-//! inputs / outputs across the backend `Arc` boundary; the matvec's
-//! contractions dispatch through the operator's stored chain handle,
-//! and the rebind keeps the result tensors' `Arc` labels consistent
-//! with the chain they re-enter.
+//! implements [`LinearOp<T>`] so the local matvec can drive either
+//! Krylov solver in [`crate::krylov`] without materializing `H_eff` as
+//! a dense matrix. The matvec's contractions run on the [`Host`]
+//! substrate (DMRG is host-resident in the CPU-only Stage B scope), so
+//! the operator carries no backend and obtains one from [`Host::shared`]
+//! per `apply`.
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{TruncSvdParams, contract_with_backend, trunc_svd_with_backend};
 use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use arnet_tensor::{DenseTensor, Host};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -48,32 +43,30 @@ use super::solver::{
 /// `(i, i+1)`. Built once per local update and consumed by the
 /// selected local eigensolver via [`LinearOp`].
 #[derive(Debug, Clone)]
-pub struct EffectiveHamiltonian2Site<'a, T: Scalar, B: ComputeBackend = NativeBackend> {
-    left: &'a DenseTensor<T, B>,
-    w_i: &'a DenseTensor<T, B>,
-    w_ip1: &'a DenseTensor<T, B>,
-    right: &'a DenseTensor<T, B>,
+pub struct EffectiveHamiltonian2Site<'a, T: Scalar> {
+    left: &'a DenseTensor<T>,
+    w_i: &'a DenseTensor<T>,
+    w_ip1: &'a DenseTensor<T>,
+    right: &'a DenseTensor<T>,
     chi_l: usize,
     d_i: usize,
     d_ip1: usize,
     chi_r: usize,
-    backend: Arc<B>,
 }
 
-impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
+impl<'a, T: Scalar> EffectiveHamiltonian2Site<'a, T> {
     /// Construct directly from env / MPO references plus the bond
     /// dimensions.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        left: &'a DenseTensor<T, B>,
-        w_i: &'a DenseTensor<T, B>,
-        w_ip1: &'a DenseTensor<T, B>,
-        right: &'a DenseTensor<T, B>,
+        left: &'a DenseTensor<T>,
+        w_i: &'a DenseTensor<T>,
+        w_ip1: &'a DenseTensor<T>,
+        right: &'a DenseTensor<T>,
         chi_l: usize,
         d_i: usize,
         d_ip1: usize,
         chi_r: usize,
-        backend: Arc<B>,
     ) -> Self {
         debug_assert_eq!(left.shape().len(), 3, "left.rank == 3");
         debug_assert_eq!(right.shape().len(), 3, "right.rank == 3");
@@ -107,7 +100,6 @@ impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
             d_i,
             d_ip1,
             chi_r,
-            backend,
         }
     }
 
@@ -133,86 +125,57 @@ impl<'a, T: Scalar, B: ComputeBackend> EffectiveHamiltonian2Site<'a, T, B> {
     }
 }
 
-impl<'a, T: Scalar, B: ComputeBackend> LinearOp<T, NativeBackend>
-    for EffectiveHamiltonian2Site<'a, T, B>
-{
-    fn apply(&self, v: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
-        // Rebind the Krylov-side `NativeBackend`-typed vector to the
-        // chain backend so the matvec body can dispatch contracts
-        // through the chain backend. The output is rebound back to
-        // `NativeBackend` for the Krylov body's downstream
-        // `linear_combine` / `normalize` calls.
-        let v_b = rebind::<T, NativeBackend, B>(v, &self.backend);
-        let psi = v_b.reshape(vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
+impl<'a, T: Scalar> LinearOp<T> for EffectiveHamiltonian2Site<'a, T> {
+    fn apply(&self, v: &DenseTensor<T>) -> DenseTensor<T> {
+        // The matvec runs on the host substrate; both the Krylov-side
+        // input and the returned output are host-resident dense vectors,
+        // so no backend relabel is needed — the contractions dispatch
+        // directly through `Host`.
+        let backend = Host::shared();
+        let psi = v.reshape(vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
 
-        let tmp1 = contract_with_backend(&self.backend, self.left, &psi, "abc,cijf->abijf")
+        let tmp1 = contract_with_backend(backend.as_ref(), self.left, &psi, "abc,cijf->abijf")
             .expect("heff matvec step 1: shape pre-validated");
-        let tmp2 = contract_with_backend(&self.backend, &tmp1, self.w_i, "abijf,bism->asmjf")
+        let tmp2 = contract_with_backend(backend.as_ref(), &tmp1, self.w_i, "abijf,bism->asmjf")
             .expect("heff matvec step 2: shape pre-validated");
-        let tmp3 = contract_with_backend(&self.backend, &tmp2, self.w_ip1, "asmjf,mjtg->astgf")
+        let tmp3 = contract_with_backend(backend.as_ref(), &tmp2, self.w_ip1, "asmjf,mjtg->astgf")
             .expect("heff matvec step 3: shape pre-validated");
-        let out = contract_with_backend(&self.backend, &tmp3, self.right, "astgf,hgf->asth")
+        let out = contract_with_backend(backend.as_ref(), &tmp3, self.right, "astgf,hgf->asth")
             .expect("heff matvec step 4: shape pre-validated");
 
-        let out_flat = out.reshape(vec![self.dim()]);
-        let native: Arc<NativeBackend> = NativeBackend::shared();
-        rebind::<T, B, NativeBackend>(&out_flat, &native)
+        out.reshape(vec![self.dim()])
     }
-}
-
-/// Rebind a `DenseTensor<T, From>` onto a different backend `Arc`,
-/// copying the flat buffer + preserving shape. The rebound tensor is
-/// tagged with the destination backend's preferred order; this is sound
-/// because every tensor reaching `rebind` already carries that order
-/// (every non-test backend is `ColumnMajor`-preferred). The assertion
-/// fails fast — in release as well as debug — the day a
-/// `RowMajor`-preferred backend is introduced, where this buffer would
-/// need an actual reorder rather than a relabel; the cost is negligible
-/// next to the buffer copy below.
-fn rebind<T, From, To>(t: &DenseTensor<T, From>, backend: &Arc<To>) -> DenseTensor<T, To>
-where
-    T: Scalar,
-    From: ComputeBackend,
-    To: ComputeBackend,
-{
-    assert_eq!(t.order(), backend.preferred_order());
-    DenseTensor::from_raw_parts(
-        t.data_slice().to_vec(),
-        t.shape().to_vec(),
-        Arc::clone(backend),
-    )
 }
 
 /// Result of a single 2-site DMRG step.
 #[derive(Debug, Clone)]
-pub struct TwoSiteStepResult<T: Scalar, B: ComputeBackend = NativeBackend> {
+pub struct TwoSiteStepResult<T: Scalar> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
     pub converged: bool,
     /// Left singular vectors, shape `[chi_l, d_i, chi_new]`.
-    pub u: DenseTensor<T, B>,
+    pub u: DenseTensor<T>,
     /// Singular values, shape `[chi_new]`, descending.
-    pub s: DenseTensor<T::Real, B>,
+    pub s: DenseTensor<T::Real>,
     /// Right singular vectors, shape `[chi_new, d_{i+1}, chi_r]`.
-    pub vt: DenseTensor<T, B>,
+    pub vt: DenseTensor<T>,
     /// Frobenius norm of the discarded singular values.
     pub trunc_err: T::Real,
 }
 
 /// Run a single 2-site DMRG step at sites `(site, site+1)`.
-pub fn dmrg_2site_step<T, B>(
-    envs: &DmrgEnvs<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout, B>,
-    mps: &Mps<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout, B>,
-    mpo: &Mpo<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout, B>,
+pub fn dmrg_2site_step<T>(
+    envs: &DmrgEnvs<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
+    mps: &Mps<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
+    mpo: &Mpo<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
-) -> Result<TwoSiteStepResult<T, B>, DmrgHeffError>
+) -> Result<TwoSiteStepResult<T>, DmrgHeffError>
 where
     T: DmrgScalar,
     T::Real: Scalar<Real = T::Real>,
-    B: ComputeBackend,
 {
     let n_sites = envs.n_sites();
     if mps.len() != n_sites || mpo.len() != n_sites {
@@ -225,23 +188,6 @@ where
     if site >= n_sites.saturating_sub(1) {
         return Err(DmrgHeffError::InvalidSite { site, n_sites });
     }
-
-    let chain_backend: Arc<B> = mps.backend_arc().clone();
-    assert_eq!(
-        chain_backend.preferred_order(),
-        mpo.backend().preferred_order(),
-        "dmrg_2site_step: mps/mpo backend preferred_order mismatch",
-    );
-    <arnet_tensor::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
-        &chain_backend,
-        mps.sites(),
-        "dmrg_2site_step.mps",
-    );
-    <arnet_tensor::DenseLayout as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
-        &chain_backend,
-        mpo.sites(),
-        "dmrg_2site_step.mpo",
-    );
 
     validate_eigensolver_params(eigensolver)
         .map_err(|detail| DmrgHeffError::InvalidEigensolverParams { detail })?;
@@ -264,8 +210,6 @@ where
     let mps_i = mps.site(site);
     let mps_ip1 = mps.site(site + 1);
 
-    // Reuse the entry-derived chain handle rather than deriving again.
-    let backend: Arc<B> = chain_backend;
     let check_eq =
         |expected: usize, actual: usize, field: &'static str| -> Result<(), DmrgHeffError> {
             if expected == actual {
@@ -348,23 +292,12 @@ where
     check_eq(w_ip1.shape()[1], d_ip1, "W[i+1].d_ket vs MPS[i+1].physical")?;
     check_eq(w_ip1.shape()[2], d_ip1, "W[i+1].d_bra vs MPS[i+1].physical")?;
 
-    let heff = EffectiveHamiltonian2Site::new(
-        left,
-        w_i,
-        w_ip1,
-        right,
-        chi_l,
-        d_i,
-        d_ip1,
-        chi_r,
-        Arc::clone(&backend),
-    );
+    let heff = EffectiveHamiltonian2Site::new(left, w_i, w_ip1, right, chi_l, d_i, d_ip1, chi_r);
 
     let dim = heff.dim();
-    // Lanczos/ARPACK return `DenseTensor<T, NativeBackend>`; rebind
-    // the eigenvector to the chain backend before SVD so the result
-    // tensors carry the chain backend's `Arc`.
-    let (eigenvalue, eigenvector_native, iters, converged, residual) = match eigensolver {
+    // Lanczos/ARPACK return a host-resident `DenseTensor<T>`; it feeds
+    // straight into the truncated SVD with no backend relabel.
+    let (eigenvalue, eigenvector, iters, converged, residual) = match eigensolver {
         LocalEigensolverParams::Lanczos(p) => {
             let lan = lanczos_smallest::<T, _>(&heff, dim, p);
             (
@@ -387,10 +320,10 @@ where
             )
         }
     };
-    let eigenvector = rebind::<T, NativeBackend, B>(&eigenvector_native, &backend);
 
     let psi_4d = eigenvector.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
-    let (u_2d, s, vt_2d, trunc_err) = trunc_svd_with_backend(&backend, &psi_4d, 2, trunc)?;
+    let (u_2d, s, vt_2d, trunc_err) =
+        trunc_svd_with_backend(Host::shared().as_ref(), &psi_4d, 2, trunc)?;
 
     let chi_new = u_2d.shape()[1];
     debug_assert_eq!(vt_2d.shape()[0], chi_new, "U/Vt new bond dim agreement");

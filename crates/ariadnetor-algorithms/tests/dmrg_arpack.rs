@@ -20,7 +20,6 @@
 #![cfg(feature = "arpack")]
 
 use std::error::Error;
-use std::sync::Arc;
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
@@ -68,7 +67,6 @@ fn build_mpo_site_f64(
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
 ) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
     for &(vl, vr, op, scale) in cells {
@@ -79,7 +77,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
@@ -129,7 +127,6 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
 }
 
 fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -137,7 +134,7 @@ fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, D, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, D, r])
         })
         .collect();
     Mps::from_sites(storages)
@@ -205,7 +202,7 @@ fn dmrg_arpack_max_iter_one_returns_arpack_error() {
     let n = 4;
     let chi = 4;
     let mut psi = random_mps_unknown_f64(n, chi, 0xCAFEBABE);
-    arnet_mps::canonicalize(&mut psi, 0);
+    arnet_mps::canonicalize(&NativeBackend::new(), &mut psi, 0);
     let mpo = heisenberg_mpo_f64(n, 1.0);
     let mut envs = DmrgEnvs::build(&psi, &mpo).expect("envs build");
     // Walk the left env up so left(1) is populated for site=1.

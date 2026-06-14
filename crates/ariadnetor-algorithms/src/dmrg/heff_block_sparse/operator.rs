@@ -1,10 +1,10 @@
-//! `EffectiveHamiltonian2SiteBlockSparse` and its
-//! `LinearOp<T, NativeBackend>` implementation.
+//! `EffectiveHamiltonian2SiteBlockSparse` and its `LinearOp<T>`
+//! implementation.
 //!
 //! The flat-buffer matvec lives here: scatter the flat input into a
 //! pre-allocated psi `BlockSparseTensor` template, run four
 //! `contract_block_sparse_with_backend` calls against the operator's
-//! chain backend handle (the natural `lhs_free | rhs_free` order ends
+//! host substrate handle (the natural `lhs_free | rhs_free` order ends
 //! in `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
 //! no axis swap), gather the rank-4 result back into a flat vector.
 //! The template is owned by the operator so per-matvec allocation is
@@ -15,29 +15,27 @@ use std::sync::Arc;
 
 use arnet_core::{ComputeBackend, Scalar};
 use arnet_linalg::{BlockSparseContractResult, contract_block_sparse_with_backend};
-use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensor, DenseTensor, Sector};
+use arnet_tensor::{BlockCoord, BlockSparseTensor, DenseTensor, Host, Sector};
 
 use super::super::heff_error::DmrgHeffError;
 use crate::krylov::LinearOp;
 
 /// Effective Hamiltonian operator for the BlockSparse 2-site DMRG
 /// block at sites `(i, i+1)`.
-pub struct EffectiveHamiltonian2SiteBlockSparse<'a, T, S, B = NativeBackend>
+pub struct EffectiveHamiltonian2SiteBlockSparse<'a, T, S>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
-    pub(super) left: &'a BlockSparseTensor<T, S, B>,
-    pub(super) w_i: &'a BlockSparseTensor<T, S, B>,
-    pub(super) w_ip1: &'a BlockSparseTensor<T, S, B>,
-    pub(super) right: &'a BlockSparseTensor<T, S, B>,
+    pub(super) left: &'a BlockSparseTensor<T, S>,
+    pub(super) w_i: &'a BlockSparseTensor<T, S>,
+    pub(super) w_ip1: &'a BlockSparseTensor<T, S>,
+    pub(super) right: &'a BlockSparseTensor<T, S>,
     /// Zero-filled rank-4 BlockSparseTensor with the psi indices /
     /// flux. Cloned on every `apply` to receive the scattered flat
     /// input; also reused on the gather side so the output indexing
     /// matches.
-    pub(super) psi_template: BlockSparseTensor<T, S, B>,
+    pub(super) psi_template: BlockSparseTensor<T, S>,
     /// Cumulative flat offsets for each block in
     /// `psi_template.block_metas()` order.
     pub(super) block_offsets: Vec<usize>,
@@ -46,42 +44,41 @@ where
     /// path (`scatter_flat_to_template`) does not clone the coord
     /// `Vec` on every Lanczos / ARPACK iteration.
     pub(super) block_coords: Vec<BlockCoord>,
-    /// Chain backend handle; the matvec body's contractions dispatch
-    /// through it rather than deriving authority from the operands.
-    backend: Arc<B>,
+    /// Host substrate handle; the matvec body's contractions dispatch
+    /// through it. The whole DMRG path is host-pinned in the CPU-only
+    /// Stage B scope, so this is a concrete `Arc<Host>` rather than an
+    /// erased call-site backend.
+    backend: Arc<Host>,
     psi_flux: S,
     dim: usize,
 }
 
-impl<'a, T, S, B> EffectiveHamiltonian2SiteBlockSparse<'a, T, S, B>
+impl<'a, T, S> EffectiveHamiltonian2SiteBlockSparse<'a, T, S>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
     /// Construct from env / MPO references plus the surrounding MPS
     /// sites (used only to derive the psi template's indices and
     /// flux).
     ///
     /// Asserts that the four contracted operands (`left`, `w_i`,
-    /// `w_ip1`, `right`) have a layout `MemoryOrder` matching the
-    /// `backend` argument's `preferred_order()`. The matvec body's
+    /// `w_ip1`, `right`) have a layout `MemoryOrder` matching the host
+    /// substrate's `preferred_order()`. The matvec body's
     /// `contract_block_sparse_with_backend` calls put intermediates
-    /// into the backend's preferred order; an operand whose layout was
+    /// into the host's preferred order; an operand whose layout was
     /// built with a different order would fail the release-active
     /// layout-order check at the next contract entry, but failing here
     /// gives the caller a per-operand diagnostic before any matvec
     /// runs. The MPS sites (`mps_i`, `mps_ip1`) are used only to
-    /// derive the psi template; their order is checked at the public
-    /// step entry's Tier 2 site-scan, not here.
+    /// derive the psi template.
     pub fn new(
-        left: &'a BlockSparseTensor<T, S, B>,
-        w_i: &'a BlockSparseTensor<T, S, B>,
-        w_ip1: &'a BlockSparseTensor<T, S, B>,
-        right: &'a BlockSparseTensor<T, S, B>,
-        mps_i: &BlockSparseTensor<T, S, B>,
-        mps_ip1: &BlockSparseTensor<T, S, B>,
-        backend: Arc<B>,
+        left: &'a BlockSparseTensor<T, S>,
+        w_i: &'a BlockSparseTensor<T, S>,
+        w_ip1: &'a BlockSparseTensor<T, S>,
+        right: &'a BlockSparseTensor<T, S>,
+        mps_i: &BlockSparseTensor<T, S>,
+        mps_ip1: &BlockSparseTensor<T, S>,
     ) -> Result<Self, DmrgHeffError> {
         debug_assert_eq!(left.rank(), 3, "left.rank == 3");
         debug_assert_eq!(right.rank(), 3, "right.rank == 3");
@@ -90,6 +87,7 @@ where
         debug_assert_eq!(mps_i.rank(), 3, "MPS[i].rank == 3");
         debug_assert_eq!(mps_ip1.rank(), 3, "MPS[i+1].rank == 3");
 
+        let backend = Host::shared();
         let expected = backend.preferred_order();
         for (operand, tensor) in [
             ("left_env", left),
@@ -102,7 +100,7 @@ where
                 return Err(DmrgHeffError::OrderMismatch {
                     operand,
                     detail: format!(
-                        "layout order {actual:?}, expected {expected:?} (chain backend preferred_order)"
+                        "layout order {actual:?}, expected {expected:?} (host preferred_order)"
                     ),
                 });
             }
@@ -115,11 +113,7 @@ where
             mps_ip1.indices()[2].clone(),
         ];
         let psi_flux = mps_i.flux().fuse(mps_ip1.flux());
-        let psi_template = BlockSparseTensor::<T, S, B>::zeros_with_backend(
-            psi_indices,
-            psi_flux.clone(),
-            Arc::clone(&backend),
-        );
+        let psi_template = BlockSparseTensor::<T, S>::zeros(psi_indices, psi_flux.clone());
 
         let mut block_offsets = Vec::with_capacity(psi_template.num_blocks() + 1);
         let mut block_coords = Vec::with_capacity(psi_template.num_blocks());
@@ -157,13 +151,12 @@ where
     }
 }
 
-impl<'a, T, S, B> LinearOp<T, NativeBackend> for EffectiveHamiltonian2SiteBlockSparse<'a, T, S, B>
+impl<'a, T, S> LinearOp<T> for EffectiveHamiltonian2SiteBlockSparse<'a, T, S>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
-    fn apply(&self, v: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+    fn apply(&self, v: &DenseTensor<T>) -> DenseTensor<T> {
         assert_eq!(
             v.shape(),
             &[self.dim],
@@ -177,19 +170,24 @@ where
         );
 
         // env(a,b,c) × psi(c,i,j,f) → tmp1(a,b,i,j,f)
-        let tmp1 =
-            match contract_block_sparse_with_backend(&self.backend, self.left, &psi, &[2], &[0])
-                .expect("BlockSparse heff step 1: validated by entry point")
-            {
-                BlockSparseContractResult::Tensor(t) => t,
-                BlockSparseContractResult::Scalar(_) => {
-                    unreachable!("rank 3 + rank 4 over 1 axis keeps rank 5")
-                }
-            };
+        let tmp1 = match contract_block_sparse_with_backend(
+            self.backend.as_ref(),
+            self.left,
+            &psi,
+            &[2],
+            &[0],
+        )
+        .expect("BlockSparse heff step 1: validated by entry point")
+        {
+            BlockSparseContractResult::Tensor(t) => t,
+            BlockSparseContractResult::Scalar(_) => {
+                unreachable!("rank 3 + rank 4 over 1 axis keeps rank 5")
+            }
+        };
 
         // tmp1(a,b,i,j,f) × W[i](b,i,s,m) → tmp2(a,j,f,s,m)
         let tmp2 = match contract_block_sparse_with_backend(
-            &self.backend,
+            self.backend.as_ref(),
             &tmp1,
             self.w_i,
             &[1, 2],
@@ -205,7 +203,7 @@ where
 
         // tmp2(a,j,f,s,m) × W[i+1](m,j,t,g) → tmp3(a,f,s,t,g)
         let tmp3 = match contract_block_sparse_with_backend(
-            &self.backend,
+            self.backend.as_ref(),
             &tmp2,
             self.w_ip1,
             &[1, 4],
@@ -221,7 +219,7 @@ where
 
         // tmp3(a,f,s,t,g) × right(h,g,f) → out(a,s,t,h)
         let out = match contract_block_sparse_with_backend(
-            &self.backend,
+            self.backend.as_ref(),
             &tmp3,
             self.right,
             &[1, 4],
@@ -264,25 +262,22 @@ where
         }
 
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
-        // 1D output is layout-invariant. Bind to `NativeBackend` (the
-        // Krylov family keeps its 1-D scratch space there); the input
-        // is read-only here, so it imposes no order constraint.
-        let native = NativeBackend::shared();
-        DenseTensor::from_raw_parts(flat, vec![self.dim], native)
+        // 1D output is layout-invariant and host-resident, matching the
+        // Krylov family's 1-D scratch space.
+        DenseTensor::from_raw_parts(flat, vec![self.dim])
     }
 }
 
 /// Scatter a flat slice into a clone of the psi template.
-pub(super) fn scatter_flat_to_template<T, S, B>(
+pub(super) fn scatter_flat_to_template<T, S>(
     flat: &[T],
-    template: &BlockSparseTensor<T, S, B>,
+    template: &BlockSparseTensor<T, S>,
     block_offsets: &[usize],
     block_coords: &[BlockCoord],
-) -> BlockSparseTensor<T, S, B>
+) -> BlockSparseTensor<T, S>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
     let mut out = template.clone();
     for (k, coord) in block_coords.iter().enumerate() {
@@ -303,16 +298,15 @@ where
 
 /// Gather a rank-4 BlockSparse output back into a flat `Vec<T>` of
 /// length `dim`.
-fn gather_template_aware<T, S, B>(
-    out_4d: &BlockSparseTensor<T, S, B>,
-    template: &BlockSparseTensor<T, S, B>,
+fn gather_template_aware<T, S>(
+    out_4d: &BlockSparseTensor<T, S>,
+    template: &BlockSparseTensor<T, S>,
     block_offsets: &[usize],
     dim: usize,
 ) -> Vec<T>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
     let mut flat = vec![T::zero(); dim];
     for (k, meta) in template.block_metas().iter().enumerate() {

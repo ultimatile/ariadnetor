@@ -7,14 +7,12 @@
 //! variant gives a closed-form ground-energy reference
 //! (`prod_i min_eig(h_i)`) without a separate ED solver.
 
-use std::sync::Arc;
-
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
@@ -34,7 +32,6 @@ fn random_mps_center_zero_f64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -42,11 +39,11 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     mps
 }
 
@@ -56,7 +53,6 @@ fn random_mps_center_zero_c64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<Complex<f64>>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<Complex<f64>>> = (0..n)
         .map(|i| {
@@ -70,11 +66,11 @@ fn random_mps_center_zero_c64(
                     Complex::new(re, im)
                 })
                 .collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     mps
 }
 
@@ -85,7 +81,6 @@ fn psd_local_mpo_f64(
     d: usize,
     seed: u64,
 ) -> (Mpo<DenseStorage<f64>, DenseLayout>, Vec<Vec<f64>>) {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let eps = 0.5_f64;
     let mut hs: Vec<Vec<f64>> = Vec::with_capacity(n);
@@ -108,7 +103,7 @@ fn psd_local_mpo_f64(
                 h[s + d * s] += eps;
             }
             hs.push(h.clone());
-            DenseTensor::from_raw_parts(h, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(h, vec![1, d, d, 1])
         })
         .collect();
     (Mpo::from_sites(storages), hs)
@@ -118,7 +113,6 @@ type C64Mpo = Mpo<DenseStorage<Complex<f64>>, DenseLayout>;
 type C64SiteMatrix = Vec<Complex<f64>>;
 
 fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatrix>) {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let eps = Complex::new(0.5_f64, 0.0);
     let mut hs: Vec<Vec<Complex<f64>>> = Vec::with_capacity(n);
@@ -144,7 +138,7 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
                 h[s + d * s] += eps;
             }
             hs.push(h.clone());
-            DenseTensor::from_raw_parts(h, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(h, vec![1, d, d, 1])
         })
         .collect();
     (Mpo::from_sites(storages), hs)
@@ -153,7 +147,6 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
 /// Hermitian (real-symmetric, mixed-sign) bond-dim-1 product MPO.
 /// `m` is stored column-major to match NativeBackend.
 fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
@@ -166,7 +159,7 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
                     m[s + d * t] = 0.5 * (r[s * d + t] + r[t * d + s]);
                 }
             }
-            DenseTensor::from_raw_parts(m, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(m, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(storages)
@@ -174,9 +167,8 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
 
 /// Smallest eigenvalue of a real-symmetric `d×d` matrix; `h` is CM.
 fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
-    let backend = NativeBackend::shared();
-    let m = DenseTensor::from_raw_parts(h.to_vec(), vec![d, d], Arc::clone(&backend));
-    let (eigvals, _eigvecs) = eigh(&m, 1).expect("eigh");
+    let m = DenseTensor::from_raw_parts(h.to_vec(), vec![d, d]);
+    let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &m, 1).expect("eigh");
     eigvals
         .data_slice()
         .iter()
@@ -186,9 +178,8 @@ fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
 
 /// Smallest eigenvalue of a complex Hermitian `d×d` matrix (CM, see above).
 fn min_eig_complex_herm(h: &[Complex<f64>], d: usize) -> f64 {
-    let backend = NativeBackend::shared();
-    let m = DenseTensor::from_raw_parts(h.to_vec(), vec![d, d], Arc::clone(&backend));
-    let (eigvals, _eigvecs) = eigh(&m, 1).expect("eigh");
+    let m = DenseTensor::from_raw_parts(h.to_vec(), vec![d, d]);
+    let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &m, 1).expect("eigh");
     eigvals
         .data_slice()
         .iter()
@@ -468,16 +459,13 @@ fn t6_length_mismatch_mps_vs_envs() {
 #[test]
 fn t6_too_few_sites() {
     let d = 2;
-    let backend = NativeBackend::shared();
     let mps = Mps::from_sites(vec![DenseTensor::from_raw_parts(
         vec![1.0_f64, 0.0],
         vec![1, d, 1],
-        Arc::clone(&backend),
     )]);
     let mpo = Mpo::from_sites(vec![DenseTensor::from_raw_parts(
         vec![1.0_f64, 0.0, 0.0, 1.0],
         vec![1, d, d, 1],
-        Arc::clone(&backend),
     )]);
     let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
         DmrgEnvs::build(&mps, &mpo).expect("build");
@@ -558,7 +546,7 @@ fn t6_canonical_form_left_rejected() {
         DmrgEnvs::build(&mps, &mpo).expect("build");
     // Move center to N-1 (i.e., left-canonical at sites 0..N-1) — not
     // allowed for the sweep entry point.
-    canonicalize(&mut mps, n - 1);
+    canonicalize(&NativeBackend::new(), &mut mps, n - 1);
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &standard_params_f64(0x2F))
         .expect_err("left canonical reject");
     assert!(matches!(err, DmrgSweepError::MpsNotRightCanonical { .. }));

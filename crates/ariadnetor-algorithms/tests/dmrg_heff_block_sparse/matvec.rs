@@ -7,7 +7,7 @@ use arnet_algorithms::dmrg::{
     LocalEigensolverParams, dmrg_2site_step_block_sparse,
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
-use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::TensorChain;
 use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
@@ -27,7 +27,6 @@ fn bsp_heff_matvec_matches_dense_oracle() {
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);
 
-    let backend = NativeBackend::shared();
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left env"),
         mpo.site(0),
@@ -35,7 +34,6 @@ fn bsp_heff_matvec_matches_dense_oracle() {
         envs.right(2).expect("right env"),
         mps.site(0),
         mps.site(1),
-        backend.clone(),
     )
     .expect("operands share backend preferred_order by construction");
 
@@ -47,9 +45,8 @@ fn bsp_heff_matvec_matches_dense_oracle() {
     let d0 = mps.site(0).shape()[1];
     let d1 = mps.site(1).shape()[1];
     let chi_r = right_d.shape()[0];
-    let dense_heff = EffectiveHamiltonian2Site::new(
-        &left_d, &w0_d, &w1_d, &right_d, chi_l, d0, d1, chi_r, backend,
-    );
+    let dense_heff =
+        EffectiveHamiltonian2Site::new(&left_d, &w0_d, &w1_d, &right_d, chi_l, d0, d1, chi_r);
 
     let dim = bsp_heff.dim();
     let test_inputs: Vec<Vec<f64>> = vec![
@@ -59,8 +56,7 @@ fn bsp_heff_matvec_matches_dense_oracle() {
     ];
     let template = template_from_mps_pair(mps.site(0), mps.site(1));
     for (case, v) in test_inputs.iter().enumerate() {
-        let v_dense_flat =
-            DenseTensor::from_raw_parts(v.clone(), vec![dim], NativeBackend::shared());
+        let v_dense_flat = DenseTensor::from_raw_parts(v.clone(), vec![dim]);
         let bsp_out = bsp_heff.apply(&v_dense_flat);
         assert_eq!(bsp_out.shape(), &[dim], "BSP output shape");
 
@@ -85,7 +81,6 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
     let mps = make_n3_mps_f64();
     let mpo = make_n3_mpo_f64(1.5);
     let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
-    let backend = NativeBackend::shared();
 
     // `DmrgEnvs::build` populates `left[0]` (boundary) and
     // `right[1..=n_sites]` (extended down from the right edge).
@@ -100,7 +95,6 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
         envs.right(site + 2).expect("right ext"),
         mps.site(site),
         mps.site(site + 1),
-        backend.clone(),
     )
     .expect("operands share backend preferred_order by construction");
 
@@ -120,7 +114,7 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
     let d_ip1 = mps.site(site + 1).shape()[1];
     let chi_r = right_d.shape()[0];
     let dense_heff = EffectiveHamiltonian2Site::new(
-        &left_d, &w_i_d, &w_ip1_d, &right_d, chi_l, d_i, d_ip1, chi_r, backend,
+        &left_d, &w_i_d, &w_ip1_d, &right_d, chi_l, d_i, d_ip1, chi_r,
     );
 
     let template = template_from_mps_pair(mps.site(site), mps.site(site + 1));
@@ -132,11 +126,7 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
         (0..dim).map(|i| ((i as i32 - 1) as f64) * 0.3).collect(),
     ];
     for (case, v) in test_inputs.iter().enumerate() {
-        let bsp_out = bsp_heff.apply(&DenseTensor::from_raw_parts(
-            v.clone(),
-            vec![dim],
-            NativeBackend::shared(),
-        ));
+        let bsp_out = bsp_heff.apply(&DenseTensor::from_raw_parts(v.clone(), vec![dim]));
         let psi_dense = build_dense_psi_from_flat(v, &template);
         let dense_out = dense_heff.apply(&psi_dense.reshape(vec![chi_l * d_i * d_ip1 * chi_r]));
         let dense_out_4d = dense_out.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
@@ -172,7 +162,6 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
     let envs = build_envs_n2_f64(&mps, &mpo);
-    let backend = NativeBackend::shared();
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left"),
         mpo.site(0),
@@ -180,7 +169,6 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
         envs.right(2).expect("right"),
         mps.site(0),
         mps.site(1),
-        backend.clone(),
     )
     .expect("operands share backend preferred_order by construction");
     let dim = bsp_heff.dim();
@@ -195,11 +183,7 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     for j in 0..dim {
         let mut e_j = vec![0.0_f64; dim];
         e_j[j] = 1.0;
-        let out = bsp_heff.apply(&DenseTensor::from_raw_parts(
-            e_j,
-            vec![dim],
-            NativeBackend::shared(),
-        ));
+        let out = bsp_heff.apply(&DenseTensor::from_raw_parts(e_j, vec![dim]));
         for i in 0..dim {
             h_data[i + dim * j] = out.data_slice()[i];
         }
@@ -217,8 +201,8 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
         }
     }
 
-    let h_dense = DenseTensor::from_raw_parts(h_data, vec![dim, dim], NativeBackend::shared());
-    let (eigvals, _eigvecs) = eigh(&h_dense, 1).expect("eigh");
+    let h_dense = DenseTensor::from_raw_parts(h_data, vec![dim, dim]);
+    let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &h_dense, 1).expect("eigh");
     let eigh_smallest = eigvals.data_slice()[0];
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams {
