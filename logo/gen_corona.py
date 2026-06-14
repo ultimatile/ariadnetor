@@ -51,12 +51,12 @@ LETTER_SPACING = 2
 # Chain order below is the drawn polyline; Alphecca is index 2 (the 3rd node),
 # the single red accent.
 STARS = {
-    "theta":   (15.553, 31.359),  # mag 4.1
+    "theta":   (15.549, 31.359),  # mag 4.1
     "beta":    (15.464, 29.106),  # mag 3.7  Nusakan
     "alpha":   (15.578, 26.715),  # mag 2.2  Alphecca
-    "gamma":   (15.713, 26.296),  # mag 3.8
+    "gamma":   (15.712, 26.296),  # mag 3.8
     "delta":   (15.827, 26.068),  # mag 4.6
-    "epsilon": (15.958, 26.878),  # mag 4.1
+    "epsilon": (15.960, 26.878),  # mag 4.1
     "iota":    (16.024, 29.851),  # mag 4.9
 }
 CHAIN = ["theta", "beta", "alpha", "gamma", "delta", "epsilon", "iota"]
