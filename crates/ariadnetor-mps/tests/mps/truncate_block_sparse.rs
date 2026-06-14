@@ -9,6 +9,7 @@ use arnet_mps::{
     CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams, canonicalize,
     truncate,
 };
+use arnet_native::NativeBackend;
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
     U1Sector,
@@ -27,8 +28,9 @@ const TOL: f64 = 1e-10;
 
 #[test]
 fn truncate_bsp_no_change_within_tolerance() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 2);
+    canonicalize(&backend, &mut mps, 2);
 
     let state_before = bsp_mps_contract_full(&mps);
     let bond_dims_before = mps.bond_dims();
@@ -37,7 +39,7 @@ fn truncate_bsp_no_change_within_tolerance() {
         chi_max: Some(100),
         target_trunc_err: None,
     });
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
     assert!(
@@ -59,8 +61,9 @@ fn truncate_bsp_no_change_within_tolerance() {
 
 #[test]
 fn truncate_bsp_preserves_state_approximately() {
+    let backend = NativeBackend::new();
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
     let state_before = bsp_mps_contract_full(&mps);
     let norm_before = state_before.norm();
 
@@ -68,7 +71,7 @@ fn truncate_bsp_preserves_state_approximately() {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    truncate(&mut mps, &params);
+    truncate(&backend, &mut mps, &params);
     let state_after = bsp_mps_contract_full(&mps);
     let norm_after = state_after.norm();
 
@@ -91,14 +94,15 @@ fn truncate_bsp_preserves_state_approximately() {
 
 #[test]
 fn truncate_bsp_reduces_bond_dim() {
+    let backend = NativeBackend::new();
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
 
     for d in mps.bond_dims() {
         assert!(d <= 1, "bond dim {d} exceeds chi_max=1");
@@ -113,14 +117,15 @@ fn truncate_bsp_reduces_bond_dim() {
 
 #[test]
 fn truncate_bsp_absorb_right_isometry() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 2);
+    canonicalize(&backend, &mut mps, 2);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    truncate(&mut mps, &params);
+    truncate(&backend, &mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
     // Sites 0 and 1 left-canonical, site 2 is center, site 3 right-canonical
@@ -140,8 +145,9 @@ fn truncate_bsp_absorb_right_isometry() {
 
 #[test]
 fn truncate_bsp_absorb_left_isometry() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 1);
+    canonicalize(&backend, &mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -151,7 +157,7 @@ fn truncate_bsp_absorb_left_isometry() {
         absorb: SvdAbsorb::Left,
         center: None,
     };
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
@@ -171,8 +177,9 @@ fn truncate_bsp_absorb_left_isometry() {
 
 #[test]
 fn truncate_bsp_absorb_both_sets_unknown() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 1);
+    canonicalize(&backend, &mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -182,7 +189,7 @@ fn truncate_bsp_absorb_both_sets_unknown() {
         absorb: SvdAbsorb::Both,
         center: None,
     };
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
@@ -199,6 +206,7 @@ fn truncate_bsp_absorb_both_sets_unknown() {
 fn truncate_bsp_single_site() {
     use arnet_tensor::{BlockCoord, Direction, QNIndex};
 
+    let backend = NativeBackend::new();
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
@@ -208,13 +216,13 @@ fn truncate_bsp_single_site() {
 
     let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
         Mps::from_sites(vec![site]);
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
 
     assert!(result.error < TOL, "single-site should have zero error");
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
@@ -226,6 +234,7 @@ fn truncate_bsp_single_site() {
 
 #[test]
 fn truncate_bsp_auto_canonicalizes_from_unknown() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
@@ -237,7 +246,7 @@ fn truncate_bsp_auto_canonicalizes_from_unknown() {
         absorb: SvdAbsorb::Right,
         center: Some(2),
     };
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
@@ -252,15 +261,16 @@ fn truncate_bsp_auto_canonicalizes_from_unknown() {
 
 #[test]
 fn truncate_bsp_error_is_positive_when_truncated() {
+    let backend = NativeBackend::new();
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
     let norm_before = bsp_mps_contract_full(&mps).norm();
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
 
     assert!(
         result.error > 0.0,
@@ -280,8 +290,9 @@ fn truncate_bsp_error_is_positive_when_truncated() {
 ///          `err * err` → `err + err` in right/left_trunc_step_block_sparse.
 #[test]
 fn truncate_bsp_error_matches_reconstruction_error() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 2);
+    canonicalize(&backend, &mut mps, 2);
     let state_before = bsp_mps_contract_full(&mps);
     let norm_before = state_before.norm();
     let norm_sq_before = norm_before * norm_before;
@@ -290,7 +301,7 @@ fn truncate_bsp_error_matches_reconstruction_error() {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
     let state_after = bsp_mps_contract_full(&mps);
     let norm_after = state_after.norm();
     let norm_sq_after = norm_after * norm_after;
@@ -388,8 +399,9 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparseStorage<f64>, BlockSparseL
 /// final-right step multiplies by 0 instead of adding 0).
 #[test]
 fn truncate_bsp_error_pins_step_arithmetic_3site() {
+    let backend = NativeBackend::new();
     let mut mps = make_3site_u1_truncate_fixture();
-    canonicalize(&mut mps, 1);
+    canonicalize(&backend, &mut mps, 1);
     let state_before = bsp_mps_contract_full(&mps);
     let norm_before = state_before.norm();
     let norm_sq_before = norm_before * norm_before;
@@ -398,7 +410,7 @@ fn truncate_bsp_error_pins_step_arithmetic_3site() {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = truncate(&mut mps, &params);
+    let result = truncate(&backend, &mut mps, &params);
     let state_after = bsp_mps_contract_full(&mps);
     let norm_after = state_after.norm();
     let norm_sq_after = norm_after * norm_after;
@@ -433,16 +445,17 @@ fn truncate_bsp_error_pins_step_arithmetic_3site() {
 /// Catches: delete match arm CanonicalForm::Left, `n - 1` → `n + 1`/`n / 1`.
 #[test]
 fn truncate_bsp_left_form_center_is_last_site() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
     let n = mps.len();
-    canonicalize(&mut mps, n - 1);
+    canonicalize(&backend, &mut mps, n - 1);
     mps.set_canonical_form(CanonicalForm::Left);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    truncate(&mut mps, &params);
+    truncate(&backend, &mut mps, &params);
 
     assert_eq!(
         *mps.canonical_form(),
@@ -460,8 +473,9 @@ fn truncate_bsp_left_form_center_is_last_site() {
 /// Right form uses center=0 regardless of params.center.
 #[test]
 fn truncate_bsp_right_form_ignores_center_param() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
     let params = TruncateParams {
@@ -472,7 +486,7 @@ fn truncate_bsp_right_form_ignores_center_param() {
         absorb: SvdAbsorb::Right,
         center: Some(2),
     };
-    truncate(&mut mps, &params);
+    truncate(&backend, &mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }

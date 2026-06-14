@@ -1,6 +1,9 @@
 //! Shared test helpers for MPS tests.
 
-use arnet_linalg::{BlockSparseContractResult, contract, contract_block_sparse, transpose};
+use arnet_linalg::{
+    BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
+    transpose_with_backend,
+};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
@@ -12,7 +15,7 @@ use arnet_tensor::{
 /// Build a `DenseTensor<f64>` from data already laid out in the active
 /// backend's preferred order (NativeBackend → ColumnMajor).
 pub fn cm_dense_tensor<T: arnet_core::Scalar>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
-    DenseTensor::from_raw_parts(data, shape, NativeBackend::shared())
+    DenseTensor::from_raw_parts(data, shape)
 }
 
 /// Build a `DenseTensor<f64>` whose logical content matches `data` read
@@ -26,9 +29,10 @@ pub fn rm_dense_tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
     let total = shape.iter().product::<usize>();
     assert_eq!(data.len(), total, "rm_dense_tensor: data length mismatch");
     let reversed_shape: Vec<usize> = shape.iter().rev().copied().collect();
-    let reversed = DenseTensor::from_raw_parts(data, reversed_shape, NativeBackend::shared());
+    let reversed = DenseTensor::from_raw_parts(data, reversed_shape);
     let perm: Vec<usize> = (0..shape.len()).rev().collect();
-    transpose(&reversed, &perm).expect("rm_dense_tensor: reverse-axis transpose")
+    transpose_with_backend(&NativeBackend::new(), &reversed, &perm)
+        .expect("rm_dense_tensor: reverse-axis transpose")
 }
 
 /// Single-basis-state dense MPS site for |phys_c⟩ with bond dim 1.
@@ -36,7 +40,7 @@ pub fn dense_basis_site(phys_c: usize) -> DenseTensor<f64> {
     assert!(phys_c <= 1, "physical dim is 2 (charges 0, 1)");
     let mut data = vec![0.0; 2];
     data[phys_c] = 1.0;
-    DenseTensor::from_raw_parts(data, vec![1, 2, 1], NativeBackend::shared())
+    DenseTensor::from_raw_parts(data, vec![1, 2, 1])
 }
 
 /// Dense total-particle-number MPO `N = Σ_j n_j` over `n` sites.
@@ -89,7 +93,7 @@ pub fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let rm2d = rm.reshape(vec![m, k]);
     let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
-    let qtq = contract(&mat, &mat, "ab,ac->bc").unwrap();
+    let qtq = contract_with_backend(&NativeBackend::new(), &mat, &mat, "ab,ac->bc").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -113,7 +117,7 @@ pub fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let rm2d = rm.reshape(vec![k, n]);
     let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
-    let qqt = contract(&mat, &mat, "ab,cb->ac").unwrap();
+    let qqt = contract_with_backend(&NativeBackend::new(), &mat, &mat, "ab,cb->ac").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -151,7 +155,9 @@ pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f6
         let site_2d_rm = site_rm.reshape(vec![s_first, s_rest]);
         let site_2d = site_2d_rm.reordered(order);
 
-        let contracted = contract(&result_2d, &site_2d, "ab,bc->ac").unwrap();
+        let contracted =
+            contract_with_backend(&NativeBackend::new(), &result_2d, &site_2d, "ab,bc->ac")
+                .unwrap();
 
         let contracted_rm = contracted.reordered(rm);
         let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
@@ -387,8 +393,14 @@ pub fn bsp_mps_contract_full(
     for j in 1..n {
         let site = mps.site(j);
         let last_axis = acc.rank() - 1;
-        let result = contract_block_sparse(&acc, site, &[last_axis], &[0])
-            .expect("chain contraction failed in bsp_mps_contract_full");
+        let result = contract_block_sparse_with_backend(
+            &NativeBackend::new(),
+            &acc,
+            site,
+            &[last_axis],
+            &[0],
+        )
+        .expect("chain contraction failed in bsp_mps_contract_full");
         acc = match result {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {

@@ -4,10 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Tensor-network algorithms (DMRG, TEBD, ...) built on Ariadnetor"
-# The legacy-import guard stub `#[path]`-includes its single source from
-# the sibling mps crate, which a packaged .crate cannot reach; keep the
-# workspace-internal guard out of the package.
-exclude = ["tests/legacy_import_guard.rs"]
 
 [features]
 default = []

@@ -18,12 +18,6 @@ num-traits = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
-# The legacy-import guard parses production sources syntactically;
-# span-locations supplies the line numbers in its failure report. The
-# features are restated here so the guard's contract survives a
-# narrowing of the workspace defaults.
-proc-macro2 = { workspace = true, features = ["span-locations"] }
-syn = { workspace = true, features = ["full", "visit"] }
 
 [lib]
 name = "arnet_mps"
