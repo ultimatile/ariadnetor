@@ -3,23 +3,19 @@
 //!
 //! [`MpsOps`] is implemented on the concrete layout types
 //! ([`DenseLayout`] and [`BlockSparseLayout<S>`]); each implementation
-//! routes to its storage-specific kernel and additionally performs a
-//! Tier 2 defensive scan of all participating site orders against the
-//! chain's backend's `preferred_order()`. Algorithms parameterized over
+//! routes to its storage-specific kernel. Algorithms parameterized over
 //! `L: MpsOps<T>` work uniformly across both flavors.
 //!
 //! # Operation authority
 //!
-//! Every operation below derives its compute backend once from the
-//! entry chain (`psi` for the cross-chain operations) and dispatches
-//! all kernels through that handle via the explicit-backend
-//! (`*_with_backend`) paths. The `Arc` a site tensor carries is a
-//! result label only on these paths and never receives kernel
-//! dispatch. On chains whose sites hold a different backend instance
-//! than the chain handle (constructible — site validation compares
-//! memory order, not `Arc` identity), this is the operative contract:
-//! the chain handle is the single authority, per the call-site
-//! backend-supply design.
+//! Every operation takes its compute backend explicitly at the call
+//! site and dispatches all kernels through that handle via the
+//! explicit-backend (`*_with_backend`) linalg paths. The chain itself
+//! carries no backend, so there is a single, unambiguous authority per
+//! call. Block-sparse layout-order safety is enforced inside the linalg
+//! twins (their release-active entry checks compare each operand's
+//! layout order against the supplied backend's preferred order); dense
+//! paths self-normalize.
 
 use std::num::NonZeroUsize;
 
@@ -36,37 +32,42 @@ use super::types::{ApplyMethod, Mpo, Mps, TruncResult, TruncateParams};
 ///
 /// Implemented for [`DenseLayout`] and [`BlockSparseLayout<S>`], each
 /// pairing a storage type via [`MpsOps::Storage`] and routing each
-/// operation to its storage-specific implementation.
+/// operation to its storage-specific implementation. Every operation
+/// receives the compute backend explicitly.
 pub trait MpsOps<T: Scalar>: TensorLayout + Sized {
     /// Storage type paired with this layout.
     type Storage: Storage + StorageFor<Self>;
 
     /// Position the orthogonality center at `center`.
     fn canonicalize<B: ComputeBackend>(
-        chain: &mut impl TensorChain<Self::Storage, Self, B>,
+        backend: &B,
+        chain: &mut impl TensorChain<Self::Storage, Self>,
         center: usize,
     );
 
     /// Truncate bond dimensions according to `params`.
     fn truncate<B: ComputeBackend>(
-        chain: &mut impl TensorChain<Self::Storage, Self, B>,
+        backend: &B,
+        chain: &mut impl TensorChain<Self::Storage, Self>,
         params: &TruncateParams,
     ) -> TruncResult<T>;
 
     /// Compute the inner product ⟨ψ|φ⟩.
     fn inner<B: ComputeBackend>(
-        psi: &Mps<Self::Storage, Self, B>,
-        phi: &Mps<Self::Storage, Self, B>,
+        backend: &B,
+        psi: &Mps<Self::Storage, Self>,
+        phi: &Mps<Self::Storage, Self>,
     ) -> T;
 
     /// Compute the norm ‖ψ‖.
-    fn norm<B: ComputeBackend>(psi: &Mps<Self::Storage, Self, B>) -> T::Real;
+    fn norm<B: ComputeBackend>(backend: &B, psi: &Mps<Self::Storage, Self>) -> T::Real;
 
     /// Compute the expectation value ⟨ψ|O|φ⟩.
     fn braket<B: ComputeBackend>(
-        psi: &Mps<Self::Storage, Self, B>,
-        op: &Mpo<Self::Storage, Self, B>,
-        phi: &Mps<Self::Storage, Self, B>,
+        backend: &B,
+        psi: &Mps<Self::Storage, Self>,
+        op: &Mpo<Self::Storage, Self>,
+        phi: &Mps<Self::Storage, Self>,
     ) -> T;
 
     /// Apply an MPO to an MPS: O|ψ⟩ via the streaming-naive algorithm.
@@ -76,68 +77,12 @@ pub trait MpsOps<T: Scalar>: TensorLayout + Sized {
     /// truncated SVD with cap `k * chi_max` when the natural per-site
     /// forward rank exceeds it.
     fn apply<B: ComputeBackend>(
-        op: &Mpo<Self::Storage, Self, B>,
-        psi: &Mps<Self::Storage, Self, B>,
+        backend: &B,
+        op: &Mpo<Self::Storage, Self>,
+        psi: &Mps<Self::Storage, Self>,
         params: Option<&TruncateParams>,
         forward_cap: Option<NonZeroUsize>,
-    ) -> Mps<Self::Storage, Self, B>;
-}
-
-// ============================================================================
-// Tier 2 helper macros: assert every participating site's layout order
-// matches the chain's backend's preferred order. Site-level mutation
-// through `TensorChain::site_mut` can in principle violate the Tier 1
-// invariant established at construction; the Tier 2 scan catches that
-// at every cross-chain op entry point.
-// ============================================================================
-
-fn assert_dense_chain_order<T, B, C>(chain: &C, ctx: &str)
-where
-    T: Scalar,
-    B: ComputeBackend,
-    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
-{
-    let expected = chain.backend().preferred_order();
-    for i in 0..chain.len() {
-        let got = chain.site(i).data().layout().order();
-        assert_eq!(
-            got, expected,
-            "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
-        );
-        // The internal operation paths dispatch through the chain
-        // handle (see the module doc), but the legacy public wrappers
-        // still dispatch through a tensor's cached backend until they
-        // are removed, and `site_mut` can rebind a foreign backend.
-        // Per-site cached backend preferred_order must therefore still
-        // agree with the chain backend's.
-        let site_backend_order = chain.site(i).backend().preferred_order();
-        assert_eq!(
-            site_backend_order, expected,
-            "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) != chain backend preferred_order ({expected:?})",
-        );
-    }
-}
-
-fn assert_bsp_chain_order<T, S, B, C>(chain: &C, ctx: &str)
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-{
-    let expected = chain.backend().preferred_order();
-    for i in 0..chain.len() {
-        let got = chain.site(i).data().layout().order();
-        assert_eq!(
-            got, expected,
-            "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
-        );
-        let site_backend_order = chain.site(i).backend().preferred_order();
-        assert_eq!(
-            site_backend_order, expected,
-            "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) != chain backend preferred_order ({expected:?})",
-        );
-    }
+    ) -> Mps<Self::Storage, Self>;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,76 +93,50 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
     type Storage = DenseStorage<T>;
 
     fn canonicalize<B: ComputeBackend>(
-        chain: &mut impl TensorChain<DenseStorage<T>, DenseLayout, B>,
+        backend: &B,
+        chain: &mut impl TensorChain<DenseStorage<T>, DenseLayout>,
         center: usize,
     ) {
-        assert_dense_chain_order(chain, "MpsOps::canonicalize");
-        super::canonicalize::canonicalize_dense(chain, center);
+        super::canonicalize::canonicalize_dense(backend, chain, center);
     }
 
     fn truncate<B: ComputeBackend>(
-        chain: &mut impl TensorChain<DenseStorage<T>, DenseLayout, B>,
+        backend: &B,
+        chain: &mut impl TensorChain<DenseStorage<T>, DenseLayout>,
         params: &TruncateParams,
     ) -> TruncResult<T> {
-        assert_dense_chain_order(chain, "MpsOps::truncate");
-        super::truncate::truncate_dense(chain, params)
+        super::truncate::truncate_dense(backend, chain, params)
     }
 
     fn inner<B: ComputeBackend>(
-        psi: &Mps<DenseStorage<T>, DenseLayout, B>,
-        phi: &Mps<DenseStorage<T>, DenseLayout, B>,
+        backend: &B,
+        psi: &Mps<DenseStorage<T>, DenseLayout>,
+        phi: &Mps<DenseStorage<T>, DenseLayout>,
     ) -> T {
-        assert_eq!(
-            psi.backend().preferred_order(),
-            phi.backend().preferred_order(),
-            "MpsOps::inner: psi/phi backend preferred_order mismatch",
-        );
-        assert_dense_chain_order(psi, "MpsOps::inner.psi");
-        assert_dense_chain_order(phi, "MpsOps::inner.phi");
-        super::inner::inner_dense(psi, phi)
+        super::inner::inner_dense(backend, psi, phi)
     }
 
-    fn norm<B: ComputeBackend>(psi: &Mps<DenseStorage<T>, DenseLayout, B>) -> T::Real {
-        assert_dense_chain_order(psi, "MpsOps::norm");
-        super::inner::norm_dense(psi)
+    fn norm<B: ComputeBackend>(backend: &B, psi: &Mps<DenseStorage<T>, DenseLayout>) -> T::Real {
+        super::inner::norm_dense(backend, psi)
     }
 
     fn braket<B: ComputeBackend>(
-        psi: &Mps<DenseStorage<T>, DenseLayout, B>,
-        op: &Mpo<DenseStorage<T>, DenseLayout, B>,
-        phi: &Mps<DenseStorage<T>, DenseLayout, B>,
+        backend: &B,
+        psi: &Mps<DenseStorage<T>, DenseLayout>,
+        op: &Mpo<DenseStorage<T>, DenseLayout>,
+        phi: &Mps<DenseStorage<T>, DenseLayout>,
     ) -> T {
-        let order = psi.backend().preferred_order();
-        assert_eq!(
-            order,
-            op.backend().preferred_order(),
-            "MpsOps::braket: psi/op backend preferred_order mismatch",
-        );
-        assert_eq!(
-            order,
-            phi.backend().preferred_order(),
-            "MpsOps::braket: psi/phi backend preferred_order mismatch",
-        );
-        assert_dense_chain_order(psi, "MpsOps::braket.psi");
-        assert_dense_chain_order(op, "MpsOps::braket.op");
-        assert_dense_chain_order(phi, "MpsOps::braket.phi");
-        super::inner::braket_dense(psi, op, phi)
+        super::inner::braket_dense(backend, psi, op, phi)
     }
 
     fn apply<B: ComputeBackend>(
-        op: &Mpo<DenseStorage<T>, DenseLayout, B>,
-        psi: &Mps<DenseStorage<T>, DenseLayout, B>,
+        backend: &B,
+        op: &Mpo<DenseStorage<T>, DenseLayout>,
+        psi: &Mps<DenseStorage<T>, DenseLayout>,
         params: Option<&TruncateParams>,
         forward_cap: Option<NonZeroUsize>,
-    ) -> Mps<DenseStorage<T>, DenseLayout, B> {
-        assert_eq!(
-            op.backend().preferred_order(),
-            psi.backend().preferred_order(),
-            "MpsOps::apply: op/psi backend preferred_order mismatch",
-        );
-        assert_dense_chain_order(op, "MpsOps::apply.op");
-        assert_dense_chain_order(psi, "MpsOps::apply.psi");
-        super::apply::apply_streaming_naive_dense(op, psi, params, forward_cap)
+    ) -> Mps<DenseStorage<T>, DenseLayout> {
+        super::apply::apply_streaming_naive_dense(backend, op, psi, params, forward_cap)
     }
 }
 
@@ -229,158 +148,135 @@ impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
     type Storage = BlockSparseStorage<T>;
 
     fn canonicalize<B: ComputeBackend>(
-        chain: &mut impl TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+        backend: &B,
+        chain: &mut impl TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         center: usize,
     ) {
-        assert_bsp_chain_order(chain, "MpsOps::canonicalize");
-        super::canonicalize::canonicalize_bsp(chain, center);
+        super::canonicalize::canonicalize_bsp(backend, chain, center);
     }
 
     fn truncate<B: ComputeBackend>(
-        chain: &mut impl TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+        backend: &B,
+        chain: &mut impl TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         params: &TruncateParams,
     ) -> TruncResult<T> {
-        assert_bsp_chain_order(chain, "MpsOps::truncate");
-        super::truncate::truncate_bsp(chain, params)
+        super::truncate::truncate_bsp(backend, chain, params)
     }
 
     fn inner<B: ComputeBackend>(
-        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-        phi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+        backend: &B,
+        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        phi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     ) -> T {
-        assert_eq!(
-            psi.backend().preferred_order(),
-            phi.backend().preferred_order(),
-            "MpsOps::inner: psi/phi backend preferred_order mismatch",
-        );
-        assert_bsp_chain_order(psi, "MpsOps::inner.psi");
-        assert_bsp_chain_order(phi, "MpsOps::inner.phi");
-        super::inner::inner_bsp(psi, phi)
+        super::inner::inner_bsp(backend, psi, phi)
     }
 
     fn norm<B: ComputeBackend>(
-        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+        backend: &B,
+        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     ) -> T::Real {
-        assert_bsp_chain_order(psi, "MpsOps::norm");
-        super::inner::norm_bsp(psi)
+        super::inner::norm_bsp(backend, psi)
     }
 
     fn braket<B: ComputeBackend>(
-        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-        phi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+        backend: &B,
+        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        phi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     ) -> T {
-        let order = psi.backend().preferred_order();
-        assert_eq!(
-            order,
-            op.backend().preferred_order(),
-            "MpsOps::braket: psi/op backend preferred_order mismatch",
-        );
-        assert_eq!(
-            order,
-            phi.backend().preferred_order(),
-            "MpsOps::braket: psi/phi backend preferred_order mismatch",
-        );
-        assert_bsp_chain_order(psi, "MpsOps::braket.psi");
-        assert_bsp_chain_order(op, "MpsOps::braket.op");
-        assert_bsp_chain_order(phi, "MpsOps::braket.phi");
-        super::inner::braket_bsp(psi, op, phi)
+        super::inner::braket_bsp(backend, psi, op, phi)
     }
 
     fn apply<B: ComputeBackend>(
-        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+        backend: &B,
+        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         params: Option<&TruncateParams>,
         forward_cap: Option<NonZeroUsize>,
-    ) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> {
-        assert_eq!(
-            op.backend().preferred_order(),
-            psi.backend().preferred_order(),
-            "MpsOps::apply: op/psi backend preferred_order mismatch",
-        );
-        assert_bsp_chain_order(op, "MpsOps::apply.op");
-        assert_bsp_chain_order(psi, "MpsOps::apply.psi");
-        super::apply::apply_streaming_naive_bsp(op, psi, params, forward_cap)
+    ) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>> {
+        super::apply::apply_streaming_naive_bsp(backend, op, psi, params, forward_cap)
     }
 }
 
 // ---------------------------------------------------------------------------
 // Unified free functions — type-erase the layout into `L: MpsOps<T>` so
-// algorithms can write `canonicalize(chain, c)` without naming the
-// storage explicitly.
+// algorithms can write `canonicalize(backend, chain, c)` without naming
+// the storage explicitly.
 // ---------------------------------------------------------------------------
 
 /// Position the orthogonality center at `center`.
-pub fn canonicalize<T, L, B, C>(chain: &mut C, center: usize)
+pub fn canonicalize<T, L, B, C>(backend: &B, chain: &mut C, center: usize)
 where
     T: Scalar,
     L: MpsOps<T>,
     B: ComputeBackend,
-    C: TensorChain<L::Storage, L, B>,
+    C: TensorChain<L::Storage, L>,
 {
-    <L as MpsOps<T>>::canonicalize(chain, center);
+    <L as MpsOps<T>>::canonicalize(backend, chain, center);
 }
 
 /// Truncate bond dimensions according to `params`.
-pub fn truncate<T, L, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub fn truncate<T, L, B, C>(backend: &B, chain: &mut C, params: &TruncateParams) -> TruncResult<T>
 where
     T: Scalar,
     L: MpsOps<T>,
     B: ComputeBackend,
-    C: TensorChain<L::Storage, L, B>,
+    C: TensorChain<L::Storage, L>,
 {
-    <L as MpsOps<T>>::truncate(chain, params)
+    <L as MpsOps<T>>::truncate(backend, chain, params)
 }
 
 /// Compute the inner product ⟨ψ|φ⟩.
-pub fn inner<T, L, B>(psi: &Mps<L::Storage, L, B>, phi: &Mps<L::Storage, L, B>) -> T
+pub fn inner<T, L, B>(backend: &B, psi: &Mps<L::Storage, L>, phi: &Mps<L::Storage, L>) -> T
 where
     T: Scalar,
     L: MpsOps<T>,
     B: ComputeBackend,
 {
-    <L as MpsOps<T>>::inner(psi, phi)
+    <L as MpsOps<T>>::inner(backend, psi, phi)
 }
 
 /// Compute the norm ‖ψ‖.
-pub fn norm<T, L, B>(psi: &Mps<L::Storage, L, B>) -> T::Real
+pub fn norm<T, L, B>(backend: &B, psi: &Mps<L::Storage, L>) -> T::Real
 where
     T: Scalar,
     L: MpsOps<T>,
     B: ComputeBackend,
 {
-    <L as MpsOps<T>>::norm(psi)
+    <L as MpsOps<T>>::norm(backend, psi)
 }
 
 /// Compute the expectation value ⟨ψ|O|φ⟩.
 pub fn braket<T, L, B>(
-    psi: &Mps<L::Storage, L, B>,
-    op: &Mpo<L::Storage, L, B>,
-    phi: &Mps<L::Storage, L, B>,
+    backend: &B,
+    psi: &Mps<L::Storage, L>,
+    op: &Mpo<L::Storage, L>,
+    phi: &Mps<L::Storage, L>,
 ) -> T
 where
     T: Scalar,
     L: MpsOps<T>,
     B: ComputeBackend,
 {
-    <L as MpsOps<T>>::braket(psi, op, phi)
+    <L as MpsOps<T>>::braket(backend, psi, op, phi)
 }
 
 /// Apply an MPO to an MPS: O|ψ⟩ via the streaming-naive algorithm with the
 /// default lossless forward sweep (`forward_cap = None`).
 ///
-/// Equivalent to `apply_with_method(op, psi, params, ApplyMethod::default())`.
+/// Equivalent to `apply_with_method(backend, op, psi, params, ApplyMethod::default())`.
 pub fn apply<T, L, B>(
-    op: &Mpo<L::Storage, L, B>,
-    psi: &Mps<L::Storage, L, B>,
+    backend: &B,
+    op: &Mpo<L::Storage, L>,
+    psi: &Mps<L::Storage, L>,
     params: Option<&TruncateParams>,
-) -> Mps<L::Storage, L, B>
+) -> Mps<L::Storage, L>
 where
     T: Scalar,
     L: MpsOps<T>,
     B: ComputeBackend,
 {
-    <L as MpsOps<T>>::apply(op, psi, params, None)
+    <L as MpsOps<T>>::apply(backend, op, psi, params, None)
 }
 
 /// Apply an MPO to an MPS using the requested algorithm.
@@ -389,11 +285,12 @@ where
 /// single-pass interleaved-truncation algorithm and is not yet
 /// implemented; calling with that variant panics.
 pub fn apply_with_method<T, L, B>(
-    op: &Mpo<L::Storage, L, B>,
-    psi: &Mps<L::Storage, L, B>,
+    backend: &B,
+    op: &Mpo<L::Storage, L>,
+    psi: &Mps<L::Storage, L>,
     params: Option<&TruncateParams>,
     method: ApplyMethod,
-) -> Mps<L::Storage, L, B>
+) -> Mps<L::Storage, L>
 where
     T: Scalar,
     L: MpsOps<T>,
@@ -401,7 +298,7 @@ where
 {
     match method {
         ApplyMethod::StreamingNaive { forward_cap } => {
-            <L as MpsOps<T>>::apply(op, psi, params, forward_cap)
+            <L as MpsOps<T>>::apply(backend, op, psi, params, forward_cap)
         }
         ApplyMethod::ZipUp => unimplemented!(
             "ApplyMethod::ZipUp is reserved for the literature Stoudenmire-White \

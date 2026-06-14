@@ -8,10 +8,11 @@ use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_
 
 #[test]
 fn test_canonicalize_center_0() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize(&backend, &mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
@@ -48,10 +49,11 @@ fn test_canonicalize_center_0() {
 
 #[test]
 fn test_canonicalize_center_middle() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::canonicalize(&mut mps, 2);
+    mps::canonicalize(&backend, &mut mps, 2);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 
@@ -82,9 +84,10 @@ fn test_canonicalize_center_middle() {
 
 #[test]
 fn test_canonicalize_center_last() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
 
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize(&backend, &mut mps, 3);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
@@ -99,21 +102,23 @@ fn test_canonicalize_center_last() {
 
 #[test]
 fn test_canonicalize_single_site() {
-    let site = DenseTensor::from_raw_parts(vec![1.0, 2.0], vec![1, 2, 1], NativeBackend::shared());
+    let backend = NativeBackend::new();
+    let site = DenseTensor::from_raw_parts(vec![1.0, 2.0], vec![1, 2, 1]);
     let mut mps: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![site]);
 
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize(&backend, &mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 
 #[test]
 fn test_canonicalize_preserves_physical_dims() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
 
     let phys_dims: Vec<usize> = (0..4).map(|j| mps.site(j).shape()[1]).collect();
 
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize(&backend, &mut mps, 1);
 
     for (j, &expected) in phys_dims.iter().enumerate() {
         assert_eq!(

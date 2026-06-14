@@ -1,31 +1,24 @@
-//! Authority-routing tests for the explicit-backend call-graph migration.
+//! Authority-routing tests for the call-site-backend operation surface.
 //!
-//! Each test splits the operand tensors across distinct
-//! `CountingBackend` instances so the legacy authority sources and the
-//! entry-derived handle are distinguishable: `canonicalize` /
-//! `truncate` build the site tensors on one instance and hand the
-//! chain constructor another, while `apply` uses three — the MPO on
-//! one, the psi sites on a second, and the psi chain handle on a
-//! third. The migrated operation paths must dispatch every kernel
-//! through the entry-derived chain handle and never through any other
-//! instance. Before the migration the legacy wrappers derived their
-//! authority from the operand tensors, so these assertions fail on the
-//! pre-migration code for every kernel-dispatching operation
-//! (decompositions and contractions). Allocation-only operations
-//! (`diagonal_scale`, permute / fuse) dispatch no counted kernel, so
-//! their routing is invisible here; it is proven per twin by the
-//! pointer-identity tests in the linalg crate.
+//! Every MPS / MPO operation takes its compute backend explicitly at the
+//! call site; the chain and its site tensors carry no backend. These
+//! tests supply a [`CountingBackend`] at the call site and assert that
+//! the kernels actually dispatch through it. That guards against a
+//! regression where an operation ignores the supplied backend and
+//! silently routes kernels through some other handle (e.g. a hardcoded
+//! `Host`).
 //!
-//! Only entry points whose legacy authority came from a tensor other
-//! than the chain handle are tested — `canonicalize` / `truncate`
-//! (per-site decompositions used each site's own instance) and `apply`
-//! (contraction authority came from the MPO side). `inner` is excluded:
-//! its legacy contractions already derived authority from the
-//! chain-labeled accumulator, so no count assertion separates pre- from
-//! post-migration routing.
+//! Allocation-only operations (`diagonal_scale`, permute / fuse)
+//! dispatch no counted kernel, so their routing is proven per twin by
+//! the pointer-identity tests in the linalg crate, not here. `inner` /
+//! `norm` / `braket` route their contractions through the supplied
+//! backend and so are observable, but the kernel-dispatching operations
+//! that historically derived authority from an operand tensor —
+//! `canonicalize` / `truncate` (per-site decompositions) and `apply`
+//! (the MPO-MPS contraction) — are the load-bearing cases and are the
+//! ones exercised below.
 
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arnet_core::backend::{
@@ -128,67 +121,52 @@ impl ComputeBackend for CountingBackend {
 }
 
 // ---------------------------------------------------------------------------
-// Fixtures (generic over the backend instance the sites are built on)
+// Fixtures (backend-free — every chain carries no backend)
 // ---------------------------------------------------------------------------
 
-fn dense_site_on(
-    shape: Vec<usize>,
-    backend: &Arc<CountingBackend>,
-) -> DenseTensor<f64, CountingBackend> {
+fn dense_site(shape: Vec<usize>) -> DenseTensor<f64> {
     let len: usize = shape.iter().product();
     let data: Vec<f64> = (1..=len).map(|i| i as f64 * 0.1).collect();
-    DenseTensor::from_raw_parts(data, shape, Arc::clone(backend))
+    DenseTensor::from_raw_parts(data, shape)
 }
 
-/// 4-site dense MPS: sites on `site_backend`, chain handle = `chain_backend`.
-fn dense_mps_on(
-    site_backend: &Arc<CountingBackend>,
-    chain_backend: &Arc<CountingBackend>,
-) -> Mps<DenseStorage<f64>, DenseLayout, CountingBackend> {
-    let sites = vec![
-        dense_site_on(vec![1, 2, 4], site_backend),
-        dense_site_on(vec![4, 2, 4], site_backend),
-        dense_site_on(vec![4, 2, 3], site_backend),
-        dense_site_on(vec![3, 2, 1], site_backend),
-    ];
-    Mps::with_backend(sites, Arc::clone(chain_backend))
+/// 4-site dense MPS.
+fn dense_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
+    Mps::from_sites(vec![
+        dense_site(vec![1, 2, 4]),
+        dense_site(vec![4, 2, 4]),
+        dense_site(vec![4, 2, 3]),
+        dense_site(vec![3, 2, 1]),
+    ])
 }
 
-/// 4-site dense MPO (physical dim 2): sites and chain handle on `backend`.
-fn dense_mpo_on(
-    backend: &Arc<CountingBackend>,
-) -> Mpo<DenseStorage<f64>, DenseLayout, CountingBackend> {
-    let sites = vec![
-        dense_site_on(vec![1, 2, 2, 2], backend),
-        dense_site_on(vec![2, 2, 2, 2], backend),
-        dense_site_on(vec![2, 2, 2, 2], backend),
-        dense_site_on(vec![2, 2, 2, 1], backend),
-    ];
-    Mpo::with_backend(sites, Arc::clone(backend))
+/// 4-site dense MPO (physical dim 2).
+fn dense_mpo() -> Mpo<DenseStorage<f64>, DenseLayout> {
+    Mpo::from_sites(vec![
+        dense_site(vec![1, 2, 2, 2]),
+        dense_site(vec![2, 2, 2, 2]),
+        dense_site(vec![2, 2, 2, 2]),
+        dense_site(vec![2, 2, 2, 1]),
+    ])
 }
 
 type U1Sectors = Vec<(U1Sector, usize)>;
 
-fn u1_site_on(
+fn u1_site(
     left: U1Sectors,
     phys: U1Sectors,
     right: U1Sectors,
     counter: &mut f64,
-    backend: &Arc<CountingBackend>,
-) -> BlockSparseTensor<f64, U1Sector, CountingBackend> {
+) -> BlockSparseTensor<f64, U1Sector> {
     let left = QNIndex::new(left, Direction::Out);
     let phys = QNIndex::new(phys, Direction::Out);
     let right = QNIndex::new(right, Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector, CountingBackend>::zeros_with_backend(
-        vec![left, phys, right],
-        U1Sector(0),
-        Arc::clone(backend),
-    );
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
     fill_blocks(&mut site, counter);
     site
 }
 
-fn fill_blocks(t: &mut BlockSparseTensor<f64, U1Sector, CountingBackend>, counter: &mut f64) {
+fn fill_blocks(t: &mut BlockSparseTensor<f64, U1Sector>, counter: &mut f64) {
     let coords: Vec<BlockCoord> = t
         .data()
         .layout()
@@ -205,43 +183,24 @@ fn fill_blocks(t: &mut BlockSparseTensor<f64, U1Sector, CountingBackend>, counte
     }
 }
 
-/// 4-site U(1) MPS with multi-element sector blocks: sites on
-/// `site_backend`, chain handle = `chain_backend`.
-fn u1_mps_on(
-    site_backend: &Arc<CountingBackend>,
-    chain_backend: &Arc<CountingBackend>,
-) -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>, CountingBackend> {
+/// 4-site U(1) MPS with multi-element sector blocks.
+fn u1_mps() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let mut counter = 0.1;
     let s0 = vec![(U1Sector(0), 1)];
     let p = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let b1 = vec![(U1Sector(0), 2), (U1Sector(1), 1)];
     let b2 = vec![(U1Sector(0), 2), (U1Sector(1), 2), (U1Sector(2), 1)];
-    let sites = vec![
-        u1_site_on(
-            s0.clone(),
-            p.clone(),
-            b1.clone(),
-            &mut counter,
-            site_backend,
-        ),
-        u1_site_on(
-            b1.clone(),
-            p.clone(),
-            b2.clone(),
-            &mut counter,
-            site_backend,
-        ),
-        u1_site_on(b2, p.clone(), b1.clone(), &mut counter, site_backend),
-        u1_site_on(b1, p, s0, &mut counter, site_backend),
-    ];
-    Mps::with_backend(sites, Arc::clone(chain_backend))
+    Mps::from_sites(vec![
+        u1_site(s0.clone(), p.clone(), b1.clone(), &mut counter),
+        u1_site(b1.clone(), p.clone(), b2.clone(), &mut counter),
+        u1_site(b2, p.clone(), b1.clone(), &mut counter),
+        u1_site(b1, p, s0, &mut counter),
+    ])
 }
 
 /// 4-site U(1) MPO with single-sector dim-1/2 bonds and dense-filled
-/// allowed blocks: sites and chain handle on `backend`.
-fn u1_mpo_on(
-    backend: &Arc<CountingBackend>,
-) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>, CountingBackend> {
+/// allowed blocks.
+fn u1_mpo() -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let n = 4;
     let mut counter = 0.5;
     let mut sites = Vec::with_capacity(n);
@@ -252,15 +211,12 @@ fn u1_mpo_on(
         let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
         let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
         let right = QNIndex::new(vec![(U1Sector(0), right_dim)], Direction::In);
-        let mut site = BlockSparseTensor::<f64, U1Sector, CountingBackend>::zeros_with_backend(
-            vec![left, ket, bra, right],
-            U1Sector(0),
-            Arc::clone(backend),
-        );
+        let mut site =
+            BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
         fill_blocks(&mut site, &mut counter);
         sites.push(site);
     }
-    Mpo::with_backend(sites, Arc::clone(backend))
+    Mpo::from_sites(sites)
 }
 
 fn trunc_params(chi_max: usize) -> TruncateParams {
@@ -270,44 +226,34 @@ fn trunc_params(chi_max: usize) -> TruncateParams {
     })
 }
 
-fn assert_authority(entry: &str, chain: &Arc<CountingBackend>, silent: &[&Arc<CountingBackend>]) {
-    assert!(
-        chain.count() > 0,
-        "{entry}: chain backend recorded no kernel dispatch",
-    );
-    for backend in silent {
-        assert_eq!(
-            backend.count(),
-            0,
-            "{entry}: a non-authority backend instance received kernel dispatch",
-        );
-    }
-}
-
 // ---------------------------------------------------------------------------
 // canonicalize
 // ---------------------------------------------------------------------------
 
 #[test]
-fn canonicalize_dense_routes_kernels_to_chain_backend() {
-    let sites = Arc::new(CountingBackend::new());
-    let chain = Arc::new(CountingBackend::new());
-    let mut mps = dense_mps_on(&sites, &chain);
+fn canonicalize_dense_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let mut mps = dense_mps();
 
-    canonicalize(&mut mps, 1);
+    canonicalize(&backend, &mut mps, 1);
 
-    assert_authority("canonicalize (dense)", &chain, &[&sites]);
+    assert!(
+        backend.count() > 0,
+        "canonicalize (dense): call-site backend recorded no kernel dispatch",
+    );
 }
 
 #[test]
-fn canonicalize_bsp_routes_kernels_to_chain_backend() {
-    let sites = Arc::new(CountingBackend::new());
-    let chain = Arc::new(CountingBackend::new());
-    let mut mps = u1_mps_on(&sites, &chain);
+fn canonicalize_bsp_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let mut mps = u1_mps();
 
-    canonicalize(&mut mps, 1);
+    canonicalize(&backend, &mut mps, 1);
 
-    assert_authority("canonicalize (block-sparse)", &chain, &[&sites]);
+    assert!(
+        backend.count() > 0,
+        "canonicalize (block-sparse): call-site backend recorded no kernel dispatch",
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -315,71 +261,65 @@ fn canonicalize_bsp_routes_kernels_to_chain_backend() {
 // ---------------------------------------------------------------------------
 //
 // The chain is stamped as already canonical so `truncate` runs its SVD
-// sweeps directly on the A-built site tensors instead of auto-
-// canonicalizing first (which would replace every site with a B-labeled
-// intermediate and mask the truncation path's own routing).
+// sweeps directly instead of auto-canonicalizing first.
 
 #[test]
-fn truncate_dense_routes_kernels_to_chain_backend() {
-    let sites = Arc::new(CountingBackend::new());
-    let chain = Arc::new(CountingBackend::new());
-    let mut mps = dense_mps_on(&sites, &chain);
+fn truncate_dense_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let mut mps = dense_mps();
     mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
 
-    truncate(&mut mps, &trunc_params(2));
+    truncate(&backend, &mut mps, &trunc_params(2));
 
-    assert_authority("truncate (dense)", &chain, &[&sites]);
+    assert!(
+        backend.count() > 0,
+        "truncate (dense): call-site backend recorded no kernel dispatch",
+    );
 }
 
 #[test]
-fn truncate_bsp_routes_kernels_to_chain_backend() {
-    let sites = Arc::new(CountingBackend::new());
-    let chain = Arc::new(CountingBackend::new());
-    let mut mps = u1_mps_on(&sites, &chain);
+fn truncate_bsp_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let mut mps = u1_mps();
     mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
 
-    truncate(&mut mps, &trunc_params(2));
+    truncate(&backend, &mut mps, &trunc_params(2));
 
-    assert_authority("truncate (block-sparse)", &chain, &[&sites]);
+    assert!(
+        backend.count() > 0,
+        "truncate (block-sparse): call-site backend recorded no kernel dispatch",
+    );
 }
 
 // ---------------------------------------------------------------------------
 // apply
 // ---------------------------------------------------------------------------
-//
-// The MPO lives entirely on one silent instance (the legacy MPO-MPS
-// contraction derived its authority from the MPO site, the
-// contraction's lhs) and the psi sites on another, so the assertions
-// reject both the pre-migration MPO-side authority and a regression
-// that re-derives the handle from a psi site instead of the chain.
 
 #[test]
-fn apply_dense_routes_kernels_to_psi_chain_backend() {
-    let mpo_backend = Arc::new(CountingBackend::new());
-    let psi_sites = Arc::new(CountingBackend::new());
-    let psi_chain = Arc::new(CountingBackend::new());
-    let op = dense_mpo_on(&mpo_backend);
-    let psi = dense_mps_on(&psi_sites, &psi_chain);
+fn apply_dense_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let op = dense_mpo();
+    let psi = dense_mps();
 
-    let _ = apply(&op, &psi, None);
+    let _ = apply(&backend, &op, &psi, None);
 
-    assert_authority("apply (dense)", &psi_chain, &[&mpo_backend, &psi_sites]);
+    assert!(
+        backend.count() > 0,
+        "apply (dense): call-site backend recorded no kernel dispatch",
+    );
 }
 
 #[test]
-fn apply_bsp_routes_kernels_to_psi_chain_backend() {
-    let mpo_backend = Arc::new(CountingBackend::new());
-    let psi_sites = Arc::new(CountingBackend::new());
-    let psi_chain = Arc::new(CountingBackend::new());
-    let op = u1_mpo_on(&mpo_backend);
-    let psi = u1_mps_on(&psi_sites, &psi_chain);
+fn apply_bsp_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let op = u1_mpo();
+    let psi = u1_mps();
 
-    let _ = apply(&op, &psi, None);
+    let _ = apply(&backend, &op, &psi, None);
 
-    assert_authority(
-        "apply (block-sparse)",
-        &psi_chain,
-        &[&mpo_backend, &psi_sites],
+    assert!(
+        backend.count() > 0,
+        "apply (block-sparse): call-site backend recorded no kernel dispatch",
     );
 }
 
@@ -395,35 +335,41 @@ fn forward_svd_method() -> ApplyMethod {
 }
 
 #[test]
-fn apply_dense_svd_branch_routes_kernels_to_psi_chain_backend() {
-    let mpo_backend = Arc::new(CountingBackend::new());
-    let psi_sites = Arc::new(CountingBackend::new());
-    let psi_chain = Arc::new(CountingBackend::new());
-    let op = dense_mpo_on(&mpo_backend);
-    let psi = dense_mps_on(&psi_sites, &psi_chain);
+fn apply_dense_svd_branch_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let op = dense_mpo();
+    let psi = dense_mps();
 
-    let _ = apply_with_method(&op, &psi, Some(&trunc_params(1)), forward_svd_method());
+    let _ = apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&trunc_params(1)),
+        forward_svd_method(),
+    );
 
-    assert_authority(
-        "apply (dense, SVD branch)",
-        &psi_chain,
-        &[&mpo_backend, &psi_sites],
+    assert!(
+        backend.count() > 0,
+        "apply (dense, SVD branch): call-site backend recorded no kernel dispatch",
     );
 }
 
 #[test]
-fn apply_bsp_svd_branch_routes_kernels_to_psi_chain_backend() {
-    let mpo_backend = Arc::new(CountingBackend::new());
-    let psi_sites = Arc::new(CountingBackend::new());
-    let psi_chain = Arc::new(CountingBackend::new());
-    let op = u1_mpo_on(&mpo_backend);
-    let psi = u1_mps_on(&psi_sites, &psi_chain);
+fn apply_bsp_svd_branch_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let op = u1_mpo();
+    let psi = u1_mps();
 
-    let _ = apply_with_method(&op, &psi, Some(&trunc_params(1)), forward_svd_method());
+    let _ = apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&trunc_params(1)),
+        forward_svd_method(),
+    );
 
-    assert_authority(
-        "apply (block-sparse, SVD branch)",
-        &psi_chain,
-        &[&mpo_backend, &psi_sites],
+    assert!(
+        backend.count() > 0,
+        "apply (block-sparse, SVD branch): call-site backend recorded no kernel dispatch",
     );
 }

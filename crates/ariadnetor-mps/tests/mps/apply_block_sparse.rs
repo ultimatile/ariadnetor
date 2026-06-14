@@ -23,37 +23,40 @@ use super::helpers::{
 
 #[test]
 fn identity_mpo_preserves_norm_4site() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let result = apply(&identity, &mps, None);
+    let result = apply(&backend, &identity, &mps, None);
 
-    let norm_before = norm(&mps);
-    let norm_after = norm(&result);
+    let norm_before = norm(&backend, &mps);
+    let norm_after = norm(&backend, &result);
     assert_abs_diff_eq!(norm_before, norm_after, epsilon = 1e-10);
 }
 
 #[test]
 fn identity_mpo_preserves_inner_product() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let result = apply(&identity, &mps, None);
+    let result = apply(&backend, &identity, &mps, None);
 
-    let inner_psi_psi = inner(&mps, &mps);
-    let inner_psi_result = inner(&mps, &result);
+    let inner_psi_psi = inner(&backend, &mps, &mps);
+    let inner_psi_result = inner(&backend, &mps, &result);
     assert_abs_diff_eq!(inner_psi_psi, inner_psi_result, epsilon = 1e-10);
 }
 
 #[test]
 fn identity_mpo_preserves_entangled_state() {
+    let backend = NativeBackend::new();
     let mps = make_2site_entangled_u1_mps();
     let identity = make_identity_u1_mpo(2);
 
-    let result = apply(&identity, &mps, None);
+    let result = apply(&backend, &identity, &mps, None);
 
-    let inner_before = inner(&mps, &mps);
-    let inner_after = inner(&result, &result);
+    let inner_before = inner(&backend, &mps, &mps);
+    let inner_after = inner(&backend, &result, &result);
     assert_abs_diff_eq!(inner_before, inner_after, epsilon = 1e-10);
 }
 
@@ -63,10 +66,11 @@ fn identity_mpo_preserves_entangled_state() {
 
 #[test]
 fn output_is_rank3_mps() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let result = apply(&identity, &mps, None);
+    let result = apply(&backend, &identity, &mps, None);
 
     assert_eq!(result.len(), mps.len());
     for j in 0..result.len() {
@@ -80,10 +84,11 @@ fn output_is_rank3_mps() {
 
 #[test]
 fn output_flux_preserved() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let result = apply(&identity, &mps, None);
+    let result = apply(&backend, &identity, &mps, None);
 
     for j in 0..result.len() {
         assert_eq!(
@@ -100,6 +105,7 @@ fn output_flux_preserved() {
 
 #[test]
 fn apply_with_truncation() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
@@ -112,7 +118,7 @@ fn apply_with_truncation() {
         center: Some(0),
     };
 
-    let result = apply(&identity, &mps, Some(&params));
+    let result = apply(&backend, &identity, &mps, Some(&params));
 
     assert_eq!(result.len(), 4);
     for j in 0..result.len() {
@@ -129,8 +135,8 @@ fn apply_with_truncation() {
     assert_eq!(*result.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
     // Norm should be approximately preserved (identity MPO, only truncation error)
-    let norm_before = norm(&mps);
-    let norm_after = norm(&result);
+    let norm_before = norm(&backend, &mps);
+    let norm_after = norm(&backend, &result);
     assert_abs_diff_eq!(norm_before, norm_after, epsilon = 1e-6);
 }
 
@@ -141,21 +147,19 @@ fn apply_with_truncation() {
 #[test]
 #[should_panic(expected = "MPO and MPS lengths must match")]
 fn length_mismatch_panics() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(3);
-    apply(&identity, &mps, None);
+    apply(&backend, &identity, &mps, None);
 }
 
 #[test]
 #[should_panic(expected = "must have at least one site")]
 fn empty_mps_panics() {
-    let mps = Mps::<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>, NativeBackend>::empty(
-        NativeBackend::shared(),
-    );
-    let mpo = Mpo::<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>, NativeBackend>::empty(
-        NativeBackend::shared(),
-    );
-    apply(&mpo, &mps, None);
+    let backend = NativeBackend::new();
+    let mps = Mps::<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>::empty();
+    let mpo = Mpo::<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>::empty();
+    apply(&backend, &mpo, &mps, None);
 }
 
 // ===========================================================================
@@ -164,10 +168,11 @@ fn empty_mps_panics() {
 
 #[test]
 fn streaming_naive_identity_preserves_state() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply(&identity, &psi, None);
+    let phi = mps::apply(&backend, &identity, &psi, None);
 
     let v_before = bsp_mps_contract_full(&psi);
     let v_after = bsp_mps_contract_full(&phi);
@@ -176,11 +181,12 @@ fn streaming_naive_identity_preserves_state() {
 
 #[test]
 fn streaming_naive_canonical_form() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
     // No params: the forward QR sweep leaves the chain at center = n - 1.
-    let phi_none = mps::apply(&identity, &psi, None);
+    let phi_none = mps::apply(&backend, &identity, &psi, None);
     assert_eq!(
         *phi_none.canonical_form(),
         CanonicalForm::Mixed { center: 3 }
@@ -191,7 +197,7 @@ fn streaming_naive_canonical_form() {
         chi_max: Some(8),
         target_trunc_err: None,
     });
-    let phi_some = mps::apply(&identity, &psi, Some(&params));
+    let phi_some = mps::apply(&backend, &identity, &psi, Some(&params));
     assert_eq!(
         *phi_some.canonical_form(),
         CanonicalForm::Mixed { center: 0 }
@@ -200,10 +206,11 @@ fn streaming_naive_canonical_form() {
 
 #[test]
 fn streaming_naive_output_structure_and_flux() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply(&identity, &psi, None);
+    let phi = mps::apply(&backend, &identity, &psi, None);
 
     assert_eq!(phi.len(), psi.len());
     for j in 0..phi.len() {
@@ -236,6 +243,7 @@ fn apply_bsp_n_on_zero_state() {
     // |0000⟩ has total N = 0. The right-edge charge-0 block (bL=I → apply
     // n_phys = 0) is the only one that fires here, so this anchors the
     // boundary case.
+    let backend = NativeBackend::new();
     let psi = Mps::from_sites(vec![
         bsp_basis_site(0, 0, 0),
         bsp_basis_site(0, 0, 0),
@@ -244,9 +252,9 @@ fn apply_bsp_n_on_zero_state() {
     ]);
     let n_op = make_total_n_u1_mpo(4);
 
-    let psi_norm_sq = inner(&psi, &psi);
-    let n_psi = apply(&n_op, &psi, None);
-    let exp_n = inner(&psi, &n_psi);
+    let psi_norm_sq = inner(&backend, &psi, &psi);
+    let n_psi = apply(&backend, &n_op, &psi, None);
+    let exp_n = inner(&backend, &psi, &n_psi);
 
     assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
     assert_abs_diff_eq!(exp_n, 0.0, epsilon = 1e-10);
@@ -258,6 +266,7 @@ fn apply_bsp_n_eigenvalue_on_multi_particle_basis_state() {
     // simultaneously. With 2 particles distributed across 4 sites, the FSM
     // bond traverses I → n → n → n on sites 0, 1, 2, 3 (the I → n transition
     // fires at site 0, then stays at n until the right boundary).
+    let backend = NativeBackend::new();
     let psi = Mps::from_sites(vec![
         bsp_basis_site(0, 1, 1),
         bsp_basis_site(1, 0, 1),
@@ -266,9 +275,9 @@ fn apply_bsp_n_eigenvalue_on_multi_particle_basis_state() {
     ]);
     let n_op = make_total_n_u1_mpo(4);
 
-    let psi_norm_sq = inner(&psi, &psi);
-    let n_psi = apply(&n_op, &psi, None);
-    let exp_n = inner(&psi, &n_psi);
+    let psi_norm_sq = inner(&backend, &psi, &psi);
+    let n_psi = apply(&backend, &n_op, &psi, None);
+    let exp_n = inner(&backend, &psi, &n_psi);
 
     assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
     assert_abs_diff_eq!(exp_n, 2.0, epsilon = 1e-10);
@@ -280,12 +289,13 @@ fn apply_bsp_n_squared_via_composition() {
     // apply output back into apply tests that the result is a well-formed
     // MPS the operator can act on again — the algebraic eigenvalue
     // identity acts as the analytical anchor across the composition.
+    let backend = NativeBackend::new();
     let psi = Mps::from_sites(vec![bsp_basis_site(0, 1, 1), bsp_basis_site(1, 1, 2)]);
     let n_op = make_total_n_u1_mpo(2);
 
-    let n_psi = apply(&n_op, &psi, None);
-    let nn_psi = apply(&n_op, &n_psi, None);
-    let exp_n_sq = inner(&psi, &nn_psi);
+    let n_psi = apply(&backend, &n_op, &psi, None);
+    let nn_psi = apply(&backend, &n_op, &n_psi, None);
+    let exp_n_sq = inner(&backend, &psi, &nn_psi);
 
     assert_abs_diff_eq!(exp_n_sq, 4.0, epsilon = 1e-10);
 }
@@ -298,6 +308,7 @@ fn total_n_mpo_acts_as_total_particle_number_3site_interior() {
     // non-trivial axes interact non-trivially under RowMajor vs ColumnMajor.
     //
     // |010⟩: single particle at site 1, total N = 1, norm² = 1.
+    let backend = NativeBackend::new();
     let psi = Mps::from_sites(vec![
         bsp_basis_site(0, 0, 0),
         bsp_basis_site(0, 1, 1),
@@ -305,9 +316,9 @@ fn total_n_mpo_acts_as_total_particle_number_3site_interior() {
     ]);
     let n_op = make_total_n_u1_mpo(3);
 
-    let psi_norm_sq = inner(&psi, &psi);
-    let n_psi = apply(&n_op, &psi, None);
-    let exp_n = inner(&psi, &n_psi);
+    let psi_norm_sq = inner(&backend, &psi, &psi);
+    let n_psi = apply(&backend, &n_op, &psi, None);
+    let exp_n = inner(&backend, &psi, &n_psi);
 
     assert_abs_diff_eq!(psi_norm_sq, 1.0, epsilon = 1e-10);
     assert_abs_diff_eq!(exp_n, 1.0, epsilon = 1e-10);
@@ -321,12 +332,13 @@ fn total_n_mpo_acts_as_total_particle_number() {
     // layout; other tests that compute observables on the apply output cannot
     // detect a wrong operator if the same operator drives both branches of
     // the comparison.
+    let backend = NativeBackend::new();
     let psi = make_2site_entangled_u1_mps(); // 3|01⟩ + 8|10⟩, both N=1
     let n_op = make_total_n_u1_mpo(2);
 
-    let psi_norm_sq = inner(&psi, &psi);
-    let n_psi = apply(&n_op, &psi, None);
-    let exp_n = inner(&psi, &n_psi);
+    let psi_norm_sq = inner(&backend, &psi, &psi);
+    let n_psi = apply(&backend, &n_op, &psi, None);
+    let exp_n = inner(&backend, &psi, &n_psi);
 
     // Total particle number on this state is 1 → ⟨ψ|N|ψ⟩ = ⟨ψ|ψ⟩.
     assert_abs_diff_eq!(exp_n, psi_norm_sq, epsilon = 1e-10);
@@ -334,6 +346,7 @@ fn total_n_mpo_acts_as_total_particle_number() {
 
 #[test]
 fn streaming_naive_truncates_bond_dim() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
@@ -341,7 +354,7 @@ fn streaming_naive_truncates_bond_dim() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi = mps::apply(&identity, &psi, Some(&params));
+    let phi = mps::apply(&backend, &identity, &psi, Some(&params));
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
@@ -354,6 +367,7 @@ fn streaming_naive_truncates_bond_dim() {
 /// form tag perturbs this fixture.
 #[test]
 fn streaming_naive_truncated_chi1_baseline() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
     let params = TruncateParams::from(TruncSvdParams {
@@ -361,7 +375,7 @@ fn streaming_naive_truncated_chi1_baseline() {
         target_trunc_err: None,
     });
 
-    let phi = mps::apply(&op, &psi, Some(&params));
+    let phi = mps::apply(&backend, &op, &psi, Some(&params));
 
     for d in phi.bond_dims() {
         assert!(d <= 1, "bond {d} exceeds chi_max=1");
@@ -375,6 +389,7 @@ fn streaming_naive_truncated_chi1_baseline() {
 
 #[test]
 fn streaming_naive_absorb_left_yields_mixed_center() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
     let params = TruncateParams {
@@ -386,13 +401,14 @@ fn streaming_naive_absorb_left_yields_mixed_center() {
         center: None,
     };
 
-    let phi = mps::apply(&identity, &psi, Some(&params));
+    let phi = mps::apply(&backend, &identity, &psi, Some(&params));
 
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
 
 #[test]
 fn streaming_naive_absorb_both_yields_unknown_canonical_form() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
     let params = TruncateParams {
@@ -404,13 +420,14 @@ fn streaming_naive_absorb_both_yields_unknown_canonical_form() {
         center: None,
     };
 
-    let phi = mps::apply(&identity, &psi, Some(&params));
+    let phi = mps::apply(&backend, &identity, &psi, Some(&params));
 
     assert_eq!(*phi.canonical_form(), CanonicalForm::Unknown);
 }
 
 #[test]
 fn streaming_naive_center_nonzero_parks_center_at_request() {
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
     let svd = TruncSvdParams {
@@ -424,7 +441,7 @@ fn streaming_naive_center_nonzero_parks_center_at_request() {
             absorb: SvdAbsorb::Right,
             center: Some(c),
         };
-        let phi = mps::apply(&identity, &psi, Some(&params));
+        let phi = mps::apply(&backend, &identity, &psi, Some(&params));
         assert_eq!(
             *phi.canonical_form(),
             CanonicalForm::Mixed { center: c },
@@ -444,6 +461,7 @@ fn streaming_naive_center_nonzero_parks_center_at_request() {
 fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
     use std::num::NonZeroUsize;
 
+    let backend = NativeBackend::new();
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
     let params = TruncateParams::from(TruncSvdParams {
@@ -454,7 +472,7 @@ fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
         forward_cap: Some(NonZeroUsize::new(1).unwrap()),
     };
 
-    let phi = mps::apply_with_method(&op, &psi, Some(&params), method);
+    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), method);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond {d} exceeds chi_max=2 under forward_cap=1");
@@ -484,6 +502,7 @@ fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
 fn streaming_naive_forward_cap_observably_changes_output() {
     use std::num::NonZeroUsize;
 
+    let backend = NativeBackend::new();
     let psi = make_3site_u1_mps_multipath_middle();
     let op = make_identity_u1_mpo(3);
     let params = TruncateParams::from(TruncSvdParams {
@@ -494,8 +513,8 @@ fn streaming_naive_forward_cap_observably_changes_output() {
         forward_cap: Some(NonZeroUsize::new(1).unwrap()),
     };
 
-    let phi_lossless = mps::apply(&op, &psi, Some(&params));
-    let phi_capped = mps::apply_with_method(&op, &psi, Some(&params), capped);
+    let phi_lossless = mps::apply(&backend, &op, &psi, Some(&params));
+    let phi_capped = mps::apply_with_method(&backend, &op, &psi, Some(&params), capped);
 
     // Both paths must still respect the chi_max budget.
     for d in phi_capped.bond_dims() {

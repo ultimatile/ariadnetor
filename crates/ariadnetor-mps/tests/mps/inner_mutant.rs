@@ -5,6 +5,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
+use arnet_native::NativeBackend;
 
 use super::helpers::cm_dense_tensor;
 use super::helpers::make_4site_mps;
@@ -15,11 +16,12 @@ use super::helpers::make_4site_mps;
 
 #[test]
 fn test_norm_left_returns_one_not_computed() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize(&backend, &mut mps, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
-    let n = mps::norm(&mps);
+    let n = mps::norm(&backend, &mps);
     assert_abs_diff_eq!(n, 1.0, epsilon = 1e-15);
 }
 
@@ -29,11 +31,12 @@ fn test_norm_left_returns_one_not_computed() {
 
 #[test]
 fn test_norm_right_returns_one_not_computed() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize(&backend, &mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
-    let n = mps::norm(&mps);
+    let n = mps::norm(&backend, &mps);
     assert_abs_diff_eq!(n, 1.0, epsilon = 1e-15);
 }
 
@@ -43,11 +46,12 @@ fn test_norm_right_returns_one_not_computed() {
 
 #[test]
 fn test_norm_mixed_center_0() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize(&backend, &mut mps, 0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
-    let n = mps::norm(&mps);
+    let n = mps::norm(&backend, &mps);
     let expected = mps.site(0).norm();
     assert_abs_diff_eq!(n, expected, epsilon = 1e-12);
     // Must be positive
@@ -60,11 +64,12 @@ fn test_norm_mixed_center_0() {
 
 #[test]
 fn test_norm_mixed_center_last() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize(&backend, &mut mps, 3);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
 
-    let n = mps::norm(&mps);
+    let n = mps::norm(&backend, &mps);
     let expected = mps.site(3).norm();
     assert_abs_diff_eq!(n, expected, epsilon = 1e-12);
 }
@@ -75,17 +80,18 @@ fn test_norm_mixed_center_last() {
 
 #[test]
 fn test_norm_mixed_center_1() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize(&backend, &mut mps, 1);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
-    let n_mixed = mps::norm(&mps);
+    let n_mixed = mps::norm(&backend, &mps);
     let center_norm = mps.site(1).norm();
     assert_abs_diff_eq!(n_mixed, center_norm, epsilon = 1e-12);
 
     // Also verify consistency with full contraction
     mps.set_canonical_form(CanonicalForm::Unknown);
-    let n_full = mps::norm(&mps);
+    let n_full = mps::norm(&backend, &mps);
     assert_abs_diff_eq!(n_mixed, n_full, epsilon = 1e-10);
 }
 
@@ -95,14 +101,15 @@ fn test_norm_mixed_center_1() {
 
 #[test]
 fn test_norm_unknown_uses_full_contraction() {
+    let backend = NativeBackend::new();
     let mps = make_4site_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
-    let n = mps::norm(&mps);
+    let n = mps::norm(&backend, &mps);
     // Should be nonzero and positive
     assert!(n > 0.0);
     // Verify it equals sqrt(inner(psi,psi))
-    let overlap = mps::inner(&mps, &mps);
+    let overlap = mps::inner(&backend, &mps, &mps);
     assert_abs_diff_eq!(n, overlap.sqrt(), epsilon = 1e-12);
 }
 
@@ -112,6 +119,7 @@ fn test_norm_unknown_uses_full_contraction() {
 
 #[test]
 fn test_norm_plus_state_exact() {
+    let backend = NativeBackend::new();
     // |+⟩ = (|0⟩ + |1⟩)/sqrt(2), but we store unnormalized [1,1]
     // for 2 sites: norm = sqrt(sum of all products) = 2.0
     let inv_sqrt2 = std::f64::consts::FRAC_1_SQRT_2;
@@ -120,7 +128,7 @@ fn test_norm_plus_state_exact() {
         cm_dense_tensor(vec![inv_sqrt2, inv_sqrt2], vec![1, 2, 1]),
     ];
     let psi = Mps::from_sites(storages);
-    let n = mps::norm(&psi);
+    let n = mps::norm(&backend, &psi);
     // |+⟩|+⟩ is normalized: ⟨++|++⟩ = 1
     assert_abs_diff_eq!(n, 1.0, epsilon = 1e-12);
 }

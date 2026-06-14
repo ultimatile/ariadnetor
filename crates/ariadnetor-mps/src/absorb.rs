@@ -9,8 +9,6 @@
 //! Every caller validates the contraction's preconditions at its entry
 //! point, so the internal `expect` failures are unreachable in practice.
 
-use std::sync::Arc;
-
 use arnet_core::{ComputeBackend, Scalar};
 use arnet_linalg::{
     BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
@@ -22,10 +20,10 @@ use arnet_tensor::{BlockSparseTensor, DenseTensor, Sector};
 /// result's fused leg back to restore the original rank. The logical leg
 /// operations handle the memory-order round-trip internally.
 pub(crate) fn absorb_from_left<T, B>(
-    factor: &DenseTensor<T, B>,
-    next: &DenseTensor<T, B>,
-    backend: &Arc<B>,
-) -> DenseTensor<T, B>
+    factor: &DenseTensor<T>,
+    next: &DenseTensor<T>,
+    backend: &B,
+) -> DenseTensor<T>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -41,10 +39,10 @@ where
 
 /// Multiply a factor matrix into the previous site: `prev(..., d) × factor(d, k) → (..., k)`.
 pub(crate) fn absorb_from_right<T, B>(
-    prev: &DenseTensor<T, B>,
-    factor: &DenseTensor<T, B>,
-    backend: &Arc<B>,
-) -> DenseTensor<T, B>
+    prev: &DenseTensor<T>,
+    factor: &DenseTensor<T>,
+    backend: &B,
+) -> DenseTensor<T>
 where
     T: Scalar,
     B: ComputeBackend,
@@ -62,10 +60,10 @@ where
 /// BlockSparse analogue of [`absorb_from_left`]: contract the factor's bond
 /// leg (axis 1) against the next site's leading leg (axis 0).
 pub(crate) fn absorb_from_left_bsp<T, S, B>(
-    factor: &BlockSparseTensor<T, S, B>,
-    next: &BlockSparseTensor<T, S, B>,
-    backend: &Arc<B>,
-) -> BlockSparseTensor<T, S, B>
+    factor: &BlockSparseTensor<T, S>,
+    next: &BlockSparseTensor<T, S>,
+    backend: &B,
+) -> BlockSparseTensor<T, S>
 where
     T: Scalar,
     S: Sector,
@@ -84,10 +82,10 @@ where
 /// BlockSparse analogue of [`absorb_from_right`]: contract the prev site's
 /// trailing leg against the factor's leading leg (axis 0).
 pub(crate) fn absorb_from_right_bsp<T, S, B>(
-    prev: &BlockSparseTensor<T, S, B>,
-    factor: &BlockSparseTensor<T, S, B>,
-    backend: &Arc<B>,
-) -> BlockSparseTensor<T, S, B>
+    prev: &BlockSparseTensor<T, S>,
+    factor: &BlockSparseTensor<T, S>,
+    backend: &B,
+) -> BlockSparseTensor<T, S>
 where
     T: Scalar,
     S: Sector,

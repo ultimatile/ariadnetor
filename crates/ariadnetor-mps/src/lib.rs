@@ -1,7 +1,7 @@
 //! Matrix Product State (MPS) and Matrix Product Operator (MPO) crate.
 //!
-//! Builds on [`arnet`] for tensor storage and linalg. Consumed by
-//! `arnet_algorithms`.
+//! Builds on [`arnet_tensor`] for tensor storage and [`arnet_linalg`]
+//! for linear algebra. Consumed by `arnet_algorithms`.
 //!
 //! # Index convention
 //!

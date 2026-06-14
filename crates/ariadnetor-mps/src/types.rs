@@ -1,26 +1,13 @@
 //! Core MPS/MPO data types.
 //!
-//! `Mps` / `Mpo` store a `Vec<Tensor<St, L, B>>` of joined-form site
-//! tensors plus a cached `Arc<B>` backend. The Tier 1 ordering
-//! invariant — every site's `layout().order()` matches
-//! `backend.preferred_order()` — is enforced by the constructors
-//! below via the doc-hidden [`LayoutOrderCheck`] trait, so downstream
-//! linalg kernels never have to defensively align site memory order. The
-//! trait lives in a private module and is not re-exported, so it is not
-//! nameable downstream; it stays `pub` (rather than `pub(crate)`) only so
-//! the `private_bounds` lint stays quiet on the public constructors, whose
-//! `where`-bounds reference it. Callers satisfy the bound through the
-//! in-crate impls without naming the trait.
+//! `Mps` / `Mpo` store a `Vec<Tensor<St, L>>` of joined-form site
+//! tensors. They carry no compute backend: every operation receives the
+//! backend explicitly at its call site (the call-site-supply design), so
+//! the chain types are backend-agnostic data containers.
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::TruncSvdParams;
-use arnet_native::NativeBackend;
-use arnet_tensor::{
-    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, Storage, StorageFor,
-    Tensor, TensorLayout,
-};
+use arnet_tensor::{Storage, StorageFor, Tensor, TensorLayout};
 
 /// Canonical form of a tensor chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,181 +104,88 @@ pub struct TruncResult<T: Scalar> {
 
 /// Internal data container for MPS/MPO tensor chains.
 #[derive(Debug, Clone)]
-pub(crate) struct TensorChainData<St, L, B>
+pub(crate) struct TensorChainData<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
-    pub(crate) sites: Vec<Tensor<St, L, B>>,
-    pub(crate) backend: Arc<B>,
+    pub(crate) sites: Vec<Tensor<St, L>>,
     pub(crate) canonical_form: CanonicalForm,
 }
 
 /// Matrix Product State — rank-3 tensor chain.
 #[derive(Debug, Clone)]
-pub struct Mps<St, L, B = NativeBackend>(pub(crate) TensorChainData<St, L, B>)
+pub struct Mps<St, L>(pub(crate) TensorChainData<St, L>)
 where
     St: Storage + StorageFor<L>,
-    L: TensorLayout,
-    B: ComputeBackend;
+    L: TensorLayout;
 
 /// Matrix Product Operator — rank-4 tensor chain.
 #[derive(Debug, Clone)]
-pub struct Mpo<St, L, B = NativeBackend>(pub(crate) TensorChainData<St, L, B>)
+pub struct Mpo<St, L>(pub(crate) TensorChainData<St, L>)
+where
+    St: Storage + StorageFor<L>,
+    L: TensorLayout;
+
+// ============================================================================
+// Generic constructors (Mps / Mpo). The chain carries no backend; sites
+// are stored as-is and the supplied backend reaches each operation at its
+// call site.
+// ============================================================================
+
+impl<St, L> Mps<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend;
-
-// ============================================================================
-// Per-flavor order check (doc-hidden, but `pub` — see module docs: it
-// appears in the public constructor `where`-bounds)
-//
-// `TensorLayout` doesn't expose `order()` (only shape / storage_extent),
-// so the Tier 1 order assertion routes through this trait. One impl per
-// concrete (Storage, Layout) flavor compares the site's layout order against
-// the backend's preferred order. The comparison is folded inside the trait
-// (rather than returning a `MemoryOrder` for the caller to compare) so the
-// layout-order type never appears in this crate's surface — keeping it off
-// the umbrella's public API.
-// ============================================================================
-
-#[doc(hidden)]
-pub trait LayoutOrderCheck<L>
-where
-    L: TensorLayout,
 {
-    /// Returns `true` if `layout`'s memory order matches `backend`'s
-    /// preferred order.
-    fn order_matches<B: ComputeBackend>(layout: &L, backend: &B) -> bool;
-}
-
-impl<T: Scalar> LayoutOrderCheck<DenseLayout> for DenseStorage<T> {
-    fn order_matches<B: ComputeBackend>(layout: &DenseLayout, backend: &B) -> bool {
-        layout.order() == backend.preferred_order()
-    }
-}
-
-impl<T: Scalar, S: Sector> LayoutOrderCheck<BlockSparseLayout<S>> for BlockSparseStorage<T> {
-    fn order_matches<B: ComputeBackend>(layout: &BlockSparseLayout<S>, backend: &B) -> bool {
-        layout.order() == backend.preferred_order()
-    }
-}
-
-// ============================================================================
-// Generic constructors (Mps / Mpo). The order check is performed via
-// `LayoutOrderCheck`, so calls like `Mps::from_sites(sites)` resolve
-// uniquely without turbofish at the call site.
-// ============================================================================
-
-impl<St, L, B> Mps<St, L, B>
-where
-    St: Storage + StorageFor<L> + LayoutOrderCheck<L>,
-    L: TensorLayout,
-    B: ComputeBackend,
-{
-    /// Create an MPS from sites. The backend is derived from `sites[0]`'s
-    /// cached backend Arc, and every site's order must match that
-    /// backend's preferred order.
+    /// Create an MPS from a non-empty list of sites.
     ///
     /// # Panics
     ///
-    /// Panics if `sites` is empty (use [`empty`](Self::empty) instead)
-    /// or if any site's `layout().order()` differs from the derived
-    /// backend's `preferred_order()`.
-    pub fn from_sites(sites: Vec<Tensor<St, L, B>>) -> Self {
+    /// Panics if `sites` is empty (use [`empty`](Self::empty) instead).
+    pub fn from_sites(sites: Vec<Tensor<St, L>>) -> Self {
         assert!(
             !sites.is_empty(),
-            "Mps::from_sites: pass at least one site, or use Mps::empty(backend) for an empty chain",
+            "Mps::from_sites: pass at least one site, or use Mps::empty() for an empty chain",
         );
-        let backend = Arc::clone(sites[0].backend_arc());
-        Self::with_backend(sites, backend)
-    }
-
-    /// Create an MPS from sites with an explicit backend (allows empty
-    /// chains).
-    pub fn with_backend(sites: Vec<Tensor<St, L, B>>, backend: Arc<B>) -> Self {
-        assert_sites_match_backend_order::<St, L, B>(&sites, &backend, "Mps::with_backend");
         Self(TensorChainData {
             sites,
-            backend,
             canonical_form: CanonicalForm::Unknown,
         })
     }
 
-    /// Create an empty MPS anchored on the given backend.
-    pub fn empty(backend: Arc<B>) -> Self {
+    /// Create an empty MPS.
+    pub fn empty() -> Self {
         Self(TensorChainData {
             sites: Vec::new(),
-            backend,
             canonical_form: CanonicalForm::Unknown,
         })
     }
 }
 
-impl<St, L, B> Mpo<St, L, B>
+impl<St, L> Mpo<St, L>
 where
-    St: Storage + StorageFor<L> + LayoutOrderCheck<L>,
+    St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
-    /// Create an MPO from sites. See [`Mps::from_sites`] for semantics.
-    pub fn from_sites(sites: Vec<Tensor<St, L, B>>) -> Self {
+    /// Create an MPO from a non-empty list of sites. See
+    /// [`Mps::from_sites`] for semantics.
+    pub fn from_sites(sites: Vec<Tensor<St, L>>) -> Self {
         assert!(
             !sites.is_empty(),
-            "Mpo::from_sites: pass at least one site, or use Mpo::empty(backend) for an empty chain",
+            "Mpo::from_sites: pass at least one site, or use Mpo::empty() for an empty chain",
         );
-        let backend = Arc::clone(sites[0].backend_arc());
-        Self::with_backend(sites, backend)
-    }
-
-    /// Create an MPO from sites with an explicit backend.
-    pub fn with_backend(sites: Vec<Tensor<St, L, B>>, backend: Arc<B>) -> Self {
-        assert_sites_match_backend_order::<St, L, B>(&sites, &backend, "Mpo::with_backend");
         Self(TensorChainData {
             sites,
-            backend,
             canonical_form: CanonicalForm::Unknown,
         })
     }
 
-    /// Create an empty MPO anchored on the given backend.
-    pub fn empty(backend: Arc<B>) -> Self {
+    /// Create an empty MPO.
+    pub fn empty() -> Self {
         Self(TensorChainData {
             sites: Vec::new(),
-            backend,
             canonical_form: CanonicalForm::Unknown,
         })
-    }
-}
-
-fn assert_sites_match_backend_order<St, L, B>(
-    sites: &[Tensor<St, L, B>],
-    backend: &Arc<B>,
-    ctx: &str,
-) where
-    St: Storage + StorageFor<L> + LayoutOrderCheck<L>,
-    L: TensorLayout,
-    B: ComputeBackend,
-{
-    let expected = backend.preferred_order();
-    for (i, s) in sites.iter().enumerate() {
-        assert!(
-            St::order_matches(s.data().layout(), backend.as_ref()),
-            "{ctx}: site {i} layout order does not match backend.preferred_order() ({expected:?})",
-        );
-        // The site's cached backend Arc need not be `Arc::ptr_eq` with
-        // the chain backend, but its preferred_order must agree: the
-        // chain's operation paths dispatch through the chain handle,
-        // yet the legacy public wrappers still dispatch through a
-        // tensor's cached backend until they are removed, and that
-        // backend would assume a layout different from the one the
-        // chain enforced.
-        let site_backend_order = s.backend().preferred_order();
-        assert_eq!(
-            site_backend_order, expected,
-            "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) does not match chain backend preferred_order ({expected:?})",
-        );
     }
 }

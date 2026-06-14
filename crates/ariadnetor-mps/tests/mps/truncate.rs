@@ -4,6 +4,7 @@ use approx::assert_abs_diff_eq;
 use arnet_mps::{
     self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
+use arnet_native::NativeBackend;
 
 use super::helpers::{
     cm_dense_tensor, is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense,
@@ -13,8 +14,9 @@ use super::helpers::{
 fn test_truncate_no_change_within_tolerance() {
     // Build a small MPS, canonicalize, then truncate with large chi_max
     // Bond dims should stay the same since no truncation is needed
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 2);
+    mps::canonicalize(&backend, &mut mps, 2);
 
     let bond_dims_before = mps.bond_dims();
 
@@ -22,7 +24,7 @@ fn test_truncate_no_change_within_tolerance() {
         chi_max: Some(100),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
     // Error should be zero (no truncation)
@@ -36,6 +38,7 @@ fn test_truncate_no_change_within_tolerance() {
 #[test]
 fn test_truncate_reduces_bond_dim() {
     // Build MPS with large bond dims, canonicalize, then truncate to chi_max=2
+    let backend = NativeBackend::new();
     let storages = vec![
         cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 4]),
         cm_dense_tensor((1..=32).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 4]),
@@ -43,13 +46,13 @@ fn test_truncate_reduces_bond_dim() {
         cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![4, 2, 1]),
     ];
     let mut mps = Mps::from_sites(storages);
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize(&backend, &mut mps, 1);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     // Bond dims should all be ≤ 2
     for d in mps.bond_dims() {
@@ -63,18 +66,19 @@ fn test_truncate_reduces_bond_dim() {
 
 #[test]
 fn test_truncate_preserves_state_approximately() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize(&backend, &mut mps, 1);
     let dense_before = mps_to_dense(&mps);
-    let norm_before = mps::norm(&mps);
+    let norm_before = mps::norm(&backend, &mps);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    mps::truncate(&mut mps, &params);
+    mps::truncate(&backend, &mut mps, &params);
     let dense_after = mps_to_dense(&mps);
-    let norm_after = mps::norm(&mps);
+    let norm_after = mps::norm(&backend, &mps);
 
     // Normalize and compute overlap between original and truncated
     let mut overlap = 0.0;
@@ -88,14 +92,15 @@ fn test_truncate_preserves_state_approximately() {
 
 #[test]
 fn test_truncate_with_cutoff() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize(&backend, &mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: None,
         target_trunc_err: Some(1e-14),
     });
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     // With very tight cutoff, truncation error should be very small
     assert!(result.error < 1e-10);
@@ -104,15 +109,16 @@ fn test_truncate_with_cutoff() {
 
 #[test]
 fn test_truncate_single_site() {
+    let backend = NativeBackend::new();
     let storages = vec![cm_dense_tensor(vec![3.0, 4.0], vec![1, 2, 1])];
     let mut mps = Mps::from_sites(storages);
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize(&backend, &mut mps, 0);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     assert_abs_diff_eq!(result.error, 0.0, epsilon = 1e-12);
     assert_eq!(mps.len(), 1);
@@ -120,14 +126,15 @@ fn test_truncate_single_site() {
 
 #[test]
 fn test_truncate_canonical_form_after() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize(&backend, &mut mps, 3);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    mps::truncate(&mut mps, &params);
+    mps::truncate(&backend, &mut mps, &params);
 
     // Center should be preserved
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 3 });
@@ -148,8 +155,9 @@ fn test_truncate_canonical_form_after() {
 
 #[test]
 fn test_truncate_absorb_left() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize(&backend, &mut mps, 1);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -159,7 +167,7 @@ fn test_truncate_absorb_left() {
         absorb: SvdAbsorb::Left,
         center: None,
     };
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     for d in mps.bond_dims() {
@@ -183,10 +191,11 @@ fn test_truncate_absorb_left() {
 
 #[test]
 fn test_truncate_absorb_both() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 1);
+    mps::canonicalize(&backend, &mut mps, 1);
     let dense_before = mps_to_dense(&mps);
-    let norm_before = mps::norm(&mps);
+    let norm_before = mps::norm(&backend, &mps);
 
     let params = TruncateParams {
         svd: TruncSvdParams {
@@ -196,7 +205,7 @@ fn test_truncate_absorb_both() {
         absorb: SvdAbsorb::Both,
         center: None,
     };
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     for d in mps.bond_dims() {
@@ -207,7 +216,7 @@ fn test_truncate_absorb_both() {
 
     // State should still be approximately preserved
     let dense_after = mps_to_dense(&mps);
-    let norm_after = mps::norm(&mps);
+    let norm_after = mps::norm(&backend, &mps);
     let mut overlap = 0.0;
     for i in 0..dense_before.len() {
         overlap += (dense_before.data_slice()[i] / norm_before)
@@ -223,6 +232,7 @@ fn test_truncate_absorb_both() {
 #[test]
 fn test_truncate_unknown_auto_canonicalizes() {
     // Truncating an Unknown MPS should auto-canonicalize, not panic
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
@@ -234,7 +244,7 @@ fn test_truncate_unknown_auto_canonicalizes() {
         absorb: SvdAbsorb::Right,
         center: Some(2),
     };
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
@@ -246,13 +256,14 @@ fn test_truncate_unknown_auto_canonicalizes() {
 #[test]
 fn test_truncate_unknown_default_center() {
     // Without specifying center, auto-canonicalize defaults to site 0
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    mps::truncate(&mut mps, &params);
+    mps::truncate(&backend, &mut mps, &params);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
@@ -260,15 +271,16 @@ fn test_truncate_unknown_default_center() {
 #[test]
 fn test_truncate_left_canonical_auto() {
     // Left canonical: all sites left-isometric, center should be last site
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 3);
+    mps::canonicalize(&backend, &mut mps, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     // Left → center = N-1 = 3
@@ -281,15 +293,16 @@ fn test_truncate_left_canonical_auto() {
 #[test]
 fn test_truncate_right_canonical_auto() {
     // Right canonical: all sites right-isometric, center should be site 0
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 0);
+    mps::canonicalize(&backend, &mut mps, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     assert!(result.error >= 0.0);
     // Right → center = 0
@@ -304,15 +317,16 @@ fn test_truncate_error_accumulates_correctly() {
     // Verify truncation error is positive and consistent across sweeps.
     // Truncating to chi_max=1 forces maximal truncation, so error must be
     // strictly positive and the squared-error accumulation (err*err) matters.
+    let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&mut mps, 1);
-    let norm_before = mps::norm(&mps);
+    mps::canonicalize(&backend, &mut mps, 1);
+    let norm_before = mps::norm(&backend, &mps);
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&mut mps, &params);
+    let result = mps::truncate(&backend, &mut mps, &params);
 
     // With chi_max=1, truncation error must be strictly positive
     assert!(
@@ -330,8 +344,9 @@ fn test_truncate_error_accumulates_correctly() {
 
 #[test]
 fn test_absorb_left_differs_from_right() {
+    let backend = NativeBackend::new();
     let mut mps_l = make_4site_mps();
-    mps::canonicalize(&mut mps_l, 1);
+    mps::canonicalize(&backend, &mut mps_l, 1);
     let mut mps_r = mps_l.clone();
 
     let params_l = TruncateParams {
@@ -346,8 +361,8 @@ fn test_absorb_left_differs_from_right() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    mps::truncate(&mut mps_l, &params_l);
-    mps::truncate(&mut mps_r, &params_r);
+    mps::truncate(&backend, &mut mps_l, &params_l);
+    mps::truncate(&backend, &mut mps_r, &params_r);
 
     // Center tensors should differ between Left and Right
     let center_l = mps_l.site(1);
