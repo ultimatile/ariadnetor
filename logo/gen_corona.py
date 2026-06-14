@@ -1,11 +1,10 @@
 """Generate the ariadnetor Corona Borealis mark (nodes + lines only).
 
 The mark is the constellation Corona Borealis drawn as a tensor-network-style
-graph: circular nodes joined by straight edges, in the same flat palette as
-gen_logo.py one directory up. Node positions are the *real* sky coordinates of
-the seven crown stars (epoch J2000; source noted on STARS below), so the arc is
-naturally irregular (not a true circle) and opens downward like a shallow cup
-("下弦の円弧").
+graph: circular nodes joined by straight edges. Node positions are the *real*
+sky coordinates of the seven crown stars (epoch J2000; source noted on STARS
+below), so the arc is naturally irregular (not a true circle) and opens downward
+like a shallow cup ("下弦の円弧").
 
 The conventional stick-figure order theta-beta-alpha-gamma-delta-epsilon-iota
 puts Alphecca (alpha CrB, the crown's jewel and brightest star) third in the
@@ -22,7 +21,7 @@ import math
 import subprocess
 from pathlib import Path
 
-# ── Palette (shared with ../gen_logo.py) ────────────────────
+# ── Palette ─────────────────────────────────────────────────
 COLOR_BG = "#1a1a2e"
 COLOR_EDGE = "#2d4a6f"   # constellation line
 COLOR_NODE = "#4a90d9"   # regular star node
@@ -32,8 +31,8 @@ COLOR_TEXT = "#ffffff"
 # ── Wordmark ────────────────────────────────────────────────
 WORD = "ariadnetor"
 # Fonts explored before settling on Lexend (legibility-led, no heavy "pressure"):
-#   "'Iceland'"                 -- ../gen_logo.py original; condensed, low legibility
-#   "'Azeret Mono','monospace'" -- only other font actually trialled in ../gen_logo.py
+#   "'Iceland'"                 -- the previous wordmark; condensed, low legibility
+#   "'Azeret Mono','monospace'" -- the only other font actually trialled
 #   "'Space Grotesk'"           -- nice but felt sparse at this word
 #   "'Atkinson Hyperlegible'"   -- max legibility, but softer/warmer than wanted
 FONT_FAMILY = "'Lexend'"

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="logo/CoronaBorealis/corona_lockup_dark.png">
-    <img src="logo/CoronaBorealis/corona_lockup_light.png" alt="ariadnetor" width="600">
+    <source media="(prefers-color-scheme: dark)" srcset="logo/corona_lockup_dark.png">
+    <img src="logo/corona_lockup_light.png" alt="ariadnetor" width="600">
   </picture>
 </p>
 

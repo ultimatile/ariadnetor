@@ -34,4 +34,10 @@ Wikipedia infobox (from SIMBAD / Hipparcos); see `STARS` in `gen_corona.py`.
 
 ## Palette
 
-Shares the ariadnetor logo palette; see `../README.md`.
+| role              | hex       |
+|-------------------|-----------|
+| background        | `#1a1a2e` |
+| node              | `#4a90d9` |
+| edge              | `#2d4a6f` |
+| accent (Alphecca) | `#e06040` |
+| wordmark          | `#ffffff` |
