@@ -137,6 +137,7 @@ pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f6
     let order = MemoryOrder::ColumnMajor;
     let rm = MemoryOrder::RowMajor;
     let n = mps.len();
+    let backend = NativeBackend::new();
 
     let mut result = mps.site(0).clone();
 
@@ -156,8 +157,7 @@ pub fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f6
         let site_2d = site_2d_rm.reordered(order);
 
         let contracted =
-            contract_with_backend(&NativeBackend::new(), &result_2d, &site_2d, "ab,bc->ac")
-                .unwrap();
+            contract_with_backend(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
 
         let contracted_rm = contracted.reordered(rm);
         let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
@@ -388,19 +388,14 @@ pub fn bsp_mps_contract_full(
 ) -> BlockSparseTensor<f64, U1Sector> {
     let n = mps.len();
     assert!(n > 0, "cannot contract an empty MPS");
+    let backend = NativeBackend::new();
 
     let mut acc = mps.site(0).clone();
     for j in 1..n {
         let site = mps.site(j);
         let last_axis = acc.rank() - 1;
-        let result = contract_block_sparse_with_backend(
-            &NativeBackend::new(),
-            &acc,
-            site,
-            &[last_axis],
-            &[0],
-        )
-        .expect("chain contraction failed in bsp_mps_contract_full");
+        let result = contract_block_sparse_with_backend(&backend, &acc, site, &[last_axis], &[0])
+            .expect("chain contraction failed in bsp_mps_contract_full");
         acc = match result {
             BlockSparseContractResult::Tensor(t) => t,
             BlockSparseContractResult::Scalar(_) => {
