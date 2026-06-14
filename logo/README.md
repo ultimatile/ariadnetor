@@ -16,10 +16,10 @@ needs to invert.
 
 ## Generate
 
-```
+```bash
 python gen_corona.py            # square icon
 python gen_corona.py --wordmark # + "ariadnetor" lockup
-python gen_corona.py --png      # also export PNG (headless Chrome)
+python gen_corona.py --png      # also export PNG (rsvg-convert)
 ```
 
 ## Star data

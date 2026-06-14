@@ -13,7 +13,7 @@ chain, so the 3rd node is the single op-colored (red) accent.
 Usage:
     python gen_corona.py              # square icon SVG
     python gen_corona.py --wordmark   # icon + "ariadnetor" lockup
-    python gen_corona.py --png        # also export PNG via headless Chrome
+    python gen_corona.py --png        # also export PNG via rsvg-convert (librsvg)
 """
 
 import argparse
@@ -75,8 +75,6 @@ FONT_SIZE = 104       # wordmark size in the lockup
 LOCKUP_ICON_SCALE = 1.45  # icon enlarged in the lockup to balance the wordmark
 TEXT_GAP = 28         # gap between icon and wordmark
 MARGIN_Y = 10
-
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 
 def raw_points():
@@ -235,19 +233,16 @@ def generate_lockup(pts, background=COLOR_BG, text_color=COLOR_TEXT) -> str:
 
 
 def svg_to_png(svg_path: Path, png_path: Path, scale: int = 2):
-    txt = svg_path.read_text()
-    w = txt.split('width="')[1].split('"')[0]
-    h = txt.split('height="')[1].split('"')[0]
-    cmd = [
-        CHROME, "--headless",
-        f"--screenshot={png_path.resolve()}",
-        f"--window-size={int(float(w))},{int(float(h))}",
-        f"--force-device-scale-factor={scale}",
-        "--default-background-color=00000000",
-        "--hide-scrollbars",
-        f"file://{svg_path.resolve()}",
-    ]
-    subprocess.run(cmd, capture_output=True, check=True)
+    """Rasterize SVG to PNG with rsvg-convert (librsvg) at `scale`x the SVG's
+    pixel size. It is a PATH command (no hard-coded app path), and resolves fonts
+    through fontconfig -- so the lockup's Lexend wordmark bakes in correctly as
+    long as Lexend is installed. The mark stays transparent where the SVG has no
+    background rect (rsvg-convert defaults to a transparent canvas)."""
+    subprocess.run(
+        ["rsvg-convert", "--zoom", str(scale),
+         "--output", str(png_path), str(svg_path)],
+        check=True,
+    )
     print(f"  -> {png_path}")
 
 
