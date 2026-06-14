@@ -43,7 +43,7 @@ LETTER_SPACING = 2
 # Seven crown stars as (label: (RA[hours], Dec[deg])), epoch J2000.
 #
 # Source: English Wikipedia "List of stars in Corona Borealis", which tabulates
-# RA/Dec (J2000, arcsec precision; from SIMBAD / Hipparcos) for every crown star
+# RA/Dec (J2000, arcsec precision; the page cites SIMBAD) for every crown star
 # in one place: https://en.wikipedia.org/wiki/List_of_stars_in_Corona_Borealis
 # Spot-checked: Alphecca lists RA 15h34m41.19s = 15.5781h, Dec +26d42'53.7" =
 # +26.7149deg, matching the value below. Stellar positions are facts (not
