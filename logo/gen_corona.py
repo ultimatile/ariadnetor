@@ -250,7 +250,7 @@ def main():
     ap = argparse.ArgumentParser(description="Generate ariadnetor Corona Borealis mark")
     ap.add_argument("--wordmark", action="store_true",
                     help="Emit the icon + 'ariadnetor' lockup as well")
-    ap.add_argument("--png", action="store_true", help="Also export PNG via headless Chrome")
+    ap.add_argument("--png", action="store_true", help="Also export PNG via rsvg-convert")
     ap.add_argument("--scale", type=int, default=2, help="PNG scale factor (default: 2)")
     args = ap.parse_args()
 
