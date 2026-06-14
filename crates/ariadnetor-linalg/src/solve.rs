@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
 use crate::error::LinalgError;
 use arnet_tensor::reorder_data;
@@ -34,7 +34,7 @@ pub(crate) fn solve_dense<T: Scalar>(
 /// consults `backend.par_for_solve`, while this one takes `policy` directly.
 /// The backend is supplied at the call site and neither operand's own backend
 /// is consulted.
-pub fn solve_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn solve_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     a: &DenseTensor<T>,
     b: &DenseTensor<T>,

@@ -34,7 +34,7 @@ use arnet_mps::{
 use arnet_native::NativeBackend;
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
-    DenseStorage, DenseTensor, Direction, QNIndex, U1Sector,
+    DenseStorage, DenseTensor, Direction, OpsFor, QNIndex, U1Sector,
 };
 
 // ---------------------------------------------------------------------------
@@ -119,6 +119,11 @@ impl ComputeBackend for CountingBackend {
         self.inner.solve(desc)
     }
 }
+
+// A test backend declares capability for the storage flavors it operates on,
+// exactly as an out-of-tree backend would (`OpsFor` is deliberately unsealed).
+impl<T: Scalar> OpsFor<DenseStorage<T>> for CountingBackend {}
+impl<T: Scalar> OpsFor<BlockSparseStorage<T>> for CountingBackend {}
 
 // ---------------------------------------------------------------------------
 // Fixtures (backend-free — every chain carries no backend)

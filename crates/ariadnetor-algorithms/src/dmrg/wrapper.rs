@@ -51,7 +51,7 @@
 
 use arnet_core::Scalar;
 use arnet_mps::{Mpo, Mps, MpsOps, TensorChain, canonicalize};
-use arnet_tensor::Host;
+use arnet_tensor::{Host, OpsFor};
 
 use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvs};
@@ -108,6 +108,9 @@ where
     T::Real: Scalar<Real = T::Real>,
     L: DmrgOps<T> + Clone,
     <L as MpsOps<T>>::Storage: Clone,
+    // Host-pinned: the host backend supplies every kernel, so it must declare
+    // capability for this layout's storage (satisfied by Dense / BlockSparse).
+    Host: OpsFor<<L as MpsOps<T>>::Storage>,
 {
     if psi0.len() == 0 {
         return Err(DmrgError::EmptyMps);

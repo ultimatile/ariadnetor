@@ -34,7 +34,7 @@
 use arnet_core::Scalar;
 use arnet_linalg::LinalgError;
 use arnet_mps::{CanonicalForm, Mpo, Mps, MpsOps, TensorChain, braket, norm};
-use arnet_tensor::Host;
+use arnet_tensor::{Host, OpsFor};
 
 use crate::numeric::try_real_from_f64;
 
@@ -242,6 +242,9 @@ where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
     L: DmrgOps<T>,
+    // Host-pinned: the host backend supplies every kernel, so it must declare
+    // capability for this layout's storage (satisfied by Dense / BlockSparse).
+    Host: OpsFor<<L as MpsOps<T>>::Storage>,
 {
     // ---- Length / size validation -------------------------------
     let n_sites = envs.n_sites();
@@ -454,6 +457,9 @@ where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
     L: DmrgOps<T>,
+    // Host-pinned: the host backend supplies every kernel, so it must declare
+    // capability for this layout's storage (satisfied by Dense / BlockSparse).
+    Host: OpsFor<<L as MpsOps<T>>::Storage>,
 {
     let result = <L as DmrgOps<T>>::step(envs, mps, mpo, site, &params.eigensolver, &params.trunc)
         .map_err(|source| DmrgSweepError::Step {

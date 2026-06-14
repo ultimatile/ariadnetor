@@ -2,7 +2,7 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, LqDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
 use super::reshape_for_backend;
 use crate::error::LinalgError;
@@ -41,7 +41,7 @@ pub(crate) fn lq_dense<T: Scalar>(
 /// consults `backend.par_for_lq`, while this one takes `policy` directly. The
 /// backend is supplied at the call site and the tensor's own backend is never
 /// consulted.
-pub fn lq_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn lq_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,

@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
@@ -39,7 +39,7 @@ pub(crate) fn eigh_dense<T: Scalar>(
 /// consults `backend.par_for_eigh`, while this one takes `policy` directly.
 /// The backend is supplied at the call site and the tensor's own backend is
 /// never consulted.
-pub fn eigh_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn eigh_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -141,7 +141,7 @@ pub(crate) fn eig_dense<T: Scalar>(
 /// consults `backend.par_for_eig`, while this one takes `policy` directly. The
 /// backend is supplied at the call site and the tensor's own backend is never
 /// consulted.
-pub fn eig_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn eig_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,

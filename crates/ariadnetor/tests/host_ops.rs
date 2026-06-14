@@ -11,11 +11,7 @@ use arnet::{
 
 #[test]
 fn dense_methods_resolve_through_umbrella() {
-    let t = DenseTensor::<f64>::from_raw_parts(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-        arnet::NativeBackend::shared(),
-    );
+    let t = DenseTensor::<f64>::from_raw_parts(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let (u, s, vt) = t.svd(1).expect("svd via method");
     assert_eq!(u.shape(), &[2, 2]);
     assert_eq!(s.shape(), &[2]);

@@ -9,11 +9,13 @@
 //! Every caller validates the contraction's preconditions at its entry
 //! point, so the internal `expect` failures are unreachable in practice.
 
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
 };
-use arnet_tensor::{BlockSparseTensor, DenseTensor, Sector};
+use arnet_tensor::{
+    BlockSparseStorage, BlockSparseTensor, DenseStorage, DenseTensor, OpsFor, Sector,
+};
 
 /// Multiply a factor matrix into the next site: `factor(k, d) × next(d, ...) → (k, ...)`.
 /// Fuses next's trailing legs to a matrix for the matmul, then splits the
@@ -26,7 +28,7 @@ pub(crate) fn absorb_from_left<T, B>(
 ) -> DenseTensor<T>
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     // Fuse next's trailing legs into a matrix, contract factor · next, then
     // split the fused leg back; axis 0 carries the factor's new bond.
@@ -45,7 +47,7 @@ pub(crate) fn absorb_from_right<T, B>(
 ) -> DenseTensor<T>
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     // Fuse prev's leading legs into a matrix, contract prev · factor, then
     // split the fused leg back; the last axis carries the factor's new bond.
@@ -67,7 +69,7 @@ pub(crate) fn absorb_from_left_bsp<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     match contract_block_sparse_with_backend(backend, factor, next, &[1], &[0])
         .expect("left absorption: validated by entry point")
@@ -89,7 +91,7 @@ pub(crate) fn absorb_from_right_bsp<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     let last = prev.rank() - 1;
     match contract_block_sparse_with_backend(backend, prev, factor, &[last], &[0])
