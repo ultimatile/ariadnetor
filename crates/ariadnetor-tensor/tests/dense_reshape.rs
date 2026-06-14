@@ -1,12 +1,10 @@
 //! Inherent `DenseTensor::reshape` on the joined surface.
 //!
 //! Pins the contract: zero-copy via `DenseStorage::Clone`, `self.order()`
-//! and backend `Arc` preserved, total-element-count panic surface owned
-//! by `TensorData::new`.
+//! preserved, total-element-count panic surface owned by
+//! `TensorData::new`.
 
-use std::sync::Arc;
-
-use arnet_tensor::{DenseTensor, MemoryOrder, NativeBackend};
+use arnet_tensor::{DenseTensor, MemoryOrder};
 
 fn build_2x3_row_major() -> DenseTensor<f64> {
     // The public constructor pins to the preferred (column-major) order, so
@@ -17,11 +15,7 @@ fn build_2x3_row_major() -> DenseTensor<f64> {
 }
 
 fn build_2x3_column_major() -> DenseTensor<f64> {
-    DenseTensor::from_raw_parts(
-        vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
-        vec![2, 3],
-        NativeBackend::shared(),
-    )
+    DenseTensor::from_raw_parts(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], vec![2, 3])
 }
 
 #[test]
@@ -42,14 +36,6 @@ fn reshape_preserves_order_column_major() {
     assert_eq!(r.shape(), &[6]);
     assert_eq!(r.order(), MemoryOrder::ColumnMajor);
     assert_eq!(r.data_slice(), t.data_slice());
-}
-
-#[test]
-fn reshape_preserves_backend_arc() {
-    let t = build_2x3_row_major();
-    let r = t.reshape(vec![3, 2]);
-
-    assert!(Arc::ptr_eq(t.backend_arc(), r.backend_arc()));
 }
 
 #[test]

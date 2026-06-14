@@ -1,10 +1,7 @@
 //! Lanczos iteration for the smallest eigenvalue / eigenvector
 //! of a Hermitian linear operator, with full reorthogonalization.
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
-use arnet_native::NativeBackend;
+use arnet_core::Scalar;
 use arnet_tensor::{DenseTensor, linear_combine};
 use num_traits::{Float, One, Zero};
 use rand::SeedableRng;
@@ -19,19 +16,18 @@ use super::lanczos_kernels::{
 ///
 /// The Lanczos solver only ever needs to apply the operator to a
 /// vector — it never inspects matrix elements directly. Closures of
-/// type `Fn(&DenseTensor<T, B>) -> DenseTensor<T, B>` automatically
+/// type `Fn(&DenseTensor<T>) -> DenseTensor<T>` automatically
 /// implement this trait via the blanket impl.
-pub trait LinearOp<T: Scalar, B: ComputeBackend = NativeBackend> {
-    fn apply(&self, v: &DenseTensor<T, B>) -> DenseTensor<T, B>;
+pub trait LinearOp<T: Scalar> {
+    fn apply(&self, v: &DenseTensor<T>) -> DenseTensor<T>;
 }
 
-impl<T, B, F> LinearOp<T, B> for F
+impl<T, F> LinearOp<T> for F
 where
     T: Scalar,
-    B: ComputeBackend,
-    F: Fn(&DenseTensor<T, B>) -> DenseTensor<T, B>,
+    F: Fn(&DenseTensor<T>) -> DenseTensor<T>,
 {
-    fn apply(&self, v: &DenseTensor<T, B>) -> DenseTensor<T, B> {
+    fn apply(&self, v: &DenseTensor<T>) -> DenseTensor<T> {
         self(v)
     }
 }
@@ -111,7 +107,7 @@ where
     // coincide with T::Real itself. This holds for all valid `Scalar`
     // impls (f32, f64, Complex<f32>, Complex<f64>).
     T::Real: Scalar<Real = T::Real>,
-    Op: LinearOp<T, NativeBackend>,
+    Op: LinearOp<T>,
 {
     assert!(dim >= 1, "lanczos: dim must be >= 1");
     assert!(params.max_iter >= 1, "lanczos: max_iter must be >= 1");
@@ -121,7 +117,6 @@ where
         params.tol,
     );
     let max_iter = params.max_iter.min(dim);
-    let backend_arc: Arc<NativeBackend> = NativeBackend::shared();
 
     let tol_real: T::Real =
         crate::numeric::try_real_from_f64::<T>(params.tol).unwrap_or_else(|| {
@@ -152,7 +147,7 @@ where
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
     let mut converged_z: DenseTensor<T::Real> =
-        DenseTensor::from_raw_parts(vec![T::Real::one()], vec![1], Arc::clone(&backend_arc));
+        DenseTensor::from_raw_parts(vec![T::Real::one()], vec![1]);
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -237,11 +232,7 @@ where
         }
         let inv = T::Real::one() / beta;
         let v_next_data: Vec<T> = w.data_slice().iter().map(|&x| x.scale_real(inv)).collect();
-        basis.push(DenseTensor::from_raw_parts(
-            v_next_data,
-            vec![dim],
-            Arc::clone(&backend_arc),
-        ));
+        basis.push(DenseTensor::from_raw_parts(v_next_data, vec![dim]));
         betas.push(beta);
     }
 

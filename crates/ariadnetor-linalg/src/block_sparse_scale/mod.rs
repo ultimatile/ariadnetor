@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::BlockSparseTensor;
 use arnet_tensor::BlockSparseTensorData;
 use arnet_tensor::Sector;
 
@@ -28,27 +27,10 @@ use crate::error::LinalgError;
 /// Returns an error if `axis` is out of range, a block's sector is missing
 /// from `weights`, or the weight vector length doesn't match the block
 /// dimension at `axis`.
-pub fn diagonal_scale_block_sparse<T, S, B>(
-    tensor: &BlockSparseTensor<T, S, B>,
-    weights: &BlockSingularValues<T::Real, S>,
-    axis: usize,
-) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(
-        tensor,
-        "diagonal_scale_block_sparse",
-    );
-    let backend_arc = tensor.backend_arc().clone();
-    let result = diagonal_scale_block_sparse_dense(tensor.backend(), tensor.data(), weights, axis)?;
-    Ok(BlockSparseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`diagonal_scale_block_sparse`] on joined-form
-/// [`BlockSparseTensorData<T, S>`].
+///
+/// Internal kernel for the block-sparse diagonal-scale on joined-form
+/// [`BlockSparseTensorData<T, S>`]. The public entry point is
+/// [`crate::diagonal_scale_block_sparse_with_backend`].
 pub(crate) fn diagonal_scale_block_sparse_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,

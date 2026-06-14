@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract_dense;
@@ -16,7 +16,7 @@ use arnet_tensor::reorder_data;
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
 ///
 /// Computes `exp(A) = V diag(exp(lambda)) V dagger` where `A = V diag(lambda) V dagger` is the
-/// eigendecomposition obtained from [`eigh`].
+/// eigendecomposition obtained from [`eigh_dense`].
 ///
 /// # Arguments
 ///
@@ -32,17 +32,10 @@ use arnet_tensor::reorder_data;
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
-pub fn expm_hermitian<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-    nrow: usize,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = tensor.backend_arc().clone();
-    let result = expm_hermitian_dense(tensor.backend(), tensor.data(), nrow)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`expm_hermitian`] on the joined
-/// [`DenseTensorData<T>`] form.
+///
+/// Internal kernel for the Hermitian matrix-exponential on the joined
+/// [`DenseTensorData<T>`] form. The public entry point is
+/// [`crate::expm_hermitian_with_backend`].
 pub(crate) fn expm_hermitian_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
@@ -63,7 +56,7 @@ pub(crate) fn expm_hermitian_dense<T: Scalar>(
 /// Matrix exponential for anti-Hermitian (skew-adjoint) matrices via eigendecomposition.
 ///
 /// For anti-Hermitian A (where A dagger = -A), computes `exp(A)` by noting that
-/// `H = iA` is Hermitian and using [`eigh`] on H.
+/// `H = iA` is Hermitian and using [`eigh_dense`] on H.
 ///
 /// The result satisfies `exp(A) = V diag(exp(-i*lambda)) V dagger` where `H = V diag(lambda) V dagger`.
 ///
@@ -81,17 +74,10 @@ pub(crate) fn expm_hermitian_dense<T: Scalar>(
 ///
 /// Returns `LinalgError` if the input is a real type (f32/f64), `nrow` is out of range,
 /// the matrix is non-square, or the backend fails.
-pub fn expm_antihermitian<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-    nrow: usize,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = tensor.backend_arc().clone();
-    let result = expm_antihermitian_dense(tensor.backend(), tensor.data(), nrow)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`expm_antihermitian`] on the joined
-/// [`DenseTensorData<T>`] form.
+///
+/// Internal kernel for the anti-Hermitian matrix-exponential on the joined
+/// [`DenseTensorData<T>`] form. The public entry point is
+/// [`crate::expm_antihermitian_with_backend`].
 pub(crate) fn expm_antihermitian_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
@@ -169,7 +155,7 @@ fn matmul<T: Scalar>(
     contract_dense(backend, a, b, "ij,jk->ik")
 }
 
-/// Validate the `nrow` argument for [`expm`]: must satisfy `1 <= nrow < rank`.
+/// Validate the `nrow` argument for `expm_dense`: must satisfy `1 <= nrow < rank`.
 fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
@@ -442,16 +428,10 @@ fn pade_uv_13<T: Scalar>(
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// or the backend fails.
-pub fn expm<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-    nrow: usize,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = tensor.backend_arc().clone();
-    let result = expm_dense(tensor.backend(), tensor.data(), nrow)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`expm`] on the joined [`DenseTensorData<T>`] form.
+///
+/// Internal kernel for the general matrix-exponential on the joined
+/// [`DenseTensorData<T>`] form. The public entry point is
+/// [`crate::expm_with_backend`].
 pub(crate) fn expm_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,

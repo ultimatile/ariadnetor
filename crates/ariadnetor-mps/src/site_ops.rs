@@ -1,11 +1,10 @@
 //! SiteOps trait and concrete operator dictionaries.
 //!
-//! All operators here are pinned to [`NativeBackend`] and laid out in
-//! `ColumnMajor` (`NativeBackend`'s preferred order). For a 2×2 matrix
-//! `[[a, b], [c, d]]`, the flat layout is `[a, c, b, d]`.
+//! All operators here are laid out in `ColumnMajor` (the host
+//! substrate's preferred order). For a 2×2 matrix `[[a, b], [c, d]]`,
+//! the flat layout is `[a, c, b, d]`.
 
 use arnet_core::Scalar;
-use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 use num_traits::{NumCast, Zero};
 
@@ -19,15 +18,15 @@ pub trait SiteOps {
     fn dim(&self) -> usize;
 }
 
-/// Build a 2×2 column-major DenseTensor pinned to NativeBackend.
+/// Build a 2×2 column-major DenseTensor.
 ///
 /// `data` must be the four entries in column-major order: `[m(0,0),
-/// m(1,0), m(0,1), m(1,1)]`. NativeBackend's preferred order is
-/// ColumnMajor, so the resulting tensor satisfies the Tier 1
-/// invariant immediately.
+/// m(1,0), m(0,1), m(1,1)]`. The dense constructor materializes in the
+/// host substrate's preferred order (ColumnMajor), so the entries map
+/// directly onto the stored buffer.
 fn make_2x2_cm<T: Scalar>(data: Vec<T>) -> DenseTensor<T> {
     debug_assert_eq!(data.len(), 4, "make_2x2_cm: expected 4 entries");
-    DenseTensor::from_raw_parts(data, vec![2, 2], NativeBackend::shared())
+    DenseTensor::from_raw_parts(data, vec![2, 2])
 }
 
 /// Spin-1/2 site operators.

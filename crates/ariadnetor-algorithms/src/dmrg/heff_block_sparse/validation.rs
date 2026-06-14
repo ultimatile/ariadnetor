@@ -10,9 +10,7 @@
 //! local eigensolver's parameter sanity (Lanczos by default, ARPACK
 //! behind the `arpack` feature).
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, QNIndex, Sector};
 
@@ -23,27 +21,25 @@ use super::super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eig
 /// Validated input handles + derived dims, returned to the caller
 /// (the entry point in `mod.rs`) so it can build the Heff and drive
 /// the local eigensolver without re-deriving anything.
-pub(super) struct ValidatedInputs<'a, T: Scalar, S: Sector, B: ComputeBackend> {
-    pub left: &'a BlockSparseTensor<T, S, B>,
-    pub right: &'a BlockSparseTensor<T, S, B>,
-    pub w_i: &'a BlockSparseTensor<T, S, B>,
-    pub w_ip1: &'a BlockSparseTensor<T, S, B>,
-    pub mps_i: &'a BlockSparseTensor<T, S, B>,
-    pub mps_ip1: &'a BlockSparseTensor<T, S, B>,
-    pub backend: Arc<B>,
+pub(super) struct ValidatedInputs<'a, T: Scalar, S: Sector> {
+    pub left: &'a BlockSparseTensor<T, S>,
+    pub right: &'a BlockSparseTensor<T, S>,
+    pub w_i: &'a BlockSparseTensor<T, S>,
+    pub w_ip1: &'a BlockSparseTensor<T, S>,
+    pub mps_i: &'a BlockSparseTensor<T, S>,
+    pub mps_ip1: &'a BlockSparseTensor<T, S>,
 }
 
-pub(super) fn validate_inputs<'a, T, S, B>(
-    envs: &'a DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-    mps: &'a Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-    mpo: &'a Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+pub(super) fn validate_inputs<'a, T, S>(
+    envs: &'a DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+    mps: &'a Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+    mpo: &'a Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
-) -> Result<ValidatedInputs<'a, T, S, B>, DmrgHeffError>
+) -> Result<ValidatedInputs<'a, T, S>, DmrgHeffError>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
     let n_sites = envs.n_sites();
     if mps.len() != n_sites || mpo.len() != n_sites {
@@ -56,23 +52,6 @@ where
     if site >= n_sites.saturating_sub(1) {
         return Err(DmrgHeffError::InvalidSite { site, n_sites });
     }
-
-    let chain_backend: Arc<B> = mps.backend_arc().clone();
-    assert_eq!(
-        chain_backend.preferred_order(),
-        mpo.backend().preferred_order(),
-        "dmrg_2site_step_block_sparse: mps/mpo backend preferred_order mismatch",
-    );
-    <BlockSparseLayout<S> as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
-        &chain_backend,
-        mps.sites(),
-        "dmrg_2site_step_block_sparse.mps",
-    );
-    <BlockSparseLayout<S> as crate::dmrg::env::DmrgEnvOps<T>>::assert_chain_order(
-        &chain_backend,
-        mpo.sites(),
-        "dmrg_2site_step_block_sparse.mpo",
-    );
 
     validate_eigensolver_params(eigensolver)
         .map_err(|detail| DmrgHeffError::InvalidEigensolverParams { detail })?;
@@ -94,8 +73,6 @@ where
     let w_ip1 = mpo.site(site + 1);
     let mps_i = mps.site(site);
     let mps_ip1 = mps.site(site + 1);
-    // Reuse the entry-derived chain handle rather than deriving again.
-    let backend: Arc<B> = chain_backend;
 
     let check_eq =
         |expected: usize, actual: usize, field: &'static str| -> Result<(), DmrgHeffError> {
@@ -347,7 +324,6 @@ where
         w_ip1,
         mps_i,
         mps_ip1,
-        backend,
     })
 }
 

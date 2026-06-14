@@ -12,15 +12,12 @@
 //! at `J = 1`) so the solver-comparison fixture matches what existing
 //! correctness tests pin down.
 
-use std::sync::Arc;
-
 use arnet_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
 #[cfg(feature = "arpack")]
 use arnet_algorithms::krylov::ArpackParams;
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::RngExt;
@@ -62,7 +59,6 @@ fn build_mpo_site_f64(
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
 ) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
     for &(vl, vr, op, scale) in cells {
@@ -73,7 +69,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
@@ -123,7 +119,6 @@ fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
 }
 
 fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -131,7 +126,7 @@ fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, D, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, D, r])
         })
         .collect();
     Mps::from_sites(storages)

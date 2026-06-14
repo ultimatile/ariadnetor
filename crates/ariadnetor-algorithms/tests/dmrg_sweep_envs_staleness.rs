@@ -3,8 +3,6 @@
 //! boundary case codex flagged: every populated slot must match a
 //! fresh `DmrgEnvs::build` against the post-sweep MPS.
 
-use std::sync::Arc;
-
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
@@ -23,7 +21,6 @@ fn random_mps_center_zero_f64(
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -31,11 +28,11 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(sites);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     mps
 }
 
@@ -48,7 +45,6 @@ fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, De
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
@@ -67,7 +63,7 @@ fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, De
                     h[i + d * j] = acc;
                 }
             }
-            DenseTensor::from_raw_parts(h, vec![1, d, d, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(h, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(sites)

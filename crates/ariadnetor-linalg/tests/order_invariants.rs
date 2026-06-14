@@ -7,7 +7,7 @@
 //! normalization is wired up).
 
 use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, einsum, expm, inverse, solve, svd, trunc_svd};
+use arnet_linalg::{DenseHostOps, TruncSvdParams, einsum_with_backend};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
     ComputeBackend, ComputeBackendTensorExt, DenseTensor, DenseTensorData, MemoryOrder,
@@ -15,17 +15,17 @@ use arnet_tensor::{
 };
 use num_complex::Complex;
 
-/// Wrap a `DenseTensorData<T>` into the user-facing `DenseTensor<T, NativeBackend>`
-/// for feeding into linalg pub fns. Preserves the order tag so the
-/// order-normalization branches inside the linalg op are exercised the
-/// same way as before the API migration.
-fn wrap<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
-    DenseTensor::with_backend(d, NativeBackend::shared())
+/// Wrap a `DenseTensorData<T>` into the user-facing `DenseTensor<T>`
+/// for feeding into the linalg host-ext methods. Preserves the order tag
+/// so the order-normalization branches inside the linalg op are exercised
+/// the same way as before the API migration.
+fn wrap<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T> {
+    DenseTensor::from_data(d)
 }
 
 /// Clone out a `DenseTensor`'s joined-form `DenseTensorData<T>` for
 /// assertions that use `reorder_data` and slice-level data comparison.
-fn as_data<T: Clone>(t: &DenseTensor<T, NativeBackend>) -> DenseTensorData<T> {
+fn as_data<T: Clone>(t: &DenseTensor<T>) -> DenseTensorData<T> {
     t.data().clone()
 }
 
@@ -143,9 +143,11 @@ fn contract_normalizes_row_major_input_against_column_major_backend() {
     let a_cm = reorder_data(&a_rm, MemoryOrder::ColumnMajor);
     let b_cm = reorder_data(&b_rm, MemoryOrder::ColumnMajor);
 
-    let c_rm_inputs = contract(&wrap(a_rm), &wrap(b_rm), "ij,jk->ik")
+    let c_rm_inputs = wrap(a_rm)
+        .contract(&wrap(b_rm), "ij,jk->ik")
         .expect("contract with RM-flagged inputs must normalize and succeed");
-    let c_cm_inputs = contract(&wrap(a_cm), &wrap(b_cm), "ij,jk->ik")
+    let c_cm_inputs = wrap(a_cm)
+        .contract(&wrap(b_cm), "ij,jk->ik")
         .expect("contract with CM-flagged inputs is the reference path");
 
     let c_rm_inputs = as_data(&c_rm_inputs);
@@ -187,9 +189,11 @@ fn contract_with_permutation_normalizes_row_major_input_against_column_major_bac
     let a_cm = reorder_data(&a_rm, MemoryOrder::ColumnMajor);
     let b_cm = reorder_data(&b_rm, MemoryOrder::ColumnMajor);
 
-    let c_rm_inputs = contract(&wrap(a_rm), &wrap(b_rm), "ji,jk->ik")
+    let c_rm_inputs = wrap(a_rm)
+        .contract(&wrap(b_rm), "ji,jk->ik")
         .expect("contract with RM-flagged inputs must normalize and succeed");
-    let c_cm_inputs = contract(&wrap(a_cm), &wrap(b_cm), "ji,jk->ik")
+    let c_cm_inputs = wrap(a_cm)
+        .contract(&wrap(b_cm), "ji,jk->ik")
         .expect("contract with CM-flagged inputs is the reference path");
 
     let c_rm_inputs = as_data(&c_rm_inputs);
@@ -246,7 +250,7 @@ fn svd_s_tensor_uses_preferred_order() {
         vec![2, 3],
         MemoryOrder::ColumnMajor,
     ));
-    let (_u, s, _vt) = svd(&a, 1).expect("svd must succeed");
+    let (_u, s, _vt) = a.svd(1).expect("svd must succeed");
     assert_eq!(s.order(), backend.preferred_order());
 }
 
@@ -262,7 +266,7 @@ fn trunc_svd_s_tensor_uses_preferred_order() {
         chi_max: Some(1),
         target_trunc_err: None,
     };
-    let (_u, s, _vt, _err) = trunc_svd(&a, 1, &params).expect("trunc_svd must succeed");
+    let (_u, s, _vt, _err) = a.trunc_svd(1, &params).expect("trunc_svd must succeed");
     assert_eq!(s.order(), backend.preferred_order());
 }
 
@@ -277,7 +281,7 @@ fn solve_normalizes_row_major_input() {
     assert_op_layout_invariance("solve", |order| {
         let a = build_tagged(&a_data, &[2, 2], order);
         let b = build_tagged(&b_data, &[2, 1], order);
-        let out = solve(&wrap(a), &wrap(b), 1).expect("solve must succeed");
+        let out = wrap(a).solve(&wrap(b), 1).expect("solve must succeed");
         as_data(&out)
     });
 }
@@ -289,7 +293,7 @@ fn inverse_normalizes_row_major_input() {
     assert_ne!(a_data[1], a_data[2], "fixture must be asymmetric");
     assert_op_layout_invariance("inverse", |order| {
         let a = build_tagged(&a_data, &[2, 2], order);
-        let out = inverse(&wrap(a), 1).expect("inverse must succeed");
+        let out = wrap(a).inverse(1).expect("inverse must succeed");
         as_data(&out)
     });
 }
@@ -309,7 +313,7 @@ fn expm_normalizes_row_major_input() {
     assert_ne!(data[1], data[2], "fixture must be asymmetric");
     assert_op_layout_invariance("expm", |order| {
         let m = build_tagged(&data, &[2, 2], order);
-        let out = expm(&wrap(m), 1).expect("expm must succeed");
+        let out = wrap(m).expm(1).expect("expm must succeed");
         as_data(&out)
     });
 }
@@ -328,7 +332,8 @@ fn batched_einsum_normalizes_row_major_input() {
         let b = build_tagged(&rhs_data, &[2, 2, 2], order);
         let wa = wrap(a);
         let wb = wrap(b);
-        let out = einsum(&[&wa, &wb], "bik,bkj->bij").expect("einsum must succeed");
+        let out = einsum_with_backend(&NativeBackend::new(), &[&wa, &wb], "bik,bkj->bij")
+            .expect("einsum must succeed");
         as_data(&out)
     });
 }

@@ -4,11 +4,9 @@
 //! (XXX). Test-internal MPO builders and ED reference are inlined
 //! here; no public API is added.
 
-use std::sync::Arc;
-
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh};
+use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
@@ -74,7 +72,6 @@ fn build_mpo_site_f64(
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
 ) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
     for &(vl, vr, op, scale) in cells {
@@ -85,7 +82,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +226,6 @@ fn write_offdiag(h: &mut [f64], dim: usize, b_out: usize, b_in: usize, value: f6
 }
 
 fn tfi_ed_dense_f64(n: usize, j: f64, h_field: f64) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let dim = 1usize << n;
     let mut data = vec![0.0_f64; dim * dim];
     for b in 0..dim {
@@ -248,11 +244,10 @@ fn tfi_ed_dense_f64(n: usize, j: f64, h_field: f64) -> DenseTensor<f64> {
             write_offdiag(&mut data, dim, b_out, b, -h_field);
         }
     }
-    DenseTensor::from_raw_parts(data, vec![dim, dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![dim, dim])
 }
 
 fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let dim = 1usize << n;
     let mut data = vec![0.0_f64; dim * dim];
     for b in 0..dim {
@@ -276,11 +271,11 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![dim, dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![dim, dim])
 }
 
 fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
-    let (eigvals, _v) = eigh(h, 1).expect("eigh");
+    let (eigvals, _v) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
     eigvals
         .data_slice()
         .iter()
@@ -299,7 +294,6 @@ fn random_mps_center_zero_f64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -307,11 +301,11 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     mps
 }
 

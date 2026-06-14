@@ -7,6 +7,7 @@
 //! the per-sector sweep logic.
 
 use arnet_mps::{CanonicalForm, Mps, TensorChain, canonicalize};
+use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, U1Sector};
 
 use super::helpers::{
@@ -22,10 +23,11 @@ const TOL: f64 = 1e-10;
 
 #[test]
 fn canonicalize_bsp_sets_mixed_form_from_unknown() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
-    canonicalize(&mut mps, 2);
+    canonicalize(&backend, &mut mps, 2);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 }
@@ -36,8 +38,9 @@ fn canonicalize_bsp_sets_mixed_form_from_unknown() {
 
 #[test]
 fn canonicalize_bsp_center_0_all_right_isometric() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
     // All sites past the center must be right-canonical.
@@ -51,9 +54,10 @@ fn canonicalize_bsp_center_0_all_right_isometric() {
 
 #[test]
 fn canonicalize_bsp_center_last_all_left_isometric() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
     let last = mps.len() - 1;
-    canonicalize(&mut mps, last);
+    canonicalize(&backend, &mut mps, last);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: last });
     // Sites 0..last must be left-canonical.
@@ -67,8 +71,9 @@ fn canonicalize_bsp_center_last_all_left_isometric() {
 
 #[test]
 fn canonicalize_bsp_center_middle_has_mixed_isometry() {
+    let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&mut mps, 2);
+    canonicalize(&backend, &mut mps, 2);
 
     // 0..2 left-canonical, 3..4 right-canonical; site 2 is the orthogonality center.
     for j in 0..2 {
@@ -91,11 +96,12 @@ fn canonicalize_bsp_center_middle_has_mixed_isometry() {
 
 #[test]
 fn canonicalize_bsp_preserves_full_chain_state_center_0() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let state_before = bsp_mps_contract_full(&mps);
 
     let mut mps_after = mps.clone();
-    canonicalize(&mut mps_after, 0);
+    canonicalize(&backend, &mut mps_after, 0);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -103,11 +109,12 @@ fn canonicalize_bsp_preserves_full_chain_state_center_0() {
 
 #[test]
 fn canonicalize_bsp_preserves_full_chain_state_center_middle() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let state_before = bsp_mps_contract_full(&mps);
 
     let mut mps_after = mps.clone();
-    canonicalize(&mut mps_after, 2);
+    canonicalize(&backend, &mut mps_after, 2);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -115,12 +122,13 @@ fn canonicalize_bsp_preserves_full_chain_state_center_middle() {
 
 #[test]
 fn canonicalize_bsp_preserves_full_chain_state_center_last() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let state_before = bsp_mps_contract_full(&mps);
 
     let mut mps_after = mps.clone();
     let last = mps_after.len() - 1;
-    canonicalize(&mut mps_after, last);
+    canonicalize(&backend, &mut mps_after, last);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -138,6 +146,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_last() {
 /// by `canonicalize_bsp_accepts_charged_single_site`.
 #[test]
 fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
+    let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     // Precondition: fixture really is a zero-flux chain. If the fixture
     // ever changes to carry charge, this test is no longer meaningful.
@@ -150,7 +159,7 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     }
 
     let mut mps_after = mps;
-    canonicalize(&mut mps_after, 2);
+    canonicalize(&backend, &mut mps_after, 2);
 
     for j in 0..mps_after.len() {
         assert_eq!(
@@ -170,6 +179,8 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
 fn canonicalize_bsp_accepts_charged_single_site() {
     use arnet_tensor::{BlockCoord, Direction, QNIndex};
 
+    let backend = NativeBackend::new();
+
     let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
     let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
     let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
@@ -186,7 +197,7 @@ fn canonicalize_bsp_accepts_charged_single_site() {
 
     let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
         Mps::from_sites(vec![site]);
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
     assert_eq!(*mps.site(0).flux(), U1Sector(1));
@@ -208,6 +219,7 @@ fn canonicalize_bsp_accepts_charged_single_site() {
 fn canonicalize_bsp_single_site_only_updates_canonical_form() {
     // A single-site chain has no bonds to sweep, so canonicalize is a pure
     // canonical-form update. We still require the site data to be unchanged.
+    let backend = NativeBackend::new();
     let site = make_4site_u1_mps().site(0).clone();
     let data_before: Vec<f64> = site
         .block_metas()
@@ -217,7 +229,7 @@ fn canonicalize_bsp_single_site_only_updates_canonical_form() {
 
     let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
         Mps::from_sites(vec![site]);
-    canonicalize(&mut mps, 0);
+    canonicalize(&backend, &mut mps, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 

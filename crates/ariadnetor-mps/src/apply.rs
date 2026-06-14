@@ -2,9 +2,8 @@
 //! algorithm.
 
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract_block_sparse_with_backend,
     contract_with_backend, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
@@ -14,7 +13,7 @@ use arnet_linalg::{
 };
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
-    DenseTensor, Direction, Sector,
+    DenseTensor, Direction, OpsFor, Sector,
 };
 
 use super::chain::TensorChain;
@@ -44,20 +43,19 @@ use super::types::{CanonicalForm, Mpo, Mps, TruncateParams};
 /// or via the underlying `canonicalize_dense` / `truncate_dense` for
 /// out-of-range `params.center`.
 pub(super) fn apply_streaming_naive_dense<T, B>(
-    op: &Mpo<DenseStorage<T>, DenseLayout, B>,
-    psi: &Mps<DenseStorage<T>, DenseLayout, B>,
+    backend: &B,
+    op: &Mpo<DenseStorage<T>, DenseLayout>,
+    psi: &Mps<DenseStorage<T>, DenseLayout>,
     params: Option<&TruncateParams>,
     forward_cap: Option<NonZeroUsize>,
-) -> Mps<DenseStorage<T>, DenseLayout, B>
+) -> Mps<DenseStorage<T>, DenseLayout>
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
-
-    let backend_arc = Arc::clone(psi.backend_arc());
 
     // The forward branch falls to truncated SVD only when both a user
     // chi_max and a forward_cap factor are set; otherwise the per-site QR
@@ -68,13 +66,13 @@ where
     };
     let cutoff = params.and_then(|p| p.svd.target_trunc_err);
 
-    let mut tensors: Vec<DenseTensor<T, B>> = Vec::with_capacity(n);
-    let mut carry: Option<DenseTensor<T, B>> = None;
+    let mut tensors: Vec<DenseTensor<T>> = Vec::with_capacity(n);
+    let mut carry: Option<DenseTensor<T>> = None;
 
     for j in 0..n {
         let w = op.site(j);
         let a = psi.site(j);
-        let local = contract_with_backend(&backend_arc, w, a, "abcd,ebf->aecdf")
+        let local = contract_with_backend(backend, w, a, "abcd,ebf->aecdf")
             .expect("MPO-MPS contraction: validated by entry point");
         // Fuse the (w_l, chi_l) and (w_r, chi_r) boundary pairs, keeping
         // the physical bra leg: (w_l*chi_l, d_bra, w_r*chi_r). A two-group
@@ -85,7 +83,7 @@ where
         let mut p = local.reshape_logical(vec![w_l * chi_l, d_bra, w_r * chi_r]);
 
         if let Some(c) = carry.as_ref() {
-            p = contract_with_backend(&backend_arc, c, &p, "ab,bcd->acd")
+            p = contract_with_backend(backend, c, &p, "ab,bcd->acd")
                 .expect("carry absorption: validated by entry point");
         }
 
@@ -100,8 +98,7 @@ where
             };
 
             if !use_svd {
-                let (q, r) =
-                    qr_with_backend(&backend_arc, &p, 2).expect("QR: validated by entry point");
+                let (q, r) = qr_with_backend(backend, &p, 2).expect("QR: validated by entry point");
                 // Split Q's fused row leg back into (left, d, k).
                 let q_site = q.split_leg(0, &[left, d]);
                 tensors.push(q_site);
@@ -111,13 +108,13 @@ where
                     chi_max: chi_max_forward,
                     target_trunc_err: cutoff,
                 };
-                let (u, s_vec, vt, _err) = trunc_svd_with_backend(&backend_arc, &p, 2, &svd_params)
+                let (u, s_vec, vt, _err) = trunc_svd_with_backend(backend, &p, 2, &svd_params)
                     .expect("trunc_svd: validated by entry point");
                 // Split U's fused row leg back into (left, d, k).
                 let u_site = u.split_leg(0, &[left, d]);
                 tensors.push(u_site);
 
-                let svt = diagonal_scale_with_backend(&backend_arc, &vt, s_vec.data_slice(), 0)
+                let svt = diagonal_scale_with_backend(backend, &vt, s_vec.data_slice(), 0)
                     .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }
@@ -126,8 +123,7 @@ where
         }
     }
 
-    let mut result_mps: Mps<DenseStorage<T>, DenseLayout, B> =
-        Mps::<DenseStorage<T>, DenseLayout, B>::with_backend(tensors, backend_arc);
+    let mut result_mps: Mps<DenseStorage<T>, DenseLayout> = Mps::from_sites(tensors);
     result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
 
     // Delegate final canonicalization + truncation to the standard pipeline.
@@ -135,8 +131,8 @@ where
     // honors every `SvdAbsorb` variant and any in-range `params.center`.
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_dense(&mut result_mps, center);
-        super::truncate::truncate_dense(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_dense(backend, &mut result_mps, center);
+        super::truncate::truncate_dense(backend, &mut result_mps, trunc_params);
     }
 
     result_mps
@@ -144,14 +140,14 @@ where
 
 /// Local single-site MPO·MPS product for the BlockSparse path.
 fn local_product_bsp<T, S, B>(
-    w: &BlockSparseTensor<T, S, B>,
-    a: &BlockSparseTensor<T, S, B>,
-    backend: &Arc<B>,
-) -> BlockSparseTensor<T, S, B>
+    w: &BlockSparseTensor<T, S>,
+    a: &BlockSparseTensor<T, S>,
+    backend: &B,
+) -> BlockSparseTensor<T, S>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     // Contract over physical index (d_ket = W axis 1, d = A axis 1):
     // Output: [w_L, d_bra, w_R, χ_L, χ_R]
@@ -186,21 +182,20 @@ where
 /// then delegates the final canonicalization + truncation to
 /// `canonicalize_bsp` + `truncate_bsp`.
 pub(super) fn apply_streaming_naive_bsp<T, S, B>(
-    op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    backend: &B,
+    op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+    psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     params: Option<&TruncateParams>,
     forward_cap: Option<NonZeroUsize>,
-) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>
+) -> Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
     assert!(n > 0, "must have at least one site");
-
-    let backend_arc = Arc::clone(psi.backend_arc());
 
     let chi_max_forward: Option<usize> = match (params.and_then(|p| p.svd.chi_max), forward_cap) {
         (Some(chi), Some(factor)) => Some(chi.saturating_mul(factor.get())),
@@ -208,14 +203,14 @@ where
     };
     let cutoff = params.and_then(|p| p.svd.target_trunc_err);
 
-    let mut tensors: Vec<BlockSparseTensor<T, S, B>> = Vec::with_capacity(n);
-    let mut carry: Option<BlockSparseTensor<T, S, B>> = None;
+    let mut tensors: Vec<BlockSparseTensor<T, S>> = Vec::with_capacity(n);
+    let mut carry: Option<BlockSparseTensor<T, S>> = None;
 
     for j in 0..n {
-        let mut p = local_product_bsp(op.site(j), psi.site(j), &backend_arc);
+        let mut p = local_product_bsp(op.site(j), psi.site(j), backend);
 
         if let Some(c) = carry.as_ref() {
-            p = match contract_block_sparse_with_backend(&backend_arc, c, &p, &[1], &[0])
+            p = match contract_block_sparse_with_backend(backend, c, &p, &[1], &[0])
                 .expect("carry absorption: validated by entry point")
             {
                 BlockSparseContractResult::Tensor(t) => t,
@@ -233,7 +228,7 @@ where
             };
 
             if !use_svd {
-                let (q, r) = qr_block_sparse_with_backend(&backend_arc, &p, 2)
+                let (q, r) = qr_block_sparse_with_backend(backend, &p, 2)
                     .expect("QR: validated by entry point");
                 tensors.push(q);
                 carry = Some(r);
@@ -243,11 +238,11 @@ where
                     target_trunc_err: cutoff,
                 };
                 let (u, s_vec, vt, _err) =
-                    trunc_svd_block_sparse_with_backend(&backend_arc, &p, 2, &svd_params)
+                    trunc_svd_block_sparse_with_backend(backend, &p, 2, &svd_params)
                         .expect("trunc_svd: validated by entry point");
                 tensors.push(u);
 
-                let svt = diagonal_scale_block_sparse_with_backend(&backend_arc, &vt, &s_vec, 0)
+                let svt = diagonal_scale_block_sparse_with_backend(backend, &vt, &s_vec, 0)
                     .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }
@@ -256,25 +251,23 @@ where
         }
     }
 
-    let mut result_mps: Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B> =
-        Mps::<BlockSparseStorage<T>, BlockSparseLayout<S>, B>::with_backend(tensors, backend_arc);
+    let mut result_mps: Mps<BlockSparseStorage<T>, BlockSparseLayout<S>> = Mps::from_sites(tensors);
     result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
 
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_bsp(&mut result_mps, center);
-        super::truncate::truncate_bsp(&mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_bsp(backend, &mut result_mps, center);
+        super::truncate::truncate_bsp(backend, &mut result_mps, trunc_params);
     }
 
     result_mps
 }
 
 /// Conservative natural-rank estimate for the QR / SVD switch.
-fn forward_rank_estimate_bsp<T, S, B>(p: &BlockSparseTensor<T, S, B>) -> usize
+fn forward_rank_estimate_bsp<T, S>(p: &BlockSparseTensor<T, S>) -> usize
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
 {
     let shape = p.shape();
     let left_d = shape[0].saturating_mul(shape[1]);

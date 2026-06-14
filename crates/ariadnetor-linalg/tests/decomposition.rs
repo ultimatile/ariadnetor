@@ -1,18 +1,17 @@
-use arnet_linalg::{TruncSvdParams, lq, qr, svd, trunc_svd};
-use arnet_native::NativeBackend;
+use arnet_linalg::{DenseHostOps, TruncSvdParams};
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
 }
 
 /// Reorder a `DenseTensor` back to row-major for index-by-index assertions.
-fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+fn to_rm<T: Clone>(tensor: &DenseTensor<T>) -> DenseTensor<T> {
     let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm, NativeBackend::shared())
+    DenseTensor::from_data(rm)
 }
 
 // --- SVD tests ---
@@ -22,7 +21,7 @@ fn test_svd_f64_2d() {
     // A = [[1, 2], [3, 4]] shape [2, 2], nrow=1 → 2×2 matrix
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (u, s, vt) = svd(&tensor, 1).unwrap();
+    let (u, s, vt) = tensor.svd(1).unwrap();
     let u = to_rm(&u);
     let vt = to_rm(&vt);
     let tensor = to_rm(&tensor);
@@ -55,7 +54,7 @@ fn test_svd_f64_rectangular() {
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let (u, s, vt) = svd(&tensor, 1).unwrap();
+    let (u, s, vt) = tensor.svd(1).unwrap();
     let u = to_rm(&u);
     let vt = to_rm(&vt);
     let tensor = to_rm(&tensor);
@@ -86,7 +85,7 @@ fn test_svd_f64_higher_rank() {
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = cm(data, vec![2, 3, 4]);
 
-    let (u, s, vt) = svd(&tensor, 2).unwrap();
+    let (u, s, vt) = tensor.svd(2).unwrap();
     let u = to_rm(&u);
     let vt = to_rm(&vt);
 
@@ -116,7 +115,7 @@ fn test_svd_f64_higher_rank() {
 fn test_svd_f32() {
     let tensor = cm(vec![1.0_f32, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (u, s, vt) = svd(&tensor, 1).unwrap();
+    let (u, s, vt) = tensor.svd(1).unwrap();
     let u = to_rm(&u);
     let vt = to_rm(&vt);
     let tensor = to_rm(&tensor);
@@ -144,9 +143,9 @@ fn test_svd_invalid_nrow() {
     let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
     // nrow=0 is invalid
-    assert!(svd(&tensor, 0).is_err());
+    assert!(tensor.svd(0).is_err());
     // nrow=rank is invalid
-    assert!(svd(&tensor, 2).is_err());
+    assert!(tensor.svd(2).is_err());
 }
 
 // --- Truncated SVD tests ---
@@ -165,7 +164,7 @@ fn test_trunc_svd_chi_max() {
         chi_max: Some(2),
         target_trunc_err: None,
     };
-    let (u, s, vt, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (u, s, vt, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
     // Truncated to chi=2
     assert_eq!(u.shape(), &[3, 2]);
@@ -180,15 +179,15 @@ fn test_trunc_svd_chi_max() {
     assert!(trunc_err > 0.0);
 
     // Verify truncation error equals the discarded singular value
-    let (_, s_full, _, _) = trunc_svd(
-        &tensor,
-        1,
-        &TruncSvdParams {
-            chi_max: None,
-            target_trunc_err: None,
-        },
-    )
-    .unwrap();
+    let (_, s_full, _, _) = tensor
+        .trunc_svd(
+            1,
+            &TruncSvdParams {
+                chi_max: None,
+                target_trunc_err: None,
+            },
+        )
+        .unwrap();
     let expected_err = s_full.data_slice()[2];
     assert!(
         (trunc_err - expected_err).abs() < 1e-10,
@@ -204,7 +203,7 @@ fn test_trunc_svd_chi_max_zero_is_error() {
         chi_max: Some(0),
         target_trunc_err: None,
     };
-    assert!(trunc_svd(&tensor, 1, &params).is_err());
+    assert!(tensor.trunc_svd(1, &params).is_err());
 }
 
 #[test]
@@ -216,7 +215,7 @@ fn test_trunc_svd_chi_max_no_truncation() {
         chi_max: Some(5),
         target_trunc_err: None,
     };
-    let (u, s, vt, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (u, s, vt, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
     assert_eq!(u.shape(), &[2, 2]);
     assert_eq!(s.shape(), &[2]);
@@ -232,7 +231,7 @@ fn test_trunc_svd_f32() {
         chi_max: Some(1),
         target_trunc_err: None,
     };
-    let (u, s, vt, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (u, s, vt, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
     assert_eq!(u.shape(), &[2, 1]);
     assert_eq!(s.shape(), &[1]);
@@ -246,7 +245,7 @@ fn test_trunc_svd_f32() {
 fn test_qr_f64_2d() {
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (q, r) = qr(&tensor, 1).unwrap();
+    let (q, r) = tensor.qr(1).unwrap();
     let q = to_rm(&q);
     let r = to_rm(&r);
     let tensor = to_rm(&tensor);
@@ -274,7 +273,7 @@ fn test_qr_f64_rectangular() {
     // shape [3, 2], nrow=1 → 3×2 matrix, k=2
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
-    let (q, r) = qr(&tensor, 1).unwrap();
+    let (q, r) = tensor.qr(1).unwrap();
     let q = to_rm(&q);
     let r = to_rm(&r);
     let tensor = to_rm(&tensor);
@@ -302,7 +301,7 @@ fn test_qr_f64_rectangular() {
 fn test_qr_f64_orthogonality() {
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
-    let (q, _r) = qr(&tensor, 1).unwrap();
+    let (q, _r) = tensor.qr(1).unwrap();
     let q = to_rm(&q);
 
     let (m, k) = (3, 2);
@@ -328,7 +327,7 @@ fn test_qr_f64_higher_rank() {
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = cm(data, vec![2, 3, 4]);
 
-    let (q, r) = qr(&tensor, 2).unwrap();
+    let (q, r) = tensor.qr(2).unwrap();
     let q = to_rm(&q);
     let r = to_rm(&r);
     let tensor_rm = to_rm(&tensor);
@@ -357,7 +356,7 @@ fn test_qr_f64_higher_rank() {
 fn test_qr_f32() {
     let tensor = cm(vec![1.0_f32, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (q, r) = qr(&tensor, 1).unwrap();
+    let (q, r) = tensor.qr(1).unwrap();
     let q = to_rm(&q);
     let r = to_rm(&r);
     let tensor = to_rm(&tensor);
@@ -383,8 +382,8 @@ fn test_qr_f32() {
 fn test_qr_invalid_nrow() {
     let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    assert!(qr(&tensor, 0).is_err());
-    assert!(qr(&tensor, 2).is_err());
+    assert!(tensor.qr(0).is_err());
+    assert!(tensor.qr(2).is_err());
 }
 
 // --- LQ tests ---
@@ -393,7 +392,7 @@ fn test_qr_invalid_nrow() {
 fn test_lq_f64_2d() {
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (l, q) = lq(&tensor, 1).unwrap();
+    let (l, q) = tensor.lq(1).unwrap();
     let l = to_rm(&l);
     let q = to_rm(&q);
     let tensor = to_rm(&tensor);
@@ -421,7 +420,7 @@ fn test_lq_f64_rectangular() {
     // shape [2, 3], nrow=1 → 2×3 matrix, k=2
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let (l, q) = lq(&tensor, 1).unwrap();
+    let (l, q) = tensor.lq(1).unwrap();
     let l = to_rm(&l);
     let q = to_rm(&q);
     let tensor = to_rm(&tensor);
@@ -449,7 +448,7 @@ fn test_lq_f64_rectangular() {
 fn test_lq_f64_orthogonality() {
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let (_l, q) = lq(&tensor, 1).unwrap();
+    let (_l, q) = tensor.lq(1).unwrap();
     let q = to_rm(&q);
 
     let (k, n) = (2, 3);
@@ -475,7 +474,7 @@ fn test_lq_f64_higher_rank() {
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = cm(data, vec![2, 3, 4]);
 
-    let (l, q) = lq(&tensor, 1).unwrap();
+    let (l, q) = tensor.lq(1).unwrap();
     let l = to_rm(&l);
     let q = to_rm(&q);
     let tensor_rm = to_rm(&tensor);
@@ -504,7 +503,7 @@ fn test_lq_f64_higher_rank() {
 fn test_lq_f32() {
     let tensor = cm(vec![1.0_f32, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (l, q) = lq(&tensor, 1).unwrap();
+    let (l, q) = tensor.lq(1).unwrap();
     let l = to_rm(&l);
     let q = to_rm(&q);
     let tensor = to_rm(&tensor);
@@ -530,8 +529,8 @@ fn test_lq_f32() {
 fn test_lq_invalid_nrow() {
     let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    assert!(lq(&tensor, 0).is_err());
-    assert!(lq(&tensor, 2).is_err());
+    assert!(tensor.lq(0).is_err());
+    assert!(tensor.lq(2).is_err());
 }
 
 // --- Mutation testing: trunc_svd arithmetic and boundary conditions ---
@@ -554,7 +553,7 @@ fn test_trunc_svd_trunc_err_equals_frobenius_of_discarded() {
         chi_max: Some(3),
         target_trunc_err: None,
     };
-    let (_, s, _, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (_, s, _, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
     assert_eq!(s.len(), 3);
     // trunc_err = sqrt(2^2 + 1^2) = sqrt(5)
@@ -584,7 +583,7 @@ fn test_trunc_svd_target_trunc_err_exact_boundary() {
         chi_max: None,
         target_trunc_err: Some(1.0),
     };
-    let (_, s, _, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (_, s, _, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
     assert_eq!(s.len(), 2, "sv=1.0 should be discarded when target=1.0");
     assert!((trunc_err - 1.0).abs() < 1e-10);
@@ -606,7 +605,7 @@ fn test_trunc_svd_target_trunc_err_strict_boundary() {
         chi_max: None,
         target_trunc_err: Some(0.999),
     };
-    let (_, s, _, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (_, s, _, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
     assert_eq!(
         s.len(),
@@ -638,7 +637,7 @@ fn test_trunc_svd_target_err_accumulates_multiple_svs() {
         chi_max: None,
         target_trunc_err: Some(target),
     };
-    let (_, s, _, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (_, s, _, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
     assert_eq!(s.len(), 2, "should keep svs [10, 3], discard [2, 1]");
     let expected_err = (4.0 + 1.0f64).sqrt(); // sqrt(2^2 + 1^2)
@@ -662,7 +661,7 @@ fn test_trunc_svd_target_err_keeps_at_least_one() {
         chi_max: None,
         target_trunc_err: Some(1e10),
     };
-    let (_, s, _, _) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (_, s, _, _) = tensor.trunc_svd(1, &params).unwrap();
 
     assert!(!s.is_empty(), "must keep at least one singular value");
 }
@@ -686,7 +685,7 @@ fn test_trunc_svd_slicing_u_times_s_times_vt_approximation() {
             chi_max: Some(chi),
             target_trunc_err: None,
         };
-        let (u, s, vt, trunc_err) = trunc_svd(&tensor, 1, &params).unwrap();
+        let (u, s, vt, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
         let u = to_rm(&u);
         let vt = to_rm(&vt);
         let tensor_rm = to_rm(&tensor);
@@ -731,7 +730,7 @@ fn test_trunc_svd_chi_max_and_target_err_stricter_wins() {
         chi_max: Some(3),
         target_trunc_err: Some(5.0f64.sqrt()),
     };
-    let (_, s, _, _) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (_, s, _, _) = tensor.trunc_svd(1, &params).unwrap();
     assert_eq!(s.len(), 2);
 
     // chi_max=1, target_trunc_err=0 (keeps all)
@@ -740,6 +739,6 @@ fn test_trunc_svd_chi_max_and_target_err_stricter_wins() {
         chi_max: Some(1),
         target_trunc_err: Some(0.0),
     };
-    let (_, s, _, _) = trunc_svd(&tensor, 1, &params).unwrap();
+    let (_, s, _, _) = tensor.trunc_svd(1, &params).unwrap();
     assert_eq!(s.len(), 1);
 }

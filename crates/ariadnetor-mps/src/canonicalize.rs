@@ -1,13 +1,13 @@
 //! Canonicalize: move the orthogonality center of a tensor chain via
 //! QR / LQ sweeps.
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     lq_block_sparse_with_backend, lq_with_backend, qr_block_sparse_with_backend, qr_with_backend,
 };
-use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector,
+};
 
 use super::absorb::{
     absorb_from_left, absorb_from_left_bsp, absorb_from_right, absorb_from_right_bsp,
@@ -26,11 +26,11 @@ use super::types::CanonicalForm;
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
-pub(super) fn canonicalize_dense<T, B, C>(chain: &mut C, center: usize)
+pub(super) fn canonicalize_dense<T, B, C>(backend: &B, chain: &mut C, center: usize)
 where
     T: Scalar,
-    B: ComputeBackend,
-    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
+    B: OpsFor<DenseStorage<T>>,
+    C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let n = chain.len();
     assert!(
@@ -38,27 +38,25 @@ where
         "center {center} out of range for chain of length {n}",
     );
 
-    let backend = Arc::clone(chain.backend_arc());
-
     // Left-to-right QR sweep: make sites 0..center left-canonical.
     for j in 0..center {
-        left_qr_step(chain, j, &backend);
+        left_qr_step(chain, j, backend);
     }
 
     // Right-to-left LQ sweep: make sites center+1..N right-canonical.
     for j in (center + 1..n).rev() {
-        right_lq_step(chain, j, &backend);
+        right_lq_step(chain, j, backend);
     }
 
     chain.set_canonical_form(CanonicalForm::Mixed { center });
 }
 
 /// QR step: decompose site j, replace with Q, absorb R into site j+1.
-fn left_qr_step<T, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
+fn left_qr_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
-    B: ComputeBackend,
-    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
+    B: OpsFor<DenseStorage<T>>,
+    C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (q_tensor, r) = {
         let site = chain.site(j);
@@ -86,11 +84,11 @@ where
 }
 
 /// LQ step: decompose site j, replace with Q, absorb L into site j-1.
-fn right_lq_step<T, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
+fn right_lq_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
-    B: ComputeBackend,
-    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
+    B: OpsFor<DenseStorage<T>>,
+    C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (q_tensor, l) = {
         let site = chain.site(j);
@@ -140,12 +138,12 @@ where
 /// # Panics
 ///
 /// Panics if `center >= chain.len()` or if the chain is empty.
-pub(super) fn canonicalize_bsp<T, S, B, C>(chain: &mut C, center: usize)
+pub(super) fn canonicalize_bsp<T, S, B, C>(backend: &B, chain: &mut C, center: usize)
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
-    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    B: OpsFor<BlockSparseStorage<T>>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let n = chain.len();
     assert!(
@@ -153,25 +151,23 @@ where
         "center {center} out of range for chain of length {n}",
     );
 
-    let backend = Arc::clone(chain.backend_arc());
-
     for j in 0..center {
-        left_qr_step_bsp(chain, j, &backend);
+        left_qr_step_bsp(chain, j, backend);
     }
 
     for j in (center + 1..n).rev() {
-        right_lq_step_bsp(chain, j, &backend);
+        right_lq_step_bsp(chain, j, backend);
     }
 
     chain.set_canonical_form(CanonicalForm::Mixed { center });
 }
 
-fn left_qr_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
+fn left_qr_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
-    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    B: OpsFor<BlockSparseStorage<T>>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (q, r) = {
         let site = chain.site(j);
@@ -189,12 +185,12 @@ where
     *chain.site_mut(j + 1) = new_next;
 }
 
-fn right_lq_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &Arc<B>)
+fn right_lq_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
-    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    B: OpsFor<BlockSparseStorage<T>>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (l, q) = {
         let site = chain.site(j);

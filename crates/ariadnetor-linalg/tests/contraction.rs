@@ -3,21 +3,21 @@
 //! Migrated from ariadnetor-tensor integration tests after moving
 //! contraction logic to the linalg crate.
 
-use arnet_linalg::{contract, einsum, transpose};
+use arnet_linalg::{DenseHostOps, einsum_with_backend};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major.
-fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64, NativeBackend> {
+fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
 }
 
 /// Reorder a `DenseTensor` back to row-major for index-by-index assertions.
-fn to_rm(tensor: &DenseTensor<f64, NativeBackend>) -> DenseTensor<f64, NativeBackend> {
+fn to_rm(tensor: &DenseTensor<f64>) -> DenseTensor<f64> {
     let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm, NativeBackend::shared())
+    DenseTensor::from_data(rm)
 }
 
 // ============================================================================
@@ -29,7 +29,7 @@ fn test_matrix_multiplication() {
     let a = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let c = to_rm(&contract(&a, &b, "ij,jk->ik").unwrap());
+    let c = to_rm(&a.contract(&b, "ij,jk->ik").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
     assert_eq!(c.get(&[0, 0]), 19.0);
@@ -43,7 +43,7 @@ fn test_inner_product() {
     let a = cm(vec![1.0, 2.0, 3.0], vec![3]);
     let b = cm(vec![4.0, 5.0, 6.0], vec![3]);
 
-    let c = contract(&a, &b, "i,i->").unwrap();
+    let c = a.contract(&b, "i,i->").unwrap();
 
     // Scalar result → shape [1]
     assert_eq!(c.shape(), &[1]);
@@ -56,7 +56,7 @@ fn test_outer_product() {
     let a = cm(vec![2.0, 3.0], vec![2]);
     let b = cm(vec![4.0, 5.0, 6.0], vec![3]);
 
-    let c = to_rm(&contract(&a, &b, "i,j->ij").unwrap());
+    let c = to_rm(&a.contract(&b, "i,j->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 3]);
     assert_eq!(c.get(&[0, 0]), 8.0);
@@ -69,7 +69,7 @@ fn test_double_contraction() {
     let a = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let c = contract(&a, &b, "ij,ij->").unwrap();
+    let c = a.contract(&b, "ij,ij->").unwrap();
 
     assert_eq!(c.shape(), &[1]);
     // 1*5 + 2*6 + 3*7 + 4*8 = 70
@@ -85,7 +85,7 @@ fn test_identity_multiplication() {
     let a = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
 
-    let c = to_rm(&contract(&a, &b, "ij,jk->ik").unwrap());
+    let c = to_rm(&a.contract(&b, "ij,jk->ik").unwrap());
 
     assert_eq!(c.get(&[0, 0]), 1.0);
     assert_eq!(c.get(&[0, 1]), 2.0);
@@ -95,11 +95,12 @@ fn test_identity_multiplication() {
 
 #[test]
 fn test_hadamard_product_via_einsum() {
+    let backend = NativeBackend::new();
     let a = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2]);
 
     // Hadamard product routes through einsum_pair, not contract
-    let c = to_rm(&einsum(&[&a, &b], "ij,ij->ij").unwrap());
+    let c = to_rm(&einsum_with_backend(&backend, &[&a, &b], "ij,ij->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
     assert_eq!(c.get(&[0, 0]), 2.0);
@@ -114,7 +115,7 @@ fn test_hadamard_contract_rejects() {
     let b = cm(vec![2.0, 3.0, 4.0, 5.0], vec![2, 2]);
 
     // contract() should reject Hadamard (all batch, no contraction)
-    let result = contract(&a, &b, "ij,ij->ij");
+    let result = a.contract(&b, "ij,ij->ij");
     assert!(result.is_err());
 }
 
@@ -127,7 +128,7 @@ fn test_scalar_contraction() {
     let a = cm(vec![5.0], vec![]);
     let b = cm(vec![3.0], vec![]);
 
-    let c = contract(&a, &b, ",->").unwrap();
+    let c = a.contract(&b, ",->").unwrap();
 
     assert_eq!(c.shape(), &[1]);
     assert_eq!(c.data_slice()[0], 15.0);
@@ -138,7 +139,7 @@ fn test_vector_matrix_contraction() {
     let v = cm(vec![1.0, 2.0, 3.0], vec![3]);
     let m = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
 
-    let result = contract(&v, &m, "i,ij->j").unwrap();
+    let result = v.contract(&m, "i,ij->j").unwrap();
 
     assert_eq!(result.shape(), &[2]);
     // [1 2 3] @ [[1 2], [3 4], [5 6]] = [22, 28]
@@ -155,7 +156,7 @@ fn test_actual_contraction_with_reordered_indices() {
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
     let b = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
 
-    let c = contract(&a, &b, "ikj,jkl->il").unwrap();
+    let c = a.contract(&b, "ikj,jkl->il").unwrap();
     assert_eq!(c.shape(), &[2, 2]);
     assert_ne!(c.get(&[0, 0]), 0.0);
 }
@@ -165,11 +166,11 @@ fn test_consistency_between_ijk_and_ikj_layouts() {
     let a_ijk = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
     let b = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], vec![2, 2, 2]);
 
-    let result_ijk = contract(&a_ijk, &b, "ijk,jkl->il").unwrap();
+    let result_ijk = a_ijk.contract(&b, "ijk,jkl->il").unwrap();
 
     // Permute A from [i,j,k] to [i,k,j] layout
-    let a_ikj = transpose(&a_ijk, &[0, 2, 1]).unwrap();
-    let result_ikj = contract(&a_ikj, &b, "ikj,jkl->il").unwrap();
+    let a_ikj = a_ijk.transpose(&[0, 2, 1]).unwrap();
+    let result_ikj = a_ikj.contract(&b, "ikj,jkl->il").unwrap();
 
     assert_eq!(result_ijk.shape(), result_ikj.shape());
     assert_ne!(result_ijk.get(&[0, 0]), 0.0);

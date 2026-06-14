@@ -14,8 +14,6 @@
 //! - **`validate_params` boundaries on `target_trunc_err`**: zero
 //!   accepted, negative rejected, NaN rejected, positive accepted.
 
-use std::sync::Arc;
-
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
@@ -63,7 +61,6 @@ fn build_mpo_site_f64(
     w_r_dim: usize,
     cells: &[(usize, usize, Op, f64)],
 ) -> DenseTensor<f64> {
-    let backend = NativeBackend::shared();
     let len = w_l_dim * D * D * w_r_dim;
     let mut data = vec![0.0_f64; len];
     for &(vl, vr, op, scale) in cells {
@@ -74,7 +71,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim], Arc::clone(&backend))
+    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 /// Spin-1/2 Heisenberg `H = J Σ S_i · S_{i+1}` as a bond-dim-5 MPO.
@@ -126,7 +123,6 @@ fn random_mps_center_zero_f64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|i| {
@@ -134,16 +130,15 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, D, r], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(data, vec![l, D, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&mut mps, 0);
+    canonicalize(&NativeBackend::new(), &mut mps, 0);
     mps
 }
 
 fn psd_local_mpo_f64(n: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let backend = NativeBackend::shared();
     let mut rng = StdRng::seed_from_u64(seed);
     let eps = 0.5_f64;
     let storages: Vec<DenseTensor<f64>> = (0..n)
@@ -162,7 +157,7 @@ fn psd_local_mpo_f64(n: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout>
                 }
                 h[s + D * s] += eps;
             }
-            DenseTensor::from_raw_parts(h, vec![1, D, D, 1], Arc::clone(&backend))
+            DenseTensor::from_raw_parts(h, vec![1, D, D, 1])
         })
         .collect();
     Mpo::from_sites(storages)
@@ -206,9 +201,9 @@ fn sweep_energy_renormalizes_post_truncation() {
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
 
-    let nrm = norm(&mps);
+    let nrm = norm(&NativeBackend::new(), &mps);
     let nrm_sq = nrm * nrm;
-    let bra_h_ket = braket(&mps, &mpo, &mps).re();
+    let bra_h_ket = braket(&NativeBackend::new(), &mps, &mpo, &mps).re();
     let sweep_energy = result.sweeps[0].sweep_energy;
 
     // Fixture sanity: the truncation must have actually dropped weight,

@@ -1,12 +1,11 @@
-use arnet_linalg::{eig, eigh, eigvals, eigvalsh};
-use arnet_native::NativeBackend;
+use arnet_linalg::DenseHostOps;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
 }
 
 // --- EIGH tests ---
@@ -17,7 +16,7 @@ fn test_eigh_f64_2x2_symmetric() {
 
     let tensor = cm(vec![2.0_f64, 1.0, 1.0, 2.0], vec![2, 2]);
 
-    let (w, v) = eigh(&tensor, 1).unwrap();
+    let (w, v) = tensor.eigh(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
     assert_eq!(v.shape(), &[2, 2]);
@@ -46,7 +45,7 @@ fn test_eigh_f64_3x3_diagonal() {
         vec![3, 3],
     );
 
-    let (w, _v) = eigh(&tensor, 1).unwrap();
+    let (w, _v) = tensor.eigh(1).unwrap();
 
     assert_eq!(w.shape(), &[3]);
     assert!((w.data_slice()[0] - 1.0).abs() < 1e-10);
@@ -70,7 +69,7 @@ fn test_eigh_c64_hermitian() {
         vec![2, 2],
     );
 
-    let (w, v) = eigh(&tensor, 1).unwrap();
+    let (w, v) = tensor.eigh(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
     assert_eq!(v.shape(), &[2, 2]);
@@ -95,7 +94,7 @@ fn test_eigh_c64_hermitian() {
 fn test_eigvalsh_f64() {
     let tensor = cm(vec![2.0_f64, 1.0, 1.0, 2.0], vec![2, 2]);
 
-    let w = eigvalsh(&tensor, 1).unwrap();
+    let w = tensor.eigvalsh(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
     assert!((w.data_slice()[0] - 1.0).abs() < 1e-10);
@@ -107,7 +106,7 @@ fn test_eigh_non_square_error() {
     // 2×3 matrix → non-square → error
     let tensor = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let result = eigh(&tensor, 1);
+    let result = tensor.eigh(1);
     assert!(result.is_err());
 }
 
@@ -115,7 +114,7 @@ fn test_eigh_non_square_error() {
 fn test_eigh_f32() {
     let tensor = cm(vec![2.0_f32, 1.0, 1.0, 2.0], vec![2, 2]);
 
-    let (w, _v) = eigh(&tensor, 1).unwrap();
+    let (w, _v) = tensor.eigh(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
     assert!((w.data_slice()[0] - 1.0).abs() < 1e-5);
@@ -126,8 +125,8 @@ fn test_eigh_f32() {
 fn test_eigh_invalid_nrow() {
     let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    assert!(eigh(&tensor, 0).is_err());
-    assert!(eigh(&tensor, 2).is_err());
+    assert!(tensor.eigh(0).is_err());
+    assert!(tensor.eigh(2).is_err());
 }
 
 // --- EIG tests ---
@@ -140,7 +139,7 @@ fn test_eig_f64_2x2_trace_det() {
 
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (w, v) = eig(&tensor, 1).unwrap();
+    let (w, v) = tensor.eig(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
     assert_eq!(v.shape(), &[2, 2]);
@@ -163,7 +162,7 @@ fn test_eig_f64_diagonal() {
 
     let tensor = cm(vec![3.0_f64, 0.0, 0.0, 7.0], vec![2, 2]);
 
-    let (w, _v) = eig(&tensor, 1).unwrap();
+    let (w, _v) = tensor.eig(1).unwrap();
 
     let mut eigs: Vec<f64> = (0..2).map(|i| w.data_slice()[i].re).collect();
     eigs.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -188,7 +187,7 @@ fn test_eig_c64_complex_input() {
         vec![2, 2],
     );
 
-    let (w, _v) = eig(&tensor, 1).unwrap();
+    let (w, _v) = tensor.eig(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
 
@@ -206,7 +205,7 @@ fn test_eig_c64_complex_input() {
 fn test_eigvals_f64() {
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let w = eigvals(&tensor, 1).unwrap();
+    let w = tensor.eigvals(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
 
@@ -218,14 +217,14 @@ fn test_eigvals_f64() {
 fn test_eig_non_square_error() {
     let tensor = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    assert!(eig(&tensor, 1).is_err());
+    assert!(tensor.eig(1).is_err());
 }
 
 #[test]
 fn test_eig_f32() {
     let tensor = cm(vec![1.0_f32, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let (w, _v) = eig(&tensor, 1).unwrap();
+    let (w, _v) = tensor.eig(1).unwrap();
 
     assert_eq!(w.shape(), &[2]);
 
@@ -238,6 +237,6 @@ fn test_eig_f32() {
 fn test_eig_invalid_nrow() {
     let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    assert!(eig(&tensor, 0).is_err());
-    assert!(eig(&tensor, 2).is_err());
+    assert!(tensor.eig(0).is_err());
+    assert!(tensor.eig(2).is_err());
 }

@@ -1,45 +1,27 @@
-use std::sync::Arc;
-
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
-use arnet_tensor::{DenseTensor, DenseTensorData, normalize_to_data};
+use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor, normalize_to_data};
 
 use crate::error::LinalgError;
 
-/// Transpose (permute axes) of a dense tensor.
+/// Transpose with an explicit backend and caller-specified execution policy.
 ///
-/// # Arguments
-///
-/// * `tensor` - Input tensor (backend flows from the tensor)
-/// * `perm` - Permutation of axes (e.g., `[1, 0]` transposes a 2D tensor)
-///
-/// # Errors
-///
-/// Returns `LinalgError` if the backend fails to execute the transpose.
-pub fn transpose<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
-    perm: &[usize],
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let policy = tensor.backend().par_for_transpose(tensor.shape());
-    transpose_with_policy(tensor, perm, policy)
-}
-
-/// Transpose with caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`transpose`]; the default wrapper consults
-/// `backend.par_for_transpose`, while this entry point takes `policy`
-/// directly.
-pub fn transpose_with_policy<T: Scalar, B: ComputeBackend>(
-    tensor: &DenseTensor<T, B>,
+/// Expert-layer counterpart of [`crate::transpose_with_backend`]; that entry
+/// point consults `backend.par_for_transpose`, while this one takes `policy`
+/// directly. The backend is supplied at the call site and the tensor's own
+/// backend is never consulted.
+pub fn transpose_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
+    backend: &B,
+    tensor: &DenseTensor<T>,
     perm: &[usize],
     policy: ExecPolicy,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = tensor.backend_arc().clone();
-    let result = transpose_inner(tensor.backend(), tensor.data(), perm, false, policy)?;
-    Ok(wrap(result, backend_arc))
+) -> Result<DenseTensor<T>, LinalgError> {
+    let result = transpose_inner(backend, tensor.data(), perm, false, policy)?;
+    Ok(DenseTensor::from_data(result))
 }
 
-/// Crate-internal kernel for [`transpose`] / [`transpose_with_policy`].
+/// Crate-internal kernel shared by [`transpose_with_policy`] and the
+/// explicit-backend [`crate::transpose_with_backend`] path.
 ///
 /// Self-tunes via `par_for_transpose` so other kernels (`contract`,
 /// `einsum`) can reuse the transpose without re-paying the wrap /
@@ -101,12 +83,4 @@ pub(crate) fn transpose_inner<T: Scalar>(
     backend.transpose(desc)?;
 
     Ok(DenseTensorData::from_raw_parts(output, new_shape, order))
-}
-
-fn wrap<T, B>(data: DenseTensorData<T>, backend: Arc<B>) -> DenseTensor<T, B>
-where
-    T: Clone,
-    B: ComputeBackend,
-{
-    DenseTensor::with_backend(data, backend)
 }

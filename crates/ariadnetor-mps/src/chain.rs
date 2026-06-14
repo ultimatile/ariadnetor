@@ -1,8 +1,5 @@
 //! TensorChain trait — common operations for MPS/MPO tensor chains.
 
-use std::sync::Arc;
-
-use arnet_core::ComputeBackend;
 use arnet_tensor::{Storage, StorageFor, Tensor, TensorLayout};
 
 use super::types::{CanonicalForm, Mpo, Mps};
@@ -10,12 +7,12 @@ use super::types::{CanonicalForm, Mpo, Mps};
 /// Common operations for MPS/MPO tensor chains.
 ///
 /// Provides rank-independent accessors for site tensors, bond
-/// dimensions, canonical form tracking, and backend access.
-pub trait TensorChain<St, L, B>
+/// dimensions, and canonical form tracking. The chain carries no
+/// backend; operations receive one at their call site.
+pub trait TensorChain<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
     /// Number of sites.
     fn len(&self) -> usize;
@@ -30,7 +27,7 @@ where
     /// # Panics
     ///
     /// Panics if `idx >= len()`.
-    fn site(&self, idx: usize) -> &Tensor<St, L, B>;
+    fn site(&self, idx: usize) -> &Tensor<St, L>;
 
     /// Mutable reference to the site tensor at the given index.
     ///
@@ -40,22 +37,16 @@ where
     /// # Panics
     ///
     /// Panics if `idx >= len()`.
-    fn site_mut(&mut self, idx: usize) -> &mut Tensor<St, L, B>;
+    fn site_mut(&mut self, idx: usize) -> &mut Tensor<St, L>;
 
     /// Slice of all site tensors.
-    fn sites(&self) -> &[Tensor<St, L, B>];
+    fn sites(&self) -> &[Tensor<St, L>];
 
     /// Current canonical form.
     fn canonical_form(&self) -> &CanonicalForm;
 
     /// Set the canonical form.
     fn set_canonical_form(&mut self, form: CanonicalForm);
-
-    /// Reference to the compute backend.
-    fn backend(&self) -> &B;
-
-    /// Shared reference to the backend Arc.
-    fn backend_arc(&self) -> &Arc<B>;
 
     /// Bond dimension between site `bond` and site `bond + 1`.
     ///
@@ -87,26 +78,25 @@ where
 
 macro_rules! impl_tensor_chain {
     ($type:ident) => {
-        impl<St, L, B> TensorChain<St, L, B> for $type<St, L, B>
+        impl<St, L> TensorChain<St, L> for $type<St, L>
         where
             St: Storage + StorageFor<L>,
             L: TensorLayout,
-            B: ComputeBackend,
         {
             fn len(&self) -> usize {
                 self.0.sites.len()
             }
 
-            fn site(&self, idx: usize) -> &Tensor<St, L, B> {
+            fn site(&self, idx: usize) -> &Tensor<St, L> {
                 &self.0.sites[idx]
             }
 
-            fn site_mut(&mut self, idx: usize) -> &mut Tensor<St, L, B> {
+            fn site_mut(&mut self, idx: usize) -> &mut Tensor<St, L> {
                 self.0.canonical_form = CanonicalForm::Unknown;
                 &mut self.0.sites[idx]
             }
 
-            fn sites(&self) -> &[Tensor<St, L, B>] {
+            fn sites(&self) -> &[Tensor<St, L>] {
                 &self.0.sites
             }
 
@@ -116,14 +106,6 @@ macro_rules! impl_tensor_chain {
 
             fn set_canonical_form(&mut self, form: CanonicalForm) {
                 self.0.canonical_form = form;
-            }
-
-            fn backend(&self) -> &B {
-                &self.0.backend
-            }
-
-            fn backend_arc(&self) -> &Arc<B> {
-                &self.0.backend
             }
         }
     };

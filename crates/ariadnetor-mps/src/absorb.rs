@@ -9,26 +9,26 @@
 //! Every caller validates the contraction's preconditions at its entry
 //! point, so the internal `expect` failures are unreachable in practice.
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
 };
-use arnet_tensor::{BlockSparseTensor, DenseTensor, Sector};
+use arnet_tensor::{
+    BlockSparseStorage, BlockSparseTensor, DenseStorage, DenseTensor, OpsFor, Sector,
+};
 
 /// Multiply a factor matrix into the next site: `factor(k, d) × next(d, ...) → (k, ...)`.
 /// Fuses next's trailing legs to a matrix for the matmul, then splits the
 /// result's fused leg back to restore the original rank. The logical leg
 /// operations handle the memory-order round-trip internally.
 pub(crate) fn absorb_from_left<T, B>(
-    factor: &DenseTensor<T, B>,
-    next: &DenseTensor<T, B>,
-    backend: &Arc<B>,
-) -> DenseTensor<T, B>
+    factor: &DenseTensor<T>,
+    next: &DenseTensor<T>,
+    backend: &B,
+) -> DenseTensor<T>
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     // Fuse next's trailing legs into a matrix, contract factor · next, then
     // split the fused leg back; axis 0 carries the factor's new bond.
@@ -41,13 +41,13 @@ where
 
 /// Multiply a factor matrix into the previous site: `prev(..., d) × factor(d, k) → (..., k)`.
 pub(crate) fn absorb_from_right<T, B>(
-    prev: &DenseTensor<T, B>,
-    factor: &DenseTensor<T, B>,
-    backend: &Arc<B>,
-) -> DenseTensor<T, B>
+    prev: &DenseTensor<T>,
+    factor: &DenseTensor<T>,
+    backend: &B,
+) -> DenseTensor<T>
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     // Fuse prev's leading legs into a matrix, contract prev · factor, then
     // split the fused leg back; the last axis carries the factor's new bond.
@@ -62,14 +62,14 @@ where
 /// BlockSparse analogue of [`absorb_from_left`]: contract the factor's bond
 /// leg (axis 1) against the next site's leading leg (axis 0).
 pub(crate) fn absorb_from_left_bsp<T, S, B>(
-    factor: &BlockSparseTensor<T, S, B>,
-    next: &BlockSparseTensor<T, S, B>,
-    backend: &Arc<B>,
-) -> BlockSparseTensor<T, S, B>
+    factor: &BlockSparseTensor<T, S>,
+    next: &BlockSparseTensor<T, S>,
+    backend: &B,
+) -> BlockSparseTensor<T, S>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     match contract_block_sparse_with_backend(backend, factor, next, &[1], &[0])
         .expect("left absorption: validated by entry point")
@@ -84,14 +84,14 @@ where
 /// BlockSparse analogue of [`absorb_from_right`]: contract the prev site's
 /// trailing leg against the factor's leading leg (axis 0).
 pub(crate) fn absorb_from_right_bsp<T, S, B>(
-    prev: &BlockSparseTensor<T, S, B>,
-    factor: &BlockSparseTensor<T, S, B>,
-    backend: &Arc<B>,
-) -> BlockSparseTensor<T, S, B>
+    prev: &BlockSparseTensor<T, S>,
+    factor: &BlockSparseTensor<T, S>,
+    backend: &B,
+) -> BlockSparseTensor<T, S>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     let last = prev.rank() - 1;
     match contract_block_sparse_with_backend(backend, prev, factor, &[last], &[0])

@@ -36,8 +36,8 @@ mod ops;
 pub use arnet_tensor::{BlockSparseTensor, DenseTensor, Tensor};
 
 // Storage / Layout building blocks. Required by downstream crates that
-// parameterize their own generic containers (e.g. `Mps<St, L, B>`) over
-// the joined `Tensor<St, L, B>` type. The `TensorData<St, L>`
+// parameterize their own generic containers (e.g. `Mps<St, L>`) over
+// the joined `Tensor<St, L>` type. The `TensorData<St, L>`
 // joined-data aliases are intentionally not re-exported here — umbrella
 // consumers should only see the joined `Tensor` surface. `TensorData`
 // stays `pub` in `arnet-tensor` for crates that perform cross-crate
@@ -55,13 +55,11 @@ pub use arnet_tensor::{Host, OpsFor};
 // Re-export from ariadnetor-core
 pub use arnet_core::{Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};
 
-// High-level free functions (backend extracted from Tensor)
+// High-level free functions over host-resident dense tensors (no backend).
 pub use arnet_tensor::{add_all, linear_combine};
-pub use ops::{
-    contract, diag, eig, eigh, eigvals, eigvalsh, einsum, expm, expm_antihermitian, expm_hermitian,
-    inverse, lq, qr, solve, svd, trace, transpose, trunc_svd,
-};
 // Explicit-backend dense free functions (backend supplied at the call site).
+// The single-backend ergonomic surface is the `DenseHostOps` /
+// `BlockSparseHostOps` extension traits re-exported below, not free functions.
 pub use ops::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
     eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
@@ -70,11 +68,10 @@ pub use ops::{
     trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
 };
 
-// Dense diagonal-scale free function. The block-sparse low-level free
-// functions and their result types are intentionally not re-exported:
-// they are consumer-internal API that `arnet-mps` / `arnet-algorithms`
-// reach through a direct `arnet-linalg` dependency, not this umbrella.
-pub use arnet_linalg::diagonal_scale;
+// The block-sparse low-level free functions and their result types are
+// intentionally not re-exported: they are consumer-internal API that
+// `arnet-mps` / `arnet-algorithms` reach through a direct `arnet-linalg`
+// dependency, not this umbrella.
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.
 pub use arnet_linalg::{BlockSparseHostOps, DenseHostOps};

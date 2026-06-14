@@ -1,17 +1,16 @@
 //! Ergonomic Host-defaulting operation surface.
 //!
-//! [`DenseHostOps`] and [`BlockSparseHostOps`] give tensors on the default
-//! [`Host`] substrate method forms of the explicit-backend operation paths:
-//! each method is a one-line delegation to its `*_with_backend` twin,
-//! passing the shared `Host` handle, so the common single-substrate call
-//! site can omit the backend argument (`t.svd(nrow)` instead of
+//! [`DenseHostOps`] and [`BlockSparseHostOps`] give dense / block-sparse
+//! tensors method forms of the explicit-backend operation paths: each method
+//! is a one-line delegation to its `*_with_backend` twin, passing the shared
+//! [`Host`] handle, so the common single-substrate call site can omit the
+//! backend argument (`t.svd(nrow)` instead of
 //! `svd_with_backend(&backend, &t, nrow)`).
 //!
-//! The methods derive no authority from the receiver: the handle is always
-//! `Host::shared()`, never the tensor's own backend, keeping the
-//! call-site-supply discipline intact. A receiver built with a custom
-//! backend instance therefore dispatches — and wraps its results — with
-//! the shared singleton, not the instance it was built with.
+//! The handle is always `Host::shared()`, keeping the call-site-supply
+//! discipline intact: the operation dispatches on — and the result is built
+//! by — the shared `Host` substrate, spelled through the [`Host`] alias rather
+//! than a concrete backend type.
 
 use std::ops::Mul;
 
@@ -41,52 +40,49 @@ mod tests;
 /// `einsum` has no method form: it takes its operands as a slice with no
 /// natural receiver, and a receiver-plus-rest shape would change the
 /// slice's meaning from "all operands" to "remaining operands". Use
-/// [`crate::einsum_with_backend`] (or [`crate::einsum`]) instead.
+/// [`crate::einsum_with_backend`] instead.
 pub trait DenseHostOps<T: Scalar> {
     /// Host-defaulting counterpart of [`crate::svd_with_backend`].
-    fn svd(&self, nrow: usize) -> Result<SvdResult<T, Host>, LinalgError>;
+    fn svd(&self, nrow: usize) -> Result<SvdResult<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::trunc_svd_with_backend`].
     fn trunc_svd(
         &self,
         nrow: usize,
         params: &TruncSvdParams,
-    ) -> Result<TruncSvdResult<T, Host>, LinalgError>;
+    ) -> Result<TruncSvdResult<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::qr_with_backend`].
-    fn qr(&self, nrow: usize) -> Result<QrResult<T, Host>, LinalgError>;
+    fn qr(&self, nrow: usize) -> Result<QrResult<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::lq_with_backend`].
-    fn lq(&self, nrow: usize) -> Result<LqResult<T, Host>, LinalgError>;
+    fn lq(&self, nrow: usize) -> Result<LqResult<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::eigh_with_backend`].
-    fn eigh(&self, nrow: usize) -> Result<EighResult<T, Host>, LinalgError>;
+    fn eigh(&self, nrow: usize) -> Result<EighResult<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::eigvalsh_with_backend`].
-    fn eigvalsh(&self, nrow: usize) -> Result<DenseTensor<T::Real, Host>, LinalgError>;
+    fn eigvalsh(&self, nrow: usize) -> Result<DenseTensor<T::Real>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::eig_with_backend`].
-    fn eig(&self, nrow: usize) -> Result<EigResult<T, Host>, LinalgError>;
+    fn eig(&self, nrow: usize) -> Result<EigResult<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::eigvals_with_backend`].
-    fn eigvals(&self, nrow: usize) -> Result<DenseTensor<T::Complex, Host>, LinalgError>;
+    fn eigvals(&self, nrow: usize) -> Result<DenseTensor<T::Complex>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::contract_with_backend`];
     /// the receiver is the left operand.
-    fn contract(
-        &self,
-        rhs: &DenseTensor<T, Host>,
-        notation: &str,
-    ) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn contract(&self, rhs: &DenseTensor<T>, notation: &str)
+    -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::transpose_with_backend`].
-    fn transpose(&self, perm: &[usize]) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn transpose(&self, perm: &[usize]) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::trace_with_backend`].
-    fn trace(&self, pairs: &[(usize, usize)]) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn trace(&self, pairs: &[(usize, usize)]) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::diag_with_backend`].
-    fn diag(&self) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn diag(&self) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::diagonal_scale_with_backend`].
     ///
@@ -98,122 +94,110 @@ pub trait DenseHostOps<T: Scalar> {
         &self,
         weights: &[S2],
         axis: usize,
-    ) -> Result<DenseTensor<T, Host>, LinalgError>
+    ) -> Result<DenseTensor<T>, LinalgError>
     where
         T: Mul<S2, Output = T>,
         S2: Clone;
 
     /// Host-defaulting counterpart of [`crate::solve_with_backend`];
     /// the receiver is the coefficient matrix `A` in `AX = B`.
-    fn solve(
-        &self,
-        b: &DenseTensor<T, Host>,
-        nrow_a: usize,
-    ) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn solve(&self, b: &DenseTensor<T>, nrow_a: usize) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::inverse_with_backend`].
-    fn inverse(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn inverse(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::expm_with_backend`].
-    fn expm(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn expm(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::expm_hermitian_with_backend`].
-    fn expm_hermitian(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn expm_hermitian(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::expm_antihermitian_with_backend`].
-    fn expm_antihermitian(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError>;
+    fn expm_antihermitian(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError>;
 }
 
-impl<T: Scalar> DenseHostOps<T> for DenseTensor<T, Host> {
-    fn svd(&self, nrow: usize) -> Result<SvdResult<T, Host>, LinalgError> {
-        svd_with_backend(&Host::shared(), self, nrow)
+impl<T: Scalar> DenseHostOps<T> for DenseTensor<T> {
+    fn svd(&self, nrow: usize) -> Result<SvdResult<T>, LinalgError> {
+        svd_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
     fn trunc_svd(
         &self,
         nrow: usize,
         params: &TruncSvdParams,
-    ) -> Result<TruncSvdResult<T, Host>, LinalgError> {
-        trunc_svd_with_backend(&Host::shared(), self, nrow, params)
+    ) -> Result<TruncSvdResult<T>, LinalgError> {
+        trunc_svd_with_backend(Host::shared().as_ref(), self, nrow, params)
     }
 
-    fn qr(&self, nrow: usize) -> Result<QrResult<T, Host>, LinalgError> {
-        qr_with_backend(&Host::shared(), self, nrow)
+    fn qr(&self, nrow: usize) -> Result<QrResult<T>, LinalgError> {
+        qr_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn lq(&self, nrow: usize) -> Result<LqResult<T, Host>, LinalgError> {
-        lq_with_backend(&Host::shared(), self, nrow)
+    fn lq(&self, nrow: usize) -> Result<LqResult<T>, LinalgError> {
+        lq_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn eigh(&self, nrow: usize) -> Result<EighResult<T, Host>, LinalgError> {
-        eigh_with_backend(&Host::shared(), self, nrow)
+    fn eigh(&self, nrow: usize) -> Result<EighResult<T>, LinalgError> {
+        eigh_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn eigvalsh(&self, nrow: usize) -> Result<DenseTensor<T::Real, Host>, LinalgError> {
-        eigvalsh_with_backend(&Host::shared(), self, nrow)
+    fn eigvalsh(&self, nrow: usize) -> Result<DenseTensor<T::Real>, LinalgError> {
+        eigvalsh_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn eig(&self, nrow: usize) -> Result<EigResult<T, Host>, LinalgError> {
-        eig_with_backend(&Host::shared(), self, nrow)
+    fn eig(&self, nrow: usize) -> Result<EigResult<T>, LinalgError> {
+        eig_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn eigvals(&self, nrow: usize) -> Result<DenseTensor<T::Complex, Host>, LinalgError> {
-        eigvals_with_backend(&Host::shared(), self, nrow)
+    fn eigvals(&self, nrow: usize) -> Result<DenseTensor<T::Complex>, LinalgError> {
+        eigvals_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
     fn contract(
         &self,
-        rhs: &DenseTensor<T, Host>,
+        rhs: &DenseTensor<T>,
         notation: &str,
-    ) -> Result<DenseTensor<T, Host>, LinalgError> {
-        contract_with_backend(&Host::shared(), self, rhs, notation)
+    ) -> Result<DenseTensor<T>, LinalgError> {
+        contract_with_backend(Host::shared().as_ref(), self, rhs, notation)
     }
 
-    fn transpose(&self, perm: &[usize]) -> Result<DenseTensor<T, Host>, LinalgError> {
-        transpose_with_backend(&Host::shared(), self, perm)
+    fn transpose(&self, perm: &[usize]) -> Result<DenseTensor<T>, LinalgError> {
+        transpose_with_backend(Host::shared().as_ref(), self, perm)
     }
 
-    fn trace(&self, pairs: &[(usize, usize)]) -> Result<DenseTensor<T, Host>, LinalgError> {
-        trace_with_backend(&Host::shared(), self, pairs)
+    fn trace(&self, pairs: &[(usize, usize)]) -> Result<DenseTensor<T>, LinalgError> {
+        trace_with_backend(Host::shared().as_ref(), self, pairs)
     }
 
-    fn diag(&self) -> Result<DenseTensor<T, Host>, LinalgError> {
-        diag_with_backend(&Host::shared(), self)
+    fn diag(&self) -> Result<DenseTensor<T>, LinalgError> {
+        diag_with_backend(Host::shared().as_ref(), self)
     }
 
-    fn diagonal_scale<S2>(
-        &self,
-        weights: &[S2],
-        axis: usize,
-    ) -> Result<DenseTensor<T, Host>, LinalgError>
+    fn diagonal_scale<S2>(&self, weights: &[S2], axis: usize) -> Result<DenseTensor<T>, LinalgError>
     where
         T: Mul<S2, Output = T>,
         S2: Clone,
     {
-        diagonal_scale_with_backend(&Host::shared(), self, weights, axis)
+        diagonal_scale_with_backend(Host::shared().as_ref(), self, weights, axis)
     }
 
-    fn solve(
-        &self,
-        b: &DenseTensor<T, Host>,
-        nrow_a: usize,
-    ) -> Result<DenseTensor<T, Host>, LinalgError> {
-        solve_with_backend(&Host::shared(), self, b, nrow_a)
+    fn solve(&self, b: &DenseTensor<T>, nrow_a: usize) -> Result<DenseTensor<T>, LinalgError> {
+        solve_with_backend(Host::shared().as_ref(), self, b, nrow_a)
     }
 
-    fn inverse(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError> {
-        inverse_with_backend(&Host::shared(), self, nrow)
+    fn inverse(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError> {
+        inverse_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn expm(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError> {
-        expm_with_backend(&Host::shared(), self, nrow)
+    fn expm(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError> {
+        expm_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn expm_hermitian(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError> {
-        expm_hermitian_with_backend(&Host::shared(), self, nrow)
+    fn expm_hermitian(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError> {
+        expm_hermitian_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn expm_antihermitian(&self, nrow: usize) -> Result<DenseTensor<T, Host>, LinalgError> {
-        expm_antihermitian_with_backend(&Host::shared(), self, nrow)
+    fn expm_antihermitian(&self, nrow: usize) -> Result<DenseTensor<T>, LinalgError> {
+        expm_antihermitian_with_backend(Host::shared().as_ref(), self, nrow)
     }
 }

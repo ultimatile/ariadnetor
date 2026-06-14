@@ -1,14 +1,12 @@
 //! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps.
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     TruncSvdParams, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
     trunc_svd_block_sparse_with_backend, trunc_svd_with_backend,
 };
 use arnet_tensor::{
-    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, Sector,
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, OpsFor, Sector,
 };
 use num_traits::{Float, Zero};
 
@@ -26,11 +24,15 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 /// truncation error (Frobenius norm of discarded singular values).
 ///
 /// If the chain is not in `Mixed` canonical form, auto-canonicalizes first.
-pub(super) fn truncate_dense<T, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub(super) fn truncate_dense<T, B, C>(
+    backend: &B,
+    chain: &mut C,
+    params: &TruncateParams,
+) -> TruncResult<T>
 where
     T: Scalar,
-    B: ComputeBackend,
-    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
+    B: OpsFor<DenseStorage<T>>,
+    C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
@@ -41,7 +43,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize_dense(chain, c);
+            canonicalize_dense(backend, chain, c);
             c
         }
     };
@@ -54,22 +56,21 @@ where
 
     let svd_params = &params.svd;
     let absorb = params.absorb;
-    let backend = Arc::clone(chain.backend_arc());
     let mut total_err_sq = T::Real::zero();
 
     for j in center..n - 1 {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb, &backend);
+        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb, backend);
     }
 
     for j in (1..n).rev() {
-        total_err_sq = total_err_sq + left_trunc_step(chain, j, svd_params, absorb, &backend);
+        total_err_sq = total_err_sq + left_trunc_step(chain, j, svd_params, absorb, backend);
     }
 
     // Final right sweep restoring the orthogonality center after the
     // preceding right and left sweeps; defensively accumulates any
     // residual squared error from each step in case of numerical drift.
     for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb, &backend);
+        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb, backend);
     }
 
     let form = match absorb {
@@ -89,12 +90,12 @@ fn right_trunc_step<T, B, C>(
     j: usize,
     params: &TruncSvdParams,
     absorb: SvdAbsorb,
-    backend: &Arc<B>,
+    backend: &B,
 ) -> T::Real
 where
     T: Scalar,
-    B: ComputeBackend,
-    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
+    B: OpsFor<DenseStorage<T>>,
+    C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (left_storage, right_factor, err) = {
         let site = chain.site(j);
@@ -105,9 +106,8 @@ where
             .expect("trunc_svd failed during truncate");
 
         // Split U's fused row leg back into (*orig[..rank-1], chi).
-        let reshape_u = |u_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
-            u_2d.split_leg(0, &orig_shape[..rank - 1])
-        };
+        let reshape_u =
+            |u_2d: DenseTensor<T>| -> DenseTensor<T> { u_2d.split_leg(0, &orig_shape[..rank - 1]) };
 
         match absorb {
             SvdAbsorb::Right => {
@@ -152,12 +152,12 @@ fn left_trunc_step<T, B, C>(
     j: usize,
     params: &TruncSvdParams,
     absorb: SvdAbsorb,
-    backend: &Arc<B>,
+    backend: &B,
 ) -> T::Real
 where
     T: Scalar,
-    B: ComputeBackend,
-    C: TensorChain<DenseStorage<T>, DenseLayout, B>,
+    B: OpsFor<DenseStorage<T>>,
+    C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (right_storage, left_factor, err) = {
         let site = chain.site(j);
@@ -167,9 +167,8 @@ where
             .expect("trunc_svd failed during truncate");
 
         // Split Vt's fused column leg back into (chi, *orig[1..]).
-        let reshape_vt = |vt_2d: DenseTensor<T, B>| -> DenseTensor<T, B> {
-            vt_2d.split_leg(1, &orig_shape[1..])
-        };
+        let reshape_vt =
+            |vt_2d: DenseTensor<T>| -> DenseTensor<T> { vt_2d.split_leg(1, &orig_shape[1..]) };
 
         match absorb {
             SvdAbsorb::Right => {
@@ -209,12 +208,16 @@ where
 // BlockSparse truncate
 // ============================================================================
 
-pub(super) fn truncate_bsp<T, S, B, C>(chain: &mut C, params: &TruncateParams) -> TruncResult<T>
+pub(super) fn truncate_bsp<T, S, B, C>(
+    backend: &B,
+    chain: &mut C,
+    params: &TruncateParams,
+) -> TruncResult<T>
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
-    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    B: OpsFor<BlockSparseStorage<T>>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
@@ -225,7 +228,7 @@ where
         CanonicalForm::Right => 0,
         _ => {
             let c = params.center.unwrap_or(0);
-            canonicalize_bsp(chain, c);
+            canonicalize_bsp(backend, chain, c);
             c
         }
     };
@@ -238,19 +241,18 @@ where
 
     let svd_params = &params.svd;
     let absorb = params.absorb;
-    let backend = Arc::clone(chain.backend_arc());
     let mut total_err_sq = T::Real::zero();
 
     for j in center..n - 1 {
-        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb, &backend);
+        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb, backend);
     }
 
     for j in (1..n).rev() {
-        total_err_sq = total_err_sq + left_trunc_step_bsp(chain, j, svd_params, absorb, &backend);
+        total_err_sq = total_err_sq + left_trunc_step_bsp(chain, j, svd_params, absorb, backend);
     }
 
     for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb, &backend);
+        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb, backend);
     }
 
     let form = match absorb {
@@ -268,13 +270,13 @@ fn right_trunc_step_bsp<T, S, B, C>(
     j: usize,
     params: &TruncSvdParams,
     absorb: SvdAbsorb,
-    backend: &Arc<B>,
+    backend: &B,
 ) -> T::Real
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
-    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    B: OpsFor<BlockSparseStorage<T>>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (left_storage, right_factor, err) = {
         let site = chain.site(j);
@@ -325,13 +327,13 @@ fn left_trunc_step_bsp<T, S, B, C>(
     j: usize,
     params: &TruncSvdParams,
     absorb: SvdAbsorb,
-    backend: &Arc<B>,
+    backend: &B,
 ) -> T::Real
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
-    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+    B: OpsFor<BlockSparseStorage<T>>,
+    C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (right_storage, left_factor, err) = {
         let site = chain.site(j);

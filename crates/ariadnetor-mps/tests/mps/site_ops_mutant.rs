@@ -4,8 +4,8 @@
 //! SpinHalf::dim, SpinHalf::sz negation, and Qubit y/z/h sign patterns.
 
 use approx::assert_abs_diff_eq;
-use arnet_core::ComputeBackend;
 use arnet_mps::{Qubit, SiteOps, SpinHalf};
+use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
 // --------------------------------------------------------------------------
@@ -13,7 +13,7 @@ use arnet_tensor::DenseTensor;
 // --------------------------------------------------------------------------
 
 /// Column-major element access for a 2D `DenseTensor`.
-fn cm_get<T: Clone, B: ComputeBackend>(t: &DenseTensor<T, B>, i: usize, j: usize) -> T {
+fn cm_get<T: Clone>(t: &DenseTensor<T>, i: usize, j: usize) -> T {
     let rows = t.shape()[0];
     t.data_slice()[j * rows + i].clone()
 }
@@ -109,7 +109,8 @@ fn test_qubit_y_squared_is_identity_complex() {
     // Y^2 = I — catches sign-flip mutants in both (0,1) and (1,0)
     use arnet_core::Complex;
     let y = Qubit.y::<Complex<f64>>();
-    let y2 = arnet_linalg::contract(&y, &y, "ij,jk->ik").unwrap();
+    let y2 =
+        arnet_linalg::contract_with_backend(&NativeBackend::new(), &y, &y, "ij,jk->ik").unwrap();
     let id = Qubit.id::<Complex<f64>>();
     for i in 0..2 {
         for j in 0..2 {
@@ -141,7 +142,8 @@ fn test_qubit_z_exact_diagonal() {
 fn test_qubit_z_squared_is_identity() {
     // Z^2 = I — catches sign flip on (1,1)
     let z = Qubit.z::<f64>();
-    let z2 = arnet_linalg::contract(&z, &z, "ij,jk->ik").unwrap();
+    let z2 =
+        arnet_linalg::contract_with_backend(&NativeBackend::new(), &z, &z, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {
@@ -175,7 +177,8 @@ fn test_qubit_h_exact_signs() {
 fn test_qubit_h_is_unitary() {
     // H^T H = I for real Hadamard — catches any wrong sign
     let h = Qubit.h::<f64>();
-    let hth = arnet_linalg::contract(&h, &h, "ab,ac->bc").unwrap();
+    let hth =
+        arnet_linalg::contract_with_backend(&NativeBackend::new(), &h, &h, "ab,ac->bc").unwrap();
     for i in 0..2 {
         for j in 0..2 {
             let expected = if i == j { 1.0 } else { 0.0 };

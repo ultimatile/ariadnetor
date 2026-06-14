@@ -1,21 +1,21 @@
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::contract;
+use arnet_linalg::DenseHostOps;
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major
 /// (the NativeBackend's preferred order).
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
 }
 
 /// Reorder a `DenseTensor` result back to row-major so element-wise
 /// `.get()` assertions return the values one would index in RM.
-fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+fn to_rm<T: Clone>(tensor: &DenseTensor<T>) -> DenseTensor<T> {
     let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm, NativeBackend::shared())
+    DenseTensor::from_data(rm)
 }
 
 #[test]
@@ -23,7 +23,7 @@ fn test_contract_matmul() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let c = to_rm(&contract(&a, &b, "ik,kj->ij").unwrap());
+    let c = to_rm(&a.contract(&b, "ik,kj->ij").unwrap());
 
     // [[1*5+2*7, 1*6+2*8], [3*5+4*7, 3*6+4*8]] = [[19,22],[43,50]]
     assert_eq!(c.shape(), &[2, 2]);
@@ -44,7 +44,7 @@ fn test_contract_tensor_contraction() {
         vec![2, 2, 2],
     );
 
-    let c = to_rm(&contract(&a, &b, "ijk,jkl->il").unwrap());
+    let c = to_rm(&a.contract(&b, "ijk,jkl->il").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
     assert_ne!(c.get(&[0, 0]), 0.0);
@@ -55,7 +55,7 @@ fn test_contract_f32() {
     let a = cm(vec![1.0f32, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0f32, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let c = to_rm(&contract(&a, &b, "ik,kj->ij").unwrap());
+    let c = to_rm(&a.contract(&b, "ik,kj->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
     assert_eq!(c.get(&[0, 0]), 19.0f32);
@@ -69,7 +69,7 @@ fn test_contract_with_permutation() {
     );
     let b = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
 
-    let c = to_rm(&contract(&a, &b, "ikj,kj->i").unwrap());
+    let c = to_rm(&a.contract(&b, "ikj,kj->i").unwrap());
 
     assert_eq!(c.shape(), &[2]);
     assert_ne!(c.data_slice()[0], 0.0);
@@ -80,7 +80,7 @@ fn test_contract_rectangular() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0, 9.0, 10.0], vec![2, 3]);
 
-    let c = contract(&a, &b, "ik,kj->ij").unwrap();
+    let c = a.contract(&b, "ik,kj->ij").unwrap();
 
     assert_eq!(c.shape(), &[2, 3]);
 }
@@ -90,7 +90,7 @@ fn test_contract_invalid_notation() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let result = contract(&a, &b, "ik,kj->im");
+    let result = a.contract(&b, "ik,kj->im");
     assert!(result.is_err());
 }
 
@@ -99,7 +99,7 @@ fn test_contract_rank_mismatch() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let result = contract(&a, &b, "ijk,kl->ijl");
+    let result = a.contract(&b, "ijk,kl->ijl");
     assert!(result.is_err());
 }
 
@@ -112,8 +112,8 @@ fn test_contract_output_reorder_swap() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let b = cm((1..=12).map(|x| x as f64).collect(), vec![3, 4]);
 
-    let normal = to_rm(&contract(&a, &b, "ik,kj->ij").unwrap());
-    let swapped = to_rm(&contract(&a, &b, "ik,kj->ji").unwrap());
+    let normal = to_rm(&a.contract(&b, "ik,kj->ij").unwrap());
+    let swapped = to_rm(&a.contract(&b, "ik,kj->ji").unwrap());
 
     assert_eq!(normal.shape(), &[2, 4]);
     assert_eq!(swapped.shape(), &[4, 2]);
@@ -130,8 +130,8 @@ fn test_contract_output_reorder_3d() {
     let a = cm((1..=12).map(|x| x as f64).collect(), vec![2, 3, 2]);
     let b = cm((1..=8).map(|x| x as f64).collect(), vec![2, 4]);
 
-    let normal = to_rm(&contract(&a, &b, "abc,cd->abd").unwrap());
-    let reordered = to_rm(&contract(&a, &b, "abc,cd->dba").unwrap());
+    let normal = to_rm(&a.contract(&b, "abc,cd->abd").unwrap());
+    let reordered = to_rm(&a.contract(&b, "abc,cd->dba").unwrap());
 
     assert_eq!(normal.shape(), &[2, 3, 4]);
     assert_eq!(reordered.shape(), &[4, 3, 2]);
@@ -159,7 +159,7 @@ fn test_contract_rejects_batch_indices() {
         vec![2, 2, 2],
     );
 
-    let result = contract(&a, &b, "bik,bkj->bij");
+    let result = a.contract(&b, "bik,bkj->bij");
     assert!(result.is_err());
 }
 
@@ -168,13 +168,15 @@ fn test_contract_output_memory_order() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
     let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
 
-    let c = contract(&a, &b, "ik,kj->ij").unwrap();
-    let c_reordered = contract(&a, &b, "ik,kj->ji").unwrap();
+    let c = a.contract(&b, "ik,kj->ij").unwrap();
+    let c_reordered = a.contract(&b, "ik,kj->ji").unwrap();
 
-    // Pins the contract docstring: output is returned in `lhs.backend().preferred_order()`,
-    // independent of the einsum's output index permutation (`->ji` exercises non-trivial
-    // permutation; both calls must still land in the backend's preferred order).
-    let expected = a.backend().preferred_order();
+    // Pins the contract docstring: output is returned in the host backend's
+    // `preferred_order()`, independent of the einsum's output index permutation
+    // (`->ji` exercises non-trivial permutation; both calls must still land in
+    // the backend's preferred order). The host-ext `contract` routes through
+    // `NativeBackend`, so query its preferred order directly.
+    let expected = NativeBackend::new().preferred_order();
     assert_eq!(c.order(), expected);
     assert_eq!(c_reordered.order(), expected);
 }

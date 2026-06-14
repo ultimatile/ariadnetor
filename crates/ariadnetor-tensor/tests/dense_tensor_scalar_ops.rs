@@ -2,14 +2,13 @@
 //! `DenseTensor` surface (`scaled`, `norm`, `normalized`). The
 //! `DenseTensorData::*` form is covered separately in `normalize_ops.rs`.
 
-use arnet_native::NativeBackend;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
-/// Wrap a `DenseTensorData<T>` (built with a specific `MemoryOrder` distinct
-/// from the backend's preferred order in some tests) into a
-/// `DenseTensor<T, NativeBackend>` pinned to the shared `NativeBackend`.
-fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T, NativeBackend> {
-    DenseTensor::with_backend(d, NativeBackend::shared())
+/// Wrap a `DenseTensorData<T>` (built with a specific `MemoryOrder`
+/// distinct from the host preferred order in some tests) into the joined
+/// `DenseTensor<T>` surface, preserving the data's order.
+fn t<T: Clone>(d: DenseTensorData<T>) -> DenseTensor<T> {
+    DenseTensor::from_data(d)
 }
 
 // --- scaled ---

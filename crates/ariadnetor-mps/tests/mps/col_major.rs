@@ -1,25 +1,27 @@
 //! Column-major MPS integration tests.
 //!
-//! The Tier 1 ordering invariant requires every site's
-//! `layout().order()` to equal the chain's `backend.preferred_order()`.
-//! NativeBackend's preferred order is ColumnMajor, so all dense MPS
-//! sites are necessarily column-major; the tests below cover the
-//! end-to-end canonicalize / inner / truncate / apply / braket paths
-//! on that column-major chain.
+//! `NativeBackend`'s preferred order is ColumnMajor, and the dense site
+//! constructors materialize in the host substrate's preferred order, so
+//! all dense MPS sites here are column-major. The tests below pass a
+//! `NativeBackend` at the call site and cover the end-to-end
+//! canonicalize / inner / truncate / apply / braket paths on that
+//! column-major chain.
 
 use approx::assert_abs_diff_eq;
 use arnet_mps::{self as mps, CanonicalForm, TensorChain, TruncSvdParams, TruncateParams};
+use arnet_native::NativeBackend;
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
 
 #[test]
 fn test_col_major_canonicalize_preserves_state() {
+    let backend = NativeBackend::new();
     let mps_ref = make_4site_mps();
     let mut mps_cm = make_4site_mps();
 
     let dense_before = mps_to_dense(&mps_ref);
 
-    mps::canonicalize(&mut mps_cm, 1);
+    mps::canonicalize(&backend, &mut mps_cm, 1);
 
     let dense_after = mps_to_dense(&mps_cm);
     for (a, b) in dense_before
@@ -33,39 +35,42 @@ fn test_col_major_canonicalize_preserves_state() {
 
 #[test]
 fn test_col_major_inner_self_consistent() {
+    let backend = NativeBackend::new();
     let mps_ref = make_4site_mps();
     let mps_cm = make_4site_mps();
 
-    let inner_ref = mps::inner(&mps_ref, &mps_ref);
-    let inner_cm = mps::inner(&mps_cm, &mps_cm);
+    let inner_ref = mps::inner(&backend, &mps_ref, &mps_ref);
+    let inner_cm = mps::inner(&backend, &mps_cm, &mps_cm);
 
     assert_abs_diff_eq!(inner_ref, inner_cm, epsilon = 1e-10);
 }
 
 #[test]
 fn test_col_major_inner_cross() {
+    let backend = NativeBackend::new();
     let mps_ref = make_4site_mps();
     let mps_cm = make_4site_mps();
 
-    let inner_rr = mps::inner(&mps_ref, &mps_ref);
-    let inner_rc = mps::inner(&mps_ref, &mps_cm);
+    let inner_rr = mps::inner(&backend, &mps_ref, &mps_ref);
+    let inner_rc = mps::inner(&backend, &mps_ref, &mps_cm);
 
     assert_abs_diff_eq!(inner_rr, inner_rc, epsilon = 1e-10);
 }
 
 #[test]
 fn test_col_major_truncate_preserves_state() {
+    let backend = NativeBackend::new();
     let mps_ref = make_4site_mps();
     let mut mps_cm = make_4site_mps();
 
-    let norm_before = mps::norm(&mps_ref);
+    let norm_before = mps::norm(&backend, &mps_ref);
 
-    mps::canonicalize(&mut mps_cm, 1);
+    mps::canonicalize(&backend, &mut mps_cm, 1);
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(3),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&mut mps_cm, &params);
+    let result = mps::truncate(&backend, &mut mps_cm, &params);
 
     assert!(
         result.error / norm_before < 0.5,
@@ -73,19 +78,20 @@ fn test_col_major_truncate_preserves_state() {
         result.error,
     );
 
-    let overlap = mps::inner(&mps_ref, &mps_cm);
-    let norm_after = mps::norm(&mps_cm);
+    let overlap = mps::inner(&backend, &mps_ref, &mps_cm);
+    let norm_after = mps::norm(&backend, &mps_cm);
     assert!(overlap.abs() <= norm_before * norm_after + 1e-10);
     assert!(overlap.abs() > 0.0);
 }
 
 #[test]
 fn test_col_major_apply_identity() {
+    let backend = NativeBackend::new();
     let mps_ref = make_4site_mps();
     let mps_cm = make_4site_mps();
     let identity = make_identity_mpo(4, 2);
 
-    let result = mps::apply(&identity, &mps_cm, None);
+    let result = mps::apply(&backend, &identity, &mps_cm, None);
 
     let dense_ref = mps_to_dense(&mps_ref);
     let dense_result = mps_to_dense(&result);
@@ -100,6 +106,7 @@ fn test_col_major_apply_identity() {
 
 #[test]
 fn test_col_major_apply_with_truncation() {
+    let backend = NativeBackend::new();
     let mps_cm = make_4site_mps();
     let identity = make_identity_mpo(4, 2);
 
@@ -107,7 +114,7 @@ fn test_col_major_apply_with_truncation() {
         chi_max: Some(3),
         target_trunc_err: None,
     });
-    let result = mps::apply(&identity, &mps_cm, Some(&params));
+    let result = mps::apply(&backend, &identity, &mps_cm, Some(&params));
 
     for d in result.bond_dims() {
         assert!(d <= 3, "bond dim {d} exceeds chi_max=3");
@@ -117,12 +124,13 @@ fn test_col_major_apply_with_truncation() {
 
 #[test]
 fn test_col_major_braket() {
+    let backend = NativeBackend::new();
     let mps_ref = make_4site_mps();
     let mps_cm = make_4site_mps();
     let identity = make_identity_mpo(4, 2);
 
-    let braket_ref = mps::braket(&mps_ref, &identity, &mps_ref);
-    let braket_cm = mps::braket(&mps_cm, &identity, &mps_cm);
+    let braket_ref = mps::braket(&backend, &mps_ref, &identity, &mps_ref);
+    let braket_cm = mps::braket(&backend, &mps_cm, &identity, &mps_cm);
 
     assert_abs_diff_eq!(braket_ref, braket_cm, epsilon = 1e-10);
 }

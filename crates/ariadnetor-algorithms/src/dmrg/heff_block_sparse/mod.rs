@@ -10,8 +10,8 @@
 //!
 //! ## Flat-buffer adapter
 //!
-//! `LinearOp<T>` operates on `DenseTensor<T, B>` flat vectors. The
-//! BlockSparse Heff implements `apply(&DenseTensor<T, B>) -> DenseTensor<T, B>` via:
+//! `LinearOp<T>` operates on `DenseTensor<T>` flat vectors. The
+//! BlockSparse Heff implements `apply(&DenseTensor<T>) -> DenseTensor<T>` via:
 //!
 //! 1. **Scatter** the flat input into a populated
 //!    `BlockSparseTensorData` 2-site tensor whose indices and flux
@@ -24,7 +24,7 @@
 //!    order `lhs_free | rhs_free` ends in
 //!    `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
 //!    no axis swap.
-//! 3. **Gather** the rank-4 result back into a flat `DenseTensor<T, B>`
+//! 3. **Gather** the rank-4 result back into a flat `DenseTensor<T>`
 //!    of the same length, walking the psi template's
 //!    [`BlockSparseTensorData::block_metas`] and looking up each block
 //!    in the contracted output by coordinate.
@@ -40,13 +40,10 @@ mod validation;
 
 pub use operator::EffectiveHamiltonian2SiteBlockSparse;
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse_with_backend};
 use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
-use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Sector};
+use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Host, Sector};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -67,7 +64,7 @@ use super::solver::{DmrgScalar, LocalEigensolverParams};
 ///
 /// `Debug` is not derived because `BlockSparse: !Debug`; tests that
 /// need to inspect the result destructure its fields directly.
-pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector, B: ComputeBackend = NativeBackend> {
+pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
     pub eigenvalue: T::Real,
     pub residual: T::Real,
     pub iters: usize,
@@ -75,13 +72,13 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector, B: ComputeBackend 
     pub converged: bool,
     /// Left singular vectors. Legs `[chi_l, d_i, bond(In)]`,
     /// `flux = identity()`. Left-canonical at axes `(chi_l, d_i)`.
-    pub u: BlockSparseTensor<T, S, B>,
+    pub u: BlockSparseTensor<T, S>,
     /// Singular values per fused sector (descending within each
     /// sector).
     pub s: BlockSingularValues<<T as Scalar>::Real, S>,
     /// Right singular vectors. Legs `[bond(Out), d_{i+1}, chi_r]`,
     /// `flux = psi_flux`. Right-canonical at axes `(d_{i+1}, chi_r)`.
-    pub vt: BlockSparseTensor<T, S, B>,
+    pub vt: BlockSparseTensor<T, S>,
     /// Frobenius norm of the discarded singular values.
     pub trunc_err: T::Real,
 }
@@ -110,30 +107,23 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector, B: ComputeBackend 
 ///   input because every contract pair, MPO well-formedness
 ///   property, env-template-compatibility property, and identity-flux
 ///   precondition is validated up front.
-pub fn dmrg_2site_step_block_sparse<T, S, B>(
-    envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-    mps: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
-    mpo: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>, B>,
+pub fn dmrg_2site_step_block_sparse<T, S>(
+    envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+    mps: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+    mpo: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,
-) -> Result<TwoSiteStepResultBlockSparse<T, S, B>, DmrgHeffError>
+) -> Result<TwoSiteStepResultBlockSparse<T, S>, DmrgHeffError>
 where
     T: DmrgScalar,
     T::Real: Scalar<Real = T::Real>,
     S: Sector,
-    B: ComputeBackend,
 {
     let v = validation::validate_inputs(envs, mps, mpo, site, eigensolver)?;
 
     let heff = EffectiveHamiltonian2SiteBlockSparse::new(
-        v.left,
-        v.w_i,
-        v.w_ip1,
-        v.right,
-        v.mps_i,
-        v.mps_ip1,
-        Arc::clone(&v.backend),
+        v.left, v.w_i, v.w_ip1, v.right, v.mps_i, v.mps_ip1,
     )?;
     let dim = heff.dim();
     if dim == 0 {
@@ -199,7 +189,8 @@ where
         &heff.block_offsets,
         &heff.block_coords,
     );
-    let (u, s, vt, trunc_err) = trunc_svd_block_sparse_with_backend(&v.backend, &psi_4d, 2, trunc)?;
+    let (u, s, vt, trunc_err) =
+        trunc_svd_block_sparse_with_backend(Host::shared().as_ref(), &psi_4d, 2, trunc)?;
 
     Ok(TwoSiteStepResultBlockSparse {
         eigenvalue,

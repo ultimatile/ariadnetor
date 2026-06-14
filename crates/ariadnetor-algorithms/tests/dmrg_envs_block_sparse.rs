@@ -9,9 +9,7 @@
 
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_mps::{Mpo, Mps, TensorChain};
-use std::sync::Arc;
 
-use arnet_native::NativeBackend;
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
     DenseStorage, DenseTensor, Direction, QNIndex, Sector, U1Sector,
@@ -99,7 +97,7 @@ fn densify_bsp(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
     // The scatter loop above writes `out` directly in column-major order
     // (NativeBackend's preferred order), so the buffer is already in the
     // order every Dense tensor flowing through `contract` must carry.
-    DenseTensor::from_raw_parts(out, global_dims, NativeBackend::shared())
+    DenseTensor::from_raw_parts(out, global_dims)
 }
 
 // ---------------------------------------------------------------------------
@@ -670,11 +668,8 @@ fn bsp_envs_error_paths_length() {
 #[test]
 fn bsp_envs_error_paths_empty_chain() {
     // An empty BlockSparse MPS / MPO triggers EmptyChain.
-    let backend = NativeBackend::shared();
-    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
-        Mps::empty(Arc::clone(&backend));
-    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
-        Mpo::empty(Arc::clone(&backend));
+    let mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> = Mps::empty();
+    let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> = Mpo::empty();
     let err = expect_build_err(&mps, &mpo);
     assert!(
         matches!(err, DmrgEnvError::EmptyChain),

@@ -8,7 +8,6 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, TensorChain};
-use arnet_native::NativeBackend;
 use arnet_tensor::{
     BlockCoord, BlockSparseTensor, DenseTensor, Direction, QNIndex, Sector, U1Sector,
 };
@@ -246,7 +245,6 @@ fn bsp_heff_complex_path() {
     let mps = make_n2_mps_c64();
     let mpo = make_n2_mpo_c64(1.5);
     let envs = DmrgEnvs::build(&mps, &mpo).expect("c64 envs");
-    let backend = NativeBackend::shared();
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left"),
         mpo.site(0),
@@ -254,7 +252,6 @@ fn bsp_heff_complex_path() {
         envs.right(2).expect("right"),
         mps.site(0),
         mps.site(1),
-        backend,
     )
     .expect("operands share backend preferred_order by construction");
 
@@ -263,11 +260,7 @@ fn bsp_heff_complex_path() {
     for j in 0..dim {
         let mut e_j = vec![Complex::new(0.0, 0.0); dim];
         e_j[j] = Complex::new(1.0, 0.0);
-        let out = bsp_heff.apply(&DenseTensor::from_raw_parts(
-            e_j,
-            vec![dim],
-            NativeBackend::shared(),
-        ));
+        let out = bsp_heff.apply(&DenseTensor::from_raw_parts(e_j, vec![dim]));
         for i in 0..dim {
             h_data[i + dim * j] = out.data_slice()[i];
         }

@@ -22,13 +22,10 @@
 //! by the BlockSparse boundary; for the Dense path the helpers always
 //! succeed.
 
-use std::sync::Arc;
-
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{LinalgError, contract_with_backend};
 use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::{DenseLayout, DenseStorage, Storage, StorageFor, Tensor, TensorLayout};
+use arnet_tensor::{DenseLayout, DenseStorage, Host, Storage, StorageFor, Tensor, TensorLayout};
 
 /// Errors raised by [`DmrgEnvs`] construction and advance operations.
 #[derive(Debug, thiserror::Error)]
@@ -93,60 +90,44 @@ fn edge_bond_detail(leg: &str) -> &'static str {
 /// implementation can extract QNIndex / direction / flux metadata; the
 /// Dense implementation ignores the site arguments and returns a
 /// constant 1×1×1 tensor.
+///
+/// Every operation runs on the [`Host`] substrate — DMRG is host-resident
+/// in the CPU-only Stage B scope — so the concrete impls obtain the
+/// backend from [`Host::shared`] rather than receiving one through the
+/// call site.
 pub trait DmrgEnvOps<T: Scalar>: TensorLayout + Sized {
     /// Storage type paired with this layout (mirrors the
     /// `arnet_mps::MpsOps::Storage` association).
     type Storage: Storage + StorageFor<Self>;
 
-    /// Tier 2 site-iteration scan. Asserts that the chain's backend
-    /// `preferred_order()` agrees with every site's `layout().order()`
-    /// AND every site's cached backend `preferred_order()`. Called at
-    /// every DMRG public entry that consumes a chain
-    /// ([`DmrgEnvs::build`], [`DmrgEnvs::advance_left`],
-    /// [`DmrgEnvs::advance_right`], and the 2-site step entries via
-    /// [`super::dispatch::DmrgOps`]). Concrete impls call
-    /// `site.data().layout().order()`, which is only nameable on a
-    /// concrete `TensorLayout` (not on the generic `L: TensorLayout`
-    /// bound), so the scan lives here rather than in the generic
-    /// `DmrgEnvs` impl.
-    fn assert_chain_order<B: ComputeBackend>(
-        chain_backend: &Arc<B>,
-        sites: &[Tensor<Self::Storage, Self, B>],
-        ctx: &str,
-    );
-
     /// Build the trivial L boundary tensor sitting just left of site 0.
-    fn trivial_left_boundary<B: ComputeBackend>(
-        backend: &Arc<B>,
-        mps_left_edge: &Tensor<Self::Storage, Self, B>,
-        mpo_left_edge: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, DmrgEnvError>;
+    fn trivial_left_boundary(
+        mps_left_edge: &Tensor<Self::Storage, Self>,
+        mpo_left_edge: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, DmrgEnvError>;
 
     /// Build the trivial R boundary tensor sitting just right of site
     /// `n_sites - 1`.
-    fn trivial_right_boundary<B: ComputeBackend>(
-        backend: &Arc<B>,
-        mps_right_edge: &Tensor<Self::Storage, Self, B>,
-        mpo_right_edge: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, DmrgEnvError>;
+    fn trivial_right_boundary(
+        mps_right_edge: &Tensor<Self::Storage, Self>,
+        mpo_right_edge: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, DmrgEnvError>;
 
     /// Absorb one site into the L environment, advancing it by one
     /// step to the right.
-    fn extend_left_step<B: ComputeBackend>(
-        backend: &Arc<B>,
-        env: &Tensor<Self::Storage, Self, B>,
-        site: &Tensor<Self::Storage, Self, B>,
-        mpo_site: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, LinalgError>;
+    fn extend_left_step(
+        env: &Tensor<Self::Storage, Self>,
+        site: &Tensor<Self::Storage, Self>,
+        mpo_site: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, LinalgError>;
 
     /// Absorb one site into the R environment, advancing it by one
     /// step to the left.
-    fn extend_right_step<B: ComputeBackend>(
-        backend: &Arc<B>,
-        env: &Tensor<Self::Storage, Self, B>,
-        site: &Tensor<Self::Storage, Self, B>,
-        mpo_site: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, LinalgError>;
+    fn extend_right_step(
+        env: &Tensor<Self::Storage, Self>,
+        site: &Tensor<Self::Storage, Self>,
+        mpo_site: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, LinalgError>;
 }
 
 // ============================================================================
@@ -156,85 +137,58 @@ pub trait DmrgEnvOps<T: Scalar>: TensorLayout + Sized {
 impl<T: Scalar> DmrgEnvOps<T> for DenseLayout {
     type Storage = DenseStorage<T>;
 
-    fn assert_chain_order<B: ComputeBackend>(
-        chain_backend: &Arc<B>,
-        sites: &[Tensor<Self::Storage, Self, B>],
-        ctx: &str,
-    ) {
-        let expected = chain_backend.preferred_order();
-        for (i, site) in sites.iter().enumerate() {
-            let got = site.data().layout().order();
-            assert_eq!(
-                got, expected,
-                "{ctx}: site {i} order ({got:?}) != backend.preferred_order() ({expected:?})",
-            );
-            let site_backend_order = site.backend().preferred_order();
-            assert_eq!(
-                site_backend_order, expected,
-                "{ctx}: site {i} cached backend preferred_order ({site_backend_order:?}) != chain backend preferred_order ({expected:?})",
-            );
-        }
+    fn trivial_left_boundary(
+        _mps_left_edge: &Tensor<Self::Storage, Self>,
+        _mpo_left_edge: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, DmrgEnvError> {
+        Ok(make_dense_one())
     }
 
-    fn trivial_left_boundary<B: ComputeBackend>(
-        backend: &Arc<B>,
-        _mps_left_edge: &Tensor<Self::Storage, Self, B>,
-        _mpo_left_edge: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, DmrgEnvError> {
-        Ok(make_dense_one(backend))
-    }
-
-    fn trivial_right_boundary<B: ComputeBackend>(
-        backend: &Arc<B>,
-        _mps_right_edge: &Tensor<Self::Storage, Self, B>,
-        _mpo_right_edge: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, DmrgEnvError> {
-        Ok(make_dense_one(backend))
+    fn trivial_right_boundary(
+        _mps_right_edge: &Tensor<Self::Storage, Self>,
+        _mpo_right_edge: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, DmrgEnvError> {
+        Ok(make_dense_one())
     }
 
     /// Per-site left extension for `DenseLayout`. Mirrors the loop
     /// body of `arnet_mps::inner::braket_dense`: bra = `site.conj()`,
     /// then a 3-step contraction `(env, bra) → (·, mpo) → (·, site)`.
-    fn extend_left_step<B: ComputeBackend>(
-        backend: &Arc<B>,
-        env: &Tensor<Self::Storage, Self, B>,
-        site: &Tensor<Self::Storage, Self, B>,
-        mpo_site: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, LinalgError> {
+    fn extend_left_step(
+        env: &Tensor<Self::Storage, Self>,
+        site: &Tensor<Self::Storage, Self>,
+        mpo_site: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, LinalgError> {
+        let backend = Host::shared();
         let bra = site.conj();
-        let t1 = contract_with_backend(backend, env, &bra, "abc,ade->bcde")?;
-        let t2 = contract_with_backend(backend, &t1, mpo_site, "bcde,bfdg->cefg")?;
-        contract_with_backend(backend, &t2, site, "cefg,cfh->egh")
+        let t1 = contract_with_backend(backend.as_ref(), env, &bra, "abc,ade->bcde")?;
+        let t2 = contract_with_backend(backend.as_ref(), &t1, mpo_site, "bcde,bfdg->cefg")?;
+        contract_with_backend(backend.as_ref(), &t2, site, "cefg,cfh->egh")
     }
 
     /// Per-site right extension for `DenseLayout`.
-    fn extend_right_step<B: ComputeBackend>(
-        backend: &Arc<B>,
-        env: &Tensor<Self::Storage, Self, B>,
-        site: &Tensor<Self::Storage, Self, B>,
-        mpo_site: &Tensor<Self::Storage, Self, B>,
-    ) -> Result<Tensor<Self::Storage, Self, B>, LinalgError> {
+    fn extend_right_step(
+        env: &Tensor<Self::Storage, Self>,
+        site: &Tensor<Self::Storage, Self>,
+        mpo_site: &Tensor<Self::Storage, Self>,
+    ) -> Result<Tensor<Self::Storage, Self>, LinalgError> {
+        let backend = Host::shared();
         let bra = site.conj();
-        let t1 = contract_with_backend(backend, env, site, "egh,cfh->egcf")?;
-        let t2 = contract_with_backend(backend, &t1, mpo_site, "egcf,bfdg->ecbd")?;
-        contract_with_backend(backend, &t2, &bra, "ecbd,ade->abc")
+        let t1 = contract_with_backend(backend.as_ref(), env, site, "egh,cfh->egcf")?;
+        let t2 = contract_with_backend(backend.as_ref(), &t1, mpo_site, "egcf,bfdg->ecbd")?;
+        contract_with_backend(backend.as_ref(), &t2, &bra, "ecbd,ade->abc")
     }
 }
 
-fn make_dense_one<T, B>(backend: &Arc<B>) -> Tensor<DenseStorage<T>, DenseLayout, B>
+fn make_dense_one<T>() -> Tensor<DenseStorage<T>, DenseLayout>
 where
     T: Scalar,
-    B: ComputeBackend,
 {
-    arnet_tensor::DenseTensor::<T, B>::from_raw_parts(
-        vec![T::one()],
-        vec![1, 1, 1],
-        Arc::clone(backend),
-    )
+    arnet_tensor::DenseTensor::<T>::from_raw_parts(vec![T::one()], vec![1, 1, 1])
 }
 
 // ============================================================================
-// DmrgEnvs<St, L, B>
+// DmrgEnvs<St, L>
 // ============================================================================
 
 /// L/R environment tensors for 2-site DMRG, with incremental update
@@ -247,35 +201,32 @@ where
 ///
 /// See the module-level docs for the index convention.
 #[derive(Debug, Clone)]
-pub struct DmrgEnvs<St, L, B = NativeBackend>
+pub struct DmrgEnvs<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
     /// `left[i]` for `i in 0..=n_sites`. `left[0]` is the trivial
     /// boundary; `left[i]` for `i > 0` carries sites `0..i`. `None`
     /// indicates the slot is stale relative to the current sweep
     /// position.
-    left: Vec<Option<Tensor<St, L, B>>>,
+    left: Vec<Option<Tensor<St, L>>>,
     /// Mirror of `left` for the right sweep. `right[N]` is the
     /// trivial boundary; `right[j]` for `j < N` carries sites
     /// `j..N`.
-    right: Vec<Option<Tensor<St, L, B>>>,
+    right: Vec<Option<Tensor<St, L>>>,
     n_sites: usize,
-    backend: Arc<B>,
 }
 
-impl<St, L, B> DmrgEnvs<St, L, B>
+impl<St, L> DmrgEnvs<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
-    B: ComputeBackend,
 {
     /// Initial right-sweep build. Computes `right[N-1..=1]` from the
     /// trivial right boundary down through the chain, leaving only
     /// `left[0]` populated.
-    pub fn build<T>(mps: &Mps<St, L, B>, mpo: &Mpo<St, L, B>) -> Result<Self, DmrgEnvError>
+    pub fn build<T>(mps: &Mps<St, L>, mpo: &Mpo<St, L>) -> Result<Self, DmrgEnvError>
     where
         T: Scalar,
         L: DmrgEnvOps<T, Storage = St>,
@@ -291,27 +242,17 @@ where
             });
         }
 
-        let backend: Arc<B> = mps.backend_arc().clone();
-        assert_eq!(
-            backend.preferred_order(),
-            mpo.backend().preferred_order(),
-            "DmrgEnvs::build: mps/mpo backend preferred_order mismatch",
-        );
-        <L as DmrgEnvOps<T>>::assert_chain_order(&backend, mps.sites(), "DmrgEnvs::build.mps");
-        <L as DmrgEnvOps<T>>::assert_chain_order(&backend, mpo.sites(), "DmrgEnvs::build.mpo");
-        let mut left: Vec<Option<Tensor<St, L, B>>> = (0..=n_sites).map(|_| None).collect();
-        let mut right: Vec<Option<Tensor<St, L, B>>> = (0..=n_sites).map(|_| None).collect();
+        let mut left: Vec<Option<Tensor<St, L>>> = (0..=n_sites).map(|_| None).collect();
+        let mut right: Vec<Option<Tensor<St, L>>> = (0..=n_sites).map(|_| None).collect();
 
         // Trivial boundary tensors at the chain edges. For Dense these
         // are constant 1×1×1 ones; for BlockSparse they additionally
         // validate the dim-1 / single-sector edge-bond contract.
         left[0] = Some(<L as DmrgEnvOps<T>>::trivial_left_boundary(
-            &backend,
             mps.site(0),
             mpo.site(0),
         )?);
         right[n_sites] = Some(<L as DmrgEnvOps<T>>::trivial_right_boundary(
-            &backend,
             mps.site(n_sites - 1),
             mpo.site(n_sites - 1),
         )?);
@@ -329,12 +270,8 @@ where
                 break;
             }
             let prev = right[j].as_ref().expect("just initialized or computed");
-            let new = <L as DmrgEnvOps<T>>::extend_right_step(
-                &backend,
-                prev,
-                mps.site(j - 1),
-                mpo.site(j - 1),
-            )?;
+            let new =
+                <L as DmrgEnvOps<T>>::extend_right_step(prev, mps.site(j - 1), mpo.site(j - 1))?;
             right[j - 1] = Some(new);
         }
 
@@ -342,7 +279,6 @@ where
             left,
             right,
             n_sites,
-            backend,
         })
     }
 
@@ -353,20 +289,20 @@ where
 
     /// L tensor at the boundary just left of site `i`. Returns `None`
     /// when stale.
-    pub fn left(&self, i: usize) -> Option<&Tensor<St, L, B>> {
+    pub fn left(&self, i: usize) -> Option<&Tensor<St, L>> {
         self.left.get(i).and_then(Option::as_ref)
     }
 
     /// R tensor at the boundary just left of site `j`.
-    pub fn right(&self, j: usize) -> Option<&Tensor<St, L, B>> {
+    pub fn right(&self, j: usize) -> Option<&Tensor<St, L>> {
         self.right.get(j).and_then(Option::as_ref)
     }
 
     /// Absorb site `i` into the left environment.
     pub fn advance_left<T>(
         &mut self,
-        mps: &Mps<St, L, B>,
-        mpo: &Mpo<St, L, B>,
+        mps: &Mps<St, L>,
+        mpo: &Mpo<St, L>,
         i: usize,
     ) -> Result<(), DmrgEnvError>
     where
@@ -385,26 +321,6 @@ where
                 mpo: mpo.len(),
             });
         }
-        assert_eq!(
-            self.backend.preferred_order(),
-            mps.backend().preferred_order(),
-            "DmrgEnvs::advance_left: envs/mps backend preferred_order mismatch",
-        );
-        assert_eq!(
-            self.backend.preferred_order(),
-            mpo.backend().preferred_order(),
-            "DmrgEnvs::advance_left: envs/mpo backend preferred_order mismatch",
-        );
-        <L as DmrgEnvOps<T>>::assert_chain_order(
-            &self.backend,
-            mps.sites(),
-            "DmrgEnvs::advance_left.mps",
-        );
-        <L as DmrgEnvOps<T>>::assert_chain_order(
-            &self.backend,
-            mpo.sites(),
-            "DmrgEnvs::advance_left.mpo",
-        );
         let prev = match &self.left[i] {
             Some(t) => t,
             None => {
@@ -414,8 +330,7 @@ where
                 });
             }
         };
-        let new =
-            <L as DmrgEnvOps<T>>::extend_left_step(&self.backend, prev, mps.site(i), mpo.site(i))?;
+        let new = <L as DmrgEnvOps<T>>::extend_left_step(prev, mps.site(i), mpo.site(i))?;
         self.left[i + 1] = Some(new);
         if i + 1 < self.n_sites {
             self.right[i + 1] = None;
@@ -426,8 +341,8 @@ where
     /// Absorb site `j` into the right environment.
     pub fn advance_right<T>(
         &mut self,
-        mps: &Mps<St, L, B>,
-        mpo: &Mpo<St, L, B>,
+        mps: &Mps<St, L>,
+        mpo: &Mpo<St, L>,
         j: usize,
     ) -> Result<(), DmrgEnvError>
     where
@@ -446,26 +361,6 @@ where
                 mpo: mpo.len(),
             });
         }
-        assert_eq!(
-            self.backend.preferred_order(),
-            mps.backend().preferred_order(),
-            "DmrgEnvs::advance_right: envs/mps backend preferred_order mismatch",
-        );
-        assert_eq!(
-            self.backend.preferred_order(),
-            mpo.backend().preferred_order(),
-            "DmrgEnvs::advance_right: envs/mpo backend preferred_order mismatch",
-        );
-        <L as DmrgEnvOps<T>>::assert_chain_order(
-            &self.backend,
-            mps.sites(),
-            "DmrgEnvs::advance_right.mps",
-        );
-        <L as DmrgEnvOps<T>>::assert_chain_order(
-            &self.backend,
-            mpo.sites(),
-            "DmrgEnvs::advance_right.mpo",
-        );
         let prev = match &self.right[j + 1] {
             Some(t) => t,
             None => {
@@ -475,8 +370,7 @@ where
                 });
             }
         };
-        let new =
-            <L as DmrgEnvOps<T>>::extend_right_step(&self.backend, prev, mps.site(j), mpo.site(j))?;
+        let new = <L as DmrgEnvOps<T>>::extend_right_step(prev, mps.site(j), mpo.site(j))?;
         self.right[j] = Some(new);
         if j > 0 {
             self.left[j] = None;
