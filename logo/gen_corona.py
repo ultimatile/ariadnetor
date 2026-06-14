@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import math
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -238,6 +239,10 @@ def svg_to_png(svg_path: Path, png_path: Path, scale: int = 2):
     through fontconfig -- so the lockup's Lexend wordmark bakes in correctly as
     long as Lexend is installed. The mark stays transparent where the SVG has no
     background rect (rsvg-convert defaults to a transparent canvas)."""
+    if shutil.which("rsvg-convert") is None:
+        raise SystemExit(
+            "rsvg-convert not found; install librsvg (e.g. `brew install librsvg`)"
+        )
     subprocess.run(
         ["rsvg-convert", "--zoom", str(scale),
          "--output", str(png_path), str(svg_path)],
