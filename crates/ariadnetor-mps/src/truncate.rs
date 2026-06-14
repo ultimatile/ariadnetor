@@ -1,12 +1,12 @@
 //! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps.
 
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     TruncSvdParams, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
     trunc_svd_block_sparse_with_backend, trunc_svd_with_backend,
 };
 use arnet_tensor::{
-    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, Sector,
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, OpsFor, Sector,
 };
 use num_traits::{Float, Zero};
 
@@ -31,7 +31,7 @@ pub(super) fn truncate_dense<T, B, C>(
 ) -> TruncResult<T>
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
     C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let n = chain.len();
@@ -94,7 +94,7 @@ fn right_trunc_step<T, B, C>(
 ) -> T::Real
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
     C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (left_storage, right_factor, err) = {
@@ -156,7 +156,7 @@ fn left_trunc_step<T, B, C>(
 ) -> T::Real
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
     C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (right_storage, left_factor, err) = {
@@ -216,7 +216,7 @@ pub(super) fn truncate_bsp<T, S, B, C>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
     C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let n = chain.len();
@@ -275,7 +275,7 @@ fn right_trunc_step_bsp<T, S, B, C>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
     C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (left_storage, right_factor, err) = {
@@ -332,7 +332,7 @@ fn left_trunc_step_bsp<T, S, B, C>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
     C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (right_storage, left_factor, err) = {

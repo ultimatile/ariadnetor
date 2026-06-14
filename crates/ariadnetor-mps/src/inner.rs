@@ -1,12 +1,12 @@
 //! Inner product, norm, and expectation value for MPS.
 
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
 };
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
-    DenseStorage, DenseTensor, Direction, QNIndex, Sector,
+    DenseStorage, DenseTensor, Direction, OpsFor, QNIndex, Sector,
 };
 use num_traits::{Float, One};
 
@@ -27,7 +27,7 @@ pub(super) fn inner_dense<T, B>(
 ) -> T
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, phi.len(), "MPS lengths must match");
@@ -63,7 +63,7 @@ where
 pub(super) fn norm_dense<T, B>(backend: &B, psi: &Mps<DenseStorage<T>, DenseLayout>) -> T::Real
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     match psi.canonical_form() {
         CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),
@@ -84,7 +84,7 @@ pub(super) fn braket_dense<T, B>(
 ) -> T
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, phi.len(), "MPS lengths must match");
@@ -130,7 +130,7 @@ pub(super) fn inner_bsp<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, phi.len(), "MPS lengths must match");
@@ -199,7 +199,7 @@ pub(super) fn braket_bsp<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, phi.len(), "MPS lengths must match");
@@ -279,7 +279,7 @@ pub(super) fn norm_bsp<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     match psi.canonical_form() {
         CanonicalForm::Left | CanonicalForm::Right => T::Real::one(),

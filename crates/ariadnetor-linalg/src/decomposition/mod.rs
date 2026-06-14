@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, QrDescriptor, SvdDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
@@ -109,7 +109,7 @@ pub(crate) fn svd_dense<T: Scalar>(
 /// consults `backend.par_for_svd`, while this one takes `policy` directly.
 /// The backend is supplied at the call site and the tensor's own backend is
 /// never consulted.
-pub fn svd_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn svd_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -199,7 +199,7 @@ pub(crate) fn trunc_svd_dense<T: Scalar>(
 /// point consults `backend.par_for_svd`, while this one takes `policy`
 /// directly. The backend is supplied at the call site and the tensor's own
 /// backend is never consulted.
-pub fn trunc_svd_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn trunc_svd_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -360,7 +360,7 @@ pub(crate) fn qr_dense<T: Scalar>(
 /// consults `backend.par_for_qr`, while this one takes `policy` directly. The
 /// backend is supplied at the call site and the tensor's own backend is never
 /// consulted.
-pub fn qr_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn qr_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,

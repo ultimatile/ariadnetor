@@ -1,7 +1,7 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
 use crate::error::LinalgError;
 use crate::transpose::transpose_dense;
@@ -67,7 +67,7 @@ pub(crate) fn contract_dense<T: Scalar>(
 /// with the decomposition functions.
 ///
 /// Expert-layer counterpart of [`crate::contract_with_backend`].
-pub fn contract_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn contract_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     lhs: &DenseTensor<T>,
     rhs: &DenseTensor<T>,

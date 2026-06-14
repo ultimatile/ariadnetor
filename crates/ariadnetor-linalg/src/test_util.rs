@@ -14,6 +14,7 @@ use arnet_core::backend::{
     TransposeDescriptor,
 };
 use arnet_native::NativeBackend;
+use arnet_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
 
 /// Compute backend that records the `policy` field of every descriptor it
 /// receives, then delegates to an inner `NativeBackend`.
@@ -195,3 +196,16 @@ impl ComputeBackend for RowMajorBackend {
         self.inner.solve(desc)
     }
 }
+
+// `RecordingBackend` delegates every kernel to a full `NativeBackend`, so it
+// genuinely supports both storage flavors and declares the capability exactly
+// as an out-of-tree backend would (`OpsFor` is deliberately unsealed). This
+// lets it be passed to the `OpsFor`-gated twins it exercises.
+//
+// `RowMajorBackend` deliberately does NOT declare `OpsFor`: it is a partial
+// backend (its row-major decomposition paths are `todo!`), used only to force
+// the row-major branch of the `pub(crate)` `*_dense` kernels, which take a plain
+// `ComputeBackend`. It is never handed to a gated public twin, so claiming the
+// capability would advertise support it does not have.
+impl<T: Scalar> OpsFor<DenseStorage<T>> for RecordingBackend {}
+impl<T: Scalar> OpsFor<BlockSparseStorage<T>> for RecordingBackend {}

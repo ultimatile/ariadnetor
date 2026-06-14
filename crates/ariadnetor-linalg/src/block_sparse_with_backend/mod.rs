@@ -9,10 +9,16 @@
 //! invariant is therefore enforced with the release-active
 //! [`check_bsp_data_layout_order_matches`] against the supplied backend,
 //! returning [`LinalgError`] on mismatch.
+//!
+//! The backend is bound by
+//! [`OpsFor<BlockSparseStorage<T>>`](arnet_tensor::OpsFor): this public surface
+//! is the capability gate, so a backend that has not declared it operates on
+//! block-sparse storage cannot be passed here. Internal kernels stay
+//! `ComputeBackend`-bound; they are reachable only through this gate.
 
 use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy};
-use arnet_tensor::{BlockSparseTensor, Direction, Sector};
+use arnet_core::backend::ExecPolicy;
+use arnet_tensor::{BlockSparseStorage, BlockSparseTensor, Direction, OpsFor, Sector};
 
 use crate::block_sparse_contract::{
     BlockSparseContractResult, BlockSparseContractResultBsp,
@@ -34,7 +40,7 @@ use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 mod tests;
 
 /// Block-sparse thin SVD via the fused sector method, using the supplied backend.
-pub fn svd_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
+pub fn svd_block_sparse_with_backend<T: Scalar, S: Sector, B: OpsFor<BlockSparseStorage<T>>>(
     backend: &B,
     tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
@@ -50,7 +56,11 @@ pub fn svd_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
 }
 
 /// Block-sparse truncated SVD via the fused sector method, using the supplied backend.
-pub fn trunc_svd_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
+pub fn trunc_svd_block_sparse_with_backend<
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+>(
     backend: &B,
     tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
@@ -73,7 +83,7 @@ pub fn trunc_svd_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBacke
 }
 
 /// Block-sparse QR via the fused sector method, using the supplied backend.
-pub fn qr_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
+pub fn qr_block_sparse_with_backend<T: Scalar, S: Sector, B: OpsFor<BlockSparseStorage<T>>>(
     backend: &B,
     tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
@@ -88,7 +98,7 @@ pub fn qr_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
 }
 
 /// Block-sparse LQ via the fused sector method, using the supplied backend.
-pub fn lq_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
+pub fn lq_block_sparse_with_backend<T: Scalar, S: Sector, B: OpsFor<BlockSparseStorage<T>>>(
     backend: &B,
     tensor: &BlockSparseTensor<T, S>,
     nrow: usize,
@@ -106,7 +116,11 @@ pub fn lq_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
 ///
 /// The layout-order invariant is checked against the supplied backend for both
 /// operands before the per-sector GEMMs.
-pub fn contract_block_sparse_with_backend<T: Scalar, S: Sector, B: ComputeBackend>(
+pub fn contract_block_sparse_with_backend<
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+>(
     backend: &B,
     lhs: &BlockSparseTensor<T, S>,
     rhs: &BlockSparseTensor<T, S>,
@@ -140,7 +154,7 @@ pub fn permute_block_sparse_with_backend<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     check_bsp_data_layout_order_matches(tensor.data(), backend, "permute_block_sparse")?;
     let result = permute_block_sparse_dense(backend, tensor.data(), perm)?;
@@ -158,7 +172,7 @@ pub fn fuse_legs_block_sparse_with_backend<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     check_bsp_data_layout_order_matches(tensor.data(), backend, "fuse_legs_block_sparse")?;
     let result =
@@ -176,7 +190,7 @@ pub fn diagonal_scale_block_sparse_with_backend<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     check_bsp_data_layout_order_matches(tensor.data(), backend, "diagonal_scale_block_sparse")?;
     let result = diagonal_scale_block_sparse_dense(backend, tensor.data(), weights, axis)?;

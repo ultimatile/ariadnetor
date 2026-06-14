@@ -10,19 +10,23 @@
 //!
 //! Every operation takes its compute backend explicitly at the call
 //! site and dispatches all kernels through that handle via the
-//! explicit-backend (`*_with_backend`) linalg paths. The chain itself
-//! carries no backend, so there is a single, unambiguous authority per
-//! call. Block-sparse layout-order safety is enforced inside the linalg
+//! explicit-backend (`*_with_backend`) linalg paths. The backend is
+//! bound by [`OpsFor<Self::Storage>`](arnet_tensor::OpsFor) — the same
+//! capability gate the linalg surface enforces — so only a backend that
+//! has declared it operates on this layout's storage can be supplied.
+//! The chain itself carries no backend, so there is a single,
+//! unambiguous authority per call. Block-sparse layout-order safety is
+//! enforced inside the linalg
 //! twins (their release-active entry checks compare each operand's
 //! layout order against the supplied backend's preferred order); dense
 //! paths self-normalize.
 
 use std::num::NonZeroUsize;
 
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_tensor::{
-    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, Storage, StorageFor,
-    TensorLayout,
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
+    StorageFor, TensorLayout,
 };
 
 use super::chain::TensorChain;
@@ -39,31 +43,31 @@ pub trait MpsOps<T: Scalar>: TensorLayout + Sized {
     type Storage: Storage + StorageFor<Self>;
 
     /// Position the orthogonality center at `center`.
-    fn canonicalize<B: ComputeBackend>(
+    fn canonicalize<B: OpsFor<Self::Storage>>(
         backend: &B,
         chain: &mut impl TensorChain<Self::Storage, Self>,
         center: usize,
     );
 
     /// Truncate bond dimensions according to `params`.
-    fn truncate<B: ComputeBackend>(
+    fn truncate<B: OpsFor<Self::Storage>>(
         backend: &B,
         chain: &mut impl TensorChain<Self::Storage, Self>,
         params: &TruncateParams,
     ) -> TruncResult<T>;
 
     /// Compute the inner product ⟨ψ|φ⟩.
-    fn inner<B: ComputeBackend>(
+    fn inner<B: OpsFor<Self::Storage>>(
         backend: &B,
         psi: &Mps<Self::Storage, Self>,
         phi: &Mps<Self::Storage, Self>,
     ) -> T;
 
     /// Compute the norm ‖ψ‖.
-    fn norm<B: ComputeBackend>(backend: &B, psi: &Mps<Self::Storage, Self>) -> T::Real;
+    fn norm<B: OpsFor<Self::Storage>>(backend: &B, psi: &Mps<Self::Storage, Self>) -> T::Real;
 
     /// Compute the expectation value ⟨ψ|O|φ⟩.
-    fn braket<B: ComputeBackend>(
+    fn braket<B: OpsFor<Self::Storage>>(
         backend: &B,
         psi: &Mps<Self::Storage, Self>,
         op: &Mpo<Self::Storage, Self>,
@@ -76,7 +80,7 @@ pub trait MpsOps<T: Scalar>: TensorLayout + Sized {
     /// (lossless streaming naive). `forward_cap = Some(k)` falls to a
     /// truncated SVD with cap `k * chi_max` when the natural per-site
     /// forward rank exceeds it.
-    fn apply<B: ComputeBackend>(
+    fn apply<B: OpsFor<Self::Storage>>(
         backend: &B,
         op: &Mpo<Self::Storage, Self>,
         psi: &Mps<Self::Storage, Self>,
@@ -92,7 +96,7 @@ pub trait MpsOps<T: Scalar>: TensorLayout + Sized {
 impl<T: Scalar> MpsOps<T> for DenseLayout {
     type Storage = DenseStorage<T>;
 
-    fn canonicalize<B: ComputeBackend>(
+    fn canonicalize<B: OpsFor<Self::Storage>>(
         backend: &B,
         chain: &mut impl TensorChain<DenseStorage<T>, DenseLayout>,
         center: usize,
@@ -100,7 +104,7 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
         super::canonicalize::canonicalize_dense(backend, chain, center);
     }
 
-    fn truncate<B: ComputeBackend>(
+    fn truncate<B: OpsFor<Self::Storage>>(
         backend: &B,
         chain: &mut impl TensorChain<DenseStorage<T>, DenseLayout>,
         params: &TruncateParams,
@@ -108,7 +112,7 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
         super::truncate::truncate_dense(backend, chain, params)
     }
 
-    fn inner<B: ComputeBackend>(
+    fn inner<B: OpsFor<Self::Storage>>(
         backend: &B,
         psi: &Mps<DenseStorage<T>, DenseLayout>,
         phi: &Mps<DenseStorage<T>, DenseLayout>,
@@ -116,11 +120,14 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
         super::inner::inner_dense(backend, psi, phi)
     }
 
-    fn norm<B: ComputeBackend>(backend: &B, psi: &Mps<DenseStorage<T>, DenseLayout>) -> T::Real {
+    fn norm<B: OpsFor<Self::Storage>>(
+        backend: &B,
+        psi: &Mps<DenseStorage<T>, DenseLayout>,
+    ) -> T::Real {
         super::inner::norm_dense(backend, psi)
     }
 
-    fn braket<B: ComputeBackend>(
+    fn braket<B: OpsFor<Self::Storage>>(
         backend: &B,
         psi: &Mps<DenseStorage<T>, DenseLayout>,
         op: &Mpo<DenseStorage<T>, DenseLayout>,
@@ -129,7 +136,7 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
         super::inner::braket_dense(backend, psi, op, phi)
     }
 
-    fn apply<B: ComputeBackend>(
+    fn apply<B: OpsFor<Self::Storage>>(
         backend: &B,
         op: &Mpo<DenseStorage<T>, DenseLayout>,
         psi: &Mps<DenseStorage<T>, DenseLayout>,
@@ -147,7 +154,7 @@ impl<T: Scalar> MpsOps<T> for DenseLayout {
 impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
     type Storage = BlockSparseStorage<T>;
 
-    fn canonicalize<B: ComputeBackend>(
+    fn canonicalize<B: OpsFor<Self::Storage>>(
         backend: &B,
         chain: &mut impl TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         center: usize,
@@ -155,7 +162,7 @@ impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
         super::canonicalize::canonicalize_bsp(backend, chain, center);
     }
 
-    fn truncate<B: ComputeBackend>(
+    fn truncate<B: OpsFor<Self::Storage>>(
         backend: &B,
         chain: &mut impl TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         params: &TruncateParams,
@@ -163,7 +170,7 @@ impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
         super::truncate::truncate_bsp(backend, chain, params)
     }
 
-    fn inner<B: ComputeBackend>(
+    fn inner<B: OpsFor<Self::Storage>>(
         backend: &B,
         psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         phi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
@@ -171,14 +178,14 @@ impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
         super::inner::inner_bsp(backend, psi, phi)
     }
 
-    fn norm<B: ComputeBackend>(
+    fn norm<B: OpsFor<Self::Storage>>(
         backend: &B,
         psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     ) -> T::Real {
         super::inner::norm_bsp(backend, psi)
     }
 
-    fn braket<B: ComputeBackend>(
+    fn braket<B: OpsFor<Self::Storage>>(
         backend: &B,
         psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
@@ -187,7 +194,7 @@ impl<T: Scalar, S: Sector> MpsOps<T> for BlockSparseLayout<S> {
         super::inner::braket_bsp(backend, psi, op, phi)
     }
 
-    fn apply<B: ComputeBackend>(
+    fn apply<B: OpsFor<Self::Storage>>(
         backend: &B,
         op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         psi: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
@@ -209,7 +216,7 @@ pub fn canonicalize<T, L, B, C>(backend: &B, chain: &mut C, center: usize)
 where
     T: Scalar,
     L: MpsOps<T>,
-    B: ComputeBackend,
+    B: OpsFor<L::Storage>,
     C: TensorChain<L::Storage, L>,
 {
     <L as MpsOps<T>>::canonicalize(backend, chain, center);
@@ -220,7 +227,7 @@ pub fn truncate<T, L, B, C>(backend: &B, chain: &mut C, params: &TruncateParams)
 where
     T: Scalar,
     L: MpsOps<T>,
-    B: ComputeBackend,
+    B: OpsFor<L::Storage>,
     C: TensorChain<L::Storage, L>,
 {
     <L as MpsOps<T>>::truncate(backend, chain, params)
@@ -231,7 +238,7 @@ pub fn inner<T, L, B>(backend: &B, psi: &Mps<L::Storage, L>, phi: &Mps<L::Storag
 where
     T: Scalar,
     L: MpsOps<T>,
-    B: ComputeBackend,
+    B: OpsFor<L::Storage>,
 {
     <L as MpsOps<T>>::inner(backend, psi, phi)
 }
@@ -241,7 +248,7 @@ pub fn norm<T, L, B>(backend: &B, psi: &Mps<L::Storage, L>) -> T::Real
 where
     T: Scalar,
     L: MpsOps<T>,
-    B: ComputeBackend,
+    B: OpsFor<L::Storage>,
 {
     <L as MpsOps<T>>::norm(backend, psi)
 }
@@ -256,7 +263,7 @@ pub fn braket<T, L, B>(
 where
     T: Scalar,
     L: MpsOps<T>,
-    B: ComputeBackend,
+    B: OpsFor<L::Storage>,
 {
     <L as MpsOps<T>>::braket(backend, psi, op, phi)
 }
@@ -274,7 +281,7 @@ pub fn apply<T, L, B>(
 where
     T: Scalar,
     L: MpsOps<T>,
-    B: ComputeBackend,
+    B: OpsFor<L::Storage>,
 {
     <L as MpsOps<T>>::apply(backend, op, psi, params, None)
 }
@@ -294,7 +301,7 @@ pub fn apply_with_method<T, L, B>(
 where
     T: Scalar,
     L: MpsOps<T>,
-    B: ComputeBackend,
+    B: OpsFor<L::Storage>,
 {
     match method {
         ApplyMethod::StreamingNaive { forward_cap } => {

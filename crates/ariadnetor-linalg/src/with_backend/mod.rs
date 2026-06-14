@@ -3,15 +3,22 @@
 //! Each function here takes the backend at the call site and never consults a
 //! tensor's own backend — tensors no longer carry one. The backend is taken as
 //! `&B`: results are built with [`DenseTensor::from_data`], which stores no
-//! backend, so no owned handle is needed. These paths delegate to the same
-//! `ComputeBackend`-bounded kernels and tighten no bound; capability
-//! enforcement (`OpsFor`) is layered on later.
+//! backend, so no owned handle is needed.
+//!
+//! The dense operation surface is gated by
+//! [`OpsFor<DenseStorage<T>>`](arnet_tensor::OpsFor): a backend that has not
+//! declared it operates on dense storage cannot be passed here. The sole
+//! exception is `diagonal_scale`, whose signature admits non-`Scalar` element
+//! types (`T: Clone + Mul`) that the `Scalar`-keyed `OpsFor` impls cannot
+//! express; it keeps the looser `ComputeBackend` bound so those documented uses
+//! keep compiling. Internal kernels stay `ComputeBackend`-bound; they are
+//! reachable only through this gate.
 
 use std::ops::Mul;
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{DenseTensor, DenseTensorData};
+use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
 use crate::decomposition::{
     LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq_dense, qr_dense, svd_dense,
@@ -29,7 +36,7 @@ use crate::{contract::contract_dense, einsum::einsum_dense};
 mod tests;
 
 /// Thin SVD of a tensor reshaped as a matrix, using the supplied backend.
-pub fn svd_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn svd_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -43,7 +50,7 @@ pub fn svd_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Truncated SVD of a tensor reshaped as a matrix, using the supplied backend.
-pub fn trunc_svd_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn trunc_svd_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -59,7 +66,7 @@ pub fn trunc_svd_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Thin QR of a tensor reshaped as a matrix, using the supplied backend.
-pub fn qr_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn qr_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -69,7 +76,7 @@ pub fn qr_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Thin LQ of a tensor reshaped as a matrix, using the supplied backend.
-pub fn lq_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn lq_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -79,7 +86,7 @@ pub fn lq_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Self-adjoint eigenvalue decomposition, using the supplied backend.
-pub fn eigh_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn eigh_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -89,7 +96,7 @@ pub fn eigh_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Eigenvalues-only self-adjoint decomposition, using the supplied backend.
-pub fn eigvalsh_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn eigvalsh_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -99,7 +106,7 @@ pub fn eigvalsh_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// General eigenvalue decomposition, using the supplied backend.
-pub fn eig_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn eig_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -109,7 +116,7 @@ pub fn eig_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Eigenvalues-only general decomposition, using the supplied backend.
-pub fn eigvals_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn eigvals_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -119,7 +126,7 @@ pub fn eigvals_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Pure tensor contraction of two operands, using the supplied backend.
-pub fn contract_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn contract_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     lhs: &DenseTensor<T>,
     rhs: &DenseTensor<T>,
@@ -130,7 +137,7 @@ pub fn contract_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// N-input Einstein summation, using the supplied backend.
-pub fn einsum_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn einsum_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensors: &[&DenseTensor<T>],
     notation: &str,
@@ -146,7 +153,7 @@ pub fn einsum_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Axis permutation (transpose) of a dense tensor, using the supplied backend.
-pub fn transpose_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn transpose_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     perm: &[usize],
@@ -158,7 +165,7 @@ pub fn transpose_with_backend<T: Scalar, B: ComputeBackend>(
 /// Partial trace over bond index pairs. The backend argument is accepted for
 /// API uniformity with the other twins; the partial trace needs no kernel, so
 /// it is unused here.
-pub fn trace_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn trace_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     _backend: &B,
     tensor: &DenseTensor<T>,
     pairs: &[(usize, usize)],
@@ -170,7 +177,7 @@ pub fn trace_with_backend<T: Scalar, B: ComputeBackend>(
 /// Diagonal extraction / construction. The backend argument is accepted for
 /// API uniformity with the other twins; this operation needs no kernel, so it
 /// is unused here.
-pub fn diag_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn diag_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     _backend: &B,
     tensor: &DenseTensor<T>,
 ) -> Result<DenseTensor<T>, LinalgError> {
@@ -195,7 +202,7 @@ where
 }
 
 /// Linear solve `AX = B` via LU, using the supplied backend.
-pub fn solve_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn solve_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     a: &DenseTensor<T>,
     b: &DenseTensor<T>,
@@ -206,7 +213,7 @@ pub fn solve_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Matrix inverse via LU, using the supplied backend.
-pub fn inverse_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn inverse_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -216,7 +223,7 @@ pub fn inverse_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// General matrix exponential, using the supplied backend.
-pub fn expm_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn expm_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -226,7 +233,7 @@ pub fn expm_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Hermitian matrix exponential, using the supplied backend.
-pub fn expm_hermitian_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn expm_hermitian_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,
@@ -236,7 +243,7 @@ pub fn expm_hermitian_with_backend<T: Scalar, B: ComputeBackend>(
 }
 
 /// Anti-Hermitian matrix exponential, using the supplied backend.
-pub fn expm_antihermitian_with_backend<T: Scalar, B: ComputeBackend>(
+pub fn expm_antihermitian_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     nrow: usize,

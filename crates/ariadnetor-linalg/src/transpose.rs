@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
-use arnet_tensor::{DenseTensor, DenseTensorData, normalize_to_data};
+use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor, normalize_to_data};
 
 use crate::error::LinalgError;
 
@@ -10,7 +10,7 @@ use crate::error::LinalgError;
 /// point consults `backend.par_for_transpose`, while this one takes `policy`
 /// directly. The backend is supplied at the call site and the tensor's own
 /// backend is never consulted.
-pub fn transpose_with_policy<T: Scalar, B: ComputeBackend>(
+pub fn transpose_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     perm: &[usize],

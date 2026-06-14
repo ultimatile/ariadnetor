@@ -1,11 +1,13 @@
 //! Canonicalize: move the orthogonality center of a tensor chain via
 //! QR / LQ sweeps.
 
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     lq_block_sparse_with_backend, lq_with_backend, qr_block_sparse_with_backend, qr_with_backend,
 };
-use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector};
+use arnet_tensor::{
+    BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector,
+};
 
 use super::absorb::{
     absorb_from_left, absorb_from_left_bsp, absorb_from_right, absorb_from_right_bsp,
@@ -27,7 +29,7 @@ use super::types::CanonicalForm;
 pub(super) fn canonicalize_dense<T, B, C>(backend: &B, chain: &mut C, center: usize)
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
     C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let n = chain.len();
@@ -53,7 +55,7 @@ where
 fn left_qr_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
     C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (q_tensor, r) = {
@@ -85,7 +87,7 @@ where
 fn right_lq_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
     C: TensorChain<DenseStorage<T>, DenseLayout>,
 {
     let (q_tensor, l) = {
@@ -140,7 +142,7 @@ pub(super) fn canonicalize_bsp<T, S, B, C>(backend: &B, chain: &mut C, center: u
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
     C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let n = chain.len();
@@ -164,7 +166,7 @@ fn left_qr_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
     C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (q, r) = {
@@ -187,7 +189,7 @@ fn right_lq_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
     C: TensorChain<BlockSparseStorage<T>, BlockSparseLayout<S>>,
 {
     let (l, q) = {

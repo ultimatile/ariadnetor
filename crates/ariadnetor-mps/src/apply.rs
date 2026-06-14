@@ -3,7 +3,7 @@
 
 use std::num::NonZeroUsize;
 
-use arnet_core::{ComputeBackend, Scalar};
+use arnet_core::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract_block_sparse_with_backend,
     contract_with_backend, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
@@ -13,7 +13,7 @@ use arnet_linalg::{
 };
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
-    DenseTensor, Direction, Sector,
+    DenseTensor, Direction, OpsFor, Sector,
 };
 
 use super::chain::TensorChain;
@@ -51,7 +51,7 @@ pub(super) fn apply_streaming_naive_dense<T, B>(
 ) -> Mps<DenseStorage<T>, DenseLayout>
 where
     T: Scalar,
-    B: ComputeBackend,
+    B: OpsFor<DenseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
@@ -147,7 +147,7 @@ fn local_product_bsp<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     // Contract over physical index (d_ket = W axis 1, d = A axis 1):
     // Output: [w_L, d_bra, w_R, χ_L, χ_R]
@@ -191,7 +191,7 @@ pub(super) fn apply_streaming_naive_bsp<T, S, B>(
 where
     T: Scalar,
     S: Sector,
-    B: ComputeBackend,
+    B: OpsFor<BlockSparseStorage<T>>,
 {
     let n = psi.len();
     assert_eq!(n, op.len(), "MPO and MPS lengths must match");
