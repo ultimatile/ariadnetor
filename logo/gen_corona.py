@@ -4,7 +4,7 @@ The mark is the constellation Corona Borealis drawn as a tensor-network-style
 graph: circular nodes joined by straight edges. Node positions are the *real*
 sky coordinates of the seven crown stars (epoch J2000; source noted on STARS
 below), so the arc is naturally irregular (not a true circle) and opens downward
-like a shallow cup ("下弦の円弧").
+like a shallow cup.
 
 The conventional stick-figure order theta-beta-alpha-gamma-delta-epsilon-iota
 puts Alphecca (alpha CrB, the crown's jewel and brightest star) third in the
