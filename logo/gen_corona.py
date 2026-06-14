@@ -42,11 +42,13 @@ LETTER_SPACING = 2
 # ── Star data ───────────────────────────────────────────────
 # Seven crown stars as (label: (RA[hours], Dec[deg])), epoch J2000.
 #
-# Source: the J2000 "Observation data" infobox of each star's English Wikipedia
-# article (in turn sourced from SIMBAD / Hipparcos). Spot-checked: Alphecca reads
-# RA 15h34m41.268s = 15.5781h, Dec +26d42'52.89" = +26.7147deg there, matching
-# the value below. Stellar positions are facts (not copyrightable); this note
-# records provenance per data-attribution practice, not as a license obligation.
+# Source: English Wikipedia "List of stars in Corona Borealis", which tabulates
+# RA/Dec (J2000, arcsec precision; from SIMBAD / Hipparcos) for every crown star
+# in one place: https://en.wikipedia.org/wiki/List_of_stars_in_Corona_Borealis
+# Spot-checked: Alphecca lists RA 15h34m41.19s = 15.5781h, Dec +26d42'53.7" =
+# +26.7149deg, matching the value below. Stellar positions are facts (not
+# copyrightable); this note records provenance per data-attribution practice,
+# not as a license obligation.
 #
 # Chain order below is the drawn polyline; Alphecca is index 2 (the 3rd node),
 # the single red accent.

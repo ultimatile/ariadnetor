@@ -25,8 +25,11 @@ python gen_corona.py --png      # also export PNG (headless Chrome)
 ## Star data
 
 The seven nodes sit at the crown stars' real J2000 positions, so the arc is
-irregular, not a clean circle. Coordinates come from each star's English
-Wikipedia infobox (from SIMBAD / Hipparcos); see `STARS` in `gen_corona.py`.
+irregular, not a clean circle. Coordinates come from the English Wikipedia
+[List of stars in Corona Borealis][stars] (from SIMBAD / Hipparcos); see `STARS`
+in `gen_corona.py`.
+
+[stars]: https://en.wikipedia.org/wiki/List_of_stars_in_Corona_Borealis
 
 ## Palette
 
