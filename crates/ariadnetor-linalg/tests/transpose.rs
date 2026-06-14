@@ -1,25 +1,24 @@
-use arnet_linalg::transpose;
-use arnet_native::NativeBackend;
+use arnet_linalg::DenseHostOps;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
 }
 
 /// Reorder a `DenseTensor` back to row-major for index-by-index assertions.
-fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+fn to_rm<T: Clone>(tensor: &DenseTensor<T>) -> DenseTensor<T> {
     let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm, NativeBackend::shared())
+    DenseTensor::from_data(rm)
 }
 
 #[test]
 fn test_transpose_f64_2d() {
     let tensor = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let result = to_rm(&transpose(&tensor, &[1, 0]).unwrap());
+    let result = to_rm(&tensor.transpose(&[1, 0]).unwrap());
 
     assert_eq!(result.shape(), &[3, 2]);
     // Transposed: [[1,4],[2,5],[3,6]]
@@ -36,7 +35,7 @@ fn test_transpose_f64_3d() {
     let data: Vec<f64> = (0..24).map(|i| i as f64).collect();
     let tensor = cm(data, vec![2, 3, 4]);
 
-    let result = to_rm(&transpose(&tensor, &[2, 0, 1]).unwrap());
+    let result = to_rm(&tensor.transpose(&[2, 0, 1]).unwrap());
     let tensor_rm = to_rm(&tensor);
 
     assert_eq!(result.shape(), &[4, 2, 3]);
@@ -51,7 +50,7 @@ fn test_transpose_f64_3d() {
 fn test_transpose_f32_2d() {
     let tensor = cm(vec![1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let result = to_rm(&transpose(&tensor, &[1, 0]).unwrap());
+    let result = to_rm(&tensor.transpose(&[1, 0]).unwrap());
 
     assert_eq!(result.shape(), &[3, 2]);
     assert_eq!(result.get(&[0, 0]), 1.0f32);
@@ -73,7 +72,7 @@ fn test_transpose_complex_f64_2d() {
     ];
     let tensor = cm(input, vec![2, 3]);
 
-    let result = to_rm(&transpose(&tensor, &[1, 0]).unwrap());
+    let result = to_rm(&tensor.transpose(&[1, 0]).unwrap());
 
     assert_eq!(result.shape(), &[3, 2]);
     assert_eq!(result.get(&[0, 0]), Complex::new(1.0, 2.0));
@@ -86,7 +85,7 @@ fn test_transpose_complex_f64_2d() {
 fn test_transpose_empty_tensor() {
     let tensor = cm(Vec::<f64>::new(), vec![0, 3]);
 
-    let result = transpose(&tensor, &[1, 0]).unwrap();
+    let result = tensor.transpose(&[1, 0]).unwrap();
 
     assert_eq!(result.shape(), &[3, 0]);
     assert_eq!(result.len(), 0);

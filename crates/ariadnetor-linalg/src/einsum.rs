@@ -1,7 +1,7 @@
 //! General einsum dispatcher for N-input tensor operations.
 //!
 //! Dispatches to:
-//! - [`crate::scalar_ops::trace`] + [`crate::transpose::transpose`] for single-tensor ops
+//! - [`trace_dense`] + [`transpose_dense`] for single-tensor ops
 //! - [`einsum_pair`] for two-tensor operations (pure contraction, Hadamard, or batched)
 //! - Sequential pairwise contraction for 3+ tensor chains
 
@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData, normalize_to_data};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData, normalize_to_data};
 
 use crate::contract::contract_dense;
 use crate::error::LinalgError;
@@ -18,53 +18,8 @@ use crate::scalar_ops::trace_dense;
 use crate::transpose::transpose_dense;
 use arnet_tensor::reorder_data;
 
-/// Execute an Einstein summation over N tensors.
-///
-/// Parses the notation and dispatches:
-/// - **1 input**: trace (repeated indices not in output) + transpose (reorder)
-/// - **2 inputs**: delegates to [`einsum_pair`] (handles pure contraction, Hadamard, batched)
-/// - **N inputs** (N > 2): sequential left-to-right pairwise contraction via [`einsum_pair`]
-///
-/// The backend is taken from `tensors[0]` and the result is wrapped against
-/// `tensors[0]`'s backend Arc. Callers must ensure all inputs share the same
-/// backend Arc; a mismatch silently runs on `tensors[0]`'s backend and labels
-/// the output with `tensors[0]`'s backend, which is wrong for backends
-/// carrying state.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use arnet_linalg::einsum;
-///
-/// // Matrix multiplication
-/// let c = einsum(&[&a, &b], "ij,jk->ik")?;
-/// // 3-tensor chain
-/// let d = einsum(&[&a, &b, &c], "ij,jk,kl->il")?;
-/// // Trace
-/// let t = einsum(&[&m], "ii->")?;
-/// ```
-///
-/// # Errors
-///
-/// Returns `LinalgError` if notation is invalid, tensor count mismatches,
-/// or any sub-operation fails.
-pub fn einsum<T: Scalar, B: ComputeBackend>(
-    tensors: &[&DenseTensor<T, B>],
-    notation: &str,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    if tensors.is_empty() {
-        return Err(LinalgError::InvalidArgument(
-            "einsum requires at least 1 input".to_string(),
-        ));
-    }
-    let backend_arc = tensors[0].backend_arc().clone();
-    let backend = tensors[0].backend();
-    let data_refs: Vec<&DenseTensorData<T>> = tensors.iter().map(|t| t.data()).collect();
-    let result = einsum_dense(backend, &data_refs, notation)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`einsum`] on joined [`DenseTensorData<T>`] slices.
+/// Internal kernel for the N-input einsum on joined [`DenseTensorData<T>`]
+/// slices. The public entry point is [`crate::einsum_with_backend`].
 pub(crate) fn einsum_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensors: &[&DenseTensorData<T>],
@@ -93,9 +48,9 @@ pub(crate) fn einsum_dense<T: Scalar>(
 
 /// Dispatch a 2-input einsum to the appropriate path.
 ///
-/// - Pure contraction (no batch indices) -> [`contract`]
+/// - Pure contraction (no batch indices) -> [`contract_dense`]
 /// - Hadamard product (all batch, no free/contracted) -> element-wise multiply
-/// - Batched contraction -> slice-and-loop over [`contract`]
+/// - Batched contraction -> slice-and-loop over [`contract_dense`]
 fn einsum_pair<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &DenseTensorData<T>,

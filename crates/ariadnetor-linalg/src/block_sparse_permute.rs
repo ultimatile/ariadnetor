@@ -1,11 +1,11 @@
 //! Block-sparse tensor axis permutation.
 //!
-//! Permutes the leg order of a [`BlockSparseTensor<T, S, B>`] tensor by
+//! Permutes the leg order of a `BlockSparseTensor<T, S>` tensor by
 //! reordering indices, block coordinates, and transposing each block's data.
 
 use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensor, BlockSparseTensorData, Sector};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Sector};
 
 use crate::block_sparse_contract::transpose_block_data;
 use crate::error::LinalgError;
@@ -22,23 +22,10 @@ use crate::error::LinalgError;
 ///
 /// Returns `LinalgError::InvalidArgument` if `perm` is not a valid
 /// permutation of `0..tensor.rank()`.
-pub fn permute_block_sparse<T, S, B>(
-    tensor: &BlockSparseTensor<T, S, B>,
-    perm: &[usize],
-) -> Result<BlockSparseTensor<T, S, B>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-    B: ComputeBackend,
-{
-    crate::tensor_bridge::assert_bsp_layout_order_matches_backend(tensor, "permute_block_sparse");
-    let backend_arc = tensor.backend_arc().clone();
-    let result = permute_block_sparse_dense(tensor.backend(), tensor.data(), perm)?;
-    Ok(BlockSparseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`permute_block_sparse`] on joined-form
-/// [`BlockSparseTensorData<T, S>`].
+///
+/// Internal kernel for the block-sparse permutation on joined-form
+/// [`BlockSparseTensorData<T, S>`]. The public entry point is
+/// [`crate::permute_block_sparse_with_backend`].
 pub(crate) fn permute_block_sparse_dense<T, S, B>(
     backend: &B,
     tensor: &BlockSparseTensorData<T, S>,

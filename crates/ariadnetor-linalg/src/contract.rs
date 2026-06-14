@@ -7,41 +7,8 @@ use crate::error::LinalgError;
 use crate::transpose::transpose_dense;
 use arnet_tensor::{normalize_to_data, reorder_data};
 
-/// Contract two tensors using Einstein summation notation.
-///
-/// Performs a pure tensor contraction: all shared indices between the two inputs
-/// must be contracted (summed over). Batch indices (shared but not contracted)
-/// are not supported — use [`crate::einsum::einsum`] for expressions with batch
-/// or Hadamard patterns.
-///
-/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
-/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
-/// (`Arc::ptr_eq(lhs.backend_arc(), rhs.backend_arc())`); a mismatch silently
-/// runs on `lhs`'s backend and labels the output with `lhs`'s backend, which
-/// is wrong for backends carrying state. Output is returned in
-/// `lhs.backend().preferred_order()`, consistent with decomposition functions.
-///
-/// # Arguments
-///
-/// * `lhs` - Left-hand side tensor (backend authority)
-/// * `rhs` - Right-hand side tensor (must share `lhs`'s backend Arc)
-/// * `notation` - Einstein summation notation (e.g., "ik,kj->ij")
-///
-/// # Errors
-///
-/// Returns `LinalgError` if notation is invalid, dimensions mismatch,
-/// batch indices are present, or the backend fails to execute transpose/GEMM.
-pub fn contract<T: Scalar, B: ComputeBackend>(
-    lhs: &DenseTensor<T, B>,
-    rhs: &DenseTensor<T, B>,
-    notation: &str,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = lhs.backend_arc().clone();
-    let result = contract_dense(lhs.backend(), lhs.data(), rhs.data(), notation)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
-}
-
-/// Internal kernel for [`contract`] on the joined [`DenseTensorData<T>`] form.
+/// Internal kernel for the pure tensor contraction on the joined
+/// [`DenseTensorData<T>`] form.
 pub(crate) fn contract_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &DenseTensorData<T>,
@@ -87,31 +54,28 @@ pub(crate) fn contract_dense<T: Scalar>(
     contract_with_policy_dense(backend, lhs, rhs, notation, policy)
 }
 
-/// Pure tensor contraction with caller-specified execution policy for the
-/// main GEMM.
+/// Pure tensor contraction with an explicit backend and caller-specified
+/// execution policy for the main GEMM.
 ///
 /// `policy` overrides the main GEMM's `ExecPolicy` only; internal transposes
 /// self-tune via `backend.par_for_transpose`. This is a per-kernel override,
 /// not a scope-wide thread budget — `Sequential` does not force the whole
 /// contraction sequential.
 ///
-/// The backend is taken from `lhs` and the result is wrapped against `lhs`'s
-/// backend Arc. Callers must ensure `lhs` and `rhs` share the same backend
-/// (`Arc::ptr_eq(lhs.backend_arc(), rhs.backend_arc())`); a mismatch silently
-/// runs on `lhs`'s backend and labels the output with `lhs`'s backend, which
-/// is wrong for backends carrying state.
+/// The backend is supplied at the call site and neither operand's own backend
+/// is consulted. Output is returned in `backend.preferred_order()`, consistent
+/// with the decomposition functions.
 ///
-/// Expert-layer counterpart of [`contract`].
+/// Expert-layer counterpart of [`crate::contract_with_backend`].
 pub fn contract_with_policy<T: Scalar, B: ComputeBackend>(
-    lhs: &DenseTensor<T, B>,
-    rhs: &DenseTensor<T, B>,
+    backend: &B,
+    lhs: &DenseTensor<T>,
+    rhs: &DenseTensor<T>,
     notation: &str,
     policy: ExecPolicy,
-) -> Result<DenseTensor<T, B>, LinalgError> {
-    let backend_arc = lhs.backend_arc().clone();
-    let result =
-        contract_with_policy_dense(lhs.backend(), lhs.data(), rhs.data(), notation, policy)?;
-    Ok(DenseTensor::with_backend(result, backend_arc))
+) -> Result<DenseTensor<T>, LinalgError> {
+    let result = contract_with_policy_dense(backend, lhs.data(), rhs.data(), notation, policy)?;
+    Ok(DenseTensor::from_data(result))
 }
 
 /// Internal kernel for [`contract_with_policy`] on the joined

@@ -15,15 +15,14 @@
 //! order than its `DenseTensorData::order()` claims — surfaces as a numerical
 //! mismatch rather than silently propagating downstream.
 
-use arnet_linalg::{contract, diagonal_scale, expm, inverse, solve, svd, transpose};
-use arnet_native::NativeBackend;
+use arnet_linalg::DenseHostOps;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder, reorder_data};
 
 /// Build a `DenseTensor` from conceptual row-major data, reordered to CM.
-fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64, NativeBackend> {
+fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
 }
 
 // =========================================================================
@@ -41,12 +40,12 @@ fn contract_output_feeds_into_contract() {
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let b = cm(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![3, 2]);
 
-    let c = contract(&a, &b, "ij,jk->ik").unwrap(); // 2×2
+    let c = a.contract(&b, "ij,jk->ik").unwrap(); // 2×2
     // Feed contract output (c) directly into another contract — no manual reorder
-    let lhs = contract(&c, &a, "ij,jk->ik").unwrap(); // 2×3
+    let lhs = c.contract(&a, "ij,jk->ik").unwrap(); // 2×3
 
-    let ba = contract(&b, &a, "ij,jk->ik").unwrap(); // 3×3
-    let rhs = contract(&a, &ba, "ij,jk->ik").unwrap(); // 2×3
+    let ba = b.contract(&a, "ij,jk->ik").unwrap(); // 3×3
+    let rhs = a.contract(&ba, "ij,jk->ik").unwrap(); // 2×3
 
     for (l, r) in lhs.data_slice().iter().zip(rhs.data_slice()) {
         assert!(
@@ -63,8 +62,8 @@ fn solve_output_feeds_into_contract() {
     let a = cm(vec![2.0, 1.0, 5.0, 3.0], vec![2, 2]);
     let b = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
 
-    let x = solve(&a, &b, 1).unwrap();
-    let ax = contract(&a, &x, "ij,jk->ik").unwrap();
+    let x = a.solve(&b, 1).unwrap();
+    let ax = a.contract(&x, "ij,jk->ik").unwrap();
 
     for (computed, expected) in ax.data_slice().iter().zip(b.data_slice()) {
         assert!(
@@ -79,8 +78,8 @@ fn inverse_output_feeds_into_contract() {
     // A * A^{-1} = I
     let a = cm(vec![2.0, 1.0, 5.0, 3.0], vec![2, 2]);
 
-    let a_inv = inverse(&a, 1).unwrap();
-    let product = contract(&a, &a_inv, "ij,jk->ik").unwrap();
+    let a_inv = a.inverse(1).unwrap();
+    let product = a.contract(&a_inv, "ij,jk->ik").unwrap();
 
     // Expected: identity in CM = [1, 0, 0, 1]
     let identity = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
@@ -98,11 +97,11 @@ fn svd_output_feeds_into_contract() {
     // Verify by feeding U, S, Vt directly into contract and diagonal_scale
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let (u, s, vt) = svd(&a, 1).unwrap();
+    let (u, s, vt) = a.svd(1).unwrap();
 
     // U * diag(S) * Vt — feed SVD outputs directly, no manual reorder
-    let us = diagonal_scale(&u, s.data_slice(), u.rank() - 1).unwrap();
-    let reconstructed = contract(&us, &vt, "ij,jk->ik").unwrap();
+    let us = u.diagonal_scale(s.data_slice(), u.rank() - 1).unwrap();
+    let reconstructed = us.contract(&vt, "ij,jk->ik").unwrap();
 
     for (r, orig) in reconstructed.data_slice().iter().zip(a.data_slice()) {
         assert!(
@@ -117,8 +116,8 @@ fn transpose_output_feeds_into_contract() {
     // (A^T)^T = A
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let at = transpose(&a, &[1, 0]).unwrap();
-    let att = transpose(&at, &[1, 0]).unwrap();
+    let at = a.transpose(&[1, 0]).unwrap();
+    let att = at.transpose(&[1, 0]).unwrap();
 
     // Feed transpose output into transpose — roundtrip should recover original
     for (original, roundtrip) in a.data_slice().iter().zip(att.data_slice()) {
@@ -138,13 +137,13 @@ fn expm_output_feeds_into_contract() {
     let neg_data: Vec<f64> = a.data_slice().iter().map(|&x: &f64| -x).collect();
     let neg_td =
         DenseTensorData::from_raw_parts(neg_data, a.shape().to_vec(), MemoryOrder::ColumnMajor);
-    let neg_a = DenseTensor::with_backend(neg_td, NativeBackend::shared());
+    let neg_a = DenseTensor::from_data(neg_td);
 
-    let exp_a = expm(&a, 1).unwrap();
-    let exp_neg_a = expm(&neg_a, 1).unwrap();
+    let exp_a = a.expm(1).unwrap();
+    let exp_neg_a = neg_a.expm(1).unwrap();
 
     // Feed expm output directly into contract — no manual reorder
-    let product = contract(&exp_a, &exp_neg_a, "ij,jk->ik").unwrap();
+    let product = exp_a.contract(&exp_neg_a, "ij,jk->ik").unwrap();
 
     // Expected: identity in CM
     let identity = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);

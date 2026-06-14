@@ -27,7 +27,7 @@ use crate::error::LinalgError;
 /// exists only on block-sparse receivers.
 pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
     /// Host-defaulting counterpart of [`crate::svd_block_sparse_with_backend`].
-    fn svd(&self, nrow: usize) -> Result<BlockSparseSvdResult<T, S, Host>, LinalgError>;
+    fn svd(&self, nrow: usize) -> Result<BlockSparseSvdResult<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of
     /// [`crate::trunc_svd_block_sparse_with_backend`].
@@ -35,27 +35,27 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
         &self,
         nrow: usize,
         params: &TruncSvdParams,
-    ) -> Result<BlockSparseTruncSvdResult<T, S, Host>, LinalgError>;
+    ) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::qr_block_sparse_with_backend`].
-    fn qr(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S, Host>, LinalgError>;
+    fn qr(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::lq_block_sparse_with_backend`].
-    fn lq(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S, Host>, LinalgError>;
+    fn lq(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of
     /// [`crate::contract_block_sparse_with_backend`]; the receiver is the
     /// left operand.
     fn contract(
         &self,
-        rhs: &BlockSparseTensor<T, S, Host>,
+        rhs: &BlockSparseTensor<T, S>,
         axes_lhs: &[usize],
         axes_rhs: &[usize],
-    ) -> Result<BlockSparseContractResult<T, S, Host>, LinalgError>;
+    ) -> Result<BlockSparseContractResult<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of
     /// [`crate::permute_block_sparse_with_backend`].
-    fn permute(&self, perm: &[usize]) -> Result<BlockSparseTensor<T, S, Host>, LinalgError>;
+    fn permute(&self, perm: &[usize]) -> Result<BlockSparseTensor<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of
     /// [`crate::fuse_legs_block_sparse_with_backend`].
@@ -64,7 +64,7 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
         start: usize,
         count: usize,
         fused_direction: Direction,
-    ) -> Result<BlockSparseTensor<T, S, Host>, LinalgError>;
+    ) -> Result<BlockSparseTensor<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of
     /// [`crate::diagonal_scale_block_sparse_with_backend`].
@@ -72,41 +72,41 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
         &self,
         weights: &BlockSingularValues<T::Real, S>,
         axis: usize,
-    ) -> Result<BlockSparseTensor<T, S, Host>, LinalgError>;
+    ) -> Result<BlockSparseTensor<T, S>, LinalgError>;
 }
 
-impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S, Host> {
-    fn svd(&self, nrow: usize) -> Result<BlockSparseSvdResult<T, S, Host>, LinalgError> {
-        svd_block_sparse_with_backend(&Host::shared(), self, nrow)
+impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> {
+    fn svd(&self, nrow: usize) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
+        svd_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
     fn trunc_svd(
         &self,
         nrow: usize,
         params: &TruncSvdParams,
-    ) -> Result<BlockSparseTruncSvdResult<T, S, Host>, LinalgError> {
-        trunc_svd_block_sparse_with_backend(&Host::shared(), self, nrow, params)
+    ) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
+        trunc_svd_block_sparse_with_backend(Host::shared().as_ref(), self, nrow, params)
     }
 
-    fn qr(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S, Host>, LinalgError> {
-        qr_block_sparse_with_backend(&Host::shared(), self, nrow)
+    fn qr(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
+        qr_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
-    fn lq(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S, Host>, LinalgError> {
-        lq_block_sparse_with_backend(&Host::shared(), self, nrow)
+    fn lq(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
+        lq_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
     }
 
     fn contract(
         &self,
-        rhs: &BlockSparseTensor<T, S, Host>,
+        rhs: &BlockSparseTensor<T, S>,
         axes_lhs: &[usize],
         axes_rhs: &[usize],
-    ) -> Result<BlockSparseContractResult<T, S, Host>, LinalgError> {
-        contract_block_sparse_with_backend(&Host::shared(), self, rhs, axes_lhs, axes_rhs)
+    ) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
+        contract_block_sparse_with_backend(Host::shared().as_ref(), self, rhs, axes_lhs, axes_rhs)
     }
 
-    fn permute(&self, perm: &[usize]) -> Result<BlockSparseTensor<T, S, Host>, LinalgError> {
-        permute_block_sparse_with_backend(&Host::shared(), self, perm)
+    fn permute(&self, perm: &[usize]) -> Result<BlockSparseTensor<T, S>, LinalgError> {
+        permute_block_sparse_with_backend(Host::shared().as_ref(), self, perm)
     }
 
     fn fuse_legs(
@@ -114,15 +114,21 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S, 
         start: usize,
         count: usize,
         fused_direction: Direction,
-    ) -> Result<BlockSparseTensor<T, S, Host>, LinalgError> {
-        fuse_legs_block_sparse_with_backend(&Host::shared(), self, start, count, fused_direction)
+    ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
+        fuse_legs_block_sparse_with_backend(
+            Host::shared().as_ref(),
+            self,
+            start,
+            count,
+            fused_direction,
+        )
     }
 
     fn diagonal_scale(
         &self,
         weights: &BlockSingularValues<T::Real, S>,
         axis: usize,
-    ) -> Result<BlockSparseTensor<T, S, Host>, LinalgError> {
-        diagonal_scale_block_sparse_with_backend(&Host::shared(), self, weights, axis)
+    ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
+        diagonal_scale_block_sparse_with_backend(Host::shared().as_ref(), self, weights, axis)
     }
 }

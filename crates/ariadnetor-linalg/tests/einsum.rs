@@ -1,20 +1,32 @@
 //! Tests for einsum: single-tensor, 2-tensor, and N-tensor operations
 
-use arnet_linalg::einsum;
+use arnet_core::Scalar;
+use arnet_linalg::{DenseHostOps, LinalgError, einsum_with_backend};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
-fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T, NativeBackend> {
+fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
     let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
-    DenseTensor::with_backend(cm, NativeBackend::shared())
+    DenseTensor::from_data(cm)
+}
+
+/// Run `einsum` on a fresh host `NativeBackend` (the default host path).
+/// `einsum` has no host-defaulting method form, so the tests funnel through
+/// this thin wrapper to keep the call sites focused on notation, not backend
+/// plumbing.
+fn einsum<T: Scalar>(
+    tensors: &[&DenseTensor<T>],
+    notation: &str,
+) -> Result<DenseTensor<T>, LinalgError> {
+    einsum_with_backend(&NativeBackend::new(), tensors, notation)
 }
 
 /// Convert column-major Dense back to row-major so `.get()` returns correct values.
-fn to_rm<T: Clone>(tensor: &DenseTensor<T, NativeBackend>) -> DenseTensor<T, NativeBackend> {
+fn to_rm<T: Clone>(tensor: &DenseTensor<T>) -> DenseTensor<T> {
     let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
-    DenseTensor::with_backend(rm, NativeBackend::shared())
+    DenseTensor::from_data(rm)
 }
 
 // ============================================================================
@@ -168,9 +180,8 @@ fn test_einsum_3_tensor_chain() {
     assert_eq!(d.shape(), &[2, 2]);
 
     // Verify against manual 2-step contraction (both in CM, compare data directly)
-    use arnet_linalg::contract;
-    let ab = contract(&a, &b, "ij,jk->ik").unwrap();
-    let expected = contract(&ab, &c, "ik,kl->il").unwrap();
+    let ab = a.contract(&b, "ij,jk->ik").unwrap();
+    let expected = ab.contract(&c, "ik,kl->il").unwrap();
     for i in 0..d.len() {
         assert!((d.data_slice()[i] - expected.data_slice()[i]).abs() < 1e-10);
     }
@@ -204,10 +215,9 @@ fn test_einsum_4_tensor_chain() {
     assert_eq!(result.shape(), &[2, 2]);
 
     // Verify against sequential contraction (both in CM, compare data directly)
-    use arnet_linalg::contract;
-    let ab = contract(&a, &b, "ij,jk->ik").unwrap();
-    let abc = contract(&ab, &c, "ik,kl->il").unwrap();
-    let expected = contract(&abc, &d, "il,lm->im").unwrap();
+    let ab = a.contract(&b, "ij,jk->ik").unwrap();
+    let abc = ab.contract(&c, "ik,kl->il").unwrap();
+    let expected = abc.contract(&d, "il,lm->im").unwrap();
     for i in 0..result.len() {
         assert!((result.data_slice()[i] - expected.data_slice()[i]).abs() < 1e-10);
     }
