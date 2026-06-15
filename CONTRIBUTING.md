@@ -20,13 +20,22 @@ doctests but does not compile or run benches. Run
 
 ### Ad-hoc QA tools (outside the gate)
 
-These are run on demand, not wired into `cargo make`:
+These are run on demand, not wired into `gate`:
 
 ```bash
 cargo public-api diff  # review public API surface changes
 cargo semver-checks    # semver-compatibility check (once a baseline is published)
 cargo mutants          # mutation testing
+cargo make litmus      # pluggability litmus: host-pinned crates against the alternate Host substrate
 ```
+
+Run `cargo make litmus` when changing the host-pinned surface (the
+`Host` alias, `host_order()` constructors, the `host_ops` extension
+traits, or the DMRG / Krylov host-pinned paths) or before opening a PR
+that touches it. It rebuilds those crates with `Host` aliased to a
+distinct backend and runs their tests, confirming the call-site-backend
+design still holds against a non-native substrate. The cheaper per-diff
+regression guards live in the pre-commit hooks.
 
 ## Coding Conventions
 
