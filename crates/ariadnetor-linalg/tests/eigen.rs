@@ -28,10 +28,10 @@ fn test_eigh_f64_2x2_symmetric() {
     // Eigenvectors should be orthogonal. `DenseTensor::get` is
     // order-aware, so the indexing semantics match logical [i, j]
     // regardless of `v.order()`.
-    let v00 = v.get(&[0, 0]);
-    let v10 = v.get(&[1, 0]);
-    let v01 = v.get(&[0, 1]);
-    let v11 = v.get(&[1, 1]);
+    let v00 = v.get([0, 0]);
+    let v10 = v.get([1, 0]);
+    let v01 = v.get([0, 1]);
+    let v11 = v.get([1, 1]);
     let dot = v00 * v01 + v10 * v11;
     assert!(dot.abs() < 1e-10, "Eigenvectors not orthogonal: dot={dot}");
 }
@@ -82,10 +82,10 @@ fn test_eigh_c64_hermitian() {
     assert!((w1 - 4.0).abs() < 1e-10);
 
     // Eigenvectors should be orthogonal (V^H V = I)
-    let v00 = v.get(&[0, 0]);
-    let v10 = v.get(&[1, 0]);
-    let v01 = v.get(&[0, 1]);
-    let v11 = v.get(&[1, 1]);
+    let v00 = v.get([0, 0]);
+    let v10 = v.get([1, 0]);
+    let v01 = v.get([0, 1]);
+    let v11 = v.get([1, 1]);
     let dot = v00.conj() * v01 + v10.conj() * v11;
     assert!(dot.norm() < 1e-10, "Eigenvectors not orthogonal: dot={dot}");
 }

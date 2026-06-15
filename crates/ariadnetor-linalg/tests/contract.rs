@@ -27,10 +27,10 @@ fn test_contract_matmul() {
 
     // [[1*5+2*7, 1*6+2*8], [3*5+4*7, 3*6+4*8]] = [[19,22],[43,50]]
     assert_eq!(c.shape(), &[2, 2]);
-    assert_eq!(c.get(&[0, 0]), 19.0);
-    assert_eq!(c.get(&[0, 1]), 22.0);
-    assert_eq!(c.get(&[1, 0]), 43.0);
-    assert_eq!(c.get(&[1, 1]), 50.0);
+    assert_eq!(c.get([0, 0]), 19.0);
+    assert_eq!(c.get([0, 1]), 22.0);
+    assert_eq!(c.get([1, 0]), 43.0);
+    assert_eq!(c.get([1, 1]), 50.0);
 }
 
 #[test]
@@ -47,7 +47,7 @@ fn test_contract_tensor_contraction() {
     let c = to_rm(&a.contract(&b, "ijk,jkl->il").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
-    assert_ne!(c.get(&[0, 0]), 0.0);
+    assert_ne!(c.get([0, 0]), 0.0);
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn test_contract_f32() {
     let c = to_rm(&a.contract(&b, "ik,kj->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
-    assert_eq!(c.get(&[0, 0]), 19.0f32);
+    assert_eq!(c.get([0, 0]), 19.0f32);
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn test_contract_output_reorder_swap() {
 
     for i in 0..2 {
         for j in 0..4 {
-            assert_eq!(swapped.get(&[j, i]), normal.get(&[i, j]));
+            assert_eq!(swapped.get([j, i]), normal.get([i, j]));
         }
     }
 }
@@ -140,8 +140,8 @@ fn test_contract_output_reorder_3d() {
         for b_idx in 0..3 {
             for d in 0..4 {
                 assert_eq!(
-                    reordered.get(&[d, b_idx, a_idx]),
-                    normal.get(&[a_idx, b_idx, d]),
+                    reordered.get([d, b_idx, a_idx]),
+                    normal.get([a_idx, b_idx, d]),
                 );
             }
         }

@@ -32,10 +32,10 @@ fn test_matrix_multiplication() {
     let c = to_rm(&a.contract(&b, "ij,jk->ik").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
-    assert_eq!(c.get(&[0, 0]), 19.0);
-    assert_eq!(c.get(&[0, 1]), 22.0);
-    assert_eq!(c.get(&[1, 0]), 43.0);
-    assert_eq!(c.get(&[1, 1]), 50.0);
+    assert_eq!(c.get([0, 0]), 19.0);
+    assert_eq!(c.get([0, 1]), 22.0);
+    assert_eq!(c.get([1, 0]), 43.0);
+    assert_eq!(c.get([1, 1]), 50.0);
 }
 
 #[test]
@@ -59,9 +59,9 @@ fn test_outer_product() {
     let c = to_rm(&a.contract(&b, "i,j->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 3]);
-    assert_eq!(c.get(&[0, 0]), 8.0);
-    assert_eq!(c.get(&[0, 1]), 10.0);
-    assert_eq!(c.get(&[1, 2]), 18.0);
+    assert_eq!(c.get([0, 0]), 8.0);
+    assert_eq!(c.get([0, 1]), 10.0);
+    assert_eq!(c.get([1, 2]), 18.0);
 }
 
 #[test]
@@ -87,10 +87,10 @@ fn test_identity_multiplication() {
 
     let c = to_rm(&a.contract(&b, "ij,jk->ik").unwrap());
 
-    assert_eq!(c.get(&[0, 0]), 1.0);
-    assert_eq!(c.get(&[0, 1]), 2.0);
-    assert_eq!(c.get(&[1, 0]), 3.0);
-    assert_eq!(c.get(&[1, 1]), 4.0);
+    assert_eq!(c.get([0, 0]), 1.0);
+    assert_eq!(c.get([0, 1]), 2.0);
+    assert_eq!(c.get([1, 0]), 3.0);
+    assert_eq!(c.get([1, 1]), 4.0);
 }
 
 #[test]
@@ -103,10 +103,10 @@ fn test_hadamard_product_via_einsum() {
     let c = to_rm(&einsum_with_backend(&backend, &[&a, &b], "ij,ij->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
-    assert_eq!(c.get(&[0, 0]), 2.0);
-    assert_eq!(c.get(&[0, 1]), 6.0);
-    assert_eq!(c.get(&[1, 0]), 12.0);
-    assert_eq!(c.get(&[1, 1]), 20.0);
+    assert_eq!(c.get([0, 0]), 2.0);
+    assert_eq!(c.get([0, 1]), 6.0);
+    assert_eq!(c.get([1, 0]), 12.0);
+    assert_eq!(c.get([1, 1]), 20.0);
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn test_actual_contraction_with_reordered_indices() {
 
     let c = a.contract(&b, "ikj,jkl->il").unwrap();
     assert_eq!(c.shape(), &[2, 2]);
-    assert_ne!(c.get(&[0, 0]), 0.0);
+    assert_ne!(c.get([0, 0]), 0.0);
 }
 
 #[test]
@@ -173,6 +173,6 @@ fn test_consistency_between_ijk_and_ikj_layouts() {
     let result_ikj = a_ikj.contract(&b, "ikj,jkl->il").unwrap();
 
     assert_eq!(result_ijk.shape(), result_ikj.shape());
-    assert_ne!(result_ijk.get(&[0, 0]), 0.0);
-    assert_ne!(result_ikj.get(&[0, 0]), 0.0);
+    assert_ne!(result_ijk.get([0, 0]), 0.0);
+    assert_ne!(result_ikj.get([0, 0]), 0.0);
 }

@@ -26,10 +26,10 @@ pub trait SiteOps {
 /// substrate's preferred order — the construction names no memory order.
 fn op_2x2<T: Scalar>(m00: T, m01: T, m10: T, m11: T) -> DenseTensor<T> {
     let mut op = DenseTensor::<T>::zeros(vec![2, 2]);
-    op.set(&[0, 0], m00);
-    op.set(&[0, 1], m01);
-    op.set(&[1, 0], m10);
-    op.set(&[1, 1], m11);
+    op.set([0, 0], m00);
+    op.set([0, 1], m01);
+    op.set([1, 0], m10);
+    op.set([1, 1], m11);
     op
 }
 

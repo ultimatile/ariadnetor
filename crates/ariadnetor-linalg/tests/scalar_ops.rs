@@ -233,10 +233,10 @@ fn test_diag_complex() {
     ));
     let m = v.diag().unwrap();
     assert_eq!(m.shape(), &[2, 2]);
-    assert_eq!(m.get(&[0, 0]), Complex::new(1.0, 2.0));
-    assert_eq!(m.get(&[0, 1]), Complex::new(0.0, 0.0));
-    assert_eq!(m.get(&[1, 0]), Complex::new(0.0, 0.0));
-    assert_eq!(m.get(&[1, 1]), Complex::new(3.0, 4.0));
+    assert_eq!(m.get([0, 0]), Complex::new(1.0, 2.0));
+    assert_eq!(m.get([0, 1]), Complex::new(0.0, 0.0));
+    assert_eq!(m.get([1, 0]), Complex::new(0.0, 0.0));
+    assert_eq!(m.get([1, 1]), Complex::new(3.0, 4.0));
 }
 
 #[test]
