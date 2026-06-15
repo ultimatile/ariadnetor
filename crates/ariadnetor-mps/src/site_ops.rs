@@ -1,8 +1,9 @@
 //! SiteOps trait and concrete operator dictionaries.
 //!
-//! All operators here are laid out in `ColumnMajor` (the host
-//! substrate's preferred order). For a 2×2 matrix `[[a, b], [c, d]]`,
-//! the flat layout is `[a, c, b, d]`.
+//! Operators are built from their logical `m[row][col]` entries via
+//! order-transparent element access (`set` resolves each `[i, j]` through
+//! the layout's memory order), so they carry no assumption about the host
+//! substrate's preferred memory order.
 
 use arnet_core::Scalar;
 use arnet_tensor::DenseTensor;
@@ -18,15 +19,18 @@ pub trait SiteOps {
     fn dim(&self) -> usize;
 }
 
-/// Build a 2×2 column-major DenseTensor.
+/// Build a 2×2 dense operator from its logical entries `m[row][col]`.
 ///
-/// `data` must be the four entries in column-major order: `[m(0,0),
-/// m(1,0), m(0,1), m(1,1)]`. The dense constructor materializes in the
-/// host substrate's preferred order (ColumnMajor), so the entries map
-/// directly onto the stored buffer.
-fn make_2x2_cm<T: Scalar>(data: Vec<T>) -> DenseTensor<T> {
-    debug_assert_eq!(data.len(), 4, "make_2x2_cm: expected 4 entries");
-    DenseTensor::from_raw_parts(data, vec![2, 2])
+/// Each element is placed by `set`, which resolves `[i, j]` through the
+/// layout's memory order, so the result is correct regardless of the host
+/// substrate's preferred order — the construction names no memory order.
+fn op_2x2<T: Scalar>(m00: T, m01: T, m10: T, m11: T) -> DenseTensor<T> {
+    let mut op = DenseTensor::<T>::zeros(vec![2, 2]);
+    op.set(&[0, 0], m00);
+    op.set(&[0, 1], m01);
+    op.set(&[1, 0], m10);
+    op.set(&[1, 1], m11);
+    op
 }
 
 /// Spin-1/2 site operators.
@@ -48,32 +52,28 @@ impl SpinHalf {
         let half = real::<T>(0.5);
         let neg_half = real::<T>(-0.5);
         let z = T::zero();
-        // CM layout of [[0.5, 0], [0, -0.5]]: col0=[0.5, 0], col1=[0, -0.5]
-        make_2x2_cm(vec![half, z, z, neg_half])
+        op_2x2(half, z, z, neg_half)
     }
 
     /// S+ (raising operator) = [[0, 1], [0, 0]]
     pub fn sp<T: Scalar>(&self) -> DenseTensor<T> {
         let z = T::zero();
         let o = T::one();
-        // CM layout of [[0, 1], [0, 0]]: col0=[0, 0], col1=[1, 0]
-        make_2x2_cm(vec![z, z, o, z])
+        op_2x2(z, o, z, z)
     }
 
     /// S- (lowering operator) = [[0, 0], [1, 0]]
     pub fn sm<T: Scalar>(&self) -> DenseTensor<T> {
         let z = T::zero();
         let o = T::one();
-        // CM layout of [[0, 0], [1, 0]]: col0=[0, 1], col1=[0, 0]
-        make_2x2_cm(vec![z, o, z, z])
+        op_2x2(z, z, o, z)
     }
 
     /// Identity operator = [[1, 0], [0, 1]]
     pub fn id<T: Scalar>(&self) -> DenseTensor<T> {
         let z = T::zero();
         let o = T::one();
-        // CM layout of [[1, 0], [0, 1]]: col0=[1, 0], col1=[0, 1]
-        make_2x2_cm(vec![o, z, z, o])
+        op_2x2(o, z, z, o)
     }
 }
 
@@ -98,8 +98,7 @@ impl Qubit {
     pub fn x<T: Scalar>(&self) -> DenseTensor<T> {
         let z = T::zero();
         let o = T::one();
-        // CM layout of [[0, 1], [1, 0]]: col0=[0, 1], col1=[1, 0]
-        make_2x2_cm(vec![z, o, o, z])
+        op_2x2(z, o, o, z)
     }
 
     /// Pauli Y = [[0, -i], [i, 0]]
@@ -109,8 +108,7 @@ impl Qubit {
         let one = real_val::<T::Real>(1.0);
         let neg_i = T::from_real_imag(zi, real_val::<T::Real>(-1.0));
         let pos_i = T::from_real_imag(zi, one);
-        // CM layout of [[0, -i], [i, 0]]: col0=[0, i], col1=[-i, 0]
-        make_2x2_cm(vec![z, pos_i, neg_i, z])
+        op_2x2(z, neg_i, pos_i, z)
     }
 
     /// Pauli Z = [[1, 0], [0, -1]]
@@ -118,16 +116,14 @@ impl Qubit {
         let z = T::zero();
         let o = T::one();
         let neg = real::<T>(-1.0);
-        // CM layout of [[1, 0], [0, -1]]: col0=[1, 0], col1=[0, -1]
-        make_2x2_cm(vec![o, z, z, neg])
+        op_2x2(o, z, z, neg)
     }
 
     /// Hadamard = [[1, 1], [1, -1]] / sqrt(2)
     pub fn h<T: Scalar>(&self) -> DenseTensor<T> {
         let inv_sqrt2 = real::<T>(std::f64::consts::FRAC_1_SQRT_2);
         let neg_inv_sqrt2 = real::<T>(-std::f64::consts::FRAC_1_SQRT_2);
-        // CM layout of [[h, h], [h, -h]]: col0=[h, h], col1=[h, -h]
-        make_2x2_cm(vec![inv_sqrt2, inv_sqrt2, inv_sqrt2, neg_inv_sqrt2])
+        op_2x2(inv_sqrt2, inv_sqrt2, inv_sqrt2, neg_inv_sqrt2)
     }
 
     /// S gate = [[1, 0], [0, i]]
@@ -135,8 +131,7 @@ impl Qubit {
         let z = T::zero();
         let o = T::one();
         let i = T::from_real_imag(T::Real::zero(), real_val::<T::Real>(1.0));
-        // CM layout of [[1, 0], [0, i]]: col0=[1, 0], col1=[0, i]
-        make_2x2_cm(vec![o, z, z, i])
+        op_2x2(o, z, z, i)
     }
 
     /// T gate = [[1, 0], [0, exp(iπ/4)]]
@@ -148,32 +143,28 @@ impl Qubit {
             real_val::<T::Real>(angle.cos()),
             real_val::<T::Real>(angle.sin()),
         );
-        // CM layout of [[1, 0], [0, t]]: col0=[1, 0], col1=[0, t]
-        make_2x2_cm(vec![o, z, z, t_val])
+        op_2x2(o, z, z, t_val)
     }
 
     /// Identity = [[1, 0], [0, 1]]
     pub fn id<T: Scalar>(&self) -> DenseTensor<T> {
         let z = T::zero();
         let o = T::one();
-        // CM layout of [[1, 0], [0, 1]]: col0=[1, 0], col1=[0, 1]
-        make_2x2_cm(vec![o, z, z, o])
+        op_2x2(o, z, z, o)
     }
 
     /// |0⟩⟨0| = [[1, 0], [0, 0]]
     pub fn proj0<T: Scalar>(&self) -> DenseTensor<T> {
         let z = T::zero();
         let o = T::one();
-        // CM layout of [[1, 0], [0, 0]]: col0=[1, 0], col1=[0, 0]
-        make_2x2_cm(vec![o, z, z, z])
+        op_2x2(o, z, z, z)
     }
 
     /// |1⟩⟨1| = [[0, 0], [0, 1]]
     pub fn proj1<T: Scalar>(&self) -> DenseTensor<T> {
         let z = T::zero();
         let o = T::one();
-        // CM layout of [[0, 0], [0, 1]]: col0=[0, 0], col1=[0, 1]
-        make_2x2_cm(vec![z, z, z, o])
+        op_2x2(z, z, z, o)
     }
 }
 
