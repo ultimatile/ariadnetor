@@ -44,6 +44,13 @@ repos:
         language: script
         types: [rust]
         pass_filenames: false
+      - id: audit-selftest
+        name: audit-helper contract tests
+        description: lock the source-audit helpers against robustness regressions
+        entry: scripts/test_audit_helpers.py
+        language: script
+        types: [python]
+        pass_filenames: false
       - id: protect-default-branch
         name: refuse pushes to default branch
         entry: scripts/protect-default-branch.sh
