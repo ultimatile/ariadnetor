@@ -21,7 +21,7 @@ import re
 import sys
 from pathlib import Path
 
-from audit_common import strip_cfg_test_mods, strip_comments
+from audit_common import strip_cfg_test_mods, strip_noncode
 
 REPO = Path(__file__).resolve().parent.parent
 SRC_DIRS = [
@@ -33,8 +33,11 @@ EXCLUDED_NAMES = {"tests.rs", "test_util.rs"}
 TOKEN = re.compile(r"\bNativeBackend\b")
 
 
-def excluded(path: Path) -> bool:
-    return path.name in EXCLUDED_NAMES or "tests" in path.parts
+def excluded(path: Path, src_dir: Path) -> bool:
+    # Judge "tests" on the path RELATIVE to src_dir: an absolute-path check
+    # would wrongly skip everything if the checkout sits under a "tests" dir.
+    rel = path.relative_to(src_dir)
+    return path.name in EXCLUDED_NAMES or "tests" in rel.parts
 
 
 def main() -> int:
@@ -44,9 +47,9 @@ def main() -> int:
             print(f"audit-no-native-backend-in-src: missing {src_dir}", file=sys.stderr)
             return 2
         for path in sorted(src_dir.rglob("*.rs")):
-            if excluded(path):
+            if excluded(path, src_dir):
                 continue
-            src = strip_cfg_test_mods(strip_comments(path.read_text()))
+            src = strip_cfg_test_mods(strip_noncode(path.read_text()))
             for m in TOKEN.finditer(src):
                 line = src.count("\n", 0, m.start()) + 1
                 rel = path.relative_to(REPO)

@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-from audit_common import strip_comments
+from audit_common import strip_noncode
 
 REPO = Path(__file__).resolve().parent.parent
 TARGETS = [
@@ -28,7 +28,14 @@ TARGETS = [
     REPO / "crates/ariadnetor-linalg/src/host_ops/block_sparse.rs",
 ]
 
-TWIN_CALL = re.compile(r"\w+_with_backend\s*\(")
+
+def twin_pattern(name: str) -> re.Pattern:
+    """The method's own twin: dense `<name>_with_backend` or block-sparse
+    `<name>_block_sparse_with_backend`. Anchoring to the method name rejects a
+    body that delegates to some *other* method's twin (e.g. `svd` calling
+    `qr_with_backend`), which a generic `_with_backend` match would accept.
+    """
+    return re.compile(rf"\b{re.escape(name)}(?:_block_sparse)?_with_backend\s*\(")
 
 
 def method_bodies(src: str):
@@ -62,11 +69,11 @@ def main() -> int:
         if not path.exists():
             print(f"audit-host-twin-delegation: missing target {path}", file=sys.stderr)
             return 2
-        src = strip_comments(path.read_text())
+        src = strip_noncode(path.read_text())
         for name, body in method_bodies(src):
-            if not TWIN_CALL.search(body):
+            if not twin_pattern(name).search(body):
                 rel = path.relative_to(REPO)
-                violations.append(f"{rel}: `{name}` does not delegate to a `*_with_backend` twin")
+                violations.append(f"{rel}: `{name}` does not delegate to its `*_with_backend` twin")
 
     if violations:
         print("Host-extension methods must delegate to their `*_with_backend` twin:")

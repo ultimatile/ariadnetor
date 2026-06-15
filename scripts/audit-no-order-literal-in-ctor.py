@@ -24,7 +24,7 @@ import re
 import sys
 from pathlib import Path
 
-from audit_common import strip_cfg_test_mods, strip_comments
+from audit_common import strip_cfg_test_mods, strip_noncode
 
 REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "crates/ariadnetor-tensor/src"
@@ -45,10 +45,13 @@ def main() -> int:
 
     violations = []
     for path in sorted(SRC.rglob("*.rs")):
-        if path.name in EXCLUDED_NAMES or "tests" in path.parts:
+        # Exclusion is judged on the path RELATIVE to SRC: an absolute-path
+        # check would wrongly skip everything if the checkout itself sits under
+        # a directory named "tests".
+        if path.name in EXCLUDED_NAMES or "tests" in path.relative_to(SRC).parts:
             continue
         raw = path.read_text()
-        src = strip_cfg_test_mods(strip_comments(raw))
+        src = strip_cfg_test_mods(strip_noncode(raw))
         for m in LITERAL.finditer(src):
             after = src[m.end() : m.end() + 8]
             if DISPATCH_ARM.match(after):
