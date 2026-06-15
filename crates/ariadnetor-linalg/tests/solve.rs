@@ -23,8 +23,8 @@ fn test_solve_f64_2x2() {
 
     let x = to_rm(&a.solve(&b, 1).unwrap());
     assert_eq!(x.shape(), &[2, 1]);
-    assert!((x.get(&[0, 0]) - 5.0).abs() < 1e-10);
-    assert!((x.get(&[1, 0]) - (-6.0)).abs() < 1e-10);
+    assert!((x.get([0, 0]) - 5.0).abs() < 1e-10);
+    assert!((x.get([1, 0]) - (-6.0)).abs() < 1e-10);
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn test_solve_f64_identity() {
     for i in 0..2 {
         for j in 0..2 {
             assert!(
-                (x.get(&[i, j]) - b_rm.get(&[i, j])).abs() < 1e-10,
+                (x.get([i, j]) - b_rm.get([i, j])).abs() < 1e-10,
                 "mismatch at ({i},{j})"
             );
         }
@@ -62,7 +62,7 @@ fn test_solve_f64_multiple_rhs() {
     for i in 0..2 {
         for j in 0..2 {
             assert!(
-                (ax.get(&[i, j]) - b_rm.get(&[i, j])).abs() < 1e-10,
+                (ax.get([i, j]) - b_rm.get([i, j])).abs() < 1e-10,
                 "A*X != B at [{i},{j}]"
             );
         }
@@ -95,7 +95,7 @@ fn test_solve_c64() {
     let ax = to_rm(&a.contract(&x, "ij,jk->ik").unwrap());
     let b_rm = to_rm(&b);
     for i in 0..2 {
-        let diff = (ax.get(&[i, 0]) - b_rm.get(&[i, 0])).norm();
+        let diff = (ax.get([i, 0]) - b_rm.get([i, 0])).norm();
         assert!(diff < 1e-10, "A*X != B at [{i},0], diff={diff}");
     }
 }
@@ -106,8 +106,8 @@ fn test_solve_f32() {
     let b = cm(vec![4.0_f32, 7.0], vec![2, 1]);
 
     let x = to_rm(&a.solve(&b, 1).unwrap());
-    assert!((x.get(&[0, 0]) - 5.0).abs() < 1e-4);
-    assert!((x.get(&[1, 0]) - (-6.0)).abs() < 1e-4);
+    assert!((x.get([0, 0]) - 5.0).abs() < 1e-4);
+    assert!((x.get([1, 0]) - (-6.0)).abs() < 1e-4);
 }
 
 #[test]
@@ -138,10 +138,10 @@ fn test_inverse_f64_2x2() {
     let a_inv = to_rm(&a.inverse(1).unwrap());
 
     assert_eq!(a_inv.shape(), &[2, 2]);
-    assert!((a_inv.get(&[0, 0]) - 3.0).abs() < 1e-10);
-    assert!((a_inv.get(&[0, 1]) - (-1.0)).abs() < 1e-10);
-    assert!((a_inv.get(&[1, 0]) - (-5.0)).abs() < 1e-10);
-    assert!((a_inv.get(&[1, 1]) - 2.0).abs() < 1e-10);
+    assert!((a_inv.get([0, 0]) - 3.0).abs() < 1e-10);
+    assert!((a_inv.get([0, 1]) - (-1.0)).abs() < 1e-10);
+    assert!((a_inv.get([1, 0]) - (-5.0)).abs() < 1e-10);
+    assert!((a_inv.get([1, 1]) - 2.0).abs() < 1e-10);
 
     // Verify A * A⁻¹ = I. inverse() returns CM.
     let a_inv_cm = a.inverse(1).unwrap();
@@ -150,9 +150,9 @@ fn test_inverse_f64_2x2() {
         for j in 0..2 {
             let expected = if i == j { 1.0 } else { 0.0 };
             assert!(
-                (product.get(&[i, j]) - expected).abs() < 1e-10,
+                (product.get([i, j]) - expected).abs() < 1e-10,
                 "A*A⁻¹[{i},{j}] = {}, expected {expected}",
-                product.get(&[i, j])
+                product.get([i, j])
             );
         }
     }
@@ -164,10 +164,10 @@ fn test_inverse_diagonal() {
     let a = cm(vec![2.0_f64, 0.0, 0.0, 5.0], vec![2, 2]);
     let a_inv = to_rm(&a.inverse(1).unwrap());
 
-    assert!((a_inv.get(&[0, 0]) - 0.5).abs() < 1e-10);
-    assert!(a_inv.get(&[0, 1]).abs() < 1e-10);
-    assert!(a_inv.get(&[1, 0]).abs() < 1e-10);
-    assert!((a_inv.get(&[1, 1]) - 0.2).abs() < 1e-10);
+    assert!((a_inv.get([0, 0]) - 0.5).abs() < 1e-10);
+    assert!(a_inv.get([0, 1]).abs() < 1e-10);
+    assert!(a_inv.get([1, 0]).abs() < 1e-10);
+    assert!((a_inv.get([1, 1]) - 0.2).abs() < 1e-10);
 }
 
 #[test]
@@ -179,7 +179,7 @@ fn test_inverse_identity() {
     for i in 0..2 {
         for j in 0..2 {
             let expected = if i == j { 1.0 } else { 0.0 };
-            assert!((a_inv.get(&[i, j]) - expected).abs() < 1e-10);
+            assert!((a_inv.get([i, j]) - expected).abs() < 1e-10);
         }
     }
 }
@@ -194,10 +194,10 @@ fn test_inverse_orthogonal() {
     let q_inv = to_rm(&q.inverse(1).unwrap());
 
     // Q^T = [[c, s], [-s, c]]
-    assert!((q_inv.get(&[0, 0]) - c).abs() < 1e-10);
-    assert!((q_inv.get(&[0, 1]) - s).abs() < 1e-10);
-    assert!((q_inv.get(&[1, 0]) - (-s)).abs() < 1e-10);
-    assert!((q_inv.get(&[1, 1]) - c).abs() < 1e-10);
+    assert!((q_inv.get([0, 0]) - c).abs() < 1e-10);
+    assert!((q_inv.get([0, 1]) - s).abs() < 1e-10);
+    assert!((q_inv.get([1, 0]) - (-s)).abs() < 1e-10);
+    assert!((q_inv.get([1, 1]) - c).abs() < 1e-10);
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn test_inverse_c64() {
             } else {
                 Complex::new(0.0, 0.0)
             };
-            let diff = (product.get(&[i, j]) - expected).norm();
+            let diff = (product.get([i, j]) - expected).norm();
             assert!(diff < 1e-10, "A*A⁻¹[{i},{j}] off by {diff}");
         }
     }
@@ -235,10 +235,10 @@ fn test_inverse_f32() {
     let a = cm(vec![2.0_f32, 1.0, 5.0, 3.0], vec![2, 2]);
     let a_inv = to_rm(&a.inverse(1).unwrap());
 
-    assert!((a_inv.get(&[0, 0]) - 3.0).abs() < 1e-4);
-    assert!((a_inv.get(&[0, 1]) - (-1.0)).abs() < 1e-4);
-    assert!((a_inv.get(&[1, 0]) - (-5.0)).abs() < 1e-4);
-    assert!((a_inv.get(&[1, 1]) - 2.0).abs() < 1e-4);
+    assert!((a_inv.get([0, 0]) - 3.0).abs() < 1e-4);
+    assert!((a_inv.get([0, 1]) - (-1.0)).abs() < 1e-4);
+    assert!((a_inv.get([1, 0]) - (-5.0)).abs() < 1e-4);
+    assert!((a_inv.get([1, 1]) - 2.0).abs() < 1e-4);
 }
 
 #[test]

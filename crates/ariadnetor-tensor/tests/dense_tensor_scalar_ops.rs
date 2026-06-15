@@ -21,12 +21,12 @@ fn test_scaled_f64() {
         MemoryOrder::RowMajor,
     ));
     let scaled = tensor.scaled(2.5);
-    assert_eq!(scaled.get(&[0, 0]), 2.5);
-    assert_eq!(scaled.get(&[0, 1]), 5.0);
-    assert_eq!(scaled.get(&[1, 0]), 7.5);
-    assert_eq!(scaled.get(&[1, 1]), 10.0);
+    assert_eq!(scaled.get([0, 0]), 2.5);
+    assert_eq!(scaled.get([0, 1]), 5.0);
+    assert_eq!(scaled.get([1, 0]), 7.5);
+    assert_eq!(scaled.get([1, 1]), 10.0);
     // Original unchanged
-    assert_eq!(tensor.get(&[0, 0]), 1.0);
+    assert_eq!(tensor.get([0, 0]), 1.0);
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn test_normalized_f64() {
     assert!((n - 2.0).abs() < 1e-10);
     assert!((normalized.norm() - 1.0).abs() < 1e-10);
     // Original unchanged
-    assert_eq!(tensor.get(&[0, 0]), 1.0);
+    assert_eq!(tensor.get([0, 0]), 1.0);
 }
 
 #[test]

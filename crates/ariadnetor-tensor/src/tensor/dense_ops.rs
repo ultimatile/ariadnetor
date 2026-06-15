@@ -60,11 +60,15 @@ impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout> {
 
     /// Get element at the given indices.
     ///
+    /// `indices` accepts any `AsRef<[usize]>`, so an array literal can be
+    /// passed without a borrow: `t.get([i, j])` as well as `t.get(&coords)`.
+    ///
     /// # Panics
     ///
     /// Panics if `indices.len() != rank` or any index exceeds the
     /// corresponding axis dimension.
-    pub fn get(&self, indices: &[usize]) -> S {
+    pub fn get(&self, indices: impl AsRef<[usize]>) -> S {
+        let indices = indices.as_ref();
         let shape = self.shape();
         assert_eq!(
             indices.len(),
@@ -86,27 +90,34 @@ impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout> {
 
     /// Set element at the given indices.
     ///
+    /// `indices` accepts any `AsRef<[usize]>`, so an array literal can be
+    /// passed without a borrow: `t.set([i, j], v)` as well as `t.set(&coords, v)`.
+    ///
     /// # Panics
     ///
     /// Panics if `indices.len() != rank` or any index exceeds the
     /// corresponding axis dimension.
-    pub fn set(&mut self, indices: &[usize], value: S) {
-        let shape_owned: Vec<usize> = self.shape().to_vec();
-        assert_eq!(
-            indices.len(),
-            shape_owned.len(),
-            "Tensor::set: indices length {} doesn't match rank {}",
-            indices.len(),
-            shape_owned.len(),
-        );
-        for (axis, (&idx, &dim)) in indices.iter().zip(&shape_owned).enumerate() {
-            assert!(
-                idx < dim,
-                "Tensor::set: index {idx} out of bounds for axis {axis} with size {dim}",
+    pub fn set(&mut self, indices: impl AsRef<[usize]>, value: S) {
+        let indices = indices.as_ref();
+        // Resolve the flat offset under an immutable borrow that ends before
+        // the mutable storage borrow below, so no owned-shape copy is needed.
+        let flat = {
+            let shape = self.shape();
+            assert_eq!(
+                indices.len(),
+                shape.len(),
+                "Tensor::set: indices length {} doesn't match rank {}",
+                indices.len(),
+                shape.len(),
             );
-        }
-        let order = self.order();
-        let flat = crate::flat_index(indices, &shape_owned, order);
+            for (axis, (&idx, &dim)) in indices.iter().zip(shape).enumerate() {
+                assert!(
+                    idx < dim,
+                    "Tensor::set: index {idx} out of bounds for axis {axis} with size {dim}",
+                );
+            }
+            crate::flat_index(indices, shape, self.order())
+        };
         self.data.storage_mut().data_mut()[flat] = value;
     }
 

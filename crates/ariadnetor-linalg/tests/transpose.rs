@@ -22,12 +22,12 @@ fn test_transpose_f64_2d() {
 
     assert_eq!(result.shape(), &[3, 2]);
     // Transposed: [[1,4],[2,5],[3,6]]
-    assert_eq!(result.get(&[0, 0]), 1.0);
-    assert_eq!(result.get(&[0, 1]), 4.0);
-    assert_eq!(result.get(&[1, 0]), 2.0);
-    assert_eq!(result.get(&[1, 1]), 5.0);
-    assert_eq!(result.get(&[2, 0]), 3.0);
-    assert_eq!(result.get(&[2, 1]), 6.0);
+    assert_eq!(result.get([0, 0]), 1.0);
+    assert_eq!(result.get([0, 1]), 4.0);
+    assert_eq!(result.get([1, 0]), 2.0);
+    assert_eq!(result.get([1, 1]), 5.0);
+    assert_eq!(result.get([2, 0]), 3.0);
+    assert_eq!(result.get([2, 1]), 6.0);
 }
 
 #[test]
@@ -41,9 +41,9 @@ fn test_transpose_f64_3d() {
     assert_eq!(result.shape(), &[4, 2, 3]);
     assert_eq!(result.len(), 24);
     // input[0][0][0] = 0 -> output[0][0][0]
-    assert_eq!(result.get(&[0, 0, 0]), tensor_rm.get(&[0, 0, 0]));
+    assert_eq!(result.get([0, 0, 0]), tensor_rm.get([0, 0, 0]));
     // input[0][0][1] = 1 -> output[1][0][0]
-    assert_eq!(result.get(&[1, 0, 0]), tensor_rm.get(&[0, 0, 1]));
+    assert_eq!(result.get([1, 0, 0]), tensor_rm.get([0, 0, 1]));
 }
 
 #[test]
@@ -53,9 +53,9 @@ fn test_transpose_f32_2d() {
     let result = to_rm(&tensor.transpose(&[1, 0]).unwrap());
 
     assert_eq!(result.shape(), &[3, 2]);
-    assert_eq!(result.get(&[0, 0]), 1.0f32);
-    assert_eq!(result.get(&[0, 1]), 4.0f32);
-    assert_eq!(result.get(&[1, 0]), 2.0f32);
+    assert_eq!(result.get([0, 0]), 1.0f32);
+    assert_eq!(result.get([0, 1]), 4.0f32);
+    assert_eq!(result.get([1, 0]), 2.0f32);
 }
 
 #[test]
@@ -75,10 +75,10 @@ fn test_transpose_complex_f64_2d() {
     let result = to_rm(&tensor.transpose(&[1, 0]).unwrap());
 
     assert_eq!(result.shape(), &[3, 2]);
-    assert_eq!(result.get(&[0, 0]), Complex::new(1.0, 2.0));
-    assert_eq!(result.get(&[0, 1]), Complex::new(7.0, 8.0));
-    assert_eq!(result.get(&[1, 0]), Complex::new(3.0, 4.0));
-    assert_eq!(result.get(&[1, 1]), Complex::new(9.0, 10.0));
+    assert_eq!(result.get([0, 0]), Complex::new(1.0, 2.0));
+    assert_eq!(result.get([0, 1]), Complex::new(7.0, 8.0));
+    assert_eq!(result.get([1, 0]), Complex::new(3.0, 4.0));
+    assert_eq!(result.get([1, 1]), Complex::new(9.0, 10.0));
 }
 
 #[test]

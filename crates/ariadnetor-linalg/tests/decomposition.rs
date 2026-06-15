@@ -39,10 +39,10 @@ fn test_svd_f64_2d() {
         for j in 0..2 {
             let mut val = 0.0;
             for k in 0..2 {
-                val += u.get(&[i, k]) * s.data_slice()[k] * vt.get(&[k, j]);
+                val += u.get([i, k]) * s.data_slice()[k] * vt.get([k, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-10,
+                (val - tensor.get([i, j])).abs() < 1e-10,
                 "Reconstruction mismatch at ({i},{j})"
             );
         }
@@ -69,10 +69,10 @@ fn test_svd_f64_rectangular() {
         for j in 0..n {
             let mut val = 0.0;
             for l in 0..k {
-                val += u.get(&[i, l]) * s.data_slice()[l] * vt.get(&[l, j]);
+                val += u.get([i, l]) * s.data_slice()[l] * vt.get([l, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-10,
+                (val - tensor.get([i, j])).abs() < 1e-10,
                 "Reconstruction mismatch at ({i},{j})"
             );
         }
@@ -100,7 +100,7 @@ fn test_svd_f64_higher_rank() {
         for j in 0..n {
             let mut val = 0.0;
             for l in 0..k {
-                val += u.get(&[i, l]) * s.data_slice()[l] * vt.get(&[l, j]);
+                val += u.get([i, l]) * s.data_slice()[l] * vt.get([l, j]);
             }
             let orig = tensor_rm.data_slice()[i * n + j];
             assert!(
@@ -128,10 +128,10 @@ fn test_svd_f32() {
         for j in 0..2 {
             let mut val = 0.0f32;
             for k in 0..2 {
-                val += u.get(&[i, k]) * s.data_slice()[k] * vt.get(&[k, j]);
+                val += u.get([i, k]) * s.data_slice()[k] * vt.get([k, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-4,
+                (val - tensor.get([i, j])).abs() < 1e-4,
                 "Reconstruction mismatch at ({i},{j})"
             );
         }
@@ -258,10 +258,10 @@ fn test_qr_f64_2d() {
         for j in 0..2 {
             let mut val = 0.0;
             for k in 0..2 {
-                val += q.get(&[i, k]) * r.get(&[k, j]);
+                val += q.get([i, k]) * r.get([k, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-10,
+                (val - tensor.get([i, j])).abs() < 1e-10,
                 "QR reconstruction mismatch at ({i},{j})"
             );
         }
@@ -287,10 +287,10 @@ fn test_qr_f64_rectangular() {
         for j in 0..n {
             let mut val = 0.0;
             for l in 0..k {
-                val += q.get(&[i, l]) * r.get(&[l, j]);
+                val += q.get([i, l]) * r.get([l, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-10,
+                (val - tensor.get([i, j])).abs() < 1e-10,
                 "QR reconstruction mismatch at ({i},{j})"
             );
         }
@@ -310,7 +310,7 @@ fn test_qr_f64_orthogonality() {
         for j in 0..k {
             let mut dot = 0.0;
             for l in 0..m {
-                dot += q.get(&[l, i]) * q.get(&[l, j]);
+                dot += q.get([l, i]) * q.get([l, j]);
             }
             let expected = if i == j { 1.0 } else { 0.0 };
             assert!(
@@ -341,7 +341,7 @@ fn test_qr_f64_higher_rank() {
         for j in 0..n {
             let mut val = 0.0;
             for l in 0..k {
-                val += q.get(&[i, l]) * r.get(&[l, j]);
+                val += q.get([i, l]) * r.get([l, j]);
             }
             let orig = tensor_rm.data_slice()[i * n + j];
             assert!(
@@ -368,10 +368,10 @@ fn test_qr_f32() {
         for j in 0..2 {
             let mut val = 0.0f32;
             for k in 0..2 {
-                val += q.get(&[i, k]) * r.get(&[k, j]);
+                val += q.get([i, k]) * r.get([k, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-4,
+                (val - tensor.get([i, j])).abs() < 1e-4,
                 "QR reconstruction mismatch at ({i},{j})"
             );
         }
@@ -405,10 +405,10 @@ fn test_lq_f64_2d() {
         for j in 0..2 {
             let mut val = 0.0;
             for k in 0..2 {
-                val += l.get(&[i, k]) * q.get(&[k, j]);
+                val += l.get([i, k]) * q.get([k, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-10,
+                (val - tensor.get([i, j])).abs() < 1e-10,
                 "LQ reconstruction mismatch at ({i},{j})"
             );
         }
@@ -434,10 +434,10 @@ fn test_lq_f64_rectangular() {
         for j in 0..n {
             let mut val = 0.0;
             for ll in 0..k {
-                val += l.get(&[i, ll]) * q.get(&[ll, j]);
+                val += l.get([i, ll]) * q.get([ll, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-10,
+                (val - tensor.get([i, j])).abs() < 1e-10,
                 "LQ reconstruction mismatch at ({i},{j})"
             );
         }
@@ -457,7 +457,7 @@ fn test_lq_f64_orthogonality() {
         for j in 0..k {
             let mut dot = 0.0;
             for l in 0..n {
-                dot += q.get(&[i, l]) * q.get(&[j, l]);
+                dot += q.get([i, l]) * q.get([j, l]);
             }
             let expected = if i == j { 1.0 } else { 0.0 };
             assert!(
@@ -488,7 +488,7 @@ fn test_lq_f64_higher_rank() {
         for j in 0..n {
             let mut val = 0.0;
             for ll in 0..k {
-                val += l.get(&[i, ll]) * q.get(&[ll, j]);
+                val += l.get([i, ll]) * q.get([ll, j]);
             }
             let orig = tensor_rm.data_slice()[i * n + j];
             assert!(
@@ -515,10 +515,10 @@ fn test_lq_f32() {
         for j in 0..2 {
             let mut val = 0.0f32;
             for k in 0..2 {
-                val += l.get(&[i, k]) * q.get(&[k, j]);
+                val += l.get([i, k]) * q.get([k, j]);
             }
             assert!(
-                (val - tensor.get(&[i, j])).abs() < 1e-4,
+                (val - tensor.get([i, j])).abs() < 1e-4,
                 "LQ reconstruction mismatch at ({i},{j})"
             );
         }
@@ -697,7 +697,7 @@ fn test_trunc_svd_slicing_u_times_s_times_vt_approximation() {
             for j in 0..n {
                 let mut val = 0.0;
                 for l in 0..chi {
-                    val += u.get(&[i, l]) * s.data_slice()[l] * vt.get(&[l, j]);
+                    val += u.get([i, l]) * s.data_slice()[l] * vt.get([l, j]);
                 }
                 let diff = val - tensor_rm.data_slice()[i * n + j];
                 err_sq += diff * diff;

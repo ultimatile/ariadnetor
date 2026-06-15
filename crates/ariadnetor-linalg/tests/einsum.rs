@@ -40,12 +40,12 @@ fn test_einsum_transpose_2d() {
     let b = to_rm(&einsum(&[&a], "ij->ji").unwrap());
 
     assert_eq!(b.shape(), &[3, 2]);
-    assert_eq!(b.get(&[0, 0]), 1.0);
-    assert_eq!(b.get(&[0, 1]), 4.0);
-    assert_eq!(b.get(&[1, 0]), 2.0);
-    assert_eq!(b.get(&[1, 1]), 5.0);
-    assert_eq!(b.get(&[2, 0]), 3.0);
-    assert_eq!(b.get(&[2, 1]), 6.0);
+    assert_eq!(b.get([0, 0]), 1.0);
+    assert_eq!(b.get([0, 1]), 4.0);
+    assert_eq!(b.get([1, 0]), 2.0);
+    assert_eq!(b.get([1, 1]), 5.0);
+    assert_eq!(b.get([2, 0]), 3.0);
+    assert_eq!(b.get([2, 1]), 6.0);
 }
 
 #[test]
@@ -58,9 +58,9 @@ fn test_einsum_permutation_3d() {
     let b_rm = to_rm(&b);
 
     assert_eq!(b.shape(), &[4, 3, 2]);
-    assert_eq!(b_rm.get(&[0, 0, 0]), a_rm.get(&[0, 0, 0]));
-    assert_eq!(b_rm.get(&[3, 2, 1]), a_rm.get(&[1, 2, 3]));
-    assert_eq!(b_rm.get(&[2, 1, 0]), a_rm.get(&[0, 1, 2]));
+    assert_eq!(b_rm.get([0, 0, 0]), a_rm.get([0, 0, 0]));
+    assert_eq!(b_rm.get([3, 2, 1]), a_rm.get([1, 2, 3]));
+    assert_eq!(b_rm.get([2, 1, 0]), a_rm.get([0, 1, 2]));
 }
 
 #[test]
@@ -122,9 +122,9 @@ fn test_einsum_trace_then_transpose() {
     assert_eq!(b.shape(), &[3]);
     // B[j] = A[0,j,0] + A[1,j,1]
     let a_rm = to_rm(&a);
-    let b0 = a_rm.get(&[0, 0, 0]) + a_rm.get(&[1, 0, 1]);
-    let b1 = a_rm.get(&[0, 1, 0]) + a_rm.get(&[1, 1, 1]);
-    let b2 = a_rm.get(&[0, 2, 0]) + a_rm.get(&[1, 2, 1]);
+    let b0 = a_rm.get([0, 0, 0]) + a_rm.get([1, 0, 1]);
+    let b1 = a_rm.get([0, 1, 0]) + a_rm.get([1, 1, 1]);
+    let b2 = a_rm.get([0, 2, 0]) + a_rm.get([1, 2, 1]);
     assert!((b.data_slice()[0] - b0).abs() < 1e-10);
     assert!((b.data_slice()[1] - b1).abs() < 1e-10);
     assert!((b.data_slice()[2] - b2).abs() < 1e-10);
@@ -140,11 +140,11 @@ fn test_einsum_trace_and_permute() {
 
     assert_eq!(b.shape(), &[4, 3]);
     // B[k,j] = A[0,j,k,0] + A[1,j,k,1]
-    let b00 = a_rm.get(&[0, 0, 0, 0]) + a_rm.get(&[1, 0, 0, 1]);
-    assert_eq!(b.get(&[0, 0]), b00);
+    let b00 = a_rm.get([0, 0, 0, 0]) + a_rm.get([1, 0, 0, 1]);
+    assert_eq!(b.get([0, 0]), b00);
 
-    let b21 = a_rm.get(&[0, 1, 2, 0]) + a_rm.get(&[1, 1, 2, 1]);
-    assert_eq!(b.get(&[2, 1]), b21);
+    let b21 = a_rm.get([0, 1, 2, 0]) + a_rm.get([1, 1, 2, 1]);
+    assert_eq!(b.get([2, 1]), b21);
 }
 
 // ============================================================================
@@ -159,10 +159,10 @@ fn test_einsum_two_input_matmul() {
     let c = to_rm(&einsum(&[&a, &b], "ij,jk->ik").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
-    assert_eq!(c.get(&[0, 0]), 19.0);
-    assert_eq!(c.get(&[0, 1]), 22.0);
-    assert_eq!(c.get(&[1, 0]), 43.0);
-    assert_eq!(c.get(&[1, 1]), 50.0);
+    assert_eq!(c.get([0, 0]), 19.0);
+    assert_eq!(c.get([0, 1]), 22.0);
+    assert_eq!(c.get([1, 0]), 43.0);
+    assert_eq!(c.get([1, 1]), 50.0);
 }
 
 // ============================================================================
@@ -245,10 +245,10 @@ fn test_einsum_2_tensor_hadamard() {
     let c = to_rm(&einsum(&[&a, &b], "ij,ij->ij").unwrap());
 
     assert_eq!(c.shape(), &[2, 2]);
-    assert_eq!(c.get(&[0, 0]), 2.0);
-    assert_eq!(c.get(&[0, 1]), 6.0);
-    assert_eq!(c.get(&[1, 0]), 12.0);
-    assert_eq!(c.get(&[1, 1]), 20.0);
+    assert_eq!(c.get([0, 0]), 2.0);
+    assert_eq!(c.get([0, 1]), 6.0);
+    assert_eq!(c.get([1, 0]), 12.0);
+    assert_eq!(c.get([1, 1]), 20.0);
 }
 
 // ============================================================================
@@ -306,7 +306,7 @@ fn test_einsum_output_reorder_matmul() {
     assert_eq!(swapped.shape(), &[2, 2]);
     for i in 0..2 {
         for k in 0..2 {
-            assert_eq!(swapped.get(&[k, i]), normal.get(&[i, k]));
+            assert_eq!(swapped.get([k, i]), normal.get([i, k]));
         }
     }
 }
@@ -324,7 +324,7 @@ fn test_einsum_output_reorder_rectangular() {
 
     for i in 0..2 {
         for k in 0..4 {
-            assert_eq!(swapped.get(&[k, i]), normal.get(&[i, k]));
+            assert_eq!(swapped.get([k, i]), normal.get([i, k]));
         }
     }
 }
@@ -348,15 +348,15 @@ fn test_einsum_batched_matmul() {
 
     assert_eq!(normal.shape(), &[2, 2, 2]);
     // Batch 0: [[1,2],[3,4]] × I = [[1,2],[3,4]]
-    assert_eq!(normal.get(&[0, 0, 0]), 1.0);
-    assert_eq!(normal.get(&[0, 0, 1]), 2.0);
-    assert_eq!(normal.get(&[0, 1, 0]), 3.0);
-    assert_eq!(normal.get(&[0, 1, 1]), 4.0);
+    assert_eq!(normal.get([0, 0, 0]), 1.0);
+    assert_eq!(normal.get([0, 0, 1]), 2.0);
+    assert_eq!(normal.get([0, 1, 0]), 3.0);
+    assert_eq!(normal.get([0, 1, 1]), 4.0);
     // Batch 1: [[5,6],[7,8]] × 2I = [[10,12],[14,16]]
-    assert_eq!(normal.get(&[1, 0, 0]), 10.0);
-    assert_eq!(normal.get(&[1, 0, 1]), 12.0);
-    assert_eq!(normal.get(&[1, 1, 0]), 14.0);
-    assert_eq!(normal.get(&[1, 1, 1]), 16.0);
+    assert_eq!(normal.get([1, 0, 0]), 10.0);
+    assert_eq!(normal.get([1, 0, 1]), 12.0);
+    assert_eq!(normal.get([1, 1, 0]), 14.0);
+    assert_eq!(normal.get([1, 1, 1]), 16.0);
 }
 
 #[test]
@@ -377,7 +377,7 @@ fn test_einsum_batched_output_reorder_bji() {
     for batch in 0..2 {
         for i in 0..2 {
             for j in 0..2 {
-                assert_eq!(swapped.get(&[batch, j, i]), normal.get(&[batch, i, j]));
+                assert_eq!(swapped.get([batch, j, i]), normal.get([batch, i, j]));
             }
         }
     }
@@ -401,7 +401,7 @@ fn test_einsum_batched_output_reorder_jbi() {
     for batch in 0..2 {
         for i in 0..2 {
             for j in 0..2 {
-                assert_eq!(reordered.get(&[j, batch, i]), normal.get(&[batch, i, j]));
+                assert_eq!(reordered.get([j, batch, i]), normal.get([batch, i, j]));
             }
         }
     }
@@ -424,13 +424,13 @@ fn test_einsum_multi_with_intermediate_batch() {
             let mut expected = 0.0;
             for j in 0..3 {
                 for k in 0..3 {
-                    expected += t1_rm.get(&[a, i, j]) * t2_rm.get(&[a, j, k]) * t3_rm.get(&[a, k]);
+                    expected += t1_rm.get([a, i, j]) * t2_rm.get([a, j, k]) * t3_rm.get([a, k]);
                 }
             }
             assert!(
-                (result.get(&[a, i]) - expected).abs() < 1e-10,
+                (result.get([a, i]) - expected).abs() < 1e-10,
                 "mismatch at [{a},{i}]: got {} expected {expected}",
-                result.get(&[a, i])
+                result.get([a, i])
             );
         }
     }
@@ -466,13 +466,13 @@ fn test_einsum_batched_multi_contracted_different_order() {
                 let mut expected = 0.0;
                 for k in 0..2 {
                     for l in 0..3 {
-                        expected += a_rm.get(&[bi, k, l, i]) * b_rm.get(&[bi, j, l, k]);
+                        expected += a_rm.get([bi, k, l, i]) * b_rm.get([bi, j, l, k]);
                     }
                 }
                 assert!(
-                    (result.get(&[bi, i, j]) - expected).abs() < 1e-10,
+                    (result.get([bi, i, j]) - expected).abs() < 1e-10,
                     "mismatch at [{bi},{i},{j}]: got {} expected {expected}",
-                    result.get(&[bi, i, j])
+                    result.get([bi, i, j])
                 );
             }
         }
