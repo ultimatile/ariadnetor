@@ -121,8 +121,8 @@ where
             DenseTensor::from_raw_parts(vec![T::Real::one()], vec![1]),
         );
     }
-    // Build the m×m matrix in column-major order to match
-    // `NativeBackend::preferred_order()`. For column-major, the (i, j)
+    // Build the m×m matrix in column-major order to match the host
+    // substrate's `preferred_order()`. For column-major, the (i, j)
     // entry lives at index `i + m * j`.
     let mut data = vec![T::Real::zero(); m * m];
     for i in 0..m {

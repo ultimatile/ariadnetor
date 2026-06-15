@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "Pure Rust tensor library with support for dense, sparse, and block-sparse tensors"
 
+[features]
+# Swaps the `Host` substrate alias to a distinct stateful backend so the
+# host-pinned surface is proven to hold against a non-native substrate.
+# Run via the standalone `cargo make litmus` task, not the default gate.
+pluggability-litmus = []
+
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
 # Default features off so dependents (arnet-linalg etc.) building with

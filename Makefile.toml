@@ -123,3 +123,27 @@ dependencies = ["fmt-check", "clippy", "test"]
 [tasks.dev]
 description = "Fast local loop: fmt + check + test (skips clippy and benches)"
 dependencies = ["fmt", "check", "test"]
+
+# ============================================================================
+# QA tasks (outside the gate)
+# ============================================================================
+
+# Pluggability litmus: rebuild the host-pinned crates with the `Host`
+# substrate aliased to a distinct stateful backend and run their tests, so
+# the call-site-backend design is proven to hold against a non-native
+# substrate. Deliberately NOT a `gate` dependency — the per-diff regression
+# vectors are covered by the pre-commit audits, so this heavier rebuild runs
+# on demand when the host-pinned surface changes or before a PR. The package
+# set and feature flag are the canonical form and must not drift.
+[tasks.litmus]
+description = "Pluggability litmus: build + test the host-pinned crates with the alternate Host substrate (cargo make litmus)"
+command = "cargo"
+args = [
+    "test",
+    "-p", "ariadnetor-tensor",
+    "-p", "ariadnetor-linalg",
+    "-p", "ariadnetor-mps",
+    "-p", "ariadnetor-algorithms",
+    "-p", "ariadnetor",
+    "--features", "pluggability-litmus",
+]

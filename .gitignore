@@ -4,3 +4,6 @@
 
 # Runtime artifacts produced by calibration sweep scripts
 /sweep_*.log
+
+# Python bytecode cache from the pre-commit audit scripts
+__pycache__/

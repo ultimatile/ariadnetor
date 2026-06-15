@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 description = "Matrix Product State / Operator (MPS / MPO) data structures and operations for Ariadnetor"
 
+[features]
+# Passthrough so the litmus `Host`-substrate swap reaches this crate's
+# host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
+pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
+
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }

@@ -13,6 +13,9 @@ description = "Backend-agnostic linear algebra API for Ariadnetor"
 # for the calibration sweep benches that must exercise the naive transpose fallback.
 default = ["native-hptt"]
 native-hptt = ["ariadnetor-native/hptt"]
+# Passthrough so the litmus `Host`-substrate swap reaches this crate's
+# host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
+pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }

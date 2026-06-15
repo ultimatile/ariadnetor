@@ -8,6 +8,9 @@ description = "Tensor-network algorithms (DMRG, TEBD, ...) built on Ariadnetor"
 [features]
 default = []
 arpack = ["dep:arpack", "dep:num-complex"]
+# Passthrough so the litmus `Host`-substrate swap reaches this crate's
+# host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
+pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }

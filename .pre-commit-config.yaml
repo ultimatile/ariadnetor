@@ -23,6 +23,27 @@ repos:
         entry: scripts/check-file-lines.sh
         language: script
         types: [rust]
+      - id: audit-host-twin-delegation
+        name: host-ext delegates to *_with_backend twin
+        description: host_ops methods must delegate to their generic twin, not bake the host
+        entry: scripts/audit-host-twin-delegation.py
+        language: script
+        types: [rust]
+        pass_filenames: false
+      - id: audit-no-order-literal-in-ctor
+        name: no MemoryOrder literal in tensor constructors
+        description: constructor order must come from host_order()/preferred_order()
+        entry: scripts/audit-no-order-literal-in-ctor.py
+        language: script
+        types: [rust]
+        pass_filenames: false
+      - id: audit-no-native-backend-in-src
+        name: no concrete NativeBackend in consumer source
+        description: signatures and host paths must use the Host alias or OpsFor<…>
+        entry: scripts/audit-no-native-backend-in-src.py
+        language: script
+        types: [rust]
+        pass_filenames: false
       - id: protect-default-branch
         name: refuse pushes to default branch
         entry: scripts/protect-default-branch.sh
