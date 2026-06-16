@@ -8,6 +8,8 @@
 use num_complex::Complex;
 use num_traits::{One, Zero};
 
+use crate::backend::DispatchScalar;
+
 mod sealed {
     pub trait Sealed {}
     impl Sealed for f32 {}
@@ -31,6 +33,7 @@ pub trait Scalar:
     + std::ops::Add<Output = Self>
     + std::ops::Mul<Output = Self>
     + std::ops::Mul<Self::Real, Output = Self>
+    + DispatchScalar
 {
     /// The real part type. Always `Scalar + Float` — supports both tensor
     /// element storage and floating-point math (`sqrt`, `exp`, etc.).

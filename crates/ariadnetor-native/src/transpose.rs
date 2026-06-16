@@ -1,41 +1,65 @@
-//! Transpose dispatch: HPTT for supported types, naive fallback otherwise
+//! Transpose kernels: HPTT per concrete type when the `hptt` feature is on,
+//! a naive output-driven kernel otherwise.
+//!
+//! The four `transpose_*` entry points are the per-scalar kernels the
+//! call-site dispatcher (`DispatchScalar::dispatch_op` via the backend's
+//! `ScalarKernels`) routes to once the type is concrete. HPTT and the naive
+//! kernel are mutually exclusive implementations selected at compile time by
+//! the `hptt` feature, so the naive kernel is compiled only when HPTT is absent.
 
+#[cfg(not(feature = "hptt"))]
 use arnet_core::Scalar;
 use arnet_core::backend::ExecPolicy;
 use arnet_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
+#[cfg(not(feature = "hptt"))]
 use rayon::prelude::*;
 
-/// Dispatch transpose to the best available implementation.
-///
-/// With the `hptt` feature: f64/f32/Complex use HPTT, others use naive.
-/// Without the `hptt` feature: all types use naive.
-pub(crate) fn dispatch<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+pub(crate) fn transpose_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
     #[cfg(feature = "hptt")]
     {
-        use std::any::TypeId;
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            let desc_f64 = unsafe { reinterpret_transpose_desc::<T, f64>(desc) };
-            return hptt_f64(desc_f64);
-        }
-        if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_transpose_desc::<T, f32>(desc) };
-            return hptt_f32(desc_f32);
-        }
-        if tid == TypeId::of::<num_complex::Complex<f64>>() {
-            let desc_c64 =
-                unsafe { reinterpret_transpose_desc::<T, num_complex::Complex<f64>>(desc) };
-            return hptt_c64(desc_c64);
-        }
-        if tid == TypeId::of::<num_complex::Complex<f32>>() {
-            let desc_c32 =
-                unsafe { reinterpret_transpose_desc::<T, num_complex::Complex<f32>>(desc) };
-            return hptt_c32(desc_c32);
-        }
+        hptt_f64(desc)
     }
+    #[cfg(not(feature = "hptt"))]
+    {
+        naive(desc)
+    }
+}
 
-    naive(desc)
+pub(crate) fn transpose_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
+    #[cfg(feature = "hptt")]
+    {
+        hptt_f32(desc)
+    }
+    #[cfg(not(feature = "hptt"))]
+    {
+        naive(desc)
+    }
+}
+
+pub(crate) fn transpose_c64(
+    desc: TransposeDescriptor<'_, num_complex::Complex<f64>>,
+) -> Result<(), BackendError> {
+    #[cfg(feature = "hptt")]
+    {
+        hptt_c64(desc)
+    }
+    #[cfg(not(feature = "hptt"))]
+    {
+        naive(desc)
+    }
+}
+
+pub(crate) fn transpose_c32(
+    desc: TransposeDescriptor<'_, num_complex::Complex<f32>>,
+) -> Result<(), BackendError> {
+    #[cfg(feature = "hptt")]
+    {
+        hptt_c32(desc)
+    }
+    #[cfg(not(feature = "hptt"))]
+    {
+        naive(desc)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -65,41 +89,6 @@ fn to_hptt_num_threads(policy: ExecPolicy) -> usize {
             .map(|n| n.get())
             .unwrap_or(1),
         ExecPolicy::Parallel(n) => n,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Generic → concrete type reinterpretation
-// ---------------------------------------------------------------------------
-
-/// Reinterpret `TransposeDescriptor<T>` as `TransposeDescriptor<U>`.
-///
-/// # Safety
-/// Caller must guarantee `T` and `U` have identical size and alignment
-/// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
-#[cfg(feature = "hptt")]
-unsafe fn reinterpret_transpose_desc<'a, T, U>(
-    desc: TransposeDescriptor<'a, T>,
-) -> TransposeDescriptor<'a, U> {
-    let TransposeDescriptor {
-        input,
-        output,
-        shape,
-        perm,
-        order,
-        conj,
-        policy,
-    } = desc;
-    unsafe {
-        TransposeDescriptor {
-            input: std::slice::from_raw_parts(input.as_ptr() as *const U, input.len()),
-            output: std::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut U, output.len()),
-            shape,
-            perm,
-            order,
-            conj,
-            policy,
-        }
     }
 }
 
@@ -178,7 +167,7 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 }
 
 // ---------------------------------------------------------------------------
-// Naive fallback (always available)
+// Naive fallback (compiled when the `hptt` feature is off)
 // ---------------------------------------------------------------------------
 
 /// Naive transpose for any Scalar type.
@@ -193,6 +182,7 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 /// Both paths share `new_to_old_idx` for the per-element index
 /// mapping so `Sequential` and `Parallel(_)` measurements are
 /// comparable when calibrating `ThresholdTable::*.transpose`.
+#[cfg(not(feature = "hptt"))]
 fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
         input,
@@ -252,6 +242,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
 /// caller's thread without Rayon split. Sharing the inner kernel keeps
 /// the Sequential / Parallel comparison fair when calibrating
 /// `ThresholdTable::*.transpose` against the naive baseline.
+#[cfg(not(feature = "hptt"))]
 #[allow(clippy::too_many_arguments)]
 fn naive_sequential<T: Scalar>(
     input: &[T],
@@ -280,6 +271,7 @@ fn naive_sequential<T: Scalar>(
 /// splits work as if `n` workers were available. This mirrors faer's
 /// `Par::rayon(n)` semantics; the global pool's actual width is
 /// unchanged.
+#[cfg(not(feature = "hptt"))]
 #[allow(clippy::too_many_arguments)]
 fn naive_parallel<T: Scalar>(
     input: &[T],
@@ -329,6 +321,7 @@ fn naive_parallel<T: Scalar>(
 /// every output index inline, the parallel path runs it inside
 /// disjoint Rayon chunks. Avoids the per-element `Vec<usize>` that
 /// the previous coordinate helper allocated.
+#[cfg(not(feature = "hptt"))]
 fn new_to_old_idx(
     mut new_idx: usize,
     new_strides: &[usize],
@@ -360,6 +353,7 @@ fn new_to_old_idx(
 }
 
 /// Compute strides for a given shape and memory order.
+#[cfg(not(feature = "hptt"))]
 fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
     let mut strides = vec![1; shape.len()];
     match order {
