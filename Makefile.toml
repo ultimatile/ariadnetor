@@ -61,9 +61,9 @@ command = "cargo"
 args = ["check", "--workspace"]
 
 [tasks.clippy]
-description = "Lint the workspace including all targets (benches, examples, tests)"
+description = "Lint the workspace including all targets (benches, examples, tests); denies warnings. Single clippy-gate definition shared by `gate` and the pre-commit hook."
 command = "cargo"
-args = ["clippy", "--workspace", "--all-targets"]
+args = ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
 
 [tasks.fmt]
 description = "Format the workspace with rustfmt"
