@@ -17,6 +17,7 @@ use num_complex::Complex;
 use num_traits::{Float, NumCast, One, Zero};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use test_utils::helpers::dense_host;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,7 +34,7 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
             *out_i = *out_i + h_data[i + n * j] * vj;
         }
     }
-    DenseTensor::from_raw_parts(out, vec![n])
+    dense_host(out, vec![n])
 }
 
 fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensor<f64> {
@@ -48,7 +49,7 @@ fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensor<f64> {
             data[i + n * j] = 0.5 * (aij + aji);
         }
     }
-    DenseTensor::from_raw_parts(data, vec![n, n])
+    dense_host(data, vec![n, n])
 }
 
 fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>> {
@@ -65,7 +66,7 @@ fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>
             data[i + n * j] = (aij + aji.conj()) * 0.5;
         }
     }
-    DenseTensor::from_raw_parts(data, vec![n, n])
+    dense_host(data, vec![n, n])
 }
 
 fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
@@ -89,7 +90,7 @@ where
         let v: T::Real = NumCast::from(diag_re[i]).unwrap();
         data[i + n * i] = T::from_real_imag(v, real_zero);
     }
-    let h = DenseTensor::from_raw_parts(data, vec![n, n]);
+    let h = dense_host(data, vec![n, n]);
 
     let result = arpack_smallest::<T, _>(
         &|v: &DenseTensor<T>| matvec_cm(&h, n, v),
@@ -186,7 +187,7 @@ fn arpack_diagonal_f64_returns_smallest() {
     for i in 0..n {
         data[i + n * i] = diag[i];
     }
-    let h = DenseTensor::from_raw_parts(data, vec![n, n]);
+    let h = dense_host(data, vec![n, n]);
 
     let result = arpack_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -466,7 +467,7 @@ fn arpack_max_iter_too_small_surfaces_max_iter_reached() {
             data[i + n * (i + 1)] = -1.0;
         }
     }
-    let h = DenseTensor::from_raw_parts(data, vec![n, n]);
+    let h = dense_host(data, vec![n, n]);
 
     let result = arpack_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),

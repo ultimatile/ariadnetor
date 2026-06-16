@@ -20,6 +20,7 @@ use num_complex::Complex;
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use test_utils::helpers::dense_host;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -39,7 +40,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r])
+            dense_host(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
@@ -66,7 +67,7 @@ fn random_mps_center_zero_c64(
                     Complex::new(re, im)
                 })
                 .collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r])
+            dense_host(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
@@ -103,7 +104,7 @@ fn psd_local_mpo_f64(
                 h[s + d * s] += eps;
             }
             hs.push(h.clone());
-            DenseTensor::from_raw_parts(h, vec![1, d, d, 1])
+            dense_host(h, vec![1, d, d, 1])
         })
         .collect();
     (Mpo::from_sites(storages), hs)
@@ -138,7 +139,7 @@ fn psd_local_mpo_c64(n: usize, d: usize, seed: u64) -> (C64Mpo, Vec<C64SiteMatri
                 h[s + d * s] += eps;
             }
             hs.push(h.clone());
-            DenseTensor::from_raw_parts(h, vec![1, d, d, 1])
+            dense_host(h, vec![1, d, d, 1])
         })
         .collect();
     (Mpo::from_sites(storages), hs)
@@ -159,7 +160,7 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
                     m[s + d * t] = 0.5 * (r[s * d + t] + r[t * d + s]);
                 }
             }
-            DenseTensor::from_raw_parts(m, vec![1, d, d, 1])
+            dense_host(m, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(storages)
@@ -167,7 +168,7 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
 
 /// Smallest eigenvalue of a real-symmetric `d×d` matrix; `h` is CM.
 fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
-    let m = DenseTensor::from_raw_parts(h.to_vec(), vec![d, d]);
+    let m = dense_host(h.to_vec(), vec![d, d]);
     let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &m, 1).expect("eigh");
     eigvals
         .data_slice()
@@ -178,7 +179,7 @@ fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
 
 /// Smallest eigenvalue of a complex Hermitian `d×d` matrix (CM, see above).
 fn min_eig_complex_herm(h: &[Complex<f64>], d: usize) -> f64 {
-    let m = DenseTensor::from_raw_parts(h.to_vec(), vec![d, d]);
+    let m = dense_host(h.to_vec(), vec![d, d]);
     let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &m, 1).expect("eigh");
     eigvals
         .data_slice()
@@ -459,11 +460,8 @@ fn t6_length_mismatch_mps_vs_envs() {
 #[test]
 fn t6_too_few_sites() {
     let d = 2;
-    let mps = Mps::from_sites(vec![DenseTensor::from_raw_parts(
-        vec![1.0_f64, 0.0],
-        vec![1, d, 1],
-    )]);
-    let mpo = Mpo::from_sites(vec![DenseTensor::from_raw_parts(
+    let mps = Mps::from_sites(vec![dense_host(vec![1.0_f64, 0.0], vec![1, d, 1])]);
+    let mpo = Mpo::from_sites(vec![dense_host(
         vec![1.0_f64, 0.0, 0.0, 1.0],
         vec![1, d, d, 1],
     )]);

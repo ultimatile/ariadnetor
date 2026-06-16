@@ -16,7 +16,7 @@
 //! slice-in-place variant.
 
 use arnet_core::Scalar;
-use arnet_tensor::{DenseTensor, linear_combine};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, Host, linear_combine};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 
@@ -266,7 +266,8 @@ where
     let solution = T::solve(
         dim,
         &mut |x_slice, y_slice| {
-            let x_dense = DenseTensor::from_raw_parts(x_slice.to_vec(), vec![dim]);
+            let x_dense =
+                DenseTensor::from_data(Host::shared().make_tensor(x_slice.to_vec(), vec![dim]));
             let y_dense = op.apply(&x_dense);
             assert_eq!(
                 y_dense.shape(),
@@ -279,7 +280,8 @@ where
     )?;
 
     let eigenvalue = solution.eigenvalue.re();
-    let mut eigenvector = DenseTensor::from_raw_parts(solution.eigenvector, vec![dim]);
+    let mut eigenvector =
+        DenseTensor::from_data(Host::shared().make_tensor(solution.eigenvector, vec![dim]));
     // ARPACK normalizes its output; pass through `normalize` as a
     // safety belt against precision drift in the down-cast.
     eigenvector.normalize();

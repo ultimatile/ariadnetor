@@ -27,6 +27,7 @@ use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use test_utils::helpers::dense_host;
 
 const D: usize = 2;
 
@@ -71,7 +72,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    DenseTensor::from_raw_parts(data, vec![w_l_dim, D, D, w_r_dim])
+    dense_host(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 /// Spin-1/2 Heisenberg `H = J Σ S_i · S_{i+1}` as a bond-dim-5 MPO.
@@ -130,7 +131,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            DenseTensor::from_raw_parts(data, vec![l, D, r])
+            dense_host(data, vec![l, D, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
@@ -157,7 +158,7 @@ fn psd_local_mpo_f64(n: usize, seed: u64) -> Mpo<DenseStorage<f64>, DenseLayout>
                 }
                 h[s + D * s] += eps;
             }
-            DenseTensor::from_raw_parts(h, vec![1, D, D, 1])
+            dense_host(h, vec![1, D, D, 1])
         })
         .collect();
     Mpo::from_sites(storages)

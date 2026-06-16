@@ -184,7 +184,7 @@ fn make_dense_one<T>() -> Tensor<DenseStorage<T>, DenseLayout>
 where
     T: Scalar,
 {
-    arnet_tensor::DenseTensor::<T>::from_raw_parts(vec![T::one()], vec![1, 1, 1])
+    arnet_tensor::DenseTensor::<T>::ones(vec![1, 1, 1])
 }
 
 // ============================================================================

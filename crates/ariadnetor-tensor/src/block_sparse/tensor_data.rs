@@ -1,6 +1,5 @@
 //! Convenience constructors and joined accessors for `BlockSparseTensorData<T, S>`.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use aligned_vec::{AVec, ConstAlign};
@@ -108,35 +107,6 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
             data.push(rng.random());
         }
         let storage = BlockSparseStorage::from_aligned(data);
-        Self::new(storage, layout)
-    }
-
-    /// Construct from pre-validated raw parts.
-    ///
-    /// Caller is responsible for the invariants enforced by
-    /// [`BlockSparseLayout::new`]: sector conservation per block,
-    /// coord uniqueness, packed offsets without gap or overlap,
-    /// blocks sorted by coordinate. The `TensorData::new` assertion
-    /// will additionally check `data.len() == sum(blocks.size)`.
-    ///
-    /// Internal kernel-output bridge. The joined-surface
-    /// `BlockSparseTensor::from_raw_parts` wraps this with an
-    /// explicit backend; direct callers stay inside `arnet-tensor`.
-    pub(crate) fn from_raw_parts(
-        data: Vec<T>,
-        blocks: Vec<BlockMeta>,
-        block_index: HashMap<BlockCoord, usize>,
-        indices: Vec<QNIndex<S>>,
-        flux: S,
-        shape: Vec<usize>,
-        order: MemoryOrder,
-    ) -> Self
-    where
-        T: Clone,
-    {
-        let layout =
-            BlockSparseLayout::from_parts(blocks, block_index, indices, flux, shape, order);
-        let storage = BlockSparseStorage::new(data);
         Self::new(storage, layout)
     }
 

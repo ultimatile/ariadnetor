@@ -8,13 +8,14 @@ use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
 use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use test_utils::helpers::dense_host;
 
 fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let sites: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut data = vec![0.0_f64; d];
             data[0] = 1.0;
-            DenseTensor::from_raw_parts(data, vec![1, d, 1])
+            dense_host(data, vec![1, d, 1])
         })
         .collect();
     Mps::from_sites(sites)
@@ -27,7 +28,7 @@ fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            DenseTensor::from_raw_parts(data, vec![1, d, d, 1])
+            dense_host(data, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(sites)

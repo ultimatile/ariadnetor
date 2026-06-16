@@ -2,7 +2,7 @@
 //! of a Hermitian linear operator, with full reorthogonalization.
 
 use arnet_core::Scalar;
-use arnet_tensor::{DenseTensor, linear_combine};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, Host, linear_combine};
 use num_traits::{Float, One, Zero};
 use rand::SeedableRng;
 use rand::rngs::{StdRng, SysRng};
@@ -147,7 +147,7 @@ where
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
     let mut converged_z: DenseTensor<T::Real> =
-        DenseTensor::from_raw_parts(vec![T::Real::one()], vec![1]);
+        DenseTensor::from_data(Host::shared().make_tensor(vec![T::Real::one()], vec![1]));
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -232,7 +232,9 @@ where
         }
         let inv = T::Real::one() / beta;
         let v_next_data: Vec<T> = w.data_slice().iter().map(|&x| x.scale_real(inv)).collect();
-        basis.push(DenseTensor::from_raw_parts(v_next_data, vec![dim]));
+        basis.push(DenseTensor::from_data(
+            Host::shared().make_tensor(v_next_data, vec![dim]),
+        ));
         betas.push(beta);
     }
 

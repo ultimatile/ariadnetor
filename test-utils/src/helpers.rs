@@ -5,8 +5,21 @@
 //! Dense rank-4 tensors in the global shape.
 
 use arnet_tensor::MemoryOrder;
-use arnet_tensor::{BlockSparseTensor, DenseTensor, Sector, U1Sector};
+use arnet_tensor::{
+    BlockSparseTensor, ComputeBackendTensorExt, DenseTensor, Host, Sector, U1Sector,
+};
 use num_complex::Complex;
+
+/// Build a host-resident `DenseTensor` from a flat buffer already laid
+/// out in the host substrate's preferred order, tagging that order.
+///
+/// Shared fixture constructor for tests that previously reached for the
+/// removed `DenseTensor::from_raw_parts`; the `_host` name discloses the
+/// order the buffer is read under. Routes through the Mid-layer
+/// `make_tensor` surface rather than a raw constructor.
+pub fn dense_host<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
+    DenseTensor::from_data(Host::shared().make_tensor(data, shape))
+}
 
 pub fn densify_bsp_f64(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
     densify_bsp_generic(bsp, 0.0)
@@ -76,7 +89,7 @@ fn densify_bsp_generic<T: arnet_core::Scalar>(
             }
         }
     }
-    DenseTensor::from_raw_parts(out, global_dims)
+    dense_host(out, global_dims)
 }
 
 pub fn template_block_offsets(template: &BlockSparseTensor<f64, U1Sector>) -> Vec<usize> {
@@ -227,5 +240,5 @@ pub fn build_dense_psi_from_flat(
             }
         }
     }
-    DenseTensor::from_raw_parts(cm_data, global_dims)
+    dense_host(cm_data, global_dims)
 }
