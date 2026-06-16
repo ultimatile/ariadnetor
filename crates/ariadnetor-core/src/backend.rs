@@ -13,6 +13,7 @@
 //! given backend interprets `Parallel(n)`.
 
 use crate::scalar::Scalar;
+use num_complex::Complex;
 
 /// Device type for backend selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,6 +182,110 @@ pub struct SolveDescriptor<'a, T> {
     pub x: &'a mut [T],
     pub order: MemoryOrder,
     pub policy: ExecPolicy,
+}
+
+/// One generic-descriptor backend operation, tagged by which op it is.
+///
+/// This is the unit that [`DispatchScalar::dispatch_op`] carries from a generic
+/// `T: Scalar` context down to a concrete per-type kernel. Bundling every op
+/// into one enum lets a backend expose a single typed entry point per scalar
+/// (see [`ScalarKernels`]) instead of one per `(op, type)` pair, which is what
+/// makes type-directed dispatch possible without reinterpreting a
+/// `Descriptor<T>` into a `Descriptor<concrete>` through `unsafe`.
+pub enum OpDesc<'a, T: Scalar> {
+    Gemm(GemmDescriptor<'a, T>),
+    Svd(SvdDescriptor<'a, T>),
+    Qr(QrDescriptor<'a, T>),
+    Lq(LqDescriptor<'a, T>),
+    Eigh(EighDescriptor<'a, T>),
+    Eig(EigDescriptor<'a, T>),
+    Solve(SolveDescriptor<'a, T>),
+    Transpose(TransposeDescriptor<'a, T>),
+}
+
+/// A backend's concrete per-scalar kernels, one entry point per supported type.
+///
+/// [`DispatchScalar::dispatch_op`] resolves a generic `OpDesc<'_, T>` to exactly
+/// one of these methods, so inside each method the scalar is concrete and the op
+/// match dispatches to a monomorphic kernel directly. A backend implements this
+/// on a local kernel-set type; the four methods mirror the four sealed [`Scalar`]
+/// types.
+pub trait ScalarKernels {
+    fn run_f64(&self, op: OpDesc<'_, f64>) -> Result<(), BackendError>;
+    fn run_f32(&self, op: OpDesc<'_, f32>) -> Result<(), BackendError>;
+    fn run_c64(&self, op: OpDesc<'_, Complex<f64>>) -> Result<(), BackendError>;
+    fn run_c32(&self, op: OpDesc<'_, Complex<f32>>) -> Result<(), BackendError>;
+}
+
+/// Type-directed dispatch hook: reach a concrete per-type kernel from a generic
+/// `T: Scalar`.
+///
+/// A backend method bounded only by `T: Scalar` cannot name a per-type kernel
+/// directly. This supertrait of [`Scalar`] lets it call `T::dispatch_op(...)`,
+/// which forwards to the matching [`ScalarKernels`] method where the scalar is
+/// concrete — a type-level branch in place of an `unsafe`
+/// `Descriptor<T>` -> `Descriptor<concrete>` reinterpretation. It is dispatch
+/// plumbing between [`ComputeBackend`] and a backend's [`ScalarKernels`], not a
+/// user entry point.
+///
+/// It is kept separate from [`Scalar`] so that `Scalar`'s own method list carries
+/// no backend descriptor / error / kernel types; the supertrait bound still makes
+/// every `Scalar` a `DispatchScalar`. The `where Self: Scalar` bound (rather than
+/// `trait DispatchScalar: Scalar`) avoids a cycle with that supertrait while still
+/// admitting `OpDesc<'_, Self>`, which requires `Self: Scalar`. Sealed: only the
+/// four built-in scalar types implement it.
+pub trait DispatchScalar: sealed::Sealed {
+    fn dispatch_op<K: ScalarKernels>(kernels: &K, op: OpDesc<'_, Self>) -> Result<(), BackendError>
+    where
+        Self: Scalar;
+}
+
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for f32 {}
+    impl Sealed for f64 {}
+    impl Sealed for num_complex::Complex<f32> {}
+    impl Sealed for num_complex::Complex<f64> {}
+}
+
+impl DispatchScalar for f64 {
+    #[inline]
+    fn dispatch_op<K: ScalarKernels>(
+        kernels: &K,
+        op: OpDesc<'_, Self>,
+    ) -> Result<(), BackendError> {
+        kernels.run_f64(op)
+    }
+}
+
+impl DispatchScalar for f32 {
+    #[inline]
+    fn dispatch_op<K: ScalarKernels>(
+        kernels: &K,
+        op: OpDesc<'_, Self>,
+    ) -> Result<(), BackendError> {
+        kernels.run_f32(op)
+    }
+}
+
+impl DispatchScalar for Complex<f64> {
+    #[inline]
+    fn dispatch_op<K: ScalarKernels>(
+        kernels: &K,
+        op: OpDesc<'_, Self>,
+    ) -> Result<(), BackendError> {
+        kernels.run_c64(op)
+    }
+}
+
+impl DispatchScalar for Complex<f32> {
+    #[inline]
+    fn dispatch_op<K: ScalarKernels>(
+        kernels: &K,
+        op: OpDesc<'_, Self>,
+    ) -> Result<(), BackendError> {
+        kernels.run_c32(op)
+    }
 }
 
 /// Pluggable compute backend trait

@@ -3,7 +3,7 @@
 //! Provides [`NativeBackend`] implementing `ComputeBackend` via:
 //! - **GEMM**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **SVD/QR/LQ/EIGH**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
-//! - **Transpose**: HPTT when available (f64, f32, Complex), naive fallback
+//! - **Transpose**: HPTT (f64, f32, Complex) when the `hptt` feature is on, a naive kernel otherwise
 
 mod eig;
 mod eigh;
@@ -20,8 +20,8 @@ use std::sync::{Arc, OnceLock};
 use arnet_core::Scalar;
 use arnet_core::backend::{
     BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
-    GemmDescriptor, LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor,
-    TransposeDescriptor,
+    GemmDescriptor, LqDescriptor, MemoryOrder, OpDesc, QrDescriptor, ScalarKernels,
+    SolveDescriptor, SvdDescriptor, TransposeDescriptor,
 };
 use num_complex::Complex;
 
@@ -123,38 +123,15 @@ impl ComputeBackend for NativeBackend {
     ///
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
     fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError> {
-        use std::any::TypeId;
-
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            // Safety: T is f64, verified by TypeId. Reinterpret generic fields
-            // to concrete f64 via pointer casts; layout is identical.
-            let desc_f64 = unsafe { reinterpret_gemm_desc::<T, f64>(desc) };
-            gemm::gemm_f64(desc_f64)
-        } else if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_gemm_desc::<T, f32>(desc) };
-            gemm::gemm_f32(desc_f32)
-        } else if tid == TypeId::of::<Complex<f64>>() {
-            // Safety: T is Complex<f64>, verified by TypeId.
-            let desc_c64 = unsafe { reinterpret_gemm_desc::<T, Complex<f64>>(desc) };
-            gemm::gemm_c64(desc_c64)
-        } else if tid == TypeId::of::<Complex<f32>>() {
-            let desc_c32 = unsafe { reinterpret_gemm_desc::<T, Complex<f32>>(desc) };
-            gemm::gemm_c32(desc_c32)
-        } else {
-            Err(BackendError::NotSupported(
-                "GEMM is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
-            ))
-        }
+        T::dispatch_op(&NativeKernels, OpDesc::Gemm(desc))
     }
 
     /// Transpose tensor axes according to permutation.
     ///
     /// Uses HPTT for f64/f32/Complex when the `hptt` feature is enabled,
-    /// with a naive fallback for all types.
+    /// otherwise a naive output-driven kernel.
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
-        transpose::dispatch(desc)
+        T::dispatch_op(&NativeKernels, OpDesc::Transpose(desc))
     }
 
     /// Thin SVD via faer: A = U * diag(S) * Vt
@@ -164,31 +141,8 @@ impl ComputeBackend for NativeBackend {
     /// faer's SVD is column-major only; descriptors with any other
     /// order are rejected with `BackendError::InvalidArgument`.
     fn svd<T: Scalar>(&self, desc: SvdDescriptor<'_, T>) -> Result<(), BackendError> {
-        use std::any::TypeId;
-
         require_column_major("svd", desc.order)?;
-
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            // Safety: T is f64, verified by TypeId.
-            let desc_f64 = unsafe { reinterpret_svd_desc::<T, f64>(desc) };
-            svd::svd_f64(desc_f64)
-        } else if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_svd_desc::<T, f32>(desc) };
-            svd::svd_f32(desc_f32)
-        } else if tid == TypeId::of::<Complex<f64>>() {
-            // Safety: T is Complex<f64>, verified by TypeId.
-            let desc_c64 = unsafe { reinterpret_svd_desc::<T, Complex<f64>>(desc) };
-            svd::svd_c64(desc_c64)
-        } else if tid == TypeId::of::<Complex<f32>>() {
-            let desc_c32 = unsafe { reinterpret_svd_desc::<T, Complex<f32>>(desc) };
-            svd::svd_c32(desc_c32)
-        } else {
-            Err(BackendError::NotSupported(
-                "SVD is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
-            ))
-        }
+        T::dispatch_op(&NativeKernels, OpDesc::Svd(desc))
     }
 
     /// Thin QR via faer: A = Q * R
@@ -197,31 +151,8 @@ impl ComputeBackend for NativeBackend {
     /// faer's QR is column-major only; descriptors with any other
     /// order are rejected with `BackendError::InvalidArgument`.
     fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
-        use std::any::TypeId;
-
         require_column_major("qr", desc.order)?;
-
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            // Safety: T is f64, verified by TypeId.
-            let desc_f64 = unsafe { reinterpret_qr_desc::<T, f64>(desc) };
-            qr::qr_f64(desc_f64)
-        } else if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_qr_desc::<T, f32>(desc) };
-            qr::qr_f32(desc_f32)
-        } else if tid == TypeId::of::<Complex<f64>>() {
-            // Safety: T is Complex<f64>, verified by TypeId.
-            let desc_c64 = unsafe { reinterpret_qr_desc::<T, Complex<f64>>(desc) };
-            qr::qr_c64(desc_c64)
-        } else if tid == TypeId::of::<Complex<f32>>() {
-            let desc_c32 = unsafe { reinterpret_qr_desc::<T, Complex<f32>>(desc) };
-            qr::qr_c32(desc_c32)
-        } else {
-            Err(BackendError::NotSupported(
-                "QR is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
-            ))
-        }
+        T::dispatch_op(&NativeKernels, OpDesc::Qr(desc))
     }
 
     /// Thin LQ via faer: A = L * Q
@@ -231,31 +162,8 @@ impl ComputeBackend for NativeBackend {
     /// faer's QR (and hence this LQ) is column-major only; descriptors
     /// with any other order are rejected with `BackendError::InvalidArgument`.
     fn lq<T: Scalar>(&self, desc: LqDescriptor<'_, T>) -> Result<(), BackendError> {
-        use std::any::TypeId;
-
         require_column_major("lq", desc.order)?;
-
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            // Safety: T is f64, verified by TypeId.
-            let desc_f64 = unsafe { reinterpret_lq_desc::<T, f64>(desc) };
-            lq::lq_f64(desc_f64)
-        } else if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_lq_desc::<T, f32>(desc) };
-            lq::lq_f32(desc_f32)
-        } else if tid == TypeId::of::<Complex<f64>>() {
-            // Safety: T is Complex<f64>, verified by TypeId.
-            let desc_c64 = unsafe { reinterpret_lq_desc::<T, Complex<f64>>(desc) };
-            lq::lq_c64(desc_c64)
-        } else if tid == TypeId::of::<Complex<f32>>() {
-            let desc_c32 = unsafe { reinterpret_lq_desc::<T, Complex<f32>>(desc) };
-            lq::lq_c32(desc_c32)
-        } else {
-            Err(BackendError::NotSupported(
-                "LQ is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
-            ))
-        }
+        T::dispatch_op(&NativeKernels, OpDesc::Lq(desc))
     }
 
     /// Self-adjoint eigenvalue decomposition via faer
@@ -264,29 +172,8 @@ impl ComputeBackend for NativeBackend {
     /// faer's eigendecomposition is column-major only; descriptors with
     /// any other order are rejected with `BackendError::InvalidArgument`.
     fn eigh<T: Scalar>(&self, desc: EighDescriptor<'_, T>) -> Result<(), BackendError> {
-        use std::any::TypeId;
-
         require_column_major("eigh", desc.order)?;
-
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            let desc_f64 = unsafe { reinterpret_eigh_desc::<T, f64>(desc) };
-            eigh::eigh_f64(desc_f64)
-        } else if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_eigh_desc::<T, f32>(desc) };
-            eigh::eigh_f32(desc_f32)
-        } else if tid == TypeId::of::<Complex<f64>>() {
-            let desc_c64 = unsafe { reinterpret_eigh_desc::<T, Complex<f64>>(desc) };
-            eigh::eigh_c64(desc_c64)
-        } else if tid == TypeId::of::<Complex<f32>>() {
-            let desc_c32 = unsafe { reinterpret_eigh_desc::<T, Complex<f32>>(desc) };
-            eigh::eigh_c32(desc_c32)
-        } else {
-            Err(BackendError::NotSupported(
-                "eigh is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
-            ))
-        }
+        T::dispatch_op(&NativeKernels, OpDesc::Eigh(desc))
     }
 
     /// General eigenvalue decomposition via faer
@@ -295,29 +182,8 @@ impl ComputeBackend for NativeBackend {
     /// faer's eigendecomposition is column-major only; descriptors with
     /// any other order are rejected with `BackendError::InvalidArgument`.
     fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
-        use std::any::TypeId;
-
         require_column_major("eig", desc.order)?;
-
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            let desc_f64 = unsafe { reinterpret_eig_desc::<T, f64>(desc) };
-            eig::eig_f64(desc_f64)
-        } else if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_eig_desc::<T, f32>(desc) };
-            eig::eig_f32(desc_f32)
-        } else if tid == TypeId::of::<Complex<f64>>() {
-            let desc_c64 = unsafe { reinterpret_eig_desc::<T, Complex<f64>>(desc) };
-            eig::eig_c64(desc_c64)
-        } else if tid == TypeId::of::<Complex<f32>>() {
-            let desc_c32 = unsafe { reinterpret_eig_desc::<T, Complex<f32>>(desc) };
-            eig::eig_c32(desc_c32)
-        } else {
-            Err(BackendError::NotSupported(
-                "eig is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
-            ))
-        }
+        T::dispatch_op(&NativeKernels, OpDesc::Eig(desc))
     }
 
     /// Linear solve via faer LU decomposition with partial pivoting
@@ -326,29 +192,8 @@ impl ComputeBackend for NativeBackend {
     /// faer's LU is column-major only; descriptors with any other
     /// order are rejected with `BackendError::InvalidArgument`.
     fn solve<T: Scalar>(&self, desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
-        use std::any::TypeId;
-
         require_column_major("solve", desc.order)?;
-
-        let tid = TypeId::of::<T>();
-
-        if tid == TypeId::of::<f64>() {
-            let desc_f64 = unsafe { reinterpret_solve_desc::<T, f64>(desc) };
-            solve::solve_f64(desc_f64)
-        } else if tid == TypeId::of::<f32>() {
-            let desc_f32 = unsafe { reinterpret_solve_desc::<T, f32>(desc) };
-            solve::solve_f32(desc_f32)
-        } else if tid == TypeId::of::<Complex<f64>>() {
-            let desc_c64 = unsafe { reinterpret_solve_desc::<T, Complex<f64>>(desc) };
-            solve::solve_c64(desc_c64)
-        } else if tid == TypeId::of::<Complex<f32>>() {
-            let desc_c32 = unsafe { reinterpret_solve_desc::<T, Complex<f32>>(desc) };
-            solve::solve_c32(desc_c32)
-        } else {
-            Err(BackendError::NotSupported(
-                "solve is only supported for f64, f32, Complex<f64>, Complex<f32>".into(),
-            ))
-        }
+        T::dispatch_op(&NativeKernels, OpDesc::Solve(desc))
     }
 
     fn par_for_svd(&self, m: usize, n: usize) -> ExecPolicy {
@@ -391,191 +236,65 @@ impl ComputeBackend for NativeBackend {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Generic -> concrete type reinterpretation
-//
-// The `reinterpret_*_desc` helpers below cast a `XxxDescriptor<T>` to
-// `XxxDescriptor<U>` so the per-type kernels can be invoked from the
-// generic trait method. Each helper's safety contract is the same:
-//
-// # Safety (applies to every helper in this section)
-// Caller must guarantee `T` and `U` have identical size and alignment
-// (typically verified via `TypeId::of::<T>() == TypeId::of::<U>()`).
-// For descriptors carrying `T::Real` (Svd, Eigh) or `T::Complex` (Eig),
-// the same constraint applies to the associated type.
-// ---------------------------------------------------------------------------
+/// faer / HPTT kernel set the call-site dispatcher routes to.
+///
+/// `DispatchScalar::dispatch_op` resolves a generic `OpDesc<'_, T>` to one of
+/// these four methods, where the scalar is concrete; each method then matches the op
+/// and calls the corresponding monomorphic kernel directly. This is what lets
+/// the generic `ComputeBackend` methods reach the per-type kernels without an
+/// `unsafe` `Descriptor<T>` -> `Descriptor<concrete>` reinterpretation.
+struct NativeKernels;
 
-unsafe fn reinterpret_gemm_desc<'a, T, U>(desc: GemmDescriptor<'a, T>) -> GemmDescriptor<'a, U> {
-    let GemmDescriptor {
-        m,
-        n,
-        k,
-        alpha,
-        a,
-        b,
-        beta,
-        c,
-        trans_a,
-        trans_b,
-        order,
-        policy,
-    } = desc;
-    unsafe {
-        GemmDescriptor {
-            m,
-            n,
-            k,
-            alpha: std::ptr::read(&alpha as *const T as *const U),
-            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
-            b: std::slice::from_raw_parts(b.as_ptr() as *const U, b.len()),
-            beta: std::ptr::read(&beta as *const T as *const U),
-            c: std::slice::from_raw_parts_mut(c.as_mut_ptr() as *mut U, c.len()),
-            trans_a,
-            trans_b,
-            order,
-            policy,
+impl ScalarKernels for NativeKernels {
+    fn run_f64(&self, op: OpDesc<'_, f64>) -> Result<(), BackendError> {
+        match op {
+            OpDesc::Gemm(d) => gemm::gemm_f64(d),
+            OpDesc::Svd(d) => svd::svd_f64(d),
+            OpDesc::Qr(d) => qr::qr_f64(d),
+            OpDesc::Lq(d) => lq::lq_f64(d),
+            OpDesc::Eigh(d) => eigh::eigh_f64(d),
+            OpDesc::Eig(d) => eig::eig_f64(d),
+            OpDesc::Solve(d) => solve::solve_f64(d),
+            OpDesc::Transpose(d) => transpose::transpose_f64(d),
         }
     }
-}
 
-unsafe fn reinterpret_svd_desc<'a, T: Scalar, U: Scalar>(
-    desc: SvdDescriptor<'a, T>,
-) -> SvdDescriptor<'a, U> {
-    let SvdDescriptor {
-        m,
-        n,
-        a,
-        u,
-        s,
-        vt,
-        order,
-        policy,
-    } = desc;
-    unsafe {
-        SvdDescriptor {
-            m,
-            n,
-            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
-            u: std::slice::from_raw_parts_mut(u.as_mut_ptr() as *mut U, u.len()),
-            s: std::slice::from_raw_parts_mut(s.as_mut_ptr() as *mut U::Real, s.len()),
-            vt: std::slice::from_raw_parts_mut(vt.as_mut_ptr() as *mut U, vt.len()),
-            order,
-            policy,
+    fn run_f32(&self, op: OpDesc<'_, f32>) -> Result<(), BackendError> {
+        match op {
+            OpDesc::Gemm(d) => gemm::gemm_f32(d),
+            OpDesc::Svd(d) => svd::svd_f32(d),
+            OpDesc::Qr(d) => qr::qr_f32(d),
+            OpDesc::Lq(d) => lq::lq_f32(d),
+            OpDesc::Eigh(d) => eigh::eigh_f32(d),
+            OpDesc::Eig(d) => eig::eig_f32(d),
+            OpDesc::Solve(d) => solve::solve_f32(d),
+            OpDesc::Transpose(d) => transpose::transpose_f32(d),
         }
     }
-}
 
-unsafe fn reinterpret_qr_desc<'a, T, U>(desc: QrDescriptor<'a, T>) -> QrDescriptor<'a, U> {
-    let QrDescriptor {
-        m,
-        n,
-        a,
-        q,
-        r,
-        order,
-        policy,
-    } = desc;
-    unsafe {
-        QrDescriptor {
-            m,
-            n,
-            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
-            q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
-            r: std::slice::from_raw_parts_mut(r.as_mut_ptr() as *mut U, r.len()),
-            order,
-            policy,
+    fn run_c64(&self, op: OpDesc<'_, Complex<f64>>) -> Result<(), BackendError> {
+        match op {
+            OpDesc::Gemm(d) => gemm::gemm_c64(d),
+            OpDesc::Svd(d) => svd::svd_c64(d),
+            OpDesc::Qr(d) => qr::qr_c64(d),
+            OpDesc::Lq(d) => lq::lq_c64(d),
+            OpDesc::Eigh(d) => eigh::eigh_c64(d),
+            OpDesc::Eig(d) => eig::eig_c64(d),
+            OpDesc::Solve(d) => solve::solve_c64(d),
+            OpDesc::Transpose(d) => transpose::transpose_c64(d),
         }
     }
-}
 
-unsafe fn reinterpret_lq_desc<'a, T, U>(desc: LqDescriptor<'a, T>) -> LqDescriptor<'a, U> {
-    let LqDescriptor {
-        m,
-        n,
-        a,
-        l,
-        q,
-        order,
-        policy,
-    } = desc;
-    unsafe {
-        LqDescriptor {
-            m,
-            n,
-            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
-            l: std::slice::from_raw_parts_mut(l.as_mut_ptr() as *mut U, l.len()),
-            q: std::slice::from_raw_parts_mut(q.as_mut_ptr() as *mut U, q.len()),
-            order,
-            policy,
-        }
-    }
-}
-
-unsafe fn reinterpret_eigh_desc<'a, T: Scalar, U: Scalar>(
-    desc: EighDescriptor<'a, T>,
-) -> EighDescriptor<'a, U> {
-    let EighDescriptor {
-        n,
-        a,
-        w,
-        v,
-        order,
-        policy,
-    } = desc;
-    unsafe {
-        EighDescriptor {
-            n,
-            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
-            w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Real, w.len()),
-            v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U, v.len()),
-            order,
-            policy,
-        }
-    }
-}
-
-unsafe fn reinterpret_eig_desc<'a, T: Scalar, U: Scalar>(
-    desc: EigDescriptor<'a, T>,
-) -> EigDescriptor<'a, U> {
-    let EigDescriptor {
-        n,
-        a,
-        w,
-        v,
-        order,
-        policy,
-    } = desc;
-    unsafe {
-        EigDescriptor {
-            n,
-            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
-            w: std::slice::from_raw_parts_mut(w.as_mut_ptr() as *mut U::Complex, w.len()),
-            v: std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut U::Complex, v.len()),
-            order,
-            policy,
-        }
-    }
-}
-
-unsafe fn reinterpret_solve_desc<'a, T, U>(desc: SolveDescriptor<'a, T>) -> SolveDescriptor<'a, U> {
-    let SolveDescriptor {
-        n,
-        nrhs,
-        a,
-        b,
-        x,
-        order,
-        policy,
-    } = desc;
-    unsafe {
-        SolveDescriptor {
-            n,
-            nrhs,
-            a: std::slice::from_raw_parts(a.as_ptr() as *const U, a.len()),
-            b: std::slice::from_raw_parts(b.as_ptr() as *const U, b.len()),
-            x: std::slice::from_raw_parts_mut(x.as_mut_ptr() as *mut U, x.len()),
-            order,
-            policy,
+    fn run_c32(&self, op: OpDesc<'_, Complex<f32>>) -> Result<(), BackendError> {
+        match op {
+            OpDesc::Gemm(d) => gemm::gemm_c32(d),
+            OpDesc::Svd(d) => svd::svd_c32(d),
+            OpDesc::Qr(d) => qr::qr_c32(d),
+            OpDesc::Lq(d) => lq::lq_c32(d),
+            OpDesc::Eigh(d) => eigh::eigh_c32(d),
+            OpDesc::Eig(d) => eig::eig_c32(d),
+            OpDesc::Solve(d) => solve::solve_c32(d),
+            OpDesc::Transpose(d) => transpose::transpose_c32(d),
         }
     }
 }
