@@ -44,12 +44,12 @@ pub use arnet_native::NativeBackend;
 
 /// Extension trait for backend-aware tensor construction.
 ///
-/// Provides tensor constructors on any `ComputeBackend` whose `order()`
-/// matches the backend's `preferred_order()`, so downstream linalg
-/// operations driven by that backend find the storage already in the
-/// layout they expect. Most constructors return the Mid-layer
-/// `DenseTensorData<T>` for kernel-output paths; `dense` returns the
-/// wrapped `DenseTensor<T>` for the input-fabrication case.
+/// Provides tensor constructors on any `ComputeBackend`. The constructed
+/// tensors have `order()` matching the backend's `preferred_order()`, so
+/// downstream linalg operations driven by that backend find the storage
+/// already in the layout they expect. Most constructors return the
+/// Mid-layer `DenseTensorData<T>` for kernel-output paths; `dense`
+/// returns the wrapped `DenseTensor<T>` for the input-fabrication case.
 pub trait ComputeBackendTensorExt: ComputeBackend {
     /// Construct a `DenseTensorData` from data in this backend's
     /// preferred memory order.
@@ -63,6 +63,10 @@ pub trait ComputeBackendTensorExt: ComputeBackend {
 
     /// Construct a `DenseTensor` from data in this backend's preferred
     /// memory order.
+    ///
+    /// The caller must arrange `data` in this backend's
+    /// `preferred_order()`. The resulting tensor has
+    /// `order() == self.preferred_order()`.
     ///
     /// One-call entry for fabricating an input tensor from flat parts:
     /// fuses [`make_tensor`](Self::make_tensor) — which yields the
