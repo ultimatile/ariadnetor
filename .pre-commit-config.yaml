@@ -12,8 +12,8 @@ repos:
         pass_filenames: false
       - id: cargo-clippy
         name: cargo clippy
-        description: Lint Rust code with clippy (denies warnings; covers all targets including tests)
-        entry: cargo clippy --workspace --all-targets -- -D warnings
+        description: Lint Rust code via the shared `cargo make clippy` gate (denies warnings; covers all targets including tests)
+        entry: cargo make clippy
         language: system
         types: [rust]
         pass_filenames: false
