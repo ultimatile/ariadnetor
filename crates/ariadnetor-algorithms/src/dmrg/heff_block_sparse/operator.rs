@@ -266,7 +266,7 @@ where
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
         // 1D output is layout-invariant and host-resident, matching the
         // Krylov family's 1-D scratch space.
-        DenseTensor::from_data(self.backend.make_tensor(flat, vec![self.dim]))
+        self.backend.dense(flat, vec![self.dim])
     }
 }
 

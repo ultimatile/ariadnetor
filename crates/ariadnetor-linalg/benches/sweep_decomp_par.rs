@@ -41,7 +41,7 @@ fn random_symmetric(n: usize) -> DenseTensor<f64> {
             out[i * n + j] = src[i * n + j] + src[j * n + i];
         }
     }
-    DenseTensor::from_data(Host::shared().make_tensor(out, vec![n, n]))
+    Host::shared().dense(out, vec![n, n])
 }
 
 fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {

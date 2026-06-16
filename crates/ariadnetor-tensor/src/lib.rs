@@ -44,10 +44,12 @@ pub use arnet_native::NativeBackend;
 
 /// Extension trait for backend-aware tensor construction.
 ///
-/// Provides tensor constructors on any `ComputeBackend` that produce
-/// `DenseTensorData<T>` whose `order()` matches the backend's
-/// `preferred_order()`, so downstream linalg operations driven by that
-/// backend find the storage already in the layout they expect.
+/// Provides tensor constructors on any `ComputeBackend`. The constructed
+/// tensors have `order()` matching the backend's `preferred_order()`, so
+/// downstream linalg operations driven by that backend find the storage
+/// already in the layout they expect. Most constructors return the
+/// Mid-layer `DenseTensorData<T>` for kernel-output paths; `dense`
+/// returns the wrapped `DenseTensor<T>` for the input-fabrication case.
 pub trait ComputeBackendTensorExt: ComputeBackend {
     /// Construct a `DenseTensorData` from data in this backend's
     /// preferred memory order.
@@ -57,6 +59,23 @@ pub trait ComputeBackendTensorExt: ComputeBackend {
     /// `order() == self.preferred_order()`.
     fn make_tensor<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> DenseTensorData<T> {
         DenseTensorData::from_raw_parts(data, shape, self.preferred_order())
+    }
+
+    /// Construct a `DenseTensor` from data in this backend's preferred
+    /// memory order.
+    ///
+    /// The caller must arrange `data` in this backend's
+    /// `preferred_order()`. The resulting tensor has
+    /// `order() == self.preferred_order()`.
+    ///
+    /// One-call entry for fabricating an input tensor from flat parts:
+    /// fuses [`make_tensor`](Self::make_tensor) — which yields the
+    /// Mid-layer `DenseTensorData`, kept for kernel-output paths — with
+    /// the `DenseTensor` wrap, so a caller that just wants a tensor need
+    /// not reach across the Data layer. The backend stays explicit at
+    /// the call site, so this is not a host-hardcoded constructor.
+    fn dense<T: Clone>(&self, data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
+        DenseTensor::from_data(self.make_tensor(data, shape))
     }
 
     /// Create a zero-filled tensor whose `order()` matches this backend.

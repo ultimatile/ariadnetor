@@ -9,11 +9,9 @@
 
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_mps::{Mpo, Mps, TensorChain};
-use test_utils::helpers::dense_host;
-
 use arnet_tensor::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
-    DenseStorage, DenseTensor, Direction, QNIndex, Sector, U1Sector,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
+    DenseLayout, DenseStorage, DenseTensor, Direction, Host, QNIndex, Sector, U1Sector,
 };
 
 /// Run `DmrgEnvs::build` and assert it returns an error. Equivalent to
@@ -98,7 +96,7 @@ fn densify_bsp(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
     // The scatter loop above writes `out` directly in column-major order
     // (NativeBackend's preferred order), so the buffer is already in the
     // order every Dense tensor flowing through `contract` must carry.
-    dense_host(out, global_dims)
+    Host::shared().dense(out, global_dims)
 }
 
 // ---------------------------------------------------------------------------

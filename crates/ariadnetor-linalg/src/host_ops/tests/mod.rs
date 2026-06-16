@@ -24,7 +24,7 @@ use arnet_tensor::{ComputeBackendTensorExt, Host};
 use crate::*;
 
 fn tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
-    DenseTensor::from_data(Host::shared().make_tensor(data, shape))
+    Host::shared().dense(data, shape)
 }
 
 fn sym2() -> DenseTensor<f64> {
@@ -302,9 +302,8 @@ fn expm_antihermitian_matches_twin() {
     // expm_antihermitian requires a complex element type; a real
     // anti-symmetric matrix embedded in the complex field is anti-Hermitian.
     let z = |re: f64| Complex::new(re, 0.0);
-    let t: DenseTensor<Complex<f64>> = DenseTensor::from_data(
-        Host::shared().make_tensor(vec![z(0.0), z(1.0), z(-1.0), z(0.0)], vec![2, 2]),
-    );
+    let t: DenseTensor<Complex<f64>> =
+        Host::shared().dense(vec![z(0.0), z(1.0), z(-1.0), z(0.0)], vec![2, 2]);
     let out = t.expm_antihermitian(1).unwrap();
     let r = expm_antihermitian_with_backend(&host, &t, 1).unwrap();
     for (x, y) in out.data().data().iter().zip(r.data().data()) {

@@ -19,8 +19,8 @@
 
 #![cfg(feature = "arpack")]
 
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use std::error::Error;
-use test_utils::helpers::dense_host;
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
@@ -30,7 +30,6 @@ use arnet_algorithms::krylov::{ArpackError, ArpackParams, LanczosParams};
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
-use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -78,7 +77,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    dense_host(data, vec![w_l_dim, D, D, w_r_dim])
+    Host::shared().dense(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
@@ -135,7 +134,7 @@ fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * D * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            dense_host(data, vec![l, D, r])
+            Host::shared().dense(data, vec![l, D, r])
         })
         .collect();
     Mps::from_sites(storages)

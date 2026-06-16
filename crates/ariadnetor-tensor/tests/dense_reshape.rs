@@ -16,9 +16,7 @@ fn build_2x3_row_major() -> DenseTensor<f64> {
 }
 
 fn build_2x3_column_major() -> DenseTensor<f64> {
-    DenseTensor::from_data(
-        Host::shared().make_tensor(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], vec![2, 3]),
-    )
+    Host::shared().dense(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], vec![2, 3])
 }
 
 #[test]
