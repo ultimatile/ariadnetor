@@ -35,7 +35,7 @@ fn total_recorded(b: &RecordingBackend) -> usize {
 }
 
 fn tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
-    DenseTensor::from_data(Host::shared().make_tensor(data, shape))
+    Host::shared().dense(data, shape)
 }
 
 fn sym2() -> DenseTensor<f64> {
@@ -256,8 +256,7 @@ fn expm_antihermitian_routes_to_passed_backend() {
     // matrix embedded in the complex field is anti-Hermitian.
     let z = |re: f64| Complex::new(re, 0.0);
     let data = vec![z(0.0), z(1.0), z(-1.0), z(0.0)];
-    let t: DenseTensor<Complex<f64>> =
-        DenseTensor::from_data(Host::shared().make_tensor(data, vec![2, 2]));
+    let t: DenseTensor<Complex<f64>> = Host::shared().dense(data, vec![2, 2]);
     let out = expm_antihermitian_with_backend(&rec, &t, 1).unwrap();
     assert!(total_recorded(&rec) > 0);
     let hout = expm_antihermitian_with_backend(&host, &t, 1).unwrap();
@@ -319,7 +318,7 @@ fn diagonal_scale_matches_host() {
 #[test]
 fn diagonal_scale_supports_non_scalar_elements() {
     let host = NativeBackend::new();
-    let t = DenseTensor::<i32>::from_data(Host::shared().make_tensor(vec![1, 2, 3, 4], vec![2, 2]));
+    let t = Host::shared().dense(vec![1, 2, 3, 4], vec![2, 2]);
     let out = diagonal_scale_with_backend(&host, &t, &[10, 100], 0).unwrap();
     // The contract under test is that non-`Scalar` `T` compiles and runs; the
     // value check is order-agnostic (the scaled multiset is layout-invariant):

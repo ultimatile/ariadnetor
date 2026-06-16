@@ -24,13 +24,12 @@ use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseTensor, Direction,
-    QNIndex, Sector, U1Sector,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
+    DenseTensor, Direction, Host, QNIndex, Sector, U1Sector,
 };
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use test_utils::helpers::dense_host;
 
 const D: usize = 2; // physical dim (spin-1/2)
 
@@ -81,7 +80,7 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
             }
         }
     }
-    dense_host(data, vec![dim, dim])
+    Host::shared().dense(data, vec![dim, dim])
 }
 
 fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {

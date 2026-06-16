@@ -8,8 +8,7 @@ use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps, canonicalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
-use test_utils::helpers::dense_host;
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
 fn standard_params_f64(seed: u64) -> DmrgSweepParams {
     DmrgSweepParams {
@@ -45,7 +44,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            dense_host(data, vec![l, d, r])
+            Host::shared().dense(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(sites);
@@ -61,7 +60,7 @@ fn t6_step_error_propagated() {
     let d_mps = 2;
     let d_mpo = 3; // <- mismatch
     let mps_storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|_| dense_host(vec![1.0_f64, 0.0], vec![1, d_mps, 1]))
+        .map(|_| Host::shared().dense(vec![1.0_f64, 0.0], vec![1, d_mps, 1]))
         .collect();
     let mut mps = Mps::from_sites(mps_storages);
     canonicalize(&NativeBackend::new(), &mut mps, 0);
@@ -71,7 +70,7 @@ fn t6_step_error_propagated() {
             for k in 0..d_mpo {
                 m[k * d_mpo + k] = 1.0;
             }
-            dense_host(m, vec![1, d_mpo, d_mpo, 1])
+            Host::shared().dense(m, vec![1, d_mpo, d_mpo, 1])
         })
         .collect();
     let mpo = Mpo::from_sites(mpo_storages);
@@ -82,7 +81,7 @@ fn t6_step_error_propagated() {
         for k in 0..d_mpo {
             m[k * d_mpo + k] = 1.0;
         }
-        env_mpo_storages.push(dense_host(m, vec![1, d_mpo, d_mpo, 1]));
+        env_mpo_storages.push(Host::shared().dense(m, vec![1, d_mpo, d_mpo, 1]));
     }
     let env_mpo = Mpo::from_sites(env_mpo_storages);
     let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =

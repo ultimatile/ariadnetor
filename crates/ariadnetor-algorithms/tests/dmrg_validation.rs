@@ -9,11 +9,10 @@ use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use test_utils::helpers::dense_host;
 
 // ---------------------------------------------------------------------------
 // Pauli matrix elements in computational basis (|0⟩=up, |1⟩=down).
@@ -83,7 +82,7 @@ fn build_mpo_site_f64(
             }
         }
     }
-    dense_host(data, vec![w_l_dim, D, D, w_r_dim])
+    Host::shared().dense(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +244,7 @@ fn tfi_ed_dense_f64(n: usize, j: f64, h_field: f64) -> DenseTensor<f64> {
             write_offdiag(&mut data, dim, b_out, b, -h_field);
         }
     }
-    dense_host(data, vec![dim, dim])
+    Host::shared().dense(data, vec![dim, dim])
 }
 
 fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
@@ -272,7 +271,7 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
             }
         }
     }
-    dense_host(data, vec![dim, dim])
+    Host::shared().dense(data, vec![dim, dim])
 }
 
 fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
@@ -302,7 +301,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            dense_host(data, vec![l, d, r])
+            Host::shared().dense(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(storages);

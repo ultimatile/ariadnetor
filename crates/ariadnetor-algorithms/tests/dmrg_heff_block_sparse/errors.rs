@@ -8,9 +8,11 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, TensorChain};
-use arnet_tensor::{BlockCoord, BlockSparseTensor, Direction, QNIndex, Sector, U1Sector};
+use arnet_tensor::{
+    BlockCoord, BlockSparseTensor, ComputeBackendTensorExt, Direction, Host, QNIndex, Sector,
+    U1Sector,
+};
 use num_complex::Complex;
-use test_utils::helpers::dense_host;
 
 use arnet_mps::Mps;
 
@@ -259,7 +261,7 @@ fn bsp_heff_complex_path() {
     for j in 0..dim {
         let mut e_j = vec![Complex::new(0.0, 0.0); dim];
         e_j[j] = Complex::new(1.0, 0.0);
-        let out = bsp_heff.apply(&dense_host(e_j, vec![dim]));
+        let out = bsp_heff.apply(&Host::shared().dense(e_j, vec![dim]));
         for i in 0..dim {
             h_data[i + dim * j] = out.data_slice()[i];
         }

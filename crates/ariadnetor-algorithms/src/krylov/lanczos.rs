@@ -146,8 +146,7 @@ where
 
     let mut iters = 0usize;
     let mut converged_lambda: T::Real = T::Real::zero();
-    let mut converged_z: DenseTensor<T::Real> =
-        DenseTensor::from_data(Host::shared().make_tensor(vec![T::Real::one()], vec![1]));
+    let mut converged_z: DenseTensor<T::Real> = Host::shared().dense(vec![T::Real::one()], vec![1]);
 
     for j in 0..max_iter {
         iters = j + 1;
@@ -232,9 +231,7 @@ where
         }
         let inv = T::Real::one() / beta;
         let v_next_data: Vec<T> = w.data_slice().iter().map(|&x| x.scale_real(inv)).collect();
-        basis.push(DenseTensor::from_data(
-            Host::shared().make_tensor(v_next_data, vec![dim]),
-        ));
+        basis.push(Host::shared().dense(v_next_data, vec![dim]));
         betas.push(beta);
     }
 

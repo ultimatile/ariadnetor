@@ -2,8 +2,7 @@
 
 use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, Host};
-use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, Host};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 
@@ -104,7 +103,7 @@ fn test_canonicalize_center_last() {
 #[test]
 fn test_canonicalize_single_site() {
     let backend = NativeBackend::new();
-    let site = DenseTensor::from_data(Host::shared().make_tensor(vec![1.0, 2.0], vec![1, 2, 1]));
+    let site = Host::shared().dense(vec![1.0, 2.0], vec![1, 2, 1]);
     let mut mps: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![site]);
 
     mps::canonicalize(&backend, &mut mps, 0);

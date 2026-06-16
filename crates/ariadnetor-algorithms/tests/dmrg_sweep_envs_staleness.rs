@@ -9,8 +9,7 @@ use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps, canonicalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
-use test_utils::helpers::dense_host;
+use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
 fn random_mps_center_zero_f64(
     n: usize,
@@ -29,7 +28,7 @@ fn random_mps_center_zero_f64(
             let r = if i + 1 == n { 1 } else { chi };
             let len = l * d * r;
             let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            dense_host(data, vec![l, d, r])
+            Host::shared().dense(data, vec![l, d, r])
         })
         .collect();
     let mut mps = Mps::from_sites(sites);
@@ -64,7 +63,7 @@ fn psd_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f64>, De
                     h[i + d * j] = acc;
                 }
             }
-            dense_host(h, vec![1, d, d, 1])
+            Host::shared().dense(h, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(sites)
