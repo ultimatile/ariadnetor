@@ -11,7 +11,14 @@ use arnet::{
 
 #[test]
 fn dense_methods_resolve_through_umbrella() {
-    let t = DenseTensor::<f64>::from_raw_parts(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    // Built through the umbrella's own safe surface (zeros + set), the
+    // only construction path an end user has: the raw flat-buffer
+    // constructor is not on the umbrella API. A full-rank 2x3 matrix is
+    // all the SVD / transpose shape assertions below need.
+    let mut t = DenseTensor::<f64>::zeros(vec![2, 3]);
+    for (i, v) in [1.0, 2.0, 3.0, 4.0, 5.0, 6.0].into_iter().enumerate() {
+        t.set([i / 3, i % 3], v);
+    }
     let (u, s, vt) = t.svd(1).expect("svd via method");
     assert_eq!(u.shape(), &[2, 2]);
     assert_eq!(s.shape(), &[2]);

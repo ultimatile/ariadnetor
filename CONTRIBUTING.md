@@ -68,6 +68,21 @@ If demoting to `pub(crate)` triggers a `dead_code` warning, the item
 was already dead under the narrower visibility — remove it rather
 than annotate.
 
+#### Raw / expert constructors stay below the umbrella
+
+A raw or expert-like constructor — one that takes a raw flat buffer,
+an explicit `MemoryOrder`, or an explicit backend, and so requires the
+caller to uphold layout / order invariants the safe surface hides —
+must never be a `pub` inherent method on an umbrella-re-exported type
+(`Tensor` / `DenseTensor` / `BlockSparseTensor`). Re-export makes such
+a method unavoidably User-API, where its only legitimate callers are
+internal layers. Place it at the Mid-layer instead (`*TensorData`,
+`pub` but not re-exported — reached through a direct member-crate
+dependency, or through the `ComputeBackendTensorExt` backend-aware
+constructors), or Internal (`pub(crate)`). End users construct tensors
+through the safe surface (`zeros` / `ones` / `eye` / `from_block_fn` /
+`get` / `set`); raw flat-buffer wrapping is a member-crate concern.
+
 ### Naming
 
 #### In-place vs out-of-place method pairs

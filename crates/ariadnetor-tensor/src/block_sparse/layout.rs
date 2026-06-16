@@ -62,44 +62,6 @@ impl<S: Sector> BlockSparseLayout<S> {
         }
     }
 
-    /// Construct directly from pre-validated components.
-    ///
-    /// Used by joined-level constructors that already have the
-    /// structure on hand; caller is responsible for the same
-    /// invariants enforced by [`new`](Self::new). Internal: callers
-    /// outside the crate construct layouts via
-    /// [`new`](Self::new) or via the joined
-    /// [`BlockSparseTensorData::from_raw_parts`](crate::BlockSparseTensorData::from_raw_parts).
-    pub(crate) fn from_parts(
-        blocks: Vec<BlockMeta>,
-        block_index: HashMap<BlockCoord, usize>,
-        indices: Vec<QNIndex<S>>,
-        flux: S,
-        shape: Vec<usize>,
-        order: MemoryOrder,
-    ) -> Self {
-        debug_assert_eq!(
-            blocks.len(),
-            block_index.len(),
-            "BlockSparseLayout::from_parts: blocks/block_index length mismatch"
-        );
-        debug_assert_eq!(
-            shape.len(),
-            indices.len(),
-            "BlockSparseLayout::from_parts: shape rank doesn't match indices rank"
-        );
-        let storage_extent = blocks.iter().map(|b| b.size).sum();
-        Self {
-            blocks,
-            block_index,
-            indices,
-            flux,
-            shape,
-            order,
-            storage_extent,
-        }
-    }
-
     /// Conserved flux (total quantum number).
     pub fn flux(&self) -> &S {
         &self.flux

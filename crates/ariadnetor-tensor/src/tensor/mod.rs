@@ -13,7 +13,6 @@
 //! constructors that need a memory order read it from the host substrate
 //! ([`Host`](crate::Host)) without binding the tensor to any backend.
 
-use std::collections::HashMap;
 use std::fmt;
 
 use arnet_core::Scalar;
@@ -21,7 +20,6 @@ use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use num_traits::Zero;
 use rand::RngExt;
 
-use crate::block_sparse::BlockMeta;
 use crate::capability::Host;
 use crate::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, DenseLayout,
@@ -160,32 +158,6 @@ where
 }
 
 // ============================================================================
-// Dense raw constructor
-//
-// Tensor-surface entry point for callers that have a flat buffer (e.g.
-// internal kernel-output wrapping). Saves callers from reaching into the
-// `DenseTensorData::from_raw_parts` joined surface.
-// ============================================================================
-
-impl<T> Tensor<DenseStorage<T>, DenseLayout>
-where
-    T: Clone,
-{
-    /// Construct a Dense tensor from flat data and shape. The flat `data`
-    /// is taken to be already laid out in the host substrate's preferred
-    /// order, and the layout is tagged accordingly — this constructor
-    /// cannot tag any other order. To wrap a flat buffer already laid out
-    /// in some other order, build `DenseTensorData` with that explicit
-    /// order and call [`Tensor::from_data`]; `reordered` is for converting
-    /// an already-valid tensor to a different layout, not for reinterpreting
-    /// a raw buffer (it would permute values under the wrong source order).
-    pub fn from_raw_parts(data: Vec<T>, shape: Vec<usize>) -> Self {
-        let td = DenseTensorData::from_raw_parts(data, shape, host_order());
-        Self::from_data(td)
-    }
-}
-
-// ============================================================================
 // Dense-specific host constructors
 //
 // The memory order is taken from the host substrate's preferred order so
@@ -297,80 +269,6 @@ where
     {
         let order = host_order();
         let td = BlockSparseTensorData::from_block_fn(indices, flux, order, f);
-        Self::from_data(td)
-    }
-}
-
-// ============================================================================
-// BlockSparse raw constructor
-//
-// Tensor-surface entry point for callers that need pre-validated raw
-// parts with an explicit memory order. Unlike `DenseTensor::from_raw_parts`
-// it takes the operating backend explicitly: dense paths self-normalize
-// (`reordered` round-trips through any target order), so dense construction
-// can fix the host order and let downstream ops reorder, whereas
-// block-sparse kernels have no reorder step and must read the buffer under
-// the operating backend's preferred order — so that order is validated at
-// construction against the call-site backend, not the host. Primary
-// consumers are internal kernel-output wrapping (block-sparse decomposition
-// / matvec pipelines) and tests that pin the Tier 1 rejection path with a
-// fabricated layout.
-// ============================================================================
-
-impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
-where
-    T: Clone,
-    S: Sector,
-{
-    /// Construct a BlockSparse tensor from pre-validated raw parts,
-    /// an explicit memory order, and a backend supplied only to check the
-    /// order (the backend is not stored).
-    ///
-    /// `block_index` is derived from `blocks` internally to avoid the
-    /// duplication-mismatch risk of passing both. Caller is responsible
-    /// for the remaining invariants enforced by [`BlockSparseLayout::new`]:
-    /// sector conservation per block, coord uniqueness, packed offsets
-    /// without gap or overlap, blocks sorted by coordinate.
-    /// `data.len() == sum(blocks.size)` is checked by `TensorData::new`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `order != backend.preferred_order()`. Block-sparse
-    /// kernels (`contract_block_sparse`, `svd_block_sparse`, etc.) read
-    /// the per-sector packed buffer under the backend's preferred order
-    /// and have no internal reorder step; a mismatch here would yield
-    /// silently wrong output. This is the same Tier 1 invariant the
-    /// `Mps` / `Mpo` constructors enforce on their sites.
-    pub fn from_raw_parts<B: ComputeBackend>(
-        data: Vec<T>,
-        blocks: Vec<BlockMeta>,
-        indices: Vec<QNIndex<S>>,
-        flux: S,
-        shape: Vec<usize>,
-        order: MemoryOrder,
-        backend: &B,
-    ) -> Self {
-        assert_eq!(
-            order,
-            backend.preferred_order(),
-            "BlockSparseTensor::from_raw_parts: layout order {:?} != backend preferred_order {:?} (Tier 1 invariant; block-sparse kernels do not reorder)",
-            order,
-            backend.preferred_order(),
-        );
-        let block_index: HashMap<BlockCoord, usize> = blocks
-            .iter()
-            .enumerate()
-            .map(|(i, m)| (m.coord.clone(), i))
-            .collect();
-        let td = BlockSparseTensorData::from_raw_parts(
-            data,
-            blocks,
-            block_index,
-            indices,
-            flux,
-            shape,
-            order,
-        );
         Self::from_data(td)
     }
 }

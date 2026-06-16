@@ -4,10 +4,8 @@
 
 use arnet_core::backend::MemoryOrder;
 
-use std::collections::HashMap;
-
 use crate::block_sparse::{
-    BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseTensorData, Direction, QNIndex,
+    BlockCoord, BlockSparseLayout, BlockSparseTensorData, Direction, QNIndex,
 };
 use crate::sector::U1Sector;
 use crate::{Storage, TensorLayout};
@@ -244,55 +242,6 @@ fn from_block_fn_populates_each_allowed_block_via_closure() {
 
     // Forbidden coords remain unstored (closure never called for them).
     assert!(td.block_data(&BlockCoord(vec![0, 1])).is_none());
-}
-
-#[test]
-fn from_raw_parts_test_only_constructor_round_trips() {
-    // Pre-validated raw-parts round-trip: caller supplies block
-    // metadata + flat data, the test-only constructor wraps them
-    // through `BlockSparseLayout::from_parts` and `TensorData::new`
-    // (whose assertion still applies). Pins
-    // `BlockSparseTensorData::from_raw_parts` so direct callers
-    // observe `layout().order()`, `storage().flat_len()`, and
-    // `block_data` behaving the same as via the enumerating
-    // constructors.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-
-    let blocks = vec![
-        BlockMeta {
-            coord: BlockCoord(vec![0, 0]),
-            offset: 0,
-            size: 4,
-        },
-        BlockMeta {
-            coord: BlockCoord(vec![1, 1]),
-            offset: 4,
-            size: 9,
-        },
-    ];
-    let mut block_index = HashMap::new();
-    block_index.insert(BlockCoord(vec![0, 0]), 0);
-    block_index.insert(BlockCoord(vec![1, 1]), 1);
-
-    let data: Vec<f64> = (0..13).map(|i| i as f64).collect();
-    let td = BlockSparseTensorData::<f64, U1Sector>::from_raw_parts(
-        data,
-        blocks,
-        block_index,
-        vec![row, col],
-        U1Sector(0),
-        vec![5, 5],
-        MemoryOrder::RowMajor,
-    );
-
-    assert_eq!(td.layout().shape(), &[5, 5]);
-    assert_eq!(td.storage().flat_len(), 13);
-    assert_eq!(
-        td.block_data(&BlockCoord(vec![0, 0])).unwrap(),
-        &[0.0, 1.0, 2.0, 3.0],
-    );
-    assert_eq!(td.layout().order(), MemoryOrder::RowMajor);
 }
 
 #[test]

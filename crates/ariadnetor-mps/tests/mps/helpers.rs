@@ -11,11 +11,12 @@ use arnet_tensor::{
     BlockCoord, BlockSparseTensor, DenseLayout, DenseStorage, DenseTensor, Direction, QNIndex,
     U1Sector,
 };
+use arnet_tensor::{ComputeBackendTensorExt, Host};
 
 /// Build a `DenseTensor<f64>` from data already laid out in the active
 /// backend's preferred order (NativeBackend → ColumnMajor).
 pub fn cm_dense_tensor<T: arnet_core::Scalar>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
-    DenseTensor::from_raw_parts(data, shape)
+    DenseTensor::from_data(Host::shared().make_tensor(data, shape))
 }
 
 /// Build a `DenseTensor<f64>` whose logical content matches `data` read
@@ -29,7 +30,7 @@ pub fn rm_dense_tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
     let total = shape.iter().product::<usize>();
     assert_eq!(data.len(), total, "rm_dense_tensor: data length mismatch");
     let reversed_shape: Vec<usize> = shape.iter().rev().copied().collect();
-    let reversed = DenseTensor::from_raw_parts(data, reversed_shape);
+    let reversed = DenseTensor::from_data(Host::shared().make_tensor(data, reversed_shape));
     let perm: Vec<usize> = (0..shape.len()).rev().collect();
     transpose_with_backend(&NativeBackend::new(), &reversed, &perm)
         .expect("rm_dense_tensor: reverse-axis transpose")
@@ -40,7 +41,7 @@ pub fn dense_basis_site(phys_c: usize) -> DenseTensor<f64> {
     assert!(phys_c <= 1, "physical dim is 2 (charges 0, 1)");
     let mut data = vec![0.0; 2];
     data[phys_c] = 1.0;
-    DenseTensor::from_raw_parts(data, vec![1, 2, 1])
+    DenseTensor::from_data(Host::shared().make_tensor(data, vec![1, 2, 1]))
 }
 
 /// Dense total-particle-number MPO `N = Σ_j n_j` over `n` sites.

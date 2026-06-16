@@ -34,7 +34,7 @@ where
     assert!(n > 0, "MPS must have at least one site");
 
     // Environment: (χ_ψ, χ_φ), starts as 1×1 identity.
-    let mut env: DenseTensor<T> = DenseTensor::from_raw_parts(vec![T::one()], vec![1, 1]);
+    let mut env: DenseTensor<T> = DenseTensor::ones(vec![1, 1]);
 
     for j in 0..n {
         let psi_j = psi.site(j).conj();
@@ -92,7 +92,7 @@ where
     assert!(n > 0, "must have at least one site");
 
     // Environment: (χ_ψ, χ_A, χ_φ), starts as 1×1×1.
-    let mut env: DenseTensor<T> = DenseTensor::from_raw_parts(vec![T::one()], vec![1, 1, 1]);
+    let mut env: DenseTensor<T> = DenseTensor::ones(vec![1, 1, 1]);
 
     for j in 0..n {
         let psi_j = psi.site(j).conj(); // bra: (ψ_L, d_bra, ψ_R)

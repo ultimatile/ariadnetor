@@ -18,6 +18,7 @@
 //! (the MPO-MPS contraction) — are the load-bearing cases and are the
 //! ones exercised below.
 
+use arnet_tensor::{ComputeBackendTensorExt, Host};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -132,7 +133,7 @@ impl<T: Scalar> OpsFor<BlockSparseStorage<T>> for CountingBackend {}
 fn dense_site(shape: Vec<usize>) -> DenseTensor<f64> {
     let len: usize = shape.iter().product();
     let data: Vec<f64> = (1..=len).map(|i| i as f64 * 0.1).collect();
-    DenseTensor::from_raw_parts(data, shape)
+    DenseTensor::from_data(Host::shared().make_tensor(data, shape))
 }
 
 /// 4-site dense MPS.

@@ -13,6 +13,7 @@
 
 use arnet_core::backend::ComputeBackend;
 use arnet_linalg::DenseHostOps;
+use arnet_tensor::ComputeBackendTensorExt;
 use arnet_tensor::{DenseTensor, Host};
 
 #[test]
@@ -29,7 +30,9 @@ fn host_ergonomic_op_routes_through_aliased_substrate() {
     // `Host::shared()`; if it routes through the alias its dispatch must
     // bump the singleton counter.
     let before = Host::shared().count();
-    let a = DenseTensor::<f64>::from_raw_parts(vec![2.0, 0.0, 0.0, 3.0], vec![2, 2]);
+    let a = DenseTensor::<f64>::from_data(
+        Host::shared().make_tensor(vec![2.0, 0.0, 0.0, 3.0], vec![2, 2]),
+    );
     let _ = a.svd(1).expect("host SVD should succeed on a 2x2");
     let after = Host::shared().count();
 

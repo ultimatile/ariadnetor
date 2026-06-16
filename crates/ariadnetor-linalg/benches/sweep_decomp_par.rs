@@ -11,6 +11,7 @@
 //! state (`faer::set_global_parallelism`) is not consulted by the
 //! per-call path and is intentionally not touched here.
 
+use arnet_tensor::{ComputeBackendTensorExt, Host};
 use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
@@ -40,7 +41,7 @@ fn random_symmetric(n: usize) -> DenseTensor<f64> {
             out[i * n + j] = src[i * n + j] + src[j * n + i];
         }
     }
-    DenseTensor::from_raw_parts(out, vec![n, n])
+    DenseTensor::from_data(Host::shared().make_tensor(out, vec![n, n]))
 }
 
 fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {

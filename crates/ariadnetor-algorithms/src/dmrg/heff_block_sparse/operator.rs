@@ -15,7 +15,9 @@ use std::sync::Arc;
 
 use arnet_core::{ComputeBackend, Scalar};
 use arnet_linalg::{BlockSparseContractResult, contract_block_sparse_with_backend};
-use arnet_tensor::{BlockCoord, BlockSparseTensor, DenseTensor, Host, Sector};
+use arnet_tensor::{
+    BlockCoord, BlockSparseTensor, ComputeBackendTensorExt, DenseTensor, Host, Sector,
+};
 
 use super::super::heff_error::DmrgHeffError;
 use crate::krylov::LinearOp;
@@ -264,7 +266,7 @@ where
         let flat = gather_template_aware(&out, &self.psi_template, &self.block_offsets, self.dim);
         // 1D output is layout-invariant and host-resident, matching the
         // Krylov family's 1-D scratch space.
-        DenseTensor::from_raw_parts(flat, vec![self.dim])
+        DenseTensor::from_data(self.backend.make_tensor(flat, vec![self.dim]))
     }
 }
 

@@ -10,6 +10,7 @@ use arnet_linalg::contract_with_backend;
 use arnet_mps::{Mpo, Mps, TensorChain, braket};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use test_utils::helpers::dense_host;
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -20,7 +21,7 @@ use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
 /// stores `[1, 0]` so the state is |0000⟩.
 fn product_state_mps(n: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
     let storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|_| DenseTensor::from_raw_parts(vec![1.0_f64, 0.0], vec![1, 2, 1]))
+        .map(|_| dense_host(vec![1.0_f64, 0.0], vec![1, 2, 1]))
         .collect();
     Mps::from_sites(storages)
 }
@@ -35,7 +36,7 @@ fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
             for k in 0..d {
                 data[k + d * k] = 1.0;
             }
-            DenseTensor::from_raw_parts(data, vec![1, d, d, 1])
+            dense_host(data, vec![1, d, d, 1])
         })
         .collect();
     Mpo::from_sites(storages)
@@ -62,7 +63,7 @@ fn random_mps_f64(
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::RngExt::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, r])
+            dense_host(data, vec![l, d, r])
         })
         .collect();
     Mps::from_sites(storages)
@@ -83,7 +84,7 @@ fn random_mpo_f64(n: usize, d: usize, w: usize, seed: u64) -> Mpo<DenseStorage<f
             let data: Vec<f64> = (0..len)
                 .map(|_| rand::RngExt::random_range(&mut rng, -0.5_f64..0.5))
                 .collect();
-            DenseTensor::from_raw_parts(data, vec![l, d, d, r])
+            dense_host(data, vec![l, d, d, r])
         })
         .collect();
     Mpo::from_sites(storages)
