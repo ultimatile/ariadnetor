@@ -19,125 +19,8 @@ use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
-use rand::RngExt;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
-
-const D: usize = 2; // physical dim (spin-1/2)
-
-// ---------------------------------------------------------------------------
-// Minimal Heisenberg MPO + random MPS — inlined to keep the wrapper
-// test file self-contained. Heisenberg is preferred over TFI here
-// because the planned (post-this-issue) BlockSparse / U(1) wrapper
-// path will reuse Heisenberg as the test Hamiltonian (TFI is not U(1)
-// symmetric); the same builder body keeps the two test surfaces
-// directly comparable when that follow-up lands.
-// ---------------------------------------------------------------------------
-
-type Op = fn(usize, usize) -> f64;
-
-fn op_id(k: usize, b: usize) -> f64 {
-    if k == b { 1.0 } else { 0.0 }
-}
-
-fn op_sz(k: usize, b: usize) -> f64 {
-    if k == b {
-        if k == 0 { 1.0 } else { -1.0 }
-    } else {
-        0.0
-    }
-}
-
-// σ⁺ raises (|down⟩ → |up⟩); single non-zero element at (k_ket=1, b_bra=0).
-fn op_sp(k: usize, b: usize) -> f64 {
-    if k == 1 && b == 0 { 1.0 } else { 0.0 }
-}
-
-// σ⁻ lowers (|up⟩ → |down⟩); single non-zero element at (k_ket=0, b_bra=1).
-fn op_sm(k: usize, b: usize) -> f64 {
-    if k == 0 && b == 1 { 1.0 } else { 0.0 }
-}
-
-fn build_mpo_site_f64(
-    w_l_dim: usize,
-    w_r_dim: usize,
-    cells: &[(usize, usize, Op, f64)],
-) -> DenseTensor<f64> {
-    let len = w_l_dim * D * D * w_r_dim;
-    let mut data = vec![0.0_f64; len];
-    for &(vl, vr, op, scale) in cells {
-        for k in 0..D {
-            for b in 0..D {
-                let idx = vl + w_l_dim * (k + D * (b + D * vr));
-                data[idx] += scale * op(k, b);
-            }
-        }
-    }
-    Host::shared().dense(data, vec![w_l_dim, D, D, w_r_dim])
-}
-
-fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    assert!(n >= 2, "heisenberg_mpo_f64 requires n >= 2");
-    let mut sites = Vec::with_capacity(n);
-
-    sites.push(build_mpo_site_f64(
-        1,
-        5,
-        &[
-            (0, 1, op_sm, 2.0 * j),
-            (0, 2, op_sp, 2.0 * j),
-            (0, 3, op_sz, j),
-            (0, 4, op_id, 1.0),
-        ],
-    ));
-
-    for _ in 1..n - 1 {
-        sites.push(build_mpo_site_f64(
-            5,
-            5,
-            &[
-                (0, 0, op_id, 1.0),
-                (1, 0, op_sp, 1.0),
-                (2, 0, op_sm, 1.0),
-                (3, 0, op_sz, 1.0),
-                (4, 1, op_sm, 2.0 * j),
-                (4, 2, op_sp, 2.0 * j),
-                (4, 3, op_sz, j),
-                (4, 4, op_id, 1.0),
-            ],
-        ));
-    }
-
-    sites.push(build_mpo_site_f64(
-        5,
-        1,
-        &[
-            (0, 0, op_id, 1.0),
-            (1, 0, op_sp, 1.0),
-            (2, 0, op_sm, 1.0),
-            (3, 0, op_sz, 1.0),
-        ],
-    ));
-
-    Mpo::from_sites(sites)
-}
-
-/// Build a random MPS with no canonical form set (`CanonicalForm::Unknown`).
-/// The wrapper is responsible for canonicalizing internally.
-fn random_mps_unknown_f64(n: usize, chi: usize, seed: u64) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|i| {
-            let l = if i == 0 { 1 } else { chi };
-            let r = if i + 1 == n { 1 } else { chi };
-            let len = l * D * r;
-            let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            Host::shared().dense(data, vec![l, D, r])
-        })
-        .collect();
-    Mps::from_sites(storages)
-}
+use arnet_tensor::{DenseLayout, DenseStorage};
+use test_utils::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 
 fn small_params(seed: u64) -> DmrgSweepParams {
     DmrgSweepParams {
@@ -164,7 +47,7 @@ fn small_params(seed: u64) -> DmrgSweepParams {
 fn wrapper_dense_heisenberg_n4_matches_manual() {
     let n = 4;
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let psi0 = random_mps_unknown_f64(n, 4, 0xC4F1);
+    let psi0 = random_mps_unknown_f64(n, 2, 4, 0xC4F1);
     let params = small_params(0xACED);
 
     // Manual composition (mirroring the wrapper body).
@@ -225,7 +108,7 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
 fn wrapper_accepts_unknown_canonical() {
     let n = 4;
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let psi0 = random_mps_unknown_f64(n, 4, 0xC4F2);
+    let psi0 = random_mps_unknown_f64(n, 2, 4, 0xC4F2);
     assert_eq!(*psi0.canonical_form(), CanonicalForm::Unknown);
 
     let params = small_params(0xACED);
@@ -261,7 +144,7 @@ fn wrapper_rejects_empty_mps() {
 #[test]
 fn wrapper_rejects_length_mismatch() {
     let mpo = heisenberg_mpo_f64(4, 1.0);
-    let psi0 = random_mps_unknown_f64(3, 4, 0xC4F3);
+    let psi0 = random_mps_unknown_f64(3, 2, 4, 0xC4F3);
     let params = small_params(0xACED);
 
     match dmrg_2site(&mpo, &psi0, &params) {
@@ -279,7 +162,7 @@ fn wrapper_rejects_length_mismatch() {
 fn wrapper_does_not_mutate_input() {
     let n = 4;
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let psi0 = random_mps_unknown_f64(n, 4, 0xC4F4);
+    let psi0 = random_mps_unknown_f64(n, 2, 4, 0xC4F4);
     let psi0_snapshot = psi0.clone();
     let params = small_params(0xACED);
 

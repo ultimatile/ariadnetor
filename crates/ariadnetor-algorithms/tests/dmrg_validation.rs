@@ -1,18 +1,19 @@
 //! End-to-end validation of the 2-site DMRG sweep driver against
 //! exact diagonalization on the standard 1D spin-1/2 Hamiltonians:
 //! transverse-field Ising (TFI) and antiferromagnetic Heisenberg
-//! (XXX). Test-internal MPO builders and ED reference are inlined
-//! here; no public API is added.
+//! (XXX). The TFI MPO builder and ED reference are inlined here; the
+//! shared Heisenberg MPO and random-MPS builders come from
+//! `test_utils::dense_fixtures`. No public API is added.
 
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_with_backend};
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_mps::{CanonicalForm, Mpo, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
-use rand::RngExt;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use test_utils::dense_fixtures::{
+    build_mpo_site_f64, heisenberg_mpo_f64, op_id, op_sz, random_mps_center_zero_f64,
+};
 
 // ---------------------------------------------------------------------------
 // Pauli matrix elements in computational basis (|0⟩=up, |1⟩=down).
@@ -27,62 +28,8 @@ use rand::rngs::StdRng;
 
 const D: usize = 2; // physical dim (spin-1/2)
 
-/// (k_ket, b_bra) → matrix element of the operator.
-type Op = fn(usize, usize) -> f64;
-
-fn op_id(k: usize, b: usize) -> f64 {
-    if k == b { 1.0 } else { 0.0 }
-}
-
 fn op_sx(k: usize, b: usize) -> f64 {
     if k != b { 1.0 } else { 0.0 }
-}
-
-fn op_sz(k: usize, b: usize) -> f64 {
-    if k == b {
-        if k == 0 { 1.0 } else { -1.0 }
-    } else {
-        0.0
-    }
-}
-
-// σ⁺ raises: |down⟩ → |up⟩ in our bit convention.
-// Single non-zero matrix element ⟨bra=0|σ⁺|ket=1⟩ = 1, so under
-// the `(k_ket, b_bra)` indexing of `Op` this is op_sp(k=1, b=0) = 1.
-fn op_sp(k: usize, b: usize) -> f64 {
-    if k == 1 && b == 0 { 1.0 } else { 0.0 }
-}
-
-// σ⁻ lowers: |up⟩ → |down⟩.
-// Single non-zero matrix element ⟨bra=1|σ⁻|ket=0⟩ = 1, so under
-// the `(k_ket, b_bra)` indexing of `Op` this is op_sm(k=0, b=1) = 1.
-fn op_sm(k: usize, b: usize) -> f64 {
-    if k == 0 && b == 1 { 1.0 } else { 0.0 }
-}
-
-// ---------------------------------------------------------------------------
-// MPO site builder — column-major fill of a rank-4 site tensor.
-// `cells[(vL, vR)] = (op, scale)` populates the W matrix at virtual
-// indices (vL, vR); cells absent from the map are zero. Shape is
-// `[w_l_dim, D, D, w_r_dim]`.
-// ---------------------------------------------------------------------------
-
-fn build_mpo_site_f64(
-    w_l_dim: usize,
-    w_r_dim: usize,
-    cells: &[(usize, usize, Op, f64)],
-) -> DenseTensor<f64> {
-    let len = w_l_dim * D * D * w_r_dim;
-    let mut data = vec![0.0_f64; len];
-    for &(vl, vr, op, scale) in cells {
-        for k in 0..D {
-            for b in 0..D {
-                let idx = vl + w_l_dim * (k + D * (b + D * vr));
-                data[idx] += scale * op(k, b);
-            }
-        }
-    }
-    Host::shared().dense(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
 // ---------------------------------------------------------------------------
@@ -128,70 +75,6 @@ fn tfi_mpo_f64(n: usize, j: f64, h: f64) -> Mpo<DenseStorage<f64>, DenseLayout> 
         3,
         1,
         &[(0, 0, op_id, 1.0), (1, 0, op_sz, 1.0), (2, 0, op_sx, -h)],
-    ));
-
-    Mpo::from_sites(sites)
-}
-
-// ---------------------------------------------------------------------------
-// Heisenberg MPO (bond dim 5) via S±/S∓ form:
-//   H = J Σ (σᶻσᶻ + 2 σ⁺σ⁻ + 2 σ⁻σ⁺)
-//
-// Bulk W (row=vL, col=vR):
-//   [[ I,    0,       0,       0,    0 ],
-//    [ σ⁺,   0,       0,       0,    0 ],
-//    [ σ⁻,   0,       0,       0,    0 ],
-//    [ σᶻ,   0,       0,       0,    0 ],
-//    [ 0,   2J σ⁻,   2J σ⁺,   J σᶻ,  I ]]
-//
-// Site 0 = bottom row, shape (1, D, D, 5).
-// Site N-1 = first column, shape (5, D, D, 1).
-// ---------------------------------------------------------------------------
-
-fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    assert!(n >= 2, "heisenberg_mpo_f64 requires n >= 2");
-    let mut sites = Vec::with_capacity(n);
-
-    // Site 0 — bottom row [0, 2J σ⁻, 2J σ⁺, J σᶻ, I], shape (1, D, D, 5).
-    sites.push(build_mpo_site_f64(
-        1,
-        5,
-        &[
-            (0, 1, op_sm, 2.0 * j),
-            (0, 2, op_sp, 2.0 * j),
-            (0, 3, op_sz, j),
-            (0, 4, op_id, 1.0),
-        ],
-    ));
-
-    // Bulk — full 5×5 W, shape (5, D, D, 5).
-    for _ in 1..n - 1 {
-        sites.push(build_mpo_site_f64(
-            5,
-            5,
-            &[
-                (0, 0, op_id, 1.0),
-                (1, 0, op_sp, 1.0),
-                (2, 0, op_sm, 1.0),
-                (3, 0, op_sz, 1.0),
-                (4, 1, op_sm, 2.0 * j),
-                (4, 2, op_sp, 2.0 * j),
-                (4, 3, op_sz, j),
-                (4, 4, op_id, 1.0),
-            ],
-        ));
-    }
-
-    // Site N-1 — first column [I, σ⁺, σ⁻, σᶻ, 0]ᵀ, shape (5, D, D, 1).
-    sites.push(build_mpo_site_f64(
-        5,
-        1,
-        &[
-            (0, 0, op_id, 1.0),
-            (1, 0, op_sp, 1.0),
-            (2, 0, op_sm, 1.0),
-            (3, 0, op_sz, 1.0),
-        ],
     ));
 
     Mpo::from_sites(sites)
@@ -281,32 +164,6 @@ fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
         .iter()
         .copied()
         .fold(f64::INFINITY, f64::min)
-}
-
-// ---------------------------------------------------------------------------
-// Random initial MPS in `Mixed { center: 0 }` form. Inlined here
-// because the equivalent helper in `dmrg_sweep.rs` is not exported.
-// ---------------------------------------------------------------------------
-
-fn random_mps_center_zero_f64(
-    n: usize,
-    d: usize,
-    chi: usize,
-    seed: u64,
-) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|i| {
-            let l = if i == 0 { 1 } else { chi };
-            let r = if i + 1 == n { 1 } else { chi };
-            let len = l * d * r;
-            let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            Host::shared().dense(data, vec![l, d, r])
-        })
-        .collect();
-    let mut mps = Mps::from_sites(storages);
-    canonicalize(&NativeBackend::new(), &mut mps, 0);
-    mps
 }
 
 // ---------------------------------------------------------------------------

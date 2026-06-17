@@ -16,6 +16,7 @@ ariadnetor-native = { path = "../crates/ariadnetor-native" }
 ariadnetor-mps = { path = "../crates/ariadnetor-mps" }
 ariadnetor-algorithms = { path = "../crates/ariadnetor-algorithms" }
 num-complex = { workspace = true }
+rand = { workspace = true }
 
 [lints]
 workspace = true

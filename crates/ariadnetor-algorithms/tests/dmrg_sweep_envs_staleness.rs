@@ -7,34 +7,9 @@ use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps, canonicalize};
-use arnet_native::NativeBackend;
+use arnet_mps::Mpo;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
-
-fn random_mps_center_zero_f64(
-    n: usize,
-    d: usize,
-    chi: usize,
-    seed: u64,
-) -> Mps<DenseStorage<f64>, DenseLayout> {
-    use rand::RngExt;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
-
-    let mut rng = StdRng::seed_from_u64(seed);
-    let sites: Vec<DenseTensor<f64>> = (0..n)
-        .map(|i| {
-            let l = if i == 0 { 1 } else { chi };
-            let r = if i + 1 == n { 1 } else { chi };
-            let len = l * d * r;
-            let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            Host::shared().dense(data, vec![l, d, r])
-        })
-        .collect();
-    let mut mps = Mps::from_sites(sites);
-    canonicalize(&NativeBackend::new(), &mut mps, 0);
-    mps
-}
+use test_utils::dense_fixtures::random_mps_center_zero_f64;
 
 /// Identity-Hermitian PSD-product MPO. Each site is `h_i ⊗ I ⊗ I ...`,
 /// where `h_i` is a random PSD matrix `R R^T` (`R` is the seeded random
