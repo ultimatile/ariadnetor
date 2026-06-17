@@ -48,10 +48,12 @@ exact non-workspace exceptions. To intentionally widen a surface, add the
 new fully-qualified path to that crate's allow-list; a newly flagged
 lower-layer or foreign type that was not intended is a leak to fix, not to
 whitelist. The check needs a nightly toolchain that emits rustdoc JSON
-format 57 together with `cargo-check-external-types` 0.5.0 (the rolling
-`+nightly` works; `nightly-2025-10-25` is too old). If a future nightly
-outpaces the tool's supported format, bump the tool or pin a compatible
-nightly.
+format 57 together with `cargo-check-external-types` 0.5.0 (install with
+`cargo install cargo-check-external-types@0.5.0`; the rolling `+nightly`
+works, `nightly-2025-10-25` is too old). The version is not pinned in the
+repo — it is a `PATH` tool like the other ad-hoc QA commands. If a future
+nightly outpaces the tool's supported format, bump the tool or pin a
+compatible nightly.
 
 ## Coding Conventions
 
