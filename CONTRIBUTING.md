@@ -23,10 +23,11 @@ doctests but does not compile or run benches. Run
 These are run on demand, not wired into `gate`:
 
 ```bash
-cargo public-api diff  # review public API surface changes
-cargo semver-checks    # semver-compatibility check (once a baseline is published)
-cargo mutants          # mutation testing
-cargo make litmus      # pluggability litmus: host-pinned crates against the alternate Host substrate
+cargo make external-types  # layer-leak gate: no lower-layer/foreign type leaks through a public API
+cargo make public-api      # print the public API surface per crate (review surface changes)
+cargo semver-checks        # semver-compatibility check (once a baseline is published)
+cargo mutants              # mutation testing
+cargo make litmus          # pluggability litmus: host-pinned crates against the alternate Host substrate
 ```
 
 Run `cargo make litmus` when changing the host-pinned surface (the
@@ -36,6 +37,24 @@ that touches it. It rebuilds those crates with `Host` aliased to a
 distinct backend and runs their tests, confirming the call-site-backend
 design still holds against a non-native substrate. The cheaper per-diff
 regression guards live in the pre-commit hooks.
+
+Run `cargo make external-types` when changing a gated crate's public
+surface. It verifies, per crate, that no type outside the crate's
+`allowed-external-types.toml` appears in its public API, so a lower-layer
+or foreign type cannot leak through without a declared dependency edge.
+The mid-layer crates (`ariadnetor-tensor`, `ariadnetor-linalg`) use EXACT
+allow-lists; the `ariadnetor` umbrella uses workspace-facade globs plus
+exact non-workspace exceptions. To intentionally widen a surface, add the
+new fully-qualified path to that crate's allow-list; a newly flagged
+lower-layer or foreign type that was not intended is a leak to fix, not to
+whitelist. The check needs a nightly toolchain that emits rustdoc JSON
+format 57 (the rustdoc-JSON schema version, bumped by nightly as the
+output structure evolves) together with `cargo-check-external-types` 0.5.0 (install with
+`cargo install cargo-check-external-types@0.5.0`; the rolling `+nightly`
+works, `nightly-2025-10-25` is too old). The version is not pinned in the
+repo — it is a `PATH` tool like the other ad-hoc QA commands. If a future
+nightly outpaces the tool's supported format, bump the tool or pin a
+compatible nightly.
 
 ## Coding Conventions
 

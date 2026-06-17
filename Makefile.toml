@@ -6,9 +6,10 @@
 # or has non-obvious / order-sensitive flags; when it must be
 # discoverable; or when it has a canonical form that must not drift
 # run-to-run. Short commands whose flags are routinely varied stay ad hoc
-# (a fixed task there only removes flexibility). Ad-hoc QA tools that sit
-# outside the gate (public-api, semver-checks, mutation testing) are
-# listed in CONTRIBUTING.md rather than registered here.
+# (a fixed task there only removes flexibility). Genuinely ad-hoc QA
+# tools that sit outside the gate (semver-checks, mutation testing) are
+# listed in CONTRIBUTING.md rather than registered here; composite QA
+# loops with a canonical form (external-types, public-api) earn a task.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
@@ -147,3 +148,41 @@ args = [
     "-p", "ariadnetor",
     "--features", "pluggability-litmus",
 ]
+
+# Layer-leak gate: cargo-check-external-types verifies that no lower-layer or
+# foreign type leaks through a crate's public API beyond its allow-list. It
+# runs over every crate that ships a crates/<crate>/allowed-external-types.toml,
+# so adding that file is all it takes to gate a new crate (the on-disk config
+# is the single source of the gated set — no list to keep in sync here). Mid-
+# layer crates use EXACT lists; the umbrella uses workspace-facade globs plus
+# exact non-workspace exceptions. Deliberately NOT a `gate` dependency: it needs
+# nightly + a full rustdoc build, too heavy for the per-commit path. See
+# CONTRIBUTING.md for the nightly / cargo-check-external-types version pairing.
+[tasks.external-types]
+description = "Layer-leak gate: cargo-check-external-types per gated crate against its allow-list (cargo make external-types); not a gate dependency, see CONTRIBUTING.md for toolchain requirements"
+script_runner = "@shell"
+script = '''
+set -e
+for cfg in crates/*/allowed-external-types.toml; do
+    dir=$(dirname "${cfg}")
+    echo "== check-external-types: ${dir} =="
+    cargo +nightly check-external-types \
+        --manifest-path "${dir}/Cargo.toml" \
+        --config "${cfg}"
+done
+'''
+
+# Print the public API surface per crate, for review of surface changes.
+# Advisory only (no committed baseline pre-publish). Bare `cargo public-api`
+# fails in a workspace, hence the per-package loop. To diff against a
+# published baseline, run `cargo public-api -p <crate> diff vX..vY` manually.
+[tasks.public-api]
+description = "Print the public API surface per crate for review (cargo make public-api); advisory, outside the gate"
+script_runner = "@shell"
+script = '''
+set -e
+for crate in ariadnetor-core ariadnetor-tensor ariadnetor-linalg ariadnetor-native ariadnetor-mps ariadnetor-algorithms ariadnetor; do
+    echo "== public-api: ${crate} =="
+    cargo public-api -p "${crate}"
+done
+'''

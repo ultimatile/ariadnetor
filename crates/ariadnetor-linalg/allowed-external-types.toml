@@ -1,0 +1,21 @@
+# Layer-leak allow-list for ariadnetor-linalg's public API
+# (cargo-check-external-types; see CONTRIBUTING.md "Ad-hoc QA tools").
+#
+# EXACT paths, no globs: any widening of the public surface — an added type,
+# a leak, or a new alias laundering a lower-layer type — surfaces as a diff
+# here. ariadnetor-native is a dev-dependency only, so no native type may
+# appear; the absence of any arnet_native entry is the enforced invariant.
+allowed_external_types = [
+    "arnet_core::backend::BackendError",
+    "arnet_core::backend::ComputeBackend",
+    "arnet_core::backend::ExecPolicy",
+    "arnet_core::scalar::Scalar",
+    "arnet_tensor::block_sparse::Direction",
+    "arnet_tensor::block_sparse::storage::BlockSparseStorage",
+    "arnet_tensor::capability::OpsFor",
+    "arnet_tensor::dense::storage::DenseStorage",
+    "arnet_tensor::error::TensorError",
+    "arnet_tensor::sector::Sector",
+    "arnet_tensor::tensor::BlockSparseTensor",
+    "arnet_tensor::tensor::DenseTensor",
+]
