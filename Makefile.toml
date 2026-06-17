@@ -181,7 +181,7 @@ description = "Print the public API surface per crate for review (cargo make pub
 script_runner = "@shell"
 script = '''
 set -e
-for crate in ariadnetor-core ariadnetor-tensor ariadnetor-linalg ariadnetor-native ariadnetor; do
+for crate in ariadnetor-core ariadnetor-tensor ariadnetor-linalg ariadnetor-native ariadnetor-mps ariadnetor-algorithms ariadnetor; do
     echo "== public-api: ${crate} =="
     cargo public-api -p "${crate}"
 done

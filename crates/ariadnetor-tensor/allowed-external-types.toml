@@ -1,10 +1,11 @@
 # Layer-leak allow-list for ariadnetor-tensor's public API
 # (cargo-check-external-types; see CONTRIBUTING.md "Ad-hoc QA tools").
 #
-# EXACT paths, no globs. `arnet_native::NativeBackend` is the ONE intended
-# native exposure — the `Host` alias (`pub type Host = NativeBackend`),
-# flagged at its definition site. Any OTHER arnet_native type appearing here
-# is a layer leak to fix, not to whitelist.
+# EXACT paths, no globs. `arnet_native::NativeBackend` is the one permitted
+# native type: the default `Host` backend, surfaced via the `Host` alias
+# (`pub type Host = NativeBackend`) and a direct re-export. It is allowed by
+# type path (not by use site), so any OTHER arnet_native type reaching the
+# public API is flagged as a layer leak to fix, not to whitelist.
 allowed_external_types = [
     "arnet_core::backend::ComputeBackend",
     "arnet_core::backend::MemoryOrder",
