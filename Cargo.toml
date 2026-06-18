@@ -45,6 +45,7 @@ thiserror = "2"
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
+rstest = "0.26"
 syn = { version = "2", features = ["full", "visit"] }
 
 [profile.bench]

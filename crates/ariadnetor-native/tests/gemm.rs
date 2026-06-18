@@ -1,6 +1,8 @@
+use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_native::NativeBackend;
 use num_complex::Complex;
+use rstest::rstest;
 
 #[test]
 fn test_gemm_f64_identity() {
@@ -468,4 +470,165 @@ fn test_gemm_c32_colmajor() {
     // C[0,0] = 2*(17+15i) + i*(2+3i) = (34+30i) + (-3+2i) = 31+32i
     assert!((c[0].re - 31.0).abs() < 1e-3);
     assert!((c[0].im - 32.0).abs() < 1e-3);
+}
+
+// --- Transpose × layout contract (issue #103) ---
+//
+// GEMM computes C[m×n] = op(A)[m×k] * op(B)[k×n], where `trans_X` means the
+// stored buffer holds the transpose of `op(X)` and `order` sets each buffer's
+// memory layout. The result must be independent of layout and correct for
+// every transpose-flag combination. The tests below check all 8 combinations
+// of (trans_a, trans_b, order) against a naive triple-loop reference, for each
+// scalar kernel — the transpose-dimension fix was duplicated across all four,
+// so each is covered independently.
+
+/// Flat offset of logical element `(i, j)` in a `rows`×`cols` matrix laid out per `order`.
+fn layout_index(i: usize, j: usize, rows: usize, cols: usize, order: MemoryOrder) -> usize {
+    match order {
+        MemoryOrder::RowMajor => i * cols + j,
+        MemoryOrder::ColumnMajor => j * rows + i,
+    }
+}
+
+/// Flatten a logical `rows`×`cols` matrix (row-major in `data`) into a buffer
+/// laid out per `order`. This is the inverse of the decode the kernel performs.
+fn encode<T: Scalar>(data: &[T], rows: usize, cols: usize, order: MemoryOrder) -> Vec<T> {
+    let mut buf = vec![T::zero(); rows * cols];
+    for i in 0..rows {
+        for j in 0..cols {
+            buf[layout_index(i, j, rows, cols, order)] = data[i * cols + j];
+        }
+    }
+    buf
+}
+
+/// Inverse of [`encode`]: read an `order`-laid-out buffer back into row-major form.
+fn decode<T: Scalar>(buf: &[T], rows: usize, cols: usize, order: MemoryOrder) -> Vec<T> {
+    let mut out = vec![T::zero(); rows * cols];
+    for i in 0..rows {
+        for j in 0..cols {
+            out[i * cols + j] = buf[layout_index(i, j, rows, cols, order)];
+        }
+    }
+    out
+}
+
+/// Transpose a row-major `rows`×`cols` logical matrix into a row-major `cols`×`rows` one.
+fn transpose_logical<T: Scalar>(data: &[T], rows: usize, cols: usize) -> Vec<T> {
+    let mut t = vec![T::zero(); rows * cols];
+    for i in 0..rows {
+        for j in 0..cols {
+            t[j * rows + i] = data[i * cols + j];
+        }
+    }
+    t
+}
+
+/// Verify GEMM matches a naive reference for one `(trans_a, trans_b, order)` combination.
+fn check_gemm_combination<T: Scalar>(
+    trans_a: bool,
+    trans_b: bool,
+    order: MemoryOrder,
+    mk: fn(f64) -> T,
+) {
+    // All dimensions distinct: m != k and n != k make the column-major
+    // transposed paths dimension-sensitive, so a regression of the transpose-
+    // dimension fix is caught. A square example would make the two dimension
+    // orderings identical and silently hide such a bug.
+    let (m, n, k) = (2usize, 4usize, 3usize);
+
+    let op_a: Vec<T> = (1..=m * k).map(|x| mk(x as f64)).collect(); // m×k, row-major
+    let op_b: Vec<T> = (1..=k * n).map(|x| mk(x as f64)).collect(); // k×n, row-major
+
+    // Reference C = op(A) * op(B), m×n.
+    let mut reference = vec![T::zero(); m * n];
+    for i in 0..m {
+        for j in 0..n {
+            let mut acc = T::zero();
+            for p in 0..k {
+                acc = acc + op_a[i * k + p] * op_b[p * n + j];
+            }
+            reference[i * n + j] = acc;
+        }
+    }
+
+    // The A buffer stores op(A) (m×k) or its transpose (k×m), encoded per `order`.
+    let a_buf = if trans_a {
+        encode(&transpose_logical(&op_a, m, k), k, m, order)
+    } else {
+        encode(&op_a, m, k, order)
+    };
+    let b_buf = if trans_b {
+        encode(&transpose_logical(&op_b, k, n), n, k, order)
+    } else {
+        encode(&op_b, k, n, order)
+    };
+
+    let mut c_buf = vec![T::zero(); m * n];
+    let desc = GemmDescriptor {
+        m,
+        n,
+        k,
+        alpha: T::one(),
+        a: &a_buf,
+        b: &b_buf,
+        beta: T::zero(),
+        c: &mut c_buf,
+        trans_a,
+        trans_b,
+        order,
+        policy: ExecPolicy::Sequential,
+    };
+    NativeBackend::new().gemm(desc).unwrap();
+
+    // `Scalar` has no `Sub`; form the difference via `Add` + `Mul<Real>`.
+    // Inputs are integer-valued, so the arithmetic is exact and an epsilon
+    // tolerance suffices; `Scalar::abs` covers both real and complex scalars.
+    let got = decode(&c_buf, m, n, order);
+    let neg_one = -<T::Real as num_traits::One>::one();
+    for (g, r) in got.iter().zip(reference.iter()) {
+        let err = (*g + r.scale_real(neg_one)).abs();
+        assert!(
+            err <= <T::Real as num_traits::Float>::epsilon(),
+            "GEMM mismatch: trans_a={trans_a}, trans_b={trans_b}, order={order:?}"
+        );
+    }
+}
+
+#[rstest]
+fn gemm_layout_transpose_invariance_f64(
+    #[values(false, true)] trans_a: bool,
+    #[values(false, true)] trans_b: bool,
+    #[values(MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)] order: MemoryOrder,
+) {
+    check_gemm_combination::<f64>(trans_a, trans_b, order, |x| x);
+}
+
+#[rstest]
+fn gemm_layout_transpose_invariance_f32(
+    #[values(false, true)] trans_a: bool,
+    #[values(false, true)] trans_b: bool,
+    #[values(MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)] order: MemoryOrder,
+) {
+    check_gemm_combination::<f32>(trans_a, trans_b, order, |x| x as f32);
+}
+
+#[rstest]
+fn gemm_layout_transpose_invariance_c64(
+    #[values(false, true)] trans_a: bool,
+    #[values(false, true)] trans_b: bool,
+    #[values(MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)] order: MemoryOrder,
+) {
+    check_gemm_combination::<Complex<f64>>(trans_a, trans_b, order, |x| Complex::new(x, 0.0));
+}
+
+#[rstest]
+fn gemm_layout_transpose_invariance_c32(
+    #[values(false, true)] trans_a: bool,
+    #[values(false, true)] trans_b: bool,
+    #[values(MemoryOrder::RowMajor, MemoryOrder::ColumnMajor)] order: MemoryOrder,
+) {
+    check_gemm_combination::<Complex<f32>>(trans_a, trans_b, order, |x| {
+        Complex::new(x as f32, 0.0)
+    });
 }
