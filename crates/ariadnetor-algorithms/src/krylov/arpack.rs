@@ -98,9 +98,18 @@ pub struct ArpackResult<T: Scalar> {
     pub converged: bool,
 }
 
-/// Errors from the ARPACK-backed solver. Mirrors `arpack::Error`
-/// without information loss; the wrapper does not collapse distinct
-/// upstream codes.
+/// Errors from the ARPACK-backed solver, mirroring `arpack::Error`
+/// variant-for-variant.
+///
+/// Every `arpack::Error` code modeled today maps to its own variant —
+/// the wrapper does not collapse distinct known codes into one category.
+/// The convergence / construction variants ([`Self::MaxIterReached`],
+/// [`Self::NoShiftsApplied`], [`Self::ArnoldiFactorizationFailed`]) carry
+/// their iparam diagnostic counters; [`Self::AupdFailed`] /
+/// [`Self::EupdFailed`] retain only the raw `info` code and drop the
+/// counters. A genuinely-future upstream variant (the enum is
+/// `#[non_exhaustive]`) round-trips through [`Self::InvalidParam`] until
+/// it is modeled explicitly.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ArpackError {
@@ -128,6 +137,37 @@ pub enum ArpackError {
         nconv: usize,
         n_matvec: usize,
     },
+    /// `*aupd_c` returned `info = 3`: no shifts could be applied during a
+    /// cycle of the Implicitly Restarted Arnoldi/Lanczos iteration, so
+    /// the restart stalled before convergence. The usual remedy is to
+    /// increase `ncv` relative to `nev`. The iparam diagnostic counters
+    /// are preserved.
+    #[error(
+        "ARPACK could not apply shifts during a restart cycle (info = 3); \
+         increase ncv relative to nev: iters = {iters}, nconv = {nconv}, \
+         n_matvec = {n_matvec}"
+    )]
+    NoShiftsApplied {
+        iters: usize,
+        nconv: usize,
+        n_matvec: usize,
+    },
+    /// `*aupd_c` returned `info = -9999`: ARPACK could not build an
+    /// Arnoldi factorization of the requested size within `max_iter`.
+    /// Increasing `max_iter` or `ncv` may help. `factorization_size` is
+    /// the size ARPACK did manage to build; the `iparam[4]` slot means
+    /// that here, rather than the converged Ritz count the other variants
+    /// carry as `nconv`. The iparam diagnostic counters are preserved.
+    #[error(
+        "ARPACK could not build an Arnoldi factorization (info = -9999); \
+         built size {factorization_size}; try increasing max_iter or ncv: \
+         iters = {iters}, n_matvec = {n_matvec}"
+    )]
+    ArnoldiFactorizationFailed {
+        iters: usize,
+        factorization_size: usize,
+        n_matvec: usize,
+    },
 }
 
 impl From<arpack::Error> for ArpackError {
@@ -144,6 +184,24 @@ impl From<arpack::Error> for ArpackError {
             } => ArpackError::MaxIterReached {
                 iters,
                 nconv,
+                n_matvec,
+            },
+            arpack::Error::NoShiftsApplied {
+                iters,
+                nconv,
+                n_matvec,
+            } => ArpackError::NoShiftsApplied {
+                iters,
+                nconv,
+                n_matvec,
+            },
+            arpack::Error::ArnoldiFactorizationFailed {
+                iters,
+                factorization_size,
+                n_matvec,
+            } => ArpackError::ArnoldiFactorizationFailed {
+                iters,
+                factorization_size,
                 n_matvec,
             },
             // `arpack::Error` is `#[non_exhaustive]`; future variants
