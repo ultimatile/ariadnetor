@@ -35,28 +35,29 @@ mod ops;
 // Main types
 pub use arnet_tensor::{BlockSparseTensor, DenseTensor, Tensor};
 
-// Storage / Layout building blocks. Required by downstream crates that
-// parameterize their own generic containers (e.g. `Mps<St, L>`) over
-// the joined `Tensor<St, L>` type. The `TensorData<St, L>`
-// joined-data aliases are intentionally not re-exported here — umbrella
-// consumers should only see the joined `Tensor` surface. `TensorData`
-// stays `pub` in `arnet-tensor` for crates that perform cross-crate
-// kernel access; such crates depend on `arnet-tensor` directly rather
-// than the umbrella.
-pub use arnet_tensor::{
-    BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage,
-    Direction, QNIndex, Sector, Storage, StorageFor, TensorLayout, U1Sector, Z2Sector,
-};
+// Block-sparse construction and introspection vocabulary: the index /
+// sector / direction types an end user writes to build a symmetric tensor,
+// plus the block coordinate / metadata types that block introspection
+// returns. The storage / layout building blocks (`DenseStorage`,
+// `DenseLayout`, the block-sparse counterparts, and the `Storage` /
+// `StorageFor` / `TensorLayout` traits) and the joined `TensorData<St, L>`
+// type are intentionally not re-exported: the umbrella hides memory layout
+// and storage plumbing from end users. Crates that parameterize their own
+// generic containers, define a new storage flavor, or perform cross-crate
+// kernel access depend on `arnet-tensor` directly rather than the umbrella.
+pub use arnet_tensor::{BlockCoord, BlockMeta, Direction, QNIndex, Sector, U1Sector, Z2Sector};
 
 // Backend-capability scaffolding: the `OpsFor<St>` marker and the `Host`
 // substrate alias.
 pub use arnet_tensor::{Host, OpsFor};
 
 // Re-export from ariadnetor-core
-pub use arnet_core::{Complex, ComputeBackend, ContractionError, EinsumExpr, LabelId, Scalar};
+pub use arnet_core::{Complex, ComputeBackend, EinsumExpr, Scalar};
 
 // High-level free functions over host-resident dense tensors (no backend).
-pub use arnet_tensor::{add_all, linear_combine};
+// `add_all` is intentionally not re-exported: it is `linear_combine` with
+// all-unit coefficients, so the umbrella exposes only the general form.
+pub use arnet_tensor::linear_combine;
 // Explicit-backend dense free functions (backend supplied at the call site).
 // The single-backend ergonomic surface is the `DenseHostOps` /
 // `BlockSparseHostOps` extension traits re-exported below, not free functions.
@@ -68,10 +69,17 @@ pub use ops::{
     trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
 };
 
-// The block-sparse low-level free functions and their result types are
-// intentionally not re-exported: they are consumer-internal API that
-// `arnet-mps` / `arnet-algorithms` reach through a direct `arnet-linalg`
-// dependency, not this umbrella.
+// The block-sparse low-level free functions are intentionally not
+// re-exported: they are consumer-internal API that `arnet-mps` /
+// `arnet-algorithms` reach through a direct `arnet-linalg` dependency, not
+// this umbrella. Their result types, by contrast, ARE re-exported below:
+// the Host-defaulting `BlockSparseHostOps` methods return them, so an
+// umbrella user must be able to name them — mirroring the dense result
+// aliases re-exported further down.
+pub use arnet_linalg::{
+    BlockSingularValues, BlockSparseContractResult, BlockSparseQrResult, BlockSparseSvdResult,
+    BlockSparseTruncSvdResult,
+};
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.
 pub use arnet_linalg::{BlockSparseHostOps, DenseHostOps};

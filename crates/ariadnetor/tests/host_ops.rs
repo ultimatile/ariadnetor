@@ -5,8 +5,8 @@
 //! with no backend handle at the call site.
 
 use arnet::{
-    BlockCoord, BlockSparseHostOps, BlockSparseTensor, DenseHostOps, DenseTensor, Direction,
-    QNIndex, U1Sector,
+    BlockCoord, BlockSparseHostOps, BlockSparseSvdResult, BlockSparseTensor, DenseHostOps,
+    DenseTensor, Direction, QNIndex, U1Sector,
 };
 
 #[test]
@@ -37,4 +37,13 @@ fn block_sparse_methods_resolve_through_umbrella() {
         .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
     let out = t.permute(&[1, 0]).expect("permute via method");
     assert_eq!(out.shape(), t.shape());
+
+    // `BlockSparseHostOps::svd` returns the `(U, S, Vt)` alias; binding it with
+    // an explicit `arnet::`-qualified type is the load-bearing assertion here —
+    // it fails to compile unless the result alias is re-exported. This alias is
+    // the part newly re-exported by this change (the dense aliases already
+    // were). The shape check below is only a smoke test that the call ran.
+    let (u, _s, _vt): BlockSparseSvdResult<f64, U1Sector> =
+        t.svd(1).expect("block-sparse svd via method");
+    assert_eq!(u.shape()[0], t.shape()[0]);
 }
