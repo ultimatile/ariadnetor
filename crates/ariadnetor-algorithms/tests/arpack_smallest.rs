@@ -413,6 +413,50 @@ fn arpack_error_from_arpack_preserves_variant_and_display() {
             )
         },
     );
+    // `info = 3` must reach `NoShiftsApplied` with its counters intact,
+    // not collapse into the `InvalidParam` catch-all (the bug in #327).
+    // The asserted Display substring carries a counter value so a silent
+    // counter drop would also be caught.
+    assert_round_trip(
+        Error::NoShiftsApplied {
+            iters: 7,
+            nconv: 2,
+            n_matvec: 21,
+        },
+        "nconv = 2",
+        |e| {
+            matches!(
+                e,
+                ArpackError::NoShiftsApplied {
+                    iters: 7,
+                    nconv: 2,
+                    n_matvec: 21,
+                }
+            )
+        },
+    );
+    // `info = -9999` must reach `ArnoldiFactorizationFailed`. The
+    // `factorization_size` field (not `nconv`) must carry the upstream
+    // value through; the "built size 5" Display substring pins that this
+    // is the factorization-size slot, distinct from a converged count.
+    assert_round_trip(
+        Error::ArnoldiFactorizationFailed {
+            iters: 4,
+            factorization_size: 5,
+            n_matvec: 18,
+        },
+        "built size 5",
+        |e| {
+            matches!(
+                e,
+                ArpackError::ArnoldiFactorizationFailed {
+                    iters: 4,
+                    factorization_size: 5,
+                    n_matvec: 18,
+                }
+            )
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
