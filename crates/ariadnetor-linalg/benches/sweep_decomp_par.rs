@@ -5,11 +5,14 @@
 //! to beat sequential. The crossover is the threshold to use for
 //! per-call `ExecPolicy` dispatch in `arnet-native`.
 //!
-//! Each op is measured through the `*_with_policy` expert-layer entry
-//! point with an explicit `ExecPolicy`, so the sweep exercises the
-//! two branches of the dispatch decision directly. Global parallelism
-//! state (`faer::set_global_parallelism`) is not consulted by the
-//! per-call path and is intentionally not touched here.
+//! Each op is measured through its policy-explicit expert-layer entry
+//! point (`expert::eig` / `expert::eigh`, and the root `*_with_policy`
+//! decomposition fns pending
+//! <https://github.com/ultimatile/ariadnetor/issues/299>) with an
+//! explicit `ExecPolicy`, so the sweep exercises the two branches of the
+//! dispatch decision directly. Global parallelism state
+//! (`faer::set_global_parallelism`) is not consulted by the per-call
+//! path and is intentionally not touched here.
 
 use arnet_tensor::{ComputeBackendTensorExt, Host};
 use std::time::{Duration, Instant};
@@ -17,9 +20,8 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::{
-    eig_with_policy, eigh_with_policy, lq_with_policy, qr_with_policy, svd_with_policy,
-};
+use arnet_linalg::expert::{eig, eigh};
+use arnet_linalg::{lq_with_policy, qr_with_policy, svd_with_policy};
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
@@ -104,10 +106,10 @@ fn main() {
         let _ = lq_with_policy(&backend, m, 1, policy).unwrap();
     });
     run_sweep("eigh (symmetric)", &sizes, random_symmetric, |m, policy| {
-        let _ = eigh_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = eigh(&backend, m, 1, policy).unwrap();
     });
     run_sweep("eig (general)", &sizes, random_dense, |m, policy| {
-        let _ = eig_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = eig(&backend, m, 1, policy).unwrap();
     });
 
     eprintln!(

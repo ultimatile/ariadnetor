@@ -8,7 +8,7 @@
 //!
 //! `arnet_linalg` does not expose a dedicated `gemm_with_policy`. The
 //! linalg-layer entry that probes `par_for_gemm(m, n, k)` is
-//! `contract_with_policy(.., "ij,jk->ik", ..)`: it calls `backend.gemm`
+//! `expert::contract(.., "ij,jk->ik", ..)`: it calls `backend.gemm`
 //! with a caller-provided `ExecPolicy`. Global parallelism state is not
 //! consulted by the per-call path and is intentionally not touched here.
 //!
@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::contract_with_policy;
+use arnet_linalg::expert::contract;
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
@@ -83,7 +83,7 @@ fn main() {
         &sizes,
         |n| (random_dense(n, 42), random_dense(n, 43)),
         |(a, b), policy| {
-            let _ = contract_with_policy(&backend, a, b, "ij,jk->ik", policy).unwrap();
+            let _ = contract(&backend, a, b, "ij,jk->ik", policy).unwrap();
         },
     );
 

@@ -6,7 +6,7 @@
 //! `ExecPolicy` dispatch in `arnet-native` (currently `usize::MAX` on
 //! laptop — unmeasured per ADR-0008).
 //!
-//! Each measurement uses `transpose_with_policy(.., perm=[1, 0], ..)`
+//! Each measurement uses `expert::transpose(.., perm=[1, 0], ..)`
 //! with a caller-provided `ExecPolicy`. Global parallelism state is not
 //! consulted by the per-call path and is intentionally not touched here.
 //!
@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::transpose_with_policy;
+use arnet_linalg::expert::transpose;
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
@@ -91,7 +91,7 @@ fn main() {
         |n| random_square(n, 42),
         |t| t.len(),
         |t, policy| {
-            let _ = transpose_with_policy(&backend, t, &[1, 0], policy).unwrap();
+            let _ = transpose(&backend, t, &[1, 0], policy).unwrap();
         },
     );
 
