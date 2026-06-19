@@ -6,11 +6,9 @@
 //! per-call `ExecPolicy` dispatch in `arnet-native`.
 //!
 //! Each op is measured through its policy-explicit expert-layer entry
-//! point (`expert::eig` / `expert::eigh`, and the root `*_with_policy`
-//! decomposition fns pending
-//! <https://github.com/ultimatile/ariadnetor/issues/299>) with an
-//! explicit `ExecPolicy`, so the sweep exercises the two branches of the
-//! dispatch decision directly. Global parallelism state
+//! point (`expert::svd` / `expert::qr` / `expert::lq` / `expert::eigh` /
+//! `expert::eig`) with an explicit `ExecPolicy`, so the sweep exercises the
+//! two branches of the dispatch decision directly. Global parallelism state
 //! (`faer::set_global_parallelism`) is not consulted by the per-call
 //! path and is intentionally not touched here.
 
@@ -20,8 +18,7 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::expert::{eig, eigh};
-use arnet_linalg::{lq_with_policy, qr_with_policy, svd_with_policy};
+use arnet_linalg::expert::{eig, eigh, lq, qr, svd};
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
@@ -97,13 +94,13 @@ fn main() {
     let sizes = [16usize, 32, 64, 128, 256, 512, 1024];
 
     run_sweep("SVD (thin)", &sizes, random_dense, |m, policy| {
-        let _ = svd_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = svd(&backend, m, 1, policy).unwrap();
     });
     run_sweep("QR", &sizes, random_dense, |m, policy| {
-        let _ = qr_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = qr(&backend, m, 1, policy).unwrap();
     });
     run_sweep("LQ", &sizes, random_dense, |m, policy| {
-        let _ = lq_with_policy(&backend, m, 1, policy).unwrap();
+        let _ = lq(&backend, m, 1, policy).unwrap();
     });
     run_sweep("eigh (symmetric)", &sizes, random_symmetric, |m, policy| {
         let _ = eigh(&backend, m, 1, policy).unwrap();

@@ -12,9 +12,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 
 use arnet_linalg::{
-    DenseHostOps, TruncSvdParams, contract_block_sparse_with_backend, lq_block_sparse_with_backend,
-    qr_block_sparse_with_backend, svd_block_sparse_with_backend,
-    trunc_svd_block_sparse_with_backend,
+    DenseHostOps, TruncSvdParams, contract_block_sparse_with_backend, lq, qr, svd, trunc_svd,
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparseTensor, DenseTensor, Direction, QNIndex, U1Sector};
@@ -181,7 +179,7 @@ fn bench_svd(c: &mut Criterion) {
     for p in &standard_sweep() {
         let a = random_bsp_matrix(p.q, p.d);
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| svd_block_sparse_with_backend(&backend, a, 1).unwrap());
+            bench.iter_with_large_drop(|| svd(&backend, a, 1).unwrap());
         });
 
         let total = p.q * p.d;
@@ -207,9 +205,7 @@ fn bench_trunc_svd(c: &mut Criterion) {
         };
 
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| {
-                trunc_svd_block_sparse_with_backend(&backend, a, 1, &params).unwrap()
-            });
+            bench.iter_with_large_drop(|| trunc_svd(&backend, a, 1, &params).unwrap());
         });
 
         let total = p.q * p.d;
@@ -233,7 +229,7 @@ fn bench_qr(c: &mut Criterion) {
     for p in &standard_sweep() {
         let a = random_bsp_matrix(p.q, p.d);
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| qr_block_sparse_with_backend(&backend, a, 1).unwrap());
+            bench.iter_with_large_drop(|| qr(&backend, a, 1).unwrap());
         });
 
         let total = p.q * p.d;
@@ -253,7 +249,7 @@ fn bench_lq(c: &mut Criterion) {
     for p in &standard_sweep() {
         let a = random_bsp_matrix(p.q, p.d);
         group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| lq_block_sparse_with_backend(&backend, a, 1).unwrap());
+            bench.iter_with_large_drop(|| lq(&backend, a, 1).unwrap());
         });
 
         let total = p.q * p.d;
@@ -301,7 +297,7 @@ fn bench_singh_reference(c: &mut Criterion) {
 
         // SVD
         group.bench_with_input(BenchmarkId::new("svd_bsp", &p.label), &a, |bench, a| {
-            bench.iter_with_large_drop(|| svd_block_sparse_with_backend(&backend, a, 1).unwrap());
+            bench.iter_with_large_drop(|| svd(&backend, a, 1).unwrap());
         });
         group.bench_with_input(
             BenchmarkId::new("svd_dense", &p.label),

@@ -2,7 +2,7 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, LqDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 
 use super::reshape_for_backend;
 use crate::error::LinalgError;
@@ -35,24 +35,10 @@ pub(crate) fn lq_dense<T: Scalar>(
     lq_with_policy_dense(backend, tensor, nrow, policy)
 }
 
-/// Thin LQ with an explicit backend and caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`crate::lq_with_backend`]; that entry point
-/// consults `backend.par_for_lq`, while this one takes `policy` directly. The
-/// backend is supplied at the call site and the tensor's own backend is never
-/// consulted.
-pub fn lq_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-    policy: ExecPolicy,
-) -> Result<LqResult<T>, LinalgError> {
-    let (l, q) = lq_with_policy_dense(backend, tensor.data(), nrow, policy)?;
-    Ok((DenseTensor::from_data(l), DenseTensor::from_data(q)))
-}
-
-/// Internal kernel for [`lq_with_policy`] on the joined
-/// [`DenseTensorData<T>`] form.
+/// Internal kernel for the dense LQ with a caller-specified execution policy,
+/// on the joined [`DenseTensorData<T>`] form. The public entry is the
+/// layout-keyed [`expert::lq`](crate::expert::lq); the auto-policy entry
+/// [`lq`](crate::lq) wraps [`lq_dense`], which consults `backend.par_for_lq`.
 pub(crate) fn lq_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,

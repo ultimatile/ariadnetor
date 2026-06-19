@@ -68,9 +68,13 @@ pub use ops::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
     eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, lq_with_backend, qr_with_backend, solve_with_backend, svd_with_backend,
-    trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
+    inverse_with_backend, solve_with_backend, trace_with_backend, transpose_with_backend,
 };
+
+// Layout-keyed decomposition dispatch: the unified `svd` / `trunc_svd` / `qr` /
+// `lq` free fns serve both Dense and BlockSparse via [`LinalgDecompose`], so one
+// call site covers both flavors. The policy-explicit forms live under `expert`.
+pub use ops::{LinalgDecompose, lq, qr, svd, trunc_svd};
 
 // The block-sparse low-level free functions are intentionally not
 // re-exported: they are consumer-internal API that `arnet-mps` /
@@ -89,9 +93,9 @@ pub use arnet_linalg::{BlockSparseHostOps, DenseHostOps};
 
 // Expert layer: the per-call `ExecPolicy` escape hatch over the auto-policy
 // default. Re-exported as the `arnet::expert` namespace so an umbrella-only
-// consumer can reach `expert::transpose`, `expert::contract`, … (the
-// decomposition policy variants join it via arnet-linalg once
-// https://github.com/ultimatile/ariadnetor/issues/299 lands).
+// consumer can reach `expert::transpose`, `expert::contract`,
+// `expert::svd`, … — the decomposition policy variants dispatch over layout,
+// so `expert::svd` serves both Dense and BlockSparse.
 pub use arnet_linalg::expert;
 
 // `flat_index` is intentionally not re-exported: it takes a `MemoryOrder`

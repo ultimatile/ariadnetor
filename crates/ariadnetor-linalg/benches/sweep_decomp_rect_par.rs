@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::{lq_with_policy, qr_with_policy, svd_with_policy};
+use arnet_linalg::expert::{lq, qr, svd};
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
@@ -117,13 +117,13 @@ fn main() {
     ];
 
     run_sweep_rect("SVD (thin)", grid, |mat, policy| {
-        let _ = svd_with_policy(&backend, mat, 1, policy).unwrap();
+        let _ = svd(&backend, mat, 1, policy).unwrap();
     });
     run_sweep_rect("QR", grid, |mat, policy| {
-        let _ = qr_with_policy(&backend, mat, 1, policy).unwrap();
+        let _ = qr(&backend, mat, 1, policy).unwrap();
     });
     run_sweep_rect("LQ", grid, |mat, policy| {
-        let _ = lq_with_policy(&backend, mat, 1, policy).unwrap();
+        let _ = lq(&backend, mat, 1, policy).unwrap();
     });
 
     eprintln!(

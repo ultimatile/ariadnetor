@@ -3,7 +3,7 @@
 use arnet_core::Scalar;
 use arnet_linalg::{
     TruncSvdParams, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
-    trunc_svd_block_sparse_with_backend, trunc_svd_with_backend,
+    trunc_svd,
 };
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, OpsFor, Sector,
@@ -102,8 +102,8 @@ where
         let rank = site.rank();
         let orig_shape = site.shape().to_vec();
 
-        let (u, s, vt, err) = trunc_svd_with_backend(backend, site, rank - 1, params)
-            .expect("trunc_svd failed during truncate");
+        let (u, s, vt, err) =
+            trunc_svd(backend, site, rank - 1, params).expect("trunc_svd failed during truncate");
 
         // Split U's fused row leg back into (*orig[..rank-1], chi).
         let reshape_u =
@@ -163,8 +163,8 @@ where
         let site = chain.site(j);
         let orig_shape = site.shape().to_vec();
 
-        let (u, s, vt, err) = trunc_svd_with_backend(backend, site, 1, params)
-            .expect("trunc_svd failed during truncate");
+        let (u, s, vt, err) =
+            trunc_svd(backend, site, 1, params).expect("trunc_svd failed during truncate");
 
         // Split Vt's fused column leg back into (chi, *orig[1..]).
         let reshape_vt =
@@ -282,7 +282,7 @@ where
         let site = chain.site(j);
         let rank = site.rank();
 
-        let (u, s, vt, err) = trunc_svd_block_sparse_with_backend(backend, site, rank - 1, params)
+        let (u, s, vt, err) = trunc_svd(backend, site, rank - 1, params)
             .expect("trunc_svd_block_sparse failed during truncate");
 
         match absorb {
@@ -338,7 +338,7 @@ where
     let (right_storage, left_factor, err) = {
         let site = chain.site(j);
 
-        let (u, s, vt, err) = trunc_svd_block_sparse_with_backend(backend, site, 1, params)
+        let (u, s, vt, err) = trunc_svd(backend, site, 1, params)
             .expect("trunc_svd_block_sparse failed during truncate");
 
         match absorb {
