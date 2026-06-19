@@ -15,13 +15,18 @@
 //! names, preserving the pairing with the internal `*_with_policy_dense`
 //! kernels they wrap.
 //!
-//! Only the non-decomposition ops live here today. The decomposition ops
-//! (`svd` / `trunc_svd` / `qr` / `lq`) join this surface once their
-//! layout-keyed dispatch lands (see issue
-//! <https://github.com/ultimatile/ariadnetor/issues/299>); until then their
-//! `*_with_policy` forms stay at the crate root.
+//! The four decompositions (`svd` / `trunc_svd` / `qr` / `lq`) dispatch over
+//! layout via [`LinalgDecompose`](crate::LinalgDecompose), so their `expert`
+//! forms serve both Dense and BlockSparse from one bare name. This is also the
+//! only public entry that pins an [`ExecPolicy`](arnet_core::backend::ExecPolicy)
+//! on a block-sparse decomposition; the auto-policy crate-root forms keep
+//! block-sparse on `Sequential`.
 
 pub use crate::contract::contract_with_policy as contract;
+pub use crate::decompose_dispatch::{
+    lq_with_policy as lq, qr_with_policy as qr, svd_with_policy as svd,
+    trunc_svd_with_policy as trunc_svd,
+};
 pub use crate::eigen::{eig_with_policy as eig, eigh_with_policy as eigh};
 pub use crate::solve::solve_with_policy as solve;
 pub use crate::transpose::transpose_with_policy as transpose;

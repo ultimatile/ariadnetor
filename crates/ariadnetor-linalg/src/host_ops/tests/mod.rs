@@ -52,7 +52,7 @@ fn svd_matches_twin() {
     let host = NativeBackend::new();
     let t = mat23();
     let (u, s, vt) = t.svd(1).unwrap();
-    let (ru, rs, rvt) = svd_with_backend(&host, &t, 1).unwrap();
+    let (ru, rs, rvt) = svd(&host, &t, 1).unwrap();
     approx_eq(u.data().data(), ru.data().data());
     approx_eq(s.data().data(), rs.data().data());
     approx_eq(vt.data().data(), rvt.data().data());
@@ -67,7 +67,7 @@ fn trunc_svd_matches_twin() {
         target_trunc_err: None,
     };
     let (u, s, vt, err) = t.trunc_svd(1, &params).unwrap();
-    let (ru, rs, rvt, rerr) = trunc_svd_with_backend(&host, &t, 1, &params).unwrap();
+    let (ru, rs, rvt, rerr) = trunc_svd(&host, &t, 1, &params).unwrap();
     approx_eq(u.data().data(), ru.data().data());
     approx_eq(s.data().data(), rs.data().data());
     approx_eq(vt.data().data(), rvt.data().data());
@@ -79,7 +79,7 @@ fn qr_matches_twin() {
     let host = NativeBackend::new();
     let t = mat23();
     let (q, r) = t.qr(1).unwrap();
-    let (rq, rr) = qr_with_backend(&host, &t, 1).unwrap();
+    let (rq, rr) = qr(&host, &t, 1).unwrap();
     approx_eq(q.data().data(), rq.data().data());
     approx_eq(r.data().data(), rr.data().data());
 }
@@ -89,7 +89,7 @@ fn lq_matches_twin() {
     let host = NativeBackend::new();
     let t = mat23();
     let (l, q) = t.lq(1).unwrap();
-    let (rl, rq) = lq_with_backend(&host, &t, 1).unwrap();
+    let (rl, rq) = lq(&host, &t, 1).unwrap();
     approx_eq(l.data().data(), rl.data().data());
     approx_eq(q.data().data(), rq.data().data());
 }
@@ -391,7 +391,7 @@ fn bsp_svd_matches_twin() {
     let host = NativeBackend::new();
     let t = rank2();
     let (u, s, vt) = t.svd(1).unwrap();
-    let (ru, rs, rvt) = svd_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (ru, rs, rvt) = svd(&host, &t, 1).unwrap();
     bsp_approx_eq(&u, &ru);
     sv_approx_eq(&s, &rs);
     bsp_approx_eq(&vt, &rvt);
@@ -406,7 +406,7 @@ fn bsp_trunc_svd_matches_twin() {
         target_trunc_err: None,
     };
     let (u, s, vt, err) = t.trunc_svd(1, &params).unwrap();
-    let (ru, rs, rvt, rerr) = trunc_svd_block_sparse_with_backend(&host, &t, 1, &params).unwrap();
+    let (ru, rs, rvt, rerr) = trunc_svd(&host, &t, 1, &params).unwrap();
     bsp_approx_eq(&u, &ru);
     sv_approx_eq(&s, &rs);
     bsp_approx_eq(&vt, &rvt);
@@ -418,7 +418,7 @@ fn bsp_qr_matches_twin() {
     let host = NativeBackend::new();
     let t = rank2();
     let (q, r) = t.qr(1).unwrap();
-    let (rq, rr) = qr_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (rq, rr) = qr(&host, &t, 1).unwrap();
     bsp_approx_eq(&q, &rq);
     bsp_approx_eq(&r, &rr);
 }
@@ -428,7 +428,7 @@ fn bsp_lq_matches_twin() {
     let host = NativeBackend::new();
     let t = rank2();
     let (l, q) = t.lq(1).unwrap();
-    let (rl, rq) = lq_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (rl, rq) = lq(&host, &t, 1).unwrap();
     bsp_approx_eq(&l, &rl);
     bsp_approx_eq(&q, &rq);
 }

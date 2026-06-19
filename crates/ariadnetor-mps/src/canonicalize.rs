@@ -2,9 +2,7 @@
 //! QR / LQ sweeps.
 
 use arnet_core::Scalar;
-use arnet_linalg::{
-    lq_block_sparse_with_backend, lq_with_backend, qr_block_sparse_with_backend, qr_with_backend,
-};
+use arnet_linalg::{lq, qr};
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector,
 };
@@ -63,8 +61,7 @@ where
         let rank = site.rank();
         let orig_shape = site.shape().to_vec();
 
-        let (q, r) =
-            qr_with_backend(backend, site, rank - 1).expect("QR: validated by entry point");
+        let (q, r) = qr(backend, site, rank - 1).expect("QR: validated by entry point");
 
         // Split Q's fused row leg (m, k) back into (*orig[..rank-1], k).
         let q_back = q.split_leg(0, &orig_shape[..rank - 1]);
@@ -94,7 +91,7 @@ where
         let site = chain.site(j);
         let orig_shape = site.shape().to_vec();
 
-        let (l, q) = lq_with_backend(backend, site, 1).expect("LQ: validated by entry point");
+        let (l, q) = lq(backend, site, 1).expect("LQ: validated by entry point");
 
         // Split Q's fused column leg (k, m) back into (k, *orig[1..]).
         let q_back = q.split_leg(1, &orig_shape[1..]);
@@ -124,12 +121,12 @@ where
 ///
 /// # Per-site flux under asymmetric QR / LQ
 ///
-/// - `qr_block_sparse_with_backend` returns an isometric `Q` with
+/// - `qr` returns an isometric `Q` with
 ///   `flux = identity()`
 ///   and a residual `R` carrying the original flux. The left-to-right
 ///   sweep therefore accumulates per-site charges onto the
 ///   orthogonality center.
-/// - `lq_block_sparse_with_backend` puts the original flux on the isometric `Q` and
+/// - `lq` puts the original flux on the isometric `Q` and
 ///   returns an identity-flux `L`. The right-to-left sweep preserves
 ///   each site's flux.
 ///
@@ -172,7 +169,7 @@ where
     let (q, r) = {
         let site = chain.site(j);
         let rank = site.rank();
-        qr_block_sparse_with_backend(backend, site, rank - 1).expect("QR: validated by entry point")
+        qr(backend, site, rank - 1).expect("QR: validated by entry point")
     };
 
     *chain.site_mut(j) = q;
@@ -194,7 +191,7 @@ where
 {
     let (l, q) = {
         let site = chain.site(j);
-        lq_block_sparse_with_backend(backend, site, 1).expect("LQ: validated by entry point")
+        lq(backend, site, 1).expect("LQ: validated by entry point")
     };
 
     *chain.site_mut(j) = q;

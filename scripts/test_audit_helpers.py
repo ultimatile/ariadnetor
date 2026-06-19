@@ -68,8 +68,17 @@ def test_twin_pattern_requires_own_twin():
     # dense and block-sparse twins of the SAME method are accepted
     assert twin.twin_pattern("svd").search("svd_with_backend(b, x)")
     assert twin.twin_pattern("svd").search("svd_block_sparse_with_backend(b, x)")
+    # the four layout-dispatched decompositions also accept the unified bare name
+    assert twin.twin_pattern("svd").search("svd(b, x, nrow)")
+    assert twin.twin_pattern("trunc_svd").search("trunc_svd(b, x, nrow, p)")
+    # bare-name allowance is scoped to decomposition ops: a non-decomposition
+    # op still requires its `*_with_backend` twin
+    assert not twin.twin_pattern("eigh").search("eigh(b, x)")
+    # inline kernel dispatch must NOT satisfy the check (the `_` blocks the boundary)
+    assert not twin.twin_pattern("svd").search("svd_dense(b, x)")
     # delegation to a DIFFERENT method's twin is rejected
     assert not twin.twin_pattern("svd").search("qr_with_backend(b, x)")
+    assert not twin.twin_pattern("svd").search("qr(b, x)")
     # prefix overlap must not leak (eig must not accept eigvals' twin)
     assert not twin.twin_pattern("eig").search("eigvals_with_backend(b, x)")
 

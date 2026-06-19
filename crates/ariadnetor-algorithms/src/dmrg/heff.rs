@@ -25,7 +25,7 @@
 //! per `apply`.
 
 use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract_with_backend, trunc_svd_with_backend};
+use arnet_linalg::{TruncSvdParams, contract_with_backend, trunc_svd};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::{DenseTensor, Host};
 
@@ -322,8 +322,7 @@ where
     };
 
     let psi_4d = eigenvector.reshape(vec![chi_l, d_i, d_ip1, chi_r]);
-    let (u_2d, s, vt_2d, trunc_err) =
-        trunc_svd_with_backend(Host::shared().as_ref(), &psi_4d, 2, trunc)?;
+    let (u_2d, s, vt_2d, trunc_err) = trunc_svd(Host::shared().as_ref(), &psi_4d, 2, trunc)?;
 
     let chi_new = u_2d.shape()[1];
     debug_assert_eq!(vt_2d.shape()[0], chi_new, "U/Vt new bond dim agreement");

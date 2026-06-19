@@ -20,10 +20,6 @@ use arnet_core::Scalar;
 use arnet_core::backend::ComputeBackend;
 use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
-use crate::decomposition::{
-    LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq_dense, qr_dense, svd_dense,
-    trunc_svd_dense,
-};
 use crate::eigen::{EigResult, EighResult, eig_dense, eigh_dense};
 use crate::error::LinalgError;
 use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
@@ -34,56 +30,6 @@ use crate::{contract::contract_dense, einsum::einsum_dense};
 
 #[cfg(test)]
 mod tests;
-
-/// Thin SVD of a tensor reshaped as a matrix, using the supplied backend.
-pub fn svd_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-) -> Result<SvdResult<T>, LinalgError> {
-    let (u, s, vt) = svd_dense(backend, tensor.data(), nrow)?;
-    Ok((
-        DenseTensor::from_data(u),
-        DenseTensor::from_data(s),
-        DenseTensor::from_data(vt),
-    ))
-}
-
-/// Truncated SVD of a tensor reshaped as a matrix, using the supplied backend.
-pub fn trunc_svd_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-    params: &TruncSvdParams,
-) -> Result<TruncSvdResult<T>, LinalgError> {
-    let (u, s, vt, err) = trunc_svd_dense(backend, tensor.data(), nrow, params)?;
-    Ok((
-        DenseTensor::from_data(u),
-        DenseTensor::from_data(s),
-        DenseTensor::from_data(vt),
-        err,
-    ))
-}
-
-/// Thin QR of a tensor reshaped as a matrix, using the supplied backend.
-pub fn qr_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-) -> Result<QrResult<T>, LinalgError> {
-    let (q, r) = qr_dense(backend, tensor.data(), nrow)?;
-    Ok((DenseTensor::from_data(q), DenseTensor::from_data(r)))
-}
-
-/// Thin LQ of a tensor reshaped as a matrix, using the supplied backend.
-pub fn lq_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-) -> Result<LqResult<T>, LinalgError> {
-    let (l, q) = lq_dense(backend, tensor.data(), nrow)?;
-    Ok((DenseTensor::from_data(l), DenseTensor::from_data(q)))
-}
 
 /// Self-adjoint eigenvalue decomposition, using the supplied backend.
 pub fn eigh_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(

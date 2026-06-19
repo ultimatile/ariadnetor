@@ -7,9 +7,7 @@ use arnet_core::Scalar;
 use arnet_linalg::{
     BlockSparseContractResult, TruncSvdParams, contract_block_sparse_with_backend,
     contract_with_backend, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
-    fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
-    qr_block_sparse_with_backend, qr_with_backend, trunc_svd_block_sparse_with_backend,
-    trunc_svd_with_backend,
+    fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend, qr, trunc_svd,
 };
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
@@ -98,7 +96,7 @@ where
             };
 
             if !use_svd {
-                let (q, r) = qr_with_backend(backend, &p, 2).expect("QR: validated by entry point");
+                let (q, r) = qr(backend, &p, 2).expect("QR: validated by entry point");
                 // Split Q's fused row leg back into (left, d, k).
                 let q_site = q.split_leg(0, &[left, d]);
                 tensors.push(q_site);
@@ -108,7 +106,7 @@ where
                     chi_max: chi_max_forward,
                     target_trunc_err: cutoff,
                 };
-                let (u, s_vec, vt, _err) = trunc_svd_with_backend(backend, &p, 2, &svd_params)
+                let (u, s_vec, vt, _err) = trunc_svd(backend, &p, 2, &svd_params)
                     .expect("trunc_svd: validated by entry point");
                 // Split U's fused row leg back into (left, d, k).
                 let u_site = u.split_leg(0, &[left, d]);
@@ -178,7 +176,7 @@ where
 ///
 /// See [`apply_streaming_naive_dense`] for the algorithm description; the
 /// BlockSparse variant mirrors it via [`local_product_bsp`],
-/// `qr_block_sparse_with_backend`, and `trunc_svd_block_sparse_with_backend`,
+/// `qr`, and `trunc_svd`,
 /// then delegates the final canonicalization + truncation to
 /// `canonicalize_bsp` + `truncate_bsp`.
 pub(super) fn apply_streaming_naive_bsp<T, S, B>(
@@ -228,8 +226,7 @@ where
             };
 
             if !use_svd {
-                let (q, r) = qr_block_sparse_with_backend(backend, &p, 2)
-                    .expect("QR: validated by entry point");
+                let (q, r) = qr(backend, &p, 2).expect("QR: validated by entry point");
                 tensors.push(q);
                 carry = Some(r);
             } else {
@@ -237,9 +234,8 @@ where
                     chi_max: chi_max_forward,
                     target_trunc_err: cutoff,
                 };
-                let (u, s_vec, vt, _err) =
-                    trunc_svd_block_sparse_with_backend(backend, &p, 2, &svd_params)
-                        .expect("trunc_svd: validated by entry point");
+                let (u, s_vec, vt, _err) = trunc_svd(backend, &p, 2, &svd_params)
+                    .expect("trunc_svd: validated by entry point");
                 tensors.push(u);
 
                 let svt = diagonal_scale_block_sparse_with_backend(backend, &vt, &s_vec, 0)

@@ -15,7 +15,17 @@ allowed_external_types = [
     "arnet_tensor::capability::OpsFor",
     "arnet_tensor::dense::storage::DenseStorage",
     "arnet_tensor::error::TensorError",
+    # The public `LinalgDecompose` dispatch trait is bound `: TensorLayout` with
+    # `type Storage: Storage + StorageFor<Self>`, exposing these arnet_tensor
+    # layout/storage traits (same layer; mirrors the `MpsOps` bound shape).
+    "arnet_tensor::layout::StorageFor",
+    "arnet_tensor::layout::TensorLayout",
     "arnet_tensor::sector::Sector",
+    "arnet_tensor::storage::Storage",
+    # The layout-keyed `LinalgDecompose` dispatch (svd / trunc_svd / qr / lq)
+    # takes `&Tensor<L::Storage, L>`, so the generic form of the already-allowed
+    # `DenseTensor` / `BlockSparseTensor` aliases appears in the public API.
+    "arnet_tensor::tensor::Tensor",
     "arnet_tensor::tensor::BlockSparseTensor",
     "arnet_tensor::tensor::DenseTensor",
 ]

@@ -10,10 +10,9 @@ use crate::block_sparse_decomp::{
 };
 use crate::block_sparse_with_backend::{
     contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
-    fuse_legs_block_sparse_with_backend, lq_block_sparse_with_backend,
-    permute_block_sparse_with_backend, qr_block_sparse_with_backend, svd_block_sparse_with_backend,
-    trunc_svd_block_sparse_with_backend,
+    fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
 };
+use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
 
@@ -26,21 +25,20 @@ use crate::error::LinalgError;
 /// different signature; this trait's [`fuse_legs`](Self::fuse_legs)
 /// exists only on block-sparse receivers.
 pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
-    /// Host-defaulting counterpart of [`crate::svd_block_sparse_with_backend`].
+    /// Host-defaulting counterpart of [`crate::svd`].
     fn svd(&self, nrow: usize) -> Result<BlockSparseSvdResult<T, S>, LinalgError>;
 
-    /// Host-defaulting counterpart of
-    /// [`crate::trunc_svd_block_sparse_with_backend`].
+    /// Host-defaulting counterpart of [`crate::trunc_svd`].
     fn trunc_svd(
         &self,
         nrow: usize,
         params: &TruncSvdParams,
     ) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::qr_block_sparse_with_backend`].
+    /// Host-defaulting counterpart of [`crate::qr`].
     fn qr(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::lq_block_sparse_with_backend`].
+    /// Host-defaulting counterpart of [`crate::lq`].
     fn lq(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of
@@ -77,7 +75,7 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
 
 impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> {
     fn svd(&self, nrow: usize) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
-        svd_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
+        svd(Host::shared().as_ref(), self, nrow)
     }
 
     fn trunc_svd(
@@ -85,15 +83,15 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> 
         nrow: usize,
         params: &TruncSvdParams,
     ) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
-        trunc_svd_block_sparse_with_backend(Host::shared().as_ref(), self, nrow, params)
+        trunc_svd(Host::shared().as_ref(), self, nrow, params)
     }
 
     fn qr(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
-        qr_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
+        qr(Host::shared().as_ref(), self, nrow)
     }
 
     fn lq(&self, nrow: usize) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
-        lq_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
+        lq(Host::shared().as_ref(), self, nrow)
     }
 
     fn contract(

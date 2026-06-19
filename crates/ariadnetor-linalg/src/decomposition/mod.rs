@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, QrDescriptor, SvdDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
@@ -63,7 +63,7 @@ pub struct TruncSvdParams {
 }
 
 mod lq;
-pub use lq::{LqResult, lq_with_policy};
+pub use lq::LqResult;
 pub(crate) use lq::{lq_dense, lq_with_policy_dense};
 
 /// Reshape tensor to 2D (m x n) using row-major axis merge, then convert to target order.
@@ -103,28 +103,10 @@ pub(crate) fn svd_dense<T: Scalar>(
     svd_with_policy_dense(backend, tensor, nrow, policy)
 }
 
-/// Thin SVD with an explicit backend and caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`crate::svd_with_backend`]; that entry point
-/// consults `backend.par_for_svd`, while this one takes `policy` directly.
-/// The backend is supplied at the call site and the tensor's own backend is
-/// never consulted.
-pub fn svd_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-    policy: ExecPolicy,
-) -> Result<SvdResult<T>, LinalgError> {
-    let (u, s, vt) = svd_with_policy_dense(backend, tensor.data(), nrow, policy)?;
-    Ok((
-        DenseTensor::from_data(u),
-        DenseTensor::from_data(s),
-        DenseTensor::from_data(vt),
-    ))
-}
-
-/// Internal kernel for [`svd_with_policy`] on the joined
-/// [`DenseTensorData<T>`] form.
+/// Internal kernel for the dense SVD with a caller-specified execution policy,
+/// on the joined [`DenseTensorData<T>`] form. The public entry is the
+/// layout-keyed [`expert::svd`](crate::expert::svd); the auto-policy entry
+/// [`svd`](crate::svd) wraps [`svd_dense`], which consults `backend.par_for_svd`.
 pub(crate) fn svd_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
@@ -192,32 +174,11 @@ pub(crate) fn trunc_svd_dense<T: Scalar>(
     trunc_svd_with_policy_dense(backend, tensor, nrow, params, policy)
 }
 
-/// Truncated SVD with an explicit backend and caller-specified execution
-/// policy.
-///
-/// Expert-layer counterpart of [`crate::trunc_svd_with_backend`]; that entry
-/// point consults `backend.par_for_svd`, while this one takes `policy`
-/// directly. The backend is supplied at the call site and the tensor's own
-/// backend is never consulted.
-pub fn trunc_svd_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-    params: &TruncSvdParams,
-    policy: ExecPolicy,
-) -> Result<TruncSvdResult<T>, LinalgError> {
-    let (u, s, vt, err) =
-        trunc_svd_with_policy_dense(backend, tensor.data(), nrow, params, policy)?;
-    Ok((
-        DenseTensor::from_data(u),
-        DenseTensor::from_data(s),
-        DenseTensor::from_data(vt),
-        err,
-    ))
-}
-
-/// Internal kernel for [`trunc_svd_with_policy`] on the joined
-/// [`DenseTensorData<T>`] form.
+/// Internal kernel for the dense truncated SVD with a caller-specified
+/// execution policy, on the joined [`DenseTensorData<T>`] form. The public
+/// entry is the layout-keyed [`expert::trunc_svd`](crate::expert::trunc_svd);
+/// the auto-policy entry [`trunc_svd`](crate::trunc_svd) wraps
+/// [`trunc_svd_dense`], which consults `backend.par_for_svd`.
 pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
@@ -354,24 +315,10 @@ pub(crate) fn qr_dense<T: Scalar>(
     qr_with_policy_dense(backend, tensor, nrow, policy)
 }
 
-/// Thin QR with an explicit backend and caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`crate::qr_with_backend`]; that entry point
-/// consults `backend.par_for_qr`, while this one takes `policy` directly. The
-/// backend is supplied at the call site and the tensor's own backend is never
-/// consulted.
-pub fn qr_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-    policy: ExecPolicy,
-) -> Result<QrResult<T>, LinalgError> {
-    let (q, r) = qr_with_policy_dense(backend, tensor.data(), nrow, policy)?;
-    Ok((DenseTensor::from_data(q), DenseTensor::from_data(r)))
-}
-
-/// Internal kernel for [`qr_with_policy`] on the joined
-/// [`DenseTensorData<T>`] form.
+/// Internal kernel for the dense QR with a caller-specified execution policy,
+/// on the joined [`DenseTensorData<T>`] form. The public entry is the
+/// layout-keyed [`expert::qr`](crate::expert::qr); the auto-policy entry
+/// [`qr`](crate::qr) wraps [`qr_dense`], which consults `backend.par_for_qr`.
 pub(crate) fn qr_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,

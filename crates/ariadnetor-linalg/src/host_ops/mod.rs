@@ -2,10 +2,9 @@
 //!
 //! [`DenseHostOps`] and [`BlockSparseHostOps`] give dense / block-sparse
 //! tensors method forms of the explicit-backend operation paths: each method
-//! is a one-line delegation to its `*_with_backend` twin, passing the shared
+//! is a one-line delegation to its call-site-backend twin, passing the shared
 //! [`Host`] handle, so the common single-substrate call site can omit the
-//! backend argument (`t.svd(nrow)` instead of
-//! `svd_with_backend(&backend, &t, nrow)`).
+//! backend argument (`t.svd(nrow)` instead of `svd(&backend, &t, nrow)`).
 //!
 //! The handle is always `Host::shared()`, keeping the call-site-supply
 //! discipline intact: the operation dispatches on — and the result is built
@@ -17,6 +16,7 @@ use std::ops::Mul;
 use arnet_core::Scalar;
 use arnet_tensor::{DenseTensor, Host};
 
+use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};
 use crate::decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 use crate::eigen::{EigResult, EighResult};
 use crate::error::LinalgError;
@@ -24,8 +24,7 @@ use crate::with_backend::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
     eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, lq_with_backend, qr_with_backend, solve_with_backend, svd_with_backend,
-    trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
+    inverse_with_backend, solve_with_backend, trace_with_backend, transpose_with_backend,
 };
 
 mod block_sparse;
@@ -42,20 +41,20 @@ mod tests;
 /// slice's meaning from "all operands" to "remaining operands". Use
 /// [`crate::einsum_with_backend`] instead.
 pub trait DenseHostOps<T: Scalar> {
-    /// Host-defaulting counterpart of [`crate::svd_with_backend`].
+    /// Host-defaulting counterpart of [`crate::svd`].
     fn svd(&self, nrow: usize) -> Result<SvdResult<T>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::trunc_svd_with_backend`].
+    /// Host-defaulting counterpart of [`crate::trunc_svd`].
     fn trunc_svd(
         &self,
         nrow: usize,
         params: &TruncSvdParams,
     ) -> Result<TruncSvdResult<T>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::qr_with_backend`].
+    /// Host-defaulting counterpart of [`crate::qr`].
     fn qr(&self, nrow: usize) -> Result<QrResult<T>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::lq_with_backend`].
+    /// Host-defaulting counterpart of [`crate::lq`].
     fn lq(&self, nrow: usize) -> Result<LqResult<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::eigh_with_backend`].
@@ -118,7 +117,7 @@ pub trait DenseHostOps<T: Scalar> {
 
 impl<T: Scalar> DenseHostOps<T> for DenseTensor<T> {
     fn svd(&self, nrow: usize) -> Result<SvdResult<T>, LinalgError> {
-        svd_with_backend(Host::shared().as_ref(), self, nrow)
+        svd(Host::shared().as_ref(), self, nrow)
     }
 
     fn trunc_svd(
@@ -126,15 +125,15 @@ impl<T: Scalar> DenseHostOps<T> for DenseTensor<T> {
         nrow: usize,
         params: &TruncSvdParams,
     ) -> Result<TruncSvdResult<T>, LinalgError> {
-        trunc_svd_with_backend(Host::shared().as_ref(), self, nrow, params)
+        trunc_svd(Host::shared().as_ref(), self, nrow, params)
     }
 
     fn qr(&self, nrow: usize) -> Result<QrResult<T>, LinalgError> {
-        qr_with_backend(Host::shared().as_ref(), self, nrow)
+        qr(Host::shared().as_ref(), self, nrow)
     }
 
     fn lq(&self, nrow: usize) -> Result<LqResult<T>, LinalgError> {
-        lq_with_backend(Host::shared().as_ref(), self, nrow)
+        lq(Host::shared().as_ref(), self, nrow)
     }
 
     fn eigh(&self, nrow: usize) -> Result<EighResult<T>, LinalgError> {

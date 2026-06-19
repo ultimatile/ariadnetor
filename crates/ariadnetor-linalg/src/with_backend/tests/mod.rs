@@ -14,6 +14,7 @@
 //! checked; the behaviorally-distinct routing proof is the Stage C
 //! pluggability litmus.
 
+use arnet_core::backend::ExecPolicy;
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 use arnet_tensor::{ComputeBackendTensorExt, Host};
@@ -78,12 +79,12 @@ fn svd_routes_to_passed_backend() {
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     let t = mat23();
-    let (u, s, vt) = svd_with_backend(&rec, &t, 1).unwrap();
+    let (u, s, vt) = svd(&rec, &t, 1).unwrap();
     assert!(
         total_recorded(&rec) > 0,
         "passed backend must run the kernel"
     );
-    let (hu, hs, hvt) = svd_with_backend(&host, &t, 1).unwrap();
+    let (hu, hs, hvt) = svd(&host, &t, 1).unwrap();
     approx_eq(u.data().data(), hu.data().data());
     approx_eq(s.data().data(), hs.data().data());
     approx_eq(vt.data().data(), hvt.data().data());
@@ -98,9 +99,9 @@ fn trunc_svd_routes_to_passed_backend() {
         chi_max: Some(1),
         target_trunc_err: None,
     };
-    let (u, s, vt, err) = trunc_svd_with_backend(&rec, &t, 1, &params).unwrap();
+    let (u, s, vt, err) = trunc_svd(&rec, &t, 1, &params).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let (hu, hs, hvt, herr) = trunc_svd_with_backend(&host, &t, 1, &params).unwrap();
+    let (hu, hs, hvt, herr) = trunc_svd(&host, &t, 1, &params).unwrap();
     approx_eq(u.data().data(), hu.data().data());
     approx_eq(s.data().data(), hs.data().data());
     approx_eq(vt.data().data(), hvt.data().data());
@@ -112,9 +113,9 @@ fn qr_routes_to_passed_backend() {
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     let t = mat23();
-    let (q, r) = qr_with_backend(&rec, &t, 1).unwrap();
+    let (q, r) = qr(&rec, &t, 1).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let (hq, hr) = qr_with_backend(&host, &t, 1).unwrap();
+    let (hq, hr) = qr(&host, &t, 1).unwrap();
     approx_eq(q.data().data(), hq.data().data());
     approx_eq(r.data().data(), hr.data().data());
 }
@@ -124,9 +125,9 @@ fn lq_routes_to_passed_backend() {
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     let t = mat23();
-    let (l, q) = lq_with_backend(&rec, &t, 1).unwrap();
+    let (l, q) = lq(&rec, &t, 1).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let (hl, hq) = lq_with_backend(&host, &t, 1).unwrap();
+    let (hl, hq) = lq(&host, &t, 1).unwrap();
     approx_eq(l.data().data(), hl.data().data());
     approx_eq(q.data().data(), hq.data().data());
 }
@@ -326,4 +327,16 @@ fn diagonal_scale_supports_non_scalar_elements() {
     let mut got = out.data().data().to_vec();
     got.sort_unstable();
     assert_eq!(got, vec![10, 30, 200, 400]);
+}
+
+/// Dense counterpart of the block-sparse `expert::*` policy-forwarding tests:
+/// the layout-keyed `expert::svd` carries the caller's `ExecPolicy` through to
+/// the dense kernel descriptor. Pairs with
+/// `expert_svd_bsp_forwards_explicit_policy` so both public decomposition
+/// surfaces have explicit-policy forwarding coverage.
+#[test]
+fn expert_svd_dense_forwards_explicit_policy() {
+    let rec = RecordingBackend::new();
+    let _ = expert::svd(&rec, &mat23(), 1, ExecPolicy::Parallel(0)).unwrap();
+    assert_eq!(rec.svd_recorded(), vec![ExecPolicy::Parallel(0)]);
 }

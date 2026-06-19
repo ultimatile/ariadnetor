@@ -8,19 +8,21 @@
 //!
 //! Most operations are exposed in two forms over the same kernels:
 //!
-//! - An explicit-backend free function (`*_with_backend`) that takes the
-//!   backend at the call site — e.g. [`svd_with_backend`], [`contract_with_backend`],
-//!   [`transpose_with_backend`], [`trace_with_backend`], the block-sparse
-//!   family ([`svd_block_sparse_with_backend`], [`contract_block_sparse_with_backend`],
-//!   …). The `*_with_policy` variants ([`svd_with_policy`], …) add an explicit
-//!   [`ExecPolicy`](arnet_core::backend::ExecPolicy). The non-decomposition
-//!   policy variants are published under bare names through the [`expert`]
-//!   module (`expert::transpose`, `expert::contract`, …); the decomposition
-//!   policy variants stay at the crate root pending their layout-keyed
-//!   dispatch (issue <https://github.com/ultimatile/ariadnetor/issues/299>).
+//! - An explicit-backend free function that takes the backend at the call
+//!   site. The non-decomposition ops use the `*_with_backend` form — e.g.
+//!   [`contract_with_backend`], [`transpose_with_backend`],
+//!   [`trace_with_backend`], the block-sparse family
+//!   ([`contract_block_sparse_with_backend`], …). The four decompositions
+//!   (`svd` / `trunc_svd` / `qr` / `lq`) instead dispatch over layout through
+//!   the unified [`svd`] / [`trunc_svd`] / [`qr`] / [`lq`] free fns
+//!   ([`LinalgDecompose`]), so one call serves both Dense and BlockSparse. The
+//!   `*_with_policy` variants add an explicit
+//!   [`ExecPolicy`](arnet_core::backend::ExecPolicy); they are published under
+//!   bare names through the [`expert`] module (`expert::transpose`,
+//!   `expert::svd`, …).
 //! - An ergonomic method form on tensors over the default [`Host`](arnet_tensor::Host)
 //!   substrate via the [`DenseHostOps`] / [`BlockSparseHostOps`] extension
-//!   traits (`t.svd(nrow)` instead of `svd_with_backend(&backend, &t, nrow)`).
+//!   traits (`t.svd(nrow)` instead of `svd(&backend, &t, nrow)`).
 //!
 //! [`einsum_with_backend`] is the exception: it has no method form, because its
 //! operands are a slice with no natural receiver, so the explicit-backend free
@@ -40,6 +42,7 @@ mod block_sparse_permute;
 mod block_sparse_scale;
 mod block_sparse_with_backend;
 mod contract;
+mod decompose_dispatch;
 mod decomposition;
 mod eigen;
 mod einsum;
@@ -64,25 +67,26 @@ pub use block_sparse_contract::BlockSparseContractResult;
 pub use block_sparse_decomp::{
     BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
-pub use decomposition::{
-    LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq_with_policy, qr_with_policy,
-    svd_with_policy, trunc_svd_with_policy,
-};
+pub use decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 pub use eigen::{EigResult, EighResult};
 
-// Explicit-backend operation paths (backend supplied at the call site).
+// Layout-keyed decomposition dispatch: the unified `svd` / `trunc_svd` / `qr` /
+// `lq` entry points serve both Dense and BlockSparse via [`LinalgDecompose`].
+// The policy-explicit forms are published under bare names through [`expert`].
+pub use decompose_dispatch::{LinalgDecompose, lq, qr, svd, trunc_svd};
+
+// Explicit-backend operation paths (backend supplied at the call site). The
+// decomposition ops are not here — they dispatch over layout through the
+// unified free fns above.
 pub use block_sparse_with_backend::{
     contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
-    fuse_legs_block_sparse_with_backend, lq_block_sparse_with_backend,
-    permute_block_sparse_with_backend, qr_block_sparse_with_backend, svd_block_sparse_with_backend,
-    trunc_svd_block_sparse_with_backend,
+    fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
 };
 pub use with_backend::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
     eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, lq_with_backend, qr_with_backend, solve_with_backend, svd_with_backend,
-    trace_with_backend, transpose_with_backend, trunc_svd_with_backend,
+    inverse_with_backend, solve_with_backend, trace_with_backend, transpose_with_backend,
 };
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.

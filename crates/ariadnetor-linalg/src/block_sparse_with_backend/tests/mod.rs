@@ -15,7 +15,7 @@
 //! check by fabricating a tensor whose layout disagrees with the supplied
 //! backend's preferred order.
 
-use arnet_core::backend::MemoryOrder;
+use arnet_core::backend::{ExecPolicy, MemoryOrder};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
     BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, QNIndex, U1Sector,
@@ -73,12 +73,12 @@ fn svd_routes_to_passed_backend() {
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     let t = rank2();
-    let (u, _s, vt) = svd_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    let (u, _s, vt) = svd(&rec, &t, 1).unwrap();
     assert!(
         total_recorded(&rec) > 0,
         "passed backend must run the kernel"
     );
-    let (hu, _hs, hvt) = svd_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (hu, _hs, hvt) = svd(&host, &t, 1).unwrap();
     bsp_eq(&u, &hu);
     bsp_eq(&vt, &hvt);
 }
@@ -92,9 +92,9 @@ fn trunc_svd_routes_to_passed_backend() {
         chi_max: None,
         target_trunc_err: None,
     };
-    let (u, _s, vt, _err) = trunc_svd_block_sparse_with_backend(&rec, &t, 1, &params).unwrap();
+    let (u, _s, vt, _err) = trunc_svd(&rec, &t, 1, &params).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let (hu, _hs, hvt, _herr) = trunc_svd_block_sparse_with_backend(&host, &t, 1, &params).unwrap();
+    let (hu, _hs, hvt, _herr) = trunc_svd(&host, &t, 1, &params).unwrap();
     bsp_eq(&u, &hu);
     bsp_eq(&vt, &hvt);
 }
@@ -104,9 +104,9 @@ fn qr_routes_to_passed_backend() {
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     let t = rank2();
-    let (q, r) = qr_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    let (q, r) = qr(&rec, &t, 1).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let (hq, hr) = qr_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (hq, hr) = qr(&host, &t, 1).unwrap();
     bsp_eq(&q, &hq);
     bsp_eq(&r, &hr);
 }
@@ -116,9 +116,9 @@ fn lq_routes_to_passed_backend() {
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     let t = rank2();
-    let (l, q) = lq_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    let (l, q) = lq(&rec, &t, 1).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let (hl, hq) = lq_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (hl, hq) = lq(&host, &t, 1).unwrap();
     bsp_eq(&l, &hl);
     bsp_eq(&q, &hq);
 }
@@ -176,12 +176,73 @@ fn diagonal_scale_matches_host() {
     let t = rank2();
     // Derive a valid weight set (singular values) and a tensor with the bond
     // on axis 0 from an SVD of `t`.
-    let (_u, sv, vt) = svd_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (_u, sv, vt) = svd(&host, &t, 1).unwrap();
     let out = diagonal_scale_block_sparse_with_backend(&rec, &vt, &sv, 0).unwrap();
     bsp_eq(
         &out,
         &diagonal_scale_block_sparse_with_backend(&host, &vt, &sv, 0).unwrap(),
     );
+}
+
+// ---------------------------------------------------------------------------
+// Layout-keyed dispatch: block-sparse policy routing through `expert::*`.
+//
+// `expert::svd` / `qr` / `lq` / `trunc_svd` are the first public entries that
+// pin an `ExecPolicy` on a block-sparse decomposition — the auto-policy
+// crate-root forms keep block-sparse on `Sequential`. These tests prove the
+// dispatch wrapper carries the caller's policy through to every per-sector
+// descriptor (the `rank2` fixture has two sectors), and that the auto form
+// pins `Sequential`. The recorder registers one descriptor per sector.
+// ---------------------------------------------------------------------------
+
+fn assert_all_eq(got: &[ExecPolicy], want: ExecPolicy, op: &str) {
+    assert!(!got.is_empty(), "{op}: expected per-sector calls, got none");
+    for (i, p) in got.iter().enumerate() {
+        assert_eq!(*p, want, "{op}: sector #{i} forwarded {p:?}, want {want:?}");
+    }
+}
+
+#[test]
+fn expert_svd_bsp_forwards_explicit_policy() {
+    let rec = RecordingBackend::new();
+    let _ = expert::svd(&rec, &rank2(), 1, ExecPolicy::Parallel(0)).unwrap();
+    assert_all_eq(&rec.svd_recorded(), ExecPolicy::Parallel(0), "expert::svd");
+}
+
+#[test]
+fn expert_qr_bsp_forwards_explicit_policy() {
+    let rec = RecordingBackend::new();
+    let _ = expert::qr(&rec, &rank2(), 1, ExecPolicy::Parallel(0)).unwrap();
+    assert_all_eq(&rec.qr_recorded(), ExecPolicy::Parallel(0), "expert::qr");
+}
+
+#[test]
+fn expert_lq_bsp_forwards_explicit_policy() {
+    let rec = RecordingBackend::new();
+    let _ = expert::lq(&rec, &rank2(), 1, ExecPolicy::Parallel(0)).unwrap();
+    assert_all_eq(&rec.lq_recorded(), ExecPolicy::Parallel(0), "expert::lq");
+}
+
+#[test]
+fn expert_trunc_svd_bsp_forwards_explicit_policy() {
+    let rec = RecordingBackend::new();
+    let params = TruncSvdParams {
+        chi_max: Some(3),
+        target_trunc_err: None,
+    };
+    let _ = expert::trunc_svd(&rec, &rank2(), 1, &params, ExecPolicy::Parallel(0)).unwrap();
+    assert_all_eq(
+        &rec.svd_recorded(),
+        ExecPolicy::Parallel(0),
+        "expert::trunc_svd",
+    );
+}
+
+#[test]
+fn auto_svd_bsp_pins_sequential() {
+    let rec = RecordingBackend::new();
+    let _ = svd(&rec, &rank2(), 1).unwrap();
+    assert_all_eq(&rec.svd_recorded(), ExecPolicy::Sequential, "svd (auto)");
 }
 
 #[test]
@@ -193,7 +254,7 @@ fn mismatched_layout_order_is_rejected() {
     let backend = RecordingBackend::new();
     assert_eq!(backend.preferred_order(), MemoryOrder::ColumnMajor);
     let t = BlockSparseTensor::from_data(rank2_data(MemoryOrder::RowMajor));
-    let err = svd_block_sparse_with_backend(&backend, &t, 1).unwrap_err();
+    let err = svd(&backend, &t, 1).unwrap_err();
     assert!(
         matches!(err, LinalgError::InvalidArgument(_)),
         "expected InvalidArgument, got {err:?}"

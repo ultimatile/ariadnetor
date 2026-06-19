@@ -41,7 +41,7 @@ mod validation;
 pub use operator::EffectiveHamiltonian2SiteBlockSparse;
 
 use arnet_core::Scalar;
-use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd_block_sparse_with_backend};
+use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd};
 use arnet_mps::{Mpo, Mps};
 use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Host, Sector};
 
@@ -91,7 +91,7 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
 /// local eigensolver (per [`LocalEigensolverParams`] — Lanczos by
 /// default, ARPACK behind the `arpack` feature) via the flat-buffer
 /// adapter, then splits the optimized two-site block via
-/// [`trunc_svd_block_sparse_with_backend`] with `nrow = 2`. Caller
+/// [`trunc_svd`] with `nrow = 2`. Caller
 /// advances envs separately.
 ///
 /// # Errors
@@ -189,8 +189,7 @@ where
         &heff.block_offsets,
         &heff.block_coords,
     );
-    let (u, s, vt, trunc_err) =
-        trunc_svd_block_sparse_with_backend(Host::shared().as_ref(), &psi_4d, 2, trunc)?;
+    let (u, s, vt, trunc_err) = trunc_svd(Host::shared().as_ref(), &psi_4d, 2, trunc)?;
 
     Ok(TwoSiteStepResultBlockSparse {
         eigenvalue,
