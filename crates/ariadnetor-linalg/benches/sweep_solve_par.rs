@@ -6,7 +6,7 @@
 //! `ExecPolicy` dispatch in `arnet-native` (currently `usize::MAX` on
 //! laptop — unmeasured per ADR-0008).
 //!
-//! Each measurement uses `solve_with_policy(.., nrow_a=1, ..)` with a
+//! Each measurement uses `expert::solve(.., nrow_a=1, ..)` with a
 //! caller-provided `ExecPolicy`. Global parallelism state is not
 //! consulted by the per-call path and is intentionally not touched here.
 //!
@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use arnet_core::backend::ExecPolicy;
-use arnet_linalg::solve_with_policy;
+use arnet_linalg::expert::solve;
 use arnet_native::NativeBackend;
 use arnet_tensor::DenseTensor;
 
@@ -87,7 +87,7 @@ fn main() {
         &sizes,
         |n| (random_square(n, 42), random_vec(n, 43)),
         |(a, b), policy| {
-            let _ = solve_with_policy(&backend, a, b, 1, policy).unwrap();
+            let _ = solve(&backend, a, b, 1, policy).unwrap();
         },
     );
 
