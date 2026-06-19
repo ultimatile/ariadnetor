@@ -13,7 +13,11 @@
 //!   [`transpose_with_backend`], [`trace_with_backend`], the block-sparse
 //!   family ([`svd_block_sparse_with_backend`], [`contract_block_sparse_with_backend`],
 //!   …). The `*_with_policy` variants ([`svd_with_policy`], …) add an explicit
-//!   [`ExecPolicy`](arnet_core::backend::ExecPolicy).
+//!   [`ExecPolicy`](arnet_core::backend::ExecPolicy). The non-decomposition
+//!   policy variants are published under bare names through the [`expert`]
+//!   module (`expert::transpose`, `expert::contract`, …); the decomposition
+//!   policy variants stay at the crate root pending their layout-keyed
+//!   dispatch (issue <https://github.com/ultimatile/ariadnetor/issues/299>).
 //! - An ergonomic method form on tensors over the default [`Host`](arnet_tensor::Host)
 //!   substrate via the [`DenseHostOps`] / [`BlockSparseHostOps`] extension
 //!   traits (`t.svd(nrow)` instead of `svd_with_backend(&backend, &t, nrow)`).
@@ -51,6 +55,8 @@ mod with_backend;
 #[cfg(test)]
 pub(crate) mod test_util;
 
+pub mod expert;
+
 pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
@@ -58,14 +64,11 @@ pub use block_sparse_contract::BlockSparseContractResult;
 pub use block_sparse_decomp::{
     BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
-pub use contract::contract_with_policy;
 pub use decomposition::{
     LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult, lq_with_policy, qr_with_policy,
     svd_with_policy, trunc_svd_with_policy,
 };
-pub use eigen::{EigResult, EighResult, eig_with_policy, eigh_with_policy};
-pub use solve::solve_with_policy;
-pub use transpose::transpose_with_policy;
+pub use eigen::{EigResult, EighResult};
 
 // Explicit-backend operation paths (backend supplied at the call site).
 pub use block_sparse_with_backend::{
