@@ -20,8 +20,8 @@ The four decompositions (`svd` / `trunc_svd` / `qr` / `lq`) dispatch over
 layout via `LinalgDecompose` (issue #299), so their host methods delegate to
 the unified bare-name free fns (`svd(`, …) rather than a `*_with_backend`
 twin. The generic free fn is the call-site-backend twin; only its name
-differs, so the invariant is unchanged and the name pattern is widened for
-this set alone.
+differs, so the invariant is unchanged and the name pattern matches the bare
+name (not `*_with_backend`) for this set alone.
 """
 
 import re
@@ -46,15 +46,17 @@ DECOMPOSE_DISPATCH_OPS = frozenset({"svd", "trunc_svd", "qr", "lq"})
 def twin_pattern(name: str) -> re.Pattern:
     """The method's own twin: dense `<name>_with_backend` or block-sparse
     `<name>_block_sparse_with_backend`. The four layout-dispatched
-    decompositions ([`DECOMPOSE_DISPATCH_OPS`]) additionally accept the unified
-    bare name `<name>(`. Anchoring to the method name rejects a body that
-    delegates to some *other* method's twin (e.g. `svd` calling
-    `qr_with_backend`), which a generic `_with_backend` match would accept; the
-    `\\b{name}\\s*\\(` boundary also rejects inline kernel dispatch such as
-    `svd_dense(` (the `_` after the name blocks the bare-name match).
+    decompositions ([`DECOMPOSE_DISPATCH_OPS`]) instead accept *only* the
+    unified bare name `<name>(` — their `*_with_backend` forms were removed, so
+    accepting them would bless a delegation to a symbol that no longer exists.
+    Anchoring to the method name rejects a body that delegates to some *other*
+    method's twin (e.g. `svd` calling `qr_with_backend`), which a generic
+    `_with_backend` match would accept; the `\\b{name}\\s*\\(` boundary also
+    rejects inline kernel dispatch such as `svd_dense(` (the `_` after the name
+    blocks the bare-name match).
     """
     if name in DECOMPOSE_DISPATCH_OPS:
-        return re.compile(rf"\b{re.escape(name)}(?:(?:_block_sparse)?_with_backend)?\s*\(")
+        return re.compile(rf"\b{re.escape(name)}\s*\(")
     return re.compile(rf"\b{re.escape(name)}(?:_block_sparse)?_with_backend\s*\(")
 
 
