@@ -74,8 +74,12 @@ def test_twin_pattern_requires_own_twin():
     # bless a delegation to a symbol that no longer exists.
     assert twin.twin_pattern("svd").search("svd(b, x, nrow)")
     assert twin.twin_pattern("trunc_svd").search("trunc_svd(b, x, nrow, p)")
+    assert twin.twin_pattern("qr").search("qr(b, x, nrow)")
+    assert twin.twin_pattern("lq").search("lq(b, x, nrow)")
     assert not twin.twin_pattern("svd").search("svd_with_backend(b, x)")
     assert not twin.twin_pattern("svd").search("svd_block_sparse_with_backend(b, x)")
+    assert not twin.twin_pattern("qr").search("qr_with_backend(b, x)")
+    assert not twin.twin_pattern("lq").search("lq_block_sparse_with_backend(b, x)")
     # bare-name allowance is scoped to decomposition ops: a non-decomposition
     # op does NOT accept its bare name, still requiring its `*_with_backend` twin
     assert not twin.twin_pattern("eigh").search("eigh(b, x)")
