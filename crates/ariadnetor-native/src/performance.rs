@@ -25,13 +25,21 @@ use arnet_core::backend::ExecPolicy;
 /// as `ExecPolicy::Sequential` in both cases.
 #[derive(Clone, Debug)]
 pub struct ThresholdTable {
+    /// SVD threshold; key is `cbrt(m*n*min(m,n))`.
     pub svd: usize,
+    /// QR threshold; key is `cbrt(m*n*min(m,n))`.
     pub qr: usize,
+    /// LQ threshold; key is `cbrt(m*n*min(m,n))`.
     pub lq: usize,
+    /// Hermitian-eigendecomposition threshold; key is the dimension `n`.
     pub eigh: usize,
+    /// General-eigendecomposition threshold; key is the dimension `n`.
     pub eig: usize,
+    /// GEMM threshold; key is `cbrt(m*n*k)`.
     pub gemm: usize,
+    /// Linear-solve threshold; key is the dimension `n`.
     pub solve: usize,
+    /// Transpose threshold; key is the total element count.
     pub transpose: usize,
 }
 
@@ -122,10 +130,12 @@ pub struct PerformanceManager {
 }
 
 impl PerformanceManager {
+    /// Wrap a calibrated threshold table in a performance manager.
     pub fn new(thresholds: ThresholdTable) -> Self {
         Self { thresholds }
     }
 
+    /// Borrow the underlying per-op threshold table.
     pub fn thresholds(&self) -> &ThresholdTable {
         &self.thresholds
     }

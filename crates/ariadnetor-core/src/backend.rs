@@ -18,8 +18,11 @@ use num_complex::Complex;
 /// Device type for backend selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceType {
+    /// Host CPU.
     Cpu,
+    /// NVIDIA GPU via CUDA.
     Cuda,
+    /// Apple GPU via Metal.
     Metal,
 }
 
@@ -45,7 +48,10 @@ pub enum MemoryOrder {
 /// execution.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExecPolicy {
+    /// Force single-threaded execution.
     Sequential,
+    /// Run in parallel with the given target worker count; `0` means
+    /// "backend auto" (see the type-level note for per-backend semantics).
     Parallel(usize),
 }
 
@@ -53,30 +59,48 @@ pub enum ExecPolicy {
 ///
 /// Data layout (A, B, C slices) is specified by the `order` field.
 pub struct GemmDescriptor<'a, T> {
+    /// Rows of `op(A)` and of `C`.
     pub m: usize,
+    /// Columns of `op(B)` and of `C`.
     pub n: usize,
+    /// Contracted dimension: columns of `op(A)` and rows of `op(B)`.
     pub k: usize,
+    /// Scalar applied to the `op(A) * op(B)` product.
     pub alpha: T,
+    /// Operand `A` (`m×k`, or `k×m` when `trans_a`).
     pub a: &'a [T],
+    /// Operand `B` (`k×n`, or `n×k` when `trans_b`).
     pub b: &'a [T],
+    /// Scalar applied to the existing `C` before accumulation.
     pub beta: T,
+    /// Operand / output `C` (`m×n`), overwritten with the result.
     pub c: &'a mut [T],
+    /// Whether `A` is transposed, i.e. `op(A) = Aᵀ`.
     pub trans_a: bool,
+    /// Whether `B` is transposed, i.e. `op(B) = Bᵀ`.
     pub trans_b: bool,
+    /// Memory layout of the `A` / `B` / `C` slices.
     pub order: MemoryOrder,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
 /// Transpose operation descriptor
 pub struct TransposeDescriptor<'a, T> {
+    /// Input tensor in `shape` order.
     pub input: &'a [T],
+    /// Output buffer receiving the permuted tensor.
     pub output: &'a mut [T],
+    /// Shape of the input tensor.
     pub shape: &'a [usize],
+    /// Axis permutation: output axis `i` is input axis `perm[i]`.
     pub perm: &'a [usize],
+    /// Memory layout of the `input` / `output` slices.
     pub order: MemoryOrder,
     /// Apply element-wise complex conjugation during transpose.
     /// No-op for real types.
     pub conj: bool,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
@@ -89,13 +113,21 @@ pub struct TransposeDescriptor<'a, T> {
 /// Outputs: U (m×k), S (k singular values), Vt (k×n)
 /// where k = min(m, n).
 pub struct SvdDescriptor<'a, T: Scalar> {
+    /// Rows of `A`.
     pub m: usize,
+    /// Columns of `A`.
     pub n: usize,
+    /// Input matrix `A` (`m×n`).
     pub a: &'a [T],
+    /// Output left singular vectors `U` (`m×k`, `k = min(m, n)`).
     pub u: &'a mut [T],
+    /// Output singular values `S` (`k` real values).
     pub s: &'a mut [T::Real],
+    /// Output right singular vectors `Vᴴ` (`k×n`).
     pub vt: &'a mut [T],
+    /// Memory layout of the matrix slices.
     pub order: MemoryOrder,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
@@ -108,12 +140,19 @@ pub struct SvdDescriptor<'a, T: Scalar> {
 /// Outputs: Q (m×k), R (k×n)
 /// where k = min(m, n).
 pub struct QrDescriptor<'a, T> {
+    /// Rows of `A`.
     pub m: usize,
+    /// Columns of `A`.
     pub n: usize,
+    /// Input matrix `A` (`m×n`).
     pub a: &'a [T],
+    /// Output orthonormal factor `Q` (`m×k`, `k = min(m, n)`).
     pub q: &'a mut [T],
+    /// Output upper-triangular factor `R` (`k×n`).
     pub r: &'a mut [T],
+    /// Memory layout of the matrix slices.
     pub order: MemoryOrder,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
@@ -126,12 +165,19 @@ pub struct QrDescriptor<'a, T> {
 /// Outputs: L (m×k), Q (k×n)
 /// where k = min(m, n).
 pub struct LqDescriptor<'a, T> {
+    /// Rows of `A`.
     pub m: usize,
+    /// Columns of `A`.
     pub n: usize,
+    /// Input matrix `A` (`m×n`).
     pub a: &'a [T],
+    /// Output lower-triangular factor `L` (`m×k`, `k = min(m, n)`).
     pub l: &'a mut [T],
+    /// Output orthonormal factor `Q` (`k×n`).
     pub q: &'a mut [T],
+    /// Memory layout of the matrix slices.
     pub order: MemoryOrder,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
@@ -143,11 +189,17 @@ pub struct LqDescriptor<'a, T> {
 /// [`BackendError::InvalidArgument`].
 /// Outputs: W (n real eigenvalues, ascending), V (n×n eigenvectors)
 pub struct EighDescriptor<'a, T: Scalar> {
+    /// Dimension of the square matrix `A`.
     pub n: usize,
+    /// Input self-adjoint matrix `A` (`n×n`).
     pub a: &'a [T],
+    /// Output eigenvalues `W` (`n` real values, ascending).
     pub w: &'a mut [T::Real],
+    /// Output eigenvectors `V` (`n×n`).
     pub v: &'a mut [T],
+    /// Memory layout of the matrix slices.
     pub order: MemoryOrder,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
@@ -159,11 +211,17 @@ pub struct EighDescriptor<'a, T: Scalar> {
 /// [`BackendError::InvalidArgument`].
 /// Outputs are always complex: W (n complex eigenvalues), V (n×n eigenvectors)
 pub struct EigDescriptor<'a, T: Scalar> {
+    /// Dimension of the square matrix `A`.
     pub n: usize,
+    /// Input matrix `A` (`n×n`).
     pub a: &'a [T],
+    /// Output complex eigenvalues `W` (`n`).
     pub w: &'a mut [T::Complex],
+    /// Output complex right eigenvectors `V` (`n×n`).
     pub v: &'a mut [T::Complex],
+    /// Memory layout of the matrix slices.
     pub order: MemoryOrder,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
@@ -175,12 +233,19 @@ pub struct EigDescriptor<'a, T: Scalar> {
 /// [`BackendError::InvalidArgument`].
 /// Output X is written to `x` (n×nrhs).
 pub struct SolveDescriptor<'a, T> {
+    /// Dimension of the square coefficient matrix `A`.
     pub n: usize,
+    /// Number of right-hand-side columns.
     pub nrhs: usize,
+    /// Coefficient matrix `A` (`n×n`).
     pub a: &'a [T],
+    /// Right-hand side `B` (`n×nrhs`).
     pub b: &'a [T],
+    /// Output solution `X` (`n×nrhs`).
     pub x: &'a mut [T],
+    /// Memory layout of the matrix slices.
     pub order: MemoryOrder,
+    /// Per-call execution policy.
     pub policy: ExecPolicy,
 }
 
@@ -193,13 +258,21 @@ pub struct SolveDescriptor<'a, T> {
 /// makes type-directed dispatch possible without reinterpreting a
 /// `Descriptor<T>` into a `Descriptor<concrete>` through `unsafe`.
 pub enum OpDesc<'a, T: Scalar> {
+    /// GEMM operation.
     Gemm(GemmDescriptor<'a, T>),
+    /// Thin SVD operation.
     Svd(SvdDescriptor<'a, T>),
+    /// Thin QR operation.
     Qr(QrDescriptor<'a, T>),
+    /// Thin LQ operation.
     Lq(LqDescriptor<'a, T>),
+    /// Self-adjoint eigendecomposition operation.
     Eigh(EighDescriptor<'a, T>),
+    /// General eigendecomposition operation.
     Eig(EigDescriptor<'a, T>),
+    /// Linear-solve operation.
     Solve(SolveDescriptor<'a, T>),
+    /// Tensor-transpose operation.
     Transpose(TransposeDescriptor<'a, T>),
 }
 
@@ -211,9 +284,13 @@ pub enum OpDesc<'a, T: Scalar> {
 /// on a local kernel-set type; the four methods mirror the four sealed [`Scalar`]
 /// types.
 pub trait ScalarKernels {
+    /// Run an operation with `f64` scalars.
     fn run_f64(&self, op: OpDesc<'_, f64>) -> Result<(), BackendError>;
+    /// Run an operation with `f32` scalars.
     fn run_f32(&self, op: OpDesc<'_, f32>) -> Result<(), BackendError>;
+    /// Run an operation with `Complex<f64>` scalars.
     fn run_c64(&self, op: OpDesc<'_, Complex<f64>>) -> Result<(), BackendError>;
+    /// Run an operation with `Complex<f32>` scalars.
     fn run_c32(&self, op: OpDesc<'_, Complex<f32>>) -> Result<(), BackendError>;
 }
 
@@ -235,6 +312,8 @@ pub trait ScalarKernels {
 /// admitting `OpDesc<'_, Self>`, which requires `Self: Scalar`. Sealed: only the
 /// four built-in scalar types implement it.
 pub trait DispatchScalar: sealed::Sealed {
+    /// Forward a generic `OpDesc<'_, Self>` to the concrete [`ScalarKernels`]
+    /// method matching `Self`, turning a type parameter into a type-level branch.
     fn dispatch_op<K: ScalarKernels>(kernels: &K, op: OpDesc<'_, Self>) -> Result<(), BackendError>
     where
         Self: Scalar;

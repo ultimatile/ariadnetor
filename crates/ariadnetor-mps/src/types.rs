@@ -20,10 +20,18 @@ pub enum CanonicalForm {
     Right,
     /// 0..left_end left-canonical, right_start..N right-canonical.
     /// Non-canonical region spans multiple sites (right_start - left_end > 1).
-    Partial { left_end: usize, right_start: usize },
+    Partial {
+        /// One past the last left-canonical site: sites `0..left_end` are left-isometric.
+        left_end: usize,
+        /// First right-canonical site: sites `right_start..N` are right-isometric.
+        right_start: usize,
+    },
     /// Single-site orthogonality center at `center`.
     /// 0..center left-canonical, center+1..N right-canonical.
-    Mixed { center: usize },
+    Mixed {
+        /// Index of the single orthogonality-center site.
+        center: usize,
+    },
 }
 
 /// How singular values are distributed during truncation sweeps.
@@ -42,8 +50,12 @@ pub enum SvdAbsorb {
 /// Parameters for MPS/MPO truncation.
 #[derive(Debug, Clone)]
 pub struct TruncateParams {
+    /// Truncated-SVD parameters (bond cap and singular-value cutoff).
     pub svd: TruncSvdParams,
+    /// Where the singular values are absorbed after each split.
     pub absorb: SvdAbsorb,
+    /// Optional target orthogonality center for the finishing pass;
+    /// `None` leaves the center at the sweep's natural end site.
     pub center: Option<usize>,
 }
 
@@ -78,6 +90,9 @@ pub enum ApplyMethod {
     /// bond bounded by the QR ranks rather than the fully inflated
     /// `w_R * chi_R`.
     StreamingNaive {
+        /// Cap on the per-site forward rank; `None` keeps the forward
+        /// sweep lossless (QR-only), `Some(k)` switches to truncated SVD
+        /// once the natural rank exceeds `k * chi_max`.
         forward_cap: Option<std::num::NonZeroUsize>,
     },
     /// Reserved for the literature Stoudenmire-White single-pass
@@ -99,6 +114,8 @@ impl Default for ApplyMethod {
 /// Result of a truncation operation.
 #[derive(Debug, Clone)]
 pub struct TruncResult<T: Scalar> {
+    /// Truncation error: the discarded singular-value weight accumulated
+    /// over the operation.
     pub error: T::Real,
 }
 

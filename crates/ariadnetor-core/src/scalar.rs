@@ -38,13 +38,22 @@ pub trait Scalar:
     /// The real part type. Always `Scalar + Float` — supports both tensor
     /// element storage and floating-point math (`sqrt`, `exp`, etc.).
     type Real: Scalar + num_traits::Float;
+    /// The complex type having this scalar's real type as its components.
     type Complex: Scalar;
+    /// Absolute value (modulus), as the real type.
     fn abs(self) -> Self::Real;
+    /// Real part.
     fn re(self) -> Self::Real;
+    /// Imaginary part (always zero for real scalars).
     fn im(self) -> Self::Real;
+    /// Multiply by a real factor.
     fn scale_real(self, factor: Self::Real) -> Self;
+    /// Complex conjugate (identity for real scalars).
     fn conj(self) -> Self;
+    /// Widen into the corresponding complex type.
     fn into_complex(self) -> Self::Complex;
+    /// Build from real and imaginary parts; for real scalars the
+    /// imaginary part is ignored.
     fn from_real_imag(re: Self::Real, im: Self::Real) -> Self;
 }
 

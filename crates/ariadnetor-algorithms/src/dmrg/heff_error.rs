@@ -24,7 +24,12 @@ use crate::krylov::ArpackError;
 pub enum DmrgHeffError {
     /// `site + 1` was not a valid two-site index for the chain.
     #[error("two-site index {site} (with {site}+1) out of range for chain of length {n_sites}")]
-    InvalidSite { site: usize, n_sites: usize },
+    InvalidSite {
+        /// The requested left site of the two-site block.
+        site: usize,
+        /// Chain length the index was checked against.
+        n_sites: usize,
+    },
     /// The env slot required for the two-site step (`left(site)` for
     /// the left side, `right(site + 2)` for the right side) was
     /// `None`. Indicates the caller has not built / advanced the
@@ -33,17 +38,32 @@ pub enum DmrgHeffError {
         "{side} env at index {index} is stale (None); build / advance envs into the right \
          state before stepping"
     )]
-    StaleEnv { side: &'static str, index: usize },
+    StaleEnv {
+        /// Which side's env is stale (`"left"` / `"right"`).
+        side: &'static str,
+        /// Index of the stale (`None`) env slot.
+        index: usize,
+    },
     /// MPS and MPO chain lengths disagree, or disagree with the
     /// envs the function was given.
     #[error("chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}")]
-    LengthMismatch { mps: usize, mpo: usize, envs: usize },
+    LengthMismatch {
+        /// Site count reported by the MPS.
+        mps: usize,
+        /// Site count reported by the MPO.
+        mpo: usize,
+        /// Site count reported by the environments.
+        envs: usize,
+    },
     /// The selected eigensolver's params (Lanczos or, behind the
     /// `arpack` feature, ARPACK) violated their preconditions.
     /// Surfaced here so callers see a fallible `Result` instead of
     /// the underlying solver panic / upstream error.
     #[error("invalid local-eigensolver params: {detail}")]
-    InvalidEigensolverParams { detail: &'static str },
+    InvalidEigensolverParams {
+        /// Human-readable description of the violated precondition.
+        detail: &'static str,
+    },
     /// A bond / physical dimension on one of the inputs to the
     /// 2-site step did not match the expectation derived from the
     /// surrounding tensors. Surfaced *before* the matvec runs so
@@ -52,9 +72,13 @@ pub enum DmrgHeffError {
     /// `"left.bot_ket vs mps[i].left_bond"`).
     #[error("shape mismatch at site {site}, {field}: expected {expected}, got {actual}")]
     ShapeMismatch {
+        /// Left site of the two-site block being stepped.
         site: usize,
+        /// Names the dimension constraint that failed.
         field: &'static str,
+        /// Extent derived from the surrounding tensors.
         expected: usize,
+        /// Extent actually found on the input.
         actual: usize,
     },
     /// A QNIndex / Direction / sector / per-site-flux compatibility
@@ -67,8 +91,11 @@ pub enum DmrgHeffError {
     /// data on each side.
     #[error("QN mismatch at site {site}, {field}: {detail}")]
     QnMismatch {
+        /// Left site of the two-site block being stepped.
         site: usize,
+        /// Names the offending leg pair (or single leg).
         field: &'static str,
+        /// Human-readable summary of the incompatible QN data on each side.
         detail: String,
     },
     /// The layout `MemoryOrder` of one of the BlockSparse 2-site
@@ -88,7 +115,10 @@ pub enum DmrgHeffError {
     /// surface (it is workspace-internal).
     #[error("BlockSparse heff operand `{operand}` has layout order mismatch: {detail}")]
     OrderMismatch {
+        /// Which of the four contracted operands (`"left_env"`, `"w_i"`,
+        /// `"w_ip1"`, `"right_env"`) carried a non-matching layout order.
         operand: &'static str,
+        /// Human-readable summary of the offending vs expected layout order.
         detail: String,
     },
     /// An underlying `arnet` linalg call (currently the truncated

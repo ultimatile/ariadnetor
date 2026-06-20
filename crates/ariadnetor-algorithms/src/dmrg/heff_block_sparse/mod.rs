@@ -65,10 +65,15 @@ use super::solver::{DmrgScalar, LocalEigensolverParams};
 /// `Debug` is not derived because `BlockSparse: !Debug`; tests that
 /// need to inspect the result destructure its fields directly.
 pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
+    /// Local-block variational minimum (smallest `H_eff` eigenvalue).
     pub eigenvalue: T::Real,
+    /// Local-eigensolver true residual `‖H v − λ v‖₂`.
     pub residual: T::Real,
+    /// Number of local-eigensolver iterations.
     pub iters: usize,
-    /// `true` iff the local eigensolver succeeded.
+    /// Whether the local eigensolver reported convergence (Lanczos by
+    /// its absolute true-residual test, ARPACK by its relative-tol
+    /// stopping criterion).
     pub converged: bool,
     /// Left singular vectors. Legs `[chi_l, d_i, bond(In)]`,
     /// `flux = identity()`. Left-canonical at axes `(chi_l, d_i)`.

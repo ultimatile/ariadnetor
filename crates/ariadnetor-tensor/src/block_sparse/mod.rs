@@ -33,13 +33,12 @@ pub use tensor_data::BlockSparseTensorData;
 // Direction
 // ---------------------------------------------------------------------------
 
-/// Leg direction for flux computation.
-///
-/// - `Out` (ket / row index): sector contributes as-is to flux
-/// - `In` (bra / column index): sector contributes via `dual()` to flux
+/// Leg direction for flux computation (see each variant).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
+    /// Ket / row index: the sector contributes as-is to the flux.
     Out,
+    /// Bra / column index: the sector contributes via `dual()` to the flux.
     In,
 }
 

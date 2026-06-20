@@ -22,10 +22,12 @@ pub const D: usize = 2;
 /// `(k_ket, b_bra)` → matrix element of a single-site operator.
 pub type Op = fn(usize, usize) -> f64;
 
+/// Identity single-site operator (Kronecker delta `δ_{k,b}`).
 pub fn op_id(k: usize, b: usize) -> f64 {
     if k == b { 1.0 } else { 0.0 }
 }
 
+/// Diagonal `Sz`-type operator: `+1` on basis state 0, `-1` on basis state 1.
 pub fn op_sz(k: usize, b: usize) -> f64 {
     if k == b {
         if k == 0 { 1.0 } else { -1.0 }
@@ -34,12 +36,12 @@ pub fn op_sz(k: usize, b: usize) -> f64 {
     }
 }
 
-// σ⁺ raises (|down⟩ → |up⟩); single non-zero element at (k_ket=1, b_bra=0).
+/// σ⁺ raises (|down⟩ → |up⟩); single non-zero element at (k_ket=1, b_bra=0).
 pub fn op_sp(k: usize, b: usize) -> f64 {
     if k == 1 && b == 0 { 1.0 } else { 0.0 }
 }
 
-// σ⁻ lowers (|up⟩ → |down⟩); single non-zero element at (k_ket=0, b_bra=1).
+/// σ⁻ lowers (|up⟩ → |down⟩); single non-zero element at (k_ket=0, b_bra=1).
 pub fn op_sm(k: usize, b: usize) -> f64 {
     if k == 0 && b == 1 { 1.0 } else { 0.0 }
 }

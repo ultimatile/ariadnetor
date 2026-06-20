@@ -35,6 +35,8 @@
 //! exponential, linear solve, matrix inverse, block-sparse permutation and leg
 //! fusion.
 
+#![deny(missing_docs)]
+
 mod block_sparse_contract;
 mod block_sparse_decomp;
 mod block_sparse_fuse;

@@ -133,8 +133,11 @@ pub enum ArpackError {
          nconv = {nconv}, n_matvec = {n_matvec}"
     )]
     MaxIterReached {
+        /// Number of ARPACK restart iterations performed (`iparam[2]`).
         iters: usize,
+        /// Number of Ritz values that did converge (`iparam[4]`).
         nconv: usize,
+        /// Number of matrix-vector products ARPACK requested.
         n_matvec: usize,
     },
     /// `*aupd_c` returned `info = 3`: no shifts could be applied during a
@@ -148,8 +151,11 @@ pub enum ArpackError {
          n_matvec = {n_matvec}"
     )]
     NoShiftsApplied {
+        /// Number of ARPACK restart iterations performed (`iparam[2]`).
         iters: usize,
+        /// Number of Ritz values that did converge (`iparam[4]`).
         nconv: usize,
+        /// Number of matrix-vector products ARPACK requested.
         n_matvec: usize,
     },
     /// `*aupd_c` returned `info = -9999`: ARPACK could not build an
@@ -164,8 +170,12 @@ pub enum ArpackError {
          iters = {iters}, n_matvec = {n_matvec}"
     )]
     ArnoldiFactorizationFailed {
+        /// Number of ARPACK restart iterations performed (`iparam[2]`).
         iters: usize,
+        /// Arnoldi factorization size ARPACK managed to build (the
+        /// `iparam[4]` slot, used here instead of a converged-Ritz count).
         factorization_size: usize,
+        /// Number of matrix-vector products ARPACK requested.
         n_matvec: usize,
     },
 }

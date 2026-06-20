@@ -68,7 +68,12 @@ pub enum DmrgError {
     EmptyMps,
     /// MPO and MPS chain lengths disagreed.
     #[error("chain length mismatch: mps = {mps}, mpo = {mpo}")]
-    LengthMismatch { mps: usize, mpo: usize },
+    LengthMismatch {
+        /// Site count reported by the MPS.
+        mps: usize,
+        /// Site count reported by the MPO.
+        mpo: usize,
+    },
     /// `DmrgEnvs::build` failed (e.g. BlockSparse edge-bond
     /// validation).
     #[error("DMRG environment build failed")]

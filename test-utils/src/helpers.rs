@@ -10,10 +10,12 @@ use arnet_tensor::{
 };
 use num_complex::Complex;
 
+/// Densify an `f64` BlockSparse U(1) tensor into a column-major `DenseTensor`.
 pub fn densify_bsp_f64(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
     densify_bsp_generic(bsp, 0.0)
 }
 
+/// Densify a complex-`f64` BlockSparse U(1) tensor into a column-major `DenseTensor`.
 pub fn densify_bsp_c64(
     bsp: &BlockSparseTensor<Complex<f64>, U1Sector>,
 ) -> DenseTensor<Complex<f64>> {
@@ -81,6 +83,8 @@ fn densify_bsp_generic<T: arnet_core::Scalar>(
     Host::shared().dense(out, global_dims)
 }
 
+/// Prefix-sum offsets into a template-flat buffer: one entry per block
+/// giving its start, plus a trailing entry holding the total length.
 pub fn template_block_offsets(template: &BlockSparseTensor<f64, U1Sector>) -> Vec<usize> {
     let mut offsets = Vec::with_capacity(template.num_blocks() + 1);
     let mut running = 0_usize;
@@ -96,6 +100,8 @@ pub fn template_block_offsets(template: &BlockSparseTensor<f64, U1Sector>) -> Ve
     offsets
 }
 
+/// Build a zeroed rank-4 two-site `psi` template from a neighboring MPS
+/// pair, taking the outer legs of each site and the fused flux.
 pub fn template_from_mps_pair(
     mps_i: &BlockSparseTensor<f64, U1Sector>,
     mps_ip1: &BlockSparseTensor<f64, U1Sector>,

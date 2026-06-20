@@ -91,8 +91,11 @@ pub struct DmrgSweepParams {
 /// Per-step diagnostics record.
 #[derive(Debug, Clone)]
 pub struct DmrgStepRecord<R> {
+    /// Index of the sweep cycle this step belongs to.
     pub sweep: usize,
+    /// Direction of the half-sweep (`L→R` or `R→L`).
     pub direction: SweepDirection,
+    /// Left site of the optimized two-site block.
     pub site: usize,
     /// Smallest eigenvalue of `H_eff` at this step (pre-truncation
     /// local-block variational minimum). May lie below the
@@ -124,6 +127,7 @@ pub struct DmrgStepRecord<R> {
 /// Per-sweep diagnostics record (one full L→R + R→L cycle).
 #[derive(Debug, Clone)]
 pub struct DmrgSweepRecord<R> {
+    /// Index of this sweep cycle.
     pub sweep: usize,
     /// Normalized post-truncation `<psi|H|psi> / <psi|psi>` after
     /// this cycle. The convergence metric.
@@ -132,11 +136,14 @@ pub struct DmrgSweepRecord<R> {
     /// reflects local-block variational minima, which can be lower
     /// than `sweep_energy`.
     pub min_step_eigenvalue: R,
+    /// Largest per-step truncation error in this cycle.
     pub max_trunc_err: R,
+    /// Largest bond dimension reached in this cycle.
     pub max_bond: usize,
     /// `true` iff every step in this cycle's local-eigensolver pass
     /// converged.
     pub all_eigensolver_converged: bool,
+    /// Per-step diagnostic records for this cycle, in execution order.
     pub steps: Vec<DmrgStepRecord<R>>,
 }
 
@@ -150,7 +157,9 @@ pub struct DmrgResult<R> {
     /// `|delta_E| <= energy_tol`,
     /// and every step's local eigensolver converged.
     pub converged: bool,
+    /// Number of sweep cycles executed.
     pub n_sweeps: usize,
+    /// Per-cycle diagnostic records, in execution order.
     pub sweeps: Vec<DmrgSweepRecord<R>>,
 }
 
@@ -160,27 +169,47 @@ pub struct DmrgResult<R> {
 pub enum DmrgSweepError {
     /// MPS, MPO, and `DmrgEnvs` disagree on `n_sites`.
     #[error("chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}")]
-    LengthMismatch { mps: usize, mpo: usize, envs: usize },
+    LengthMismatch {
+        /// `n_sites` reported by the MPS.
+        mps: usize,
+        /// `n_sites` reported by the MPO.
+        mpo: usize,
+        /// `n_sites` reported by the environments.
+        envs: usize,
+    },
     /// `n_sites < 2`. 2-site sweeps require at least 2 sites.
     #[error("2-site sweep requires n_sites >= 2, got {n_sites}")]
-    TooFewSites { n_sites: usize },
+    TooFewSites {
+        /// The (too-small) site count supplied.
+        n_sites: usize,
+    },
     /// `DmrgSweepParams` failed entry-point validation. `detail`
     /// names the constraint that fired.
     #[error("invalid DmrgSweepParams: {detail}")]
-    InvalidParams { detail: &'static str },
+    InvalidParams {
+        /// Names the validation constraint that failed.
+        detail: &'static str,
+    },
     /// MPS canonical form was not `Right` or `Mixed { center: 0 }`.
     /// `Unknown` is also rejected — see the module-level docs for
     /// the rationale.
     #[error("MPS must be in Right or Mixed {{ center: 0 }} form before sweep, got {found:?}")]
-    MpsNotRightCanonical { found: CanonicalForm },
+    MpsNotRightCanonical {
+        /// The canonical form actually found.
+        found: CanonicalForm,
+    },
     /// The per-step driver (`dmrg_2site_step` or
     /// `dmrg_2site_step_block_sparse`) returned an error. Source
     /// preserved.
     #[error("2-site DMRG step failed at sweep {sweep}, {direction:?}, site {site}")]
     Step {
+        /// Sweep cycle where the failure occurred.
         sweep: usize,
+        /// Half-sweep direction at the failure.
         direction: SweepDirection,
+        /// Left site index at the failure.
         site: usize,
+        /// The underlying per-step error.
         #[source]
         source: DmrgHeffError,
     },
@@ -192,9 +221,13 @@ pub enum DmrgSweepError {
     /// fire from the public API.
     #[error("DmrgEnvs advance failed at sweep {sweep}, {direction:?}, site {site}")]
     Env {
+        /// Sweep cycle where the failure occurred.
         sweep: usize,
+        /// Half-sweep direction at the failure.
         direction: SweepDirection,
+        /// Left site index at the failure.
         site: usize,
+        /// The underlying environment-advance error.
         #[source]
         source: DmrgEnvError,
     },
@@ -206,9 +239,13 @@ pub enum DmrgSweepError {
     /// `DmrgResult::sweeps` history manually.
     #[error("S-absorb (diagonal scale) failed during sweep {sweep}, {direction:?}, site {site}")]
     Scale {
+        /// Sweep cycle where the failure occurred.
         sweep: usize,
+        /// Half-sweep direction at the failure.
         direction: SweepDirection,
+        /// Left site index at the failure.
         site: usize,
+        /// The underlying diagonal-scale (linalg) error.
         #[source]
         source: LinalgError,
     },

@@ -5,6 +5,8 @@
 //! - **SVD/QR/LQ/EIGH**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **Transpose**: HPTT (f64, f32, Complex) when the `hptt` feature is on, a naive kernel otherwise
 
+#![deny(missing_docs)]
+
 mod eig;
 mod eigh;
 mod gemm;
