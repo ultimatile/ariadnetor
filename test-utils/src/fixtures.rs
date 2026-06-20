@@ -20,6 +20,8 @@ use num_complex::Complex;
 // n=2 f64
 // ---------------------------------------------------------------------------
 
+/// `n = 2` U(1) MPS fixture (`f64`); chain charge `U1(1)` is carried on
+/// `MPS[1].flux` so the 2-site psi at site 0 has non-identity flux.
 pub fn make_n2_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
@@ -54,6 +56,7 @@ pub fn make_n2_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sec
     Mps::from_sites(vec![mps0, mps1])
 }
 
+/// `n = 2` XY-hopping MPO fixture (`f64`) with coupling `j`.
 pub fn make_n2_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
@@ -94,6 +97,7 @@ pub fn make_n2_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
     Mpo::from_sites(vec![w0, w1])
 }
 
+/// Build the DMRG left/right environments for the `n = 2` fixture pair.
 pub fn build_envs_n2_f64(
     mps: &Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
     mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
@@ -105,6 +109,8 @@ pub fn build_envs_n2_f64(
 // n=3 f64 (bulk-env coverage)
 // ---------------------------------------------------------------------------
 
+/// `n = 3` U(1) MPS fixture (`f64`) for bulk-env coverage; chain charge
+/// sits on `MPS[2].right_bond = U1(1)` with per-site fluxes identity.
 pub fn make_n3_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let edge_left = vec![(U1Sector(0), 1)];
@@ -148,6 +154,8 @@ pub fn make_n3_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sec
     Mps::from_sites(vec![mps0, mps1, mps2])
 }
 
+/// `n = 3` XY-hopping MPO fixture (`f64`) with coupling `j`; `W[1]`
+/// carries the multi-sector pair-start bond exercised by the bulk env.
 pub fn make_n3_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
@@ -205,6 +213,8 @@ pub fn make_n3_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
 // n=2 c64 (complex coverage)
 // ---------------------------------------------------------------------------
 
+/// Complex-`f64` variant of the `n = 2` MPS fixture; exercises the
+/// `Scalar = Complex<f64>` matvec path.
 pub fn make_n2_mps_c64() -> Mps<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>> {
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let trivial = vec![(U1Sector(0), 1)];
@@ -235,6 +245,7 @@ pub fn make_n2_mps_c64() -> Mps<BlockSparseStorage<Complex<f64>>, BlockSparseLay
     Mps::from_sites(vec![mps0, mps1])
 }
 
+/// Complex-`f64` variant of the `n = 2` XY-hopping MPO fixture with coupling `j`.
 pub fn make_n2_mpo_c64(
     j: f64,
 ) -> Mpo<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>> {

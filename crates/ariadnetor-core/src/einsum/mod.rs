@@ -316,13 +316,18 @@ impl EinsumExpr {
 /// - **free_rhs**: indices only in rhs and output (not in lhs)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContractionPlan {
+    /// Indices in both inputs and the output (iterated over, not contracted).
     pub batch: Vec<u8>,
+    /// Indices in both inputs but not the output (summed over).
     pub contracted: Vec<u8>,
+    /// Indices only in the lhs and the output.
     pub free_lhs: Vec<u8>,
+    /// Indices only in the rhs and the output.
     pub free_rhs: Vec<u8>,
 }
 
 impl ContractionPlan {
+    /// Derive the batch / contracted / free index partition from a parsed einsum expression.
     pub fn from_expr(expr: &EinsumExpr) -> Self {
         let lhs = expr.lhs_indices();
         let rhs = expr.rhs_indices();

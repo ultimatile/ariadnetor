@@ -4,6 +4,8 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Interned identifier for a tensor-leg label: a cheap `Copy` handle
+/// backed by a process-global string interner.
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct LabelId(u64);
@@ -27,6 +29,8 @@ impl Default for LabelInterner {
 }
 
 impl LabelId {
+    /// Return the id for `name`, interning it on first use; idempotent
+    /// for equal names.
     pub fn intern(name: &str) -> Self {
         if let Some(id) = INTERNER.name_to_id.get(name) {
             return LabelId(*id);
@@ -37,6 +41,7 @@ impl LabelId {
         LabelId(id)
     }
 
+    /// Resolve this id back to its interned name.
     pub fn name(&self) -> String {
         INTERNER
             .id_to_name
@@ -45,6 +50,7 @@ impl LabelId {
             .unwrap_or_else(|| format!("<unknown:{}>", self.0))
     }
 
+    /// Mint a fresh, unique label with an internal temporary name.
     pub fn fresh() -> Self {
         let id = INTERNER.next_id.fetch_add(1, Ordering::SeqCst);
         let name = format!("_tmp_{}", id);
@@ -53,14 +59,17 @@ impl LabelId {
         LabelId(id)
     }
 
+    /// Return the label with one prime (`'`) appended.
     pub fn prime(&self) -> Self {
         Self::intern(&format!("{}'", self.name()))
     }
 
+    /// Return the label with `n` primes (`'`) appended.
     pub fn primes(&self, n: usize) -> Self {
         Self::intern(&format!("{}{}", self.name(), "'".repeat(n)))
     }
 
+    /// Remove a single trailing prime, if present; otherwise return the label unchanged.
     pub fn unprime(&self) -> Self {
         let name = self.name();
         if let Some(stripped) = name.strip_suffix('\'') {
@@ -70,11 +79,13 @@ impl LabelId {
         }
     }
 
+    /// Strip all trailing primes, returning the base (unprimed) label.
     pub fn base(&self) -> Self {
         Self::intern(self.name().trim_end_matches('\''))
     }
 }
 
+/// Intern a [`LabelId`] from a string expression.
 #[macro_export]
 macro_rules! label {
     ($name:expr) => {
@@ -82,6 +93,7 @@ macro_rules! label {
     };
 }
 
+/// Mint a fresh, unique [`LabelId`].
 #[macro_export]
 macro_rules! fresh {
     () => {

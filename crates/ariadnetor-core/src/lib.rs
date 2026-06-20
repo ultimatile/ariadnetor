@@ -6,6 +6,8 @@
 //! - `LabelId`: Interned tensor index labels
 //! - `EinsumExpr`, `ContractionPlan`: Einsum parsing and analysis
 
+#![deny(missing_docs)]
+
 pub mod backend;
 mod contraction_error;
 mod einsum;

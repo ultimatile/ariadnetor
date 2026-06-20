@@ -7,6 +7,8 @@
 //! the dead-code lint, but a library crate's reachable `pub` items are
 //! always live.
 
+#![deny(missing_docs)]
+
 pub mod dense_fixtures;
 pub mod fixtures;
 pub mod helpers;

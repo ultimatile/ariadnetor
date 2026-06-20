@@ -108,18 +108,22 @@ impl<'a, T: Scalar> EffectiveHamiltonian2Site<'a, T> {
         self.chi_l * self.d_i * self.d_ip1 * self.chi_r
     }
 
+    /// Left bond dimension.
     pub fn chi_l(&self) -> usize {
         self.chi_l
     }
 
+    /// Physical dimension of site `i`.
     pub fn d_i(&self) -> usize {
         self.d_i
     }
 
+    /// Physical dimension of site `i + 1`.
     pub fn d_ip1(&self) -> usize {
         self.d_ip1
     }
 
+    /// Right bond dimension.
     pub fn chi_r(&self) -> usize {
         self.chi_r
     }
@@ -150,9 +154,15 @@ impl<'a, T: Scalar> LinearOp<T> for EffectiveHamiltonian2Site<'a, T> {
 /// Result of a single 2-site DMRG step.
 #[derive(Debug, Clone)]
 pub struct TwoSiteStepResult<T: Scalar> {
+    /// Local-block variational minimum (smallest `H_eff` eigenvalue).
     pub eigenvalue: T::Real,
+    /// Local-eigensolver true residual `‖H v − λ v‖₂`.
     pub residual: T::Real,
+    /// Number of local-eigensolver iterations.
     pub iters: usize,
+    /// Whether the local eigensolver reported convergence (Lanczos by
+    /// its absolute true-residual test, ARPACK by its relative-tol
+    /// stopping criterion).
     pub converged: bool,
     /// Left singular vectors, shape `[chi_l, d_i, chi_new]`.
     pub u: DenseTensor<T>,

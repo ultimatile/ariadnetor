@@ -4,6 +4,8 @@
 //! the user-facing [`Tensor<St, L>`] type that joins them. The tensor
 //! carries no backend; operations take it explicitly at the call site.
 
+#![deny(missing_docs)]
+
 mod block_sparse;
 mod capability;
 mod dense;

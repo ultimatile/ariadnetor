@@ -30,6 +30,8 @@
 //! assert_eq!(b.shape(), &[3, 2]);
 //! ```
 
+#![deny(missing_docs)]
+
 mod ops;
 
 // Main types

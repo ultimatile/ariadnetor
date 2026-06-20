@@ -36,10 +36,20 @@ pub enum DmrgEnvError {
     EmptyChain,
     /// MPS and MPO site counts differ.
     #[error("MPS and MPO site counts differ: mps = {mps}, mpo = {mpo}")]
-    LengthMismatch { mps: usize, mpo: usize },
+    LengthMismatch {
+        /// Site count reported by the MPS.
+        mps: usize,
+        /// Site count reported by the MPO.
+        mpo: usize,
+    },
     /// `advance_*` was called with a site index outside `0..n_sites`.
     #[error("site index {index} out of range for chain of length {n_sites}")]
-    InvalidSite { index: usize, n_sites: usize },
+    InvalidSite {
+        /// The out-of-range site index.
+        index: usize,
+        /// Chain length the index was checked against.
+        n_sites: usize,
+    },
     /// `advance_*` could not proceed because the predecessor env slot
     /// (`left[i]` for `advance_left(i)`, `right[j+1]` for
     /// `advance_right(j)`) is `None`. Indicates the caller advanced
@@ -48,7 +58,12 @@ pub enum DmrgEnvError {
         "advance prerequisite {side} env at index {index} is stale (None); \
          build the initial envs or advance in order"
     )]
-    StaleNeighbor { side: &'static str, index: usize },
+    StaleNeighbor {
+        /// Which side the stale env is on (`"left"` / `"right"`).
+        side: &'static str,
+        /// Index of the stale (`None`) env slot.
+        index: usize,
+    },
     /// An underlying `arnet_linalg::contract_with_backend` call failed. The
     /// source is preserved so callers see the real cause (dimension
     /// mismatch, backend failure, etc.) rather than a panic.
@@ -61,7 +76,11 @@ pub enum DmrgEnvError {
     /// offending edge (`"mps_left"`, `"mpo_left"`, `"mps_right"`, or
     /// `"mpo_right"`).
     #[error("malformed edge bond on {leg}: {detail}", detail = edge_bond_detail(.leg))]
-    MalformedEdgeBond { leg: &'static str },
+    MalformedEdgeBond {
+        /// Names the offending edge (`"mps_left"`, `"mpo_left"`,
+        /// `"mps_right"`, or `"mpo_right"`).
+        leg: &'static str,
+    },
 }
 
 /// Per-edge well-formedness requirement rendered in

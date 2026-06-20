@@ -19,6 +19,7 @@ use super::lanczos_kernels::{
 /// type `Fn(&DenseTensor<T>) -> DenseTensor<T>` automatically
 /// implement this trait via the blanket impl.
 pub trait LinearOp<T: Scalar> {
+    /// Apply the operator to `v`, returning `H · v`.
     fn apply(&self, v: &DenseTensor<T>) -> DenseTensor<T>;
 }
 
