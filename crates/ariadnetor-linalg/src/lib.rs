@@ -10,7 +10,7 @@
 //!
 //! - An explicit-backend free function that takes the backend at the call
 //!   site. The non-decomposition ops use the `*_with_backend` form — e.g.
-//!   [`contract_with_backend`], [`transpose_with_backend`],
+//!   [`contract_with_backend`], [`permute_with_backend`],
 //!   [`trace_with_backend`], the block-sparse family
 //!   ([`contract_block_sparse_with_backend`], …). The four decompositions
 //!   (`svd` / `trunc_svd` / `qr` / `lq`) instead dispatch over layout through
@@ -18,7 +18,7 @@
 //!   ([`LinalgDecompose`]), so one call serves both Dense and BlockSparse. The
 //!   `*_with_policy` variants add an explicit
 //!   [`ExecPolicy`](arnet_core::backend::ExecPolicy); they are published under
-//!   bare names through the [`expert`] module (`expert::transpose`,
+//!   bare names through the [`expert`] module (`expert::permute`,
 //!   `expert::svd`, …).
 //! - An ergonomic method form on tensors over the default [`Host`](arnet_tensor::Host)
 //!   substrate via the [`DenseHostOps`] / [`BlockSparseHostOps`] extension
@@ -28,12 +28,12 @@
 //! operands are a slice with no natural receiver, so the explicit-backend free
 //! function is the only form.
 //!
-//! Covered operations: transpose, contraction (dense and block-sparse),
-//! Einstein summation, partial trace, diagonal extraction / scaling, SVD /
-//! truncated SVD / QR / LQ (dense and block-sparse), self-adjoint and general
-//! eigenvalue decomposition, the Hermitian / anti-Hermitian / general matrix
-//! exponential, linear solve, matrix inverse, block-sparse permutation and leg
-//! fusion.
+//! Covered operations: axis permutation (dense and block-sparse), contraction
+//! (dense and block-sparse), Einstein summation, partial trace, diagonal
+//! extraction / scaling, SVD / truncated SVD / QR / LQ (dense and
+//! block-sparse), self-adjoint and general eigenvalue decomposition, the
+//! Hermitian / anti-Hermitian / general matrix exponential, linear solve,
+//! matrix inverse, and block-sparse leg fusion.
 
 #![deny(missing_docs)]
 
@@ -88,7 +88,7 @@ pub use with_backend::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
     eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, solve_with_backend, trace_with_backend, transpose_with_backend,
+    inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
 };
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.

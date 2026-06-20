@@ -175,11 +175,11 @@ fn contract_matches_twin() {
 }
 
 #[test]
-fn transpose_matches_twin() {
+fn permute_matches_twin() {
     let host = NativeBackend::new();
     let t = mat23();
-    let out = t.transpose(&[1, 0]).unwrap();
-    let r = transpose_with_backend(&host, &t, &[1, 0]).unwrap();
+    let out = t.permute(&[1, 0]).unwrap();
+    let r = permute_with_backend(&host, &t, &[1, 0]).unwrap();
     assert_eq!(out.data().data(), r.data().data());
 }
 

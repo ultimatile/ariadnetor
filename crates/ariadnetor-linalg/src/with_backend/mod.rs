@@ -98,8 +98,8 @@ pub fn einsum_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     Ok(DenseTensor::from_data(result))
 }
 
-/// Axis permutation (transpose) of a dense tensor, using the supplied backend.
-pub fn transpose_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
+/// General axis permutation of a dense tensor, using the supplied backend.
+pub fn permute_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     perm: &[usize],

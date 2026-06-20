@@ -2,7 +2,7 @@
 
 use arnet_linalg::{
     BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
-    transpose_with_backend,
+    permute_with_backend,
 };
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
@@ -35,8 +35,8 @@ pub(crate) fn rm_dense_tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<
     let reversed_shape: Vec<usize> = shape.iter().rev().copied().collect();
     let reversed = Host::shared().dense(data, reversed_shape);
     let perm: Vec<usize> = (0..shape.len()).rev().collect();
-    transpose_with_backend(&NativeBackend::new(), &reversed, &perm)
-        .expect("rm_dense_tensor: reverse-axis transpose")
+    permute_with_backend(&NativeBackend::new(), &reversed, &perm)
+        .expect("rm_dense_tensor: reverse-axis permute")
 }
 
 /// Single-basis-state dense MPS site for |phys_c⟩ with bond dim 1.

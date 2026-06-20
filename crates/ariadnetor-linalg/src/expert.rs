@@ -8,8 +8,8 @@
 //! `Parallel(n)` to opt a large problem into threads the auto-heuristic would
 //! leave sequential.
 //!
-//! The functions are published under bare names (`expert::transpose`, not
-//! `expert::transpose_with_policy`): the `expert::` path and the explicit
+//! The functions are published under bare names (`expert::permute`, not
+//! `expert::permute_with_policy`): the `expert::` path and the explicit
 //! `ExecPolicy` argument already mark the call as the policy-pinned form, so the
 //! suffix would be redundant. The defining functions keep their `*_with_policy`
 //! names, preserving the pairing with the internal `*_with_policy_dense`
@@ -29,4 +29,4 @@ pub use crate::decompose_dispatch::{
 };
 pub use crate::eigen::{eig_with_policy as eig, eigh_with_policy as eigh};
 pub use crate::solve::solve_with_policy as solve;
-pub use crate::transpose::transpose_with_policy as transpose;
+pub use crate::transpose::permute_with_policy as permute;

@@ -14,7 +14,7 @@ fn dense_methods_resolve_through_umbrella() {
     // Built through the umbrella's own safe surface (zeros + set), the
     // only construction path an end user has: the raw flat-buffer
     // constructor is not on the umbrella API. A full-rank 2x3 matrix is
-    // all the SVD / transpose shape assertions below need.
+    // all the SVD / permute shape assertions below need.
     let mut t = DenseTensor::<f64>::zeros(vec![2, 3]);
     for (i, v) in [1.0, 2.0, 3.0, 4.0, 5.0, 6.0].into_iter().enumerate() {
         t.set([i / 3, i % 3], v);
@@ -23,7 +23,7 @@ fn dense_methods_resolve_through_umbrella() {
     assert_eq!(u.shape(), &[2, 2]);
     assert_eq!(s.shape(), &[2]);
     assert_eq!(vt.shape(), &[2, 3]);
-    let tt = t.transpose(&[1, 0]).expect("transpose via method");
+    let tt = t.permute(&[1, 0]).expect("permute via method");
     assert_eq!(tt.shape(), &[3, 2]);
 }
 

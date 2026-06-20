@@ -55,7 +55,7 @@ pub use arnet_tensor::{Host, OpsFor};
 
 // Re-export from ariadnetor-core. `ExecPolicy` is the per-call parallelism
 // knob the `expert` layer (re-exported below) takes by argument; without it on
-// the umbrella an umbrella-only consumer could name `expert::transpose` but not
+// the umbrella an umbrella-only consumer could name `expert::permute` but not
 // construct its policy argument.
 pub use arnet_core::{Complex, ComputeBackend, EinsumExpr, ExecPolicy, Scalar};
 
@@ -70,7 +70,7 @@ pub use ops::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
     eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, solve_with_backend, trace_with_backend, transpose_with_backend,
+    inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
 };
 
 // Layout-keyed decomposition dispatch: the unified `svd` / `trunc_svd` / `qr` /
@@ -95,7 +95,7 @@ pub use arnet_linalg::{BlockSparseHostOps, DenseHostOps};
 
 // Expert layer: the per-call `ExecPolicy` escape hatch over the auto-policy
 // default. Re-exported as the `arnet::expert` namespace so an umbrella-only
-// consumer can reach `expert::transpose`, `expert::contract`,
+// consumer can reach `expert::permute`, `expert::contract`,
 // `expert::svd`, … — the decomposition policy variants dispatch over layout,
 // so `expert::svd` serves both Dense and BlockSparse.
 pub use arnet_linalg::expert;

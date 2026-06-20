@@ -4,13 +4,14 @@ use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor, normalize
 
 use crate::error::LinalgError;
 
-/// Transpose with an explicit backend and caller-specified execution policy.
+/// Axis permutation with an explicit backend and caller-specified execution
+/// policy.
 ///
-/// Expert-layer counterpart of [`crate::transpose_with_backend`]; that entry
+/// Expert-layer counterpart of [`crate::permute_with_backend`]; that entry
 /// point consults `backend.par_for_transpose`, while this one takes `policy`
 /// directly. The backend is supplied at the call site and the tensor's own
 /// backend is never consulted.
-pub fn transpose_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
+pub fn permute_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
     perm: &[usize],
@@ -20,8 +21,8 @@ pub fn transpose_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     Ok(DenseTensor::from_data(result))
 }
 
-/// Crate-internal kernel shared by [`transpose_with_policy`] and the
-/// explicit-backend [`crate::transpose_with_backend`] path.
+/// Crate-internal kernel shared by [`permute_with_policy`] and the
+/// explicit-backend [`crate::permute_with_backend`] path.
 ///
 /// Self-tunes via `par_for_transpose` so other kernels (`contract`,
 /// `einsum`) can reuse the transpose without re-paying the wrap /
