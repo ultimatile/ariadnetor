@@ -1,7 +1,7 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
 use crate::error::LinalgError;
 use crate::transpose::transpose_dense;
@@ -17,8 +17,8 @@ pub(crate) fn contract_dense<T: Scalar>(
 ) -> Result<DenseTensorData<T>, LinalgError> {
     // Parse once up-front so we can compute the GEMM key (m, n, k) for
     // par_for_gemm. Parsing is not free, but the result is reused inside
-    // contract_with_policy via a re-parse; keeping the two paths independent
-    // avoids plumbing parsed state through the expert signature.
+    // contract_with_policy_dense via a re-parse; keeping the two paths
+    // independent avoids plumbing parsed state through the expert signature.
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
     let plan = ContractionPlan::from_expr(&expr);
@@ -54,31 +54,7 @@ pub(crate) fn contract_dense<T: Scalar>(
     contract_with_policy_dense(backend, lhs, rhs, notation, policy)
 }
 
-/// Pure tensor contraction with an explicit backend and caller-specified
-/// execution policy for the main GEMM.
-///
-/// `policy` overrides the main GEMM's `ExecPolicy` only; internal transposes
-/// self-tune via `backend.par_for_transpose`. This is a per-kernel override,
-/// not a scope-wide thread budget — `Sequential` does not force the whole
-/// contraction sequential.
-///
-/// The backend is supplied at the call site and neither operand's own backend
-/// is consulted. Output is returned in `backend.preferred_order()`, consistent
-/// with the decomposition functions.
-///
-/// Expert-layer counterpart of [`crate::contract_with_backend`].
-pub fn contract_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    lhs: &DenseTensor<T>,
-    rhs: &DenseTensor<T>,
-    notation: &str,
-    policy: ExecPolicy,
-) -> Result<DenseTensor<T>, LinalgError> {
-    let result = contract_with_policy_dense(backend, lhs.data(), rhs.data(), notation, policy)?;
-    Ok(DenseTensor::from_data(result))
-}
-
-/// Internal kernel for [`contract_with_policy`] on the joined
+/// Internal kernel for [`crate::expert::contract`] on the joined
 /// [`DenseTensorData<T>`] form.
 pub(crate) fn contract_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,

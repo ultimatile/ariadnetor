@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
@@ -32,24 +32,7 @@ pub(crate) fn eigh_dense<T: Scalar>(
     eigh_with_policy_dense(backend, tensor, nrow, policy)
 }
 
-/// Self-adjoint eigenvalue decomposition with an explicit backend and
-/// caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`crate::eigh_with_backend`]; that entry point
-/// consults `backend.par_for_eigh`, while this one takes `policy` directly.
-/// The backend is supplied at the call site and the tensor's own backend is
-/// never consulted.
-pub fn eigh_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-    policy: ExecPolicy,
-) -> Result<EighResult<T>, LinalgError> {
-    let (w, v) = eigh_with_policy_dense(backend, tensor.data(), nrow, policy)?;
-    Ok((DenseTensor::from_data(w), DenseTensor::from_data(v)))
-}
-
-/// Internal kernel for [`eigh_with_policy`] on the joined
+/// Internal kernel for [`crate::expert::eigh`] on the joined
 /// [`DenseTensorData<T>`] form.
 pub(crate) fn eigh_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
@@ -134,24 +117,7 @@ pub(crate) fn eig_dense<T: Scalar>(
     eig_with_policy_dense(backend, tensor, nrow, policy)
 }
 
-/// General eigenvalue decomposition with an explicit backend and
-/// caller-specified execution policy.
-///
-/// Expert-layer counterpart of [`crate::eig_with_backend`]; that entry point
-/// consults `backend.par_for_eig`, while this one takes `policy` directly. The
-/// backend is supplied at the call site and the tensor's own backend is never
-/// consulted.
-pub fn eig_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    nrow: usize,
-    policy: ExecPolicy,
-) -> Result<EigResult<T>, LinalgError> {
-    let (w, v) = eig_with_policy_dense(backend, tensor.data(), nrow, policy)?;
-    Ok((DenseTensor::from_data(w), DenseTensor::from_data(v)))
-}
-
-/// Internal kernel for [`eig_with_policy`] on the joined
+/// Internal kernel for [`crate::expert::eig`] on the joined
 /// [`DenseTensorData<T>`] form.
 pub(crate) fn eig_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
