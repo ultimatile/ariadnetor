@@ -29,9 +29,9 @@
 //! function is the only form.
 //!
 //! Covered operations: axis permutation (dense and block-sparse), contraction
-//! (dense and block-sparse), Einstein summation, partial trace, diagonal
-//! extraction / scaling, SVD / truncated SVD / QR / LQ (dense and
-//! block-sparse), self-adjoint and general eigenvalue decomposition, the
+//! (dense and block-sparse), Einstein summation, partial trace (dense and
+//! block-sparse), diagonal extraction / scaling, SVD / truncated SVD / QR / LQ
+//! (dense and block-sparse), self-adjoint and general eigenvalue decomposition, the
 //! Hermitian / anti-Hermitian / general matrix exponential, linear solve,
 //! matrix inverse, and block-sparse leg fusion.
 
@@ -42,6 +42,7 @@ mod block_sparse_decomp;
 mod block_sparse_fuse;
 mod block_sparse_permute;
 mod block_sparse_scale;
+mod block_sparse_trace;
 mod block_sparse_with_backend;
 mod contract;
 mod decompose_dispatch;
@@ -84,6 +85,7 @@ pub use decompose_dispatch::{LinalgDecompose, lq, qr, svd, trunc_svd};
 pub use block_sparse_with_backend::{
     contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
     fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
+    trace_block_sparse_with_backend,
 };
 pub use with_backend::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,

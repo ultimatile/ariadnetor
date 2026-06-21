@@ -28,6 +28,7 @@ use crate::block_sparse_decomp::BlockSingularValues;
 use crate::block_sparse_fuse::fuse_legs_block_sparse_dense;
 use crate::block_sparse_permute::permute_block_sparse_dense;
 use crate::block_sparse_scale::diagonal_scale_block_sparse_dense;
+use crate::block_sparse_trace::trace_block_sparse_dense;
 use crate::error::LinalgError;
 use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 
@@ -99,6 +100,28 @@ where
     check_bsp_data_layout_order_matches(tensor.data(), backend, "fuse_legs_block_sparse")?;
     let result =
         fuse_legs_block_sparse_dense(backend, tensor.data(), start, count, fused_direction)?;
+    Ok(BlockSparseTensor::from_data(result))
+}
+
+/// Block-sparse partial trace over the given bond index pairs, using the
+/// supplied backend.
+///
+/// Each pair ties two mutually-dual legs (identical sector blocks, opposite
+/// directions) on their diagonal; the result keeps the non-paired legs in
+/// their original order and the input flux. The layout-order invariant is
+/// checked against the supplied backend before the per-block traces.
+pub fn trace_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
+    pairs: &[(usize, usize)],
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "trace_block_sparse")?;
+    let result = trace_block_sparse_dense(backend, tensor.data(), pairs)?;
     Ok(BlockSparseTensor::from_data(result))
 }
 

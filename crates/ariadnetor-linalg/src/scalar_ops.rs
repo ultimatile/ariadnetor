@@ -6,6 +6,42 @@ use std::ops::Mul;
 use crate::error::LinalgError;
 use arnet_tensor::{flat_index, normalize_to_data};
 
+/// Validate trace pair indices and return the per-axis "is traced" mask.
+///
+/// Checks the layout-agnostic conditions shared by every partial trace —
+/// indices in range, no self-pair, no index reused across pairs — and reports
+/// which axes are traced. Dimension- or sector-level checks (dense
+/// `shape[a] == shape[b]`, the block-sparse identical-block / opposite-direction
+/// rules) are layout-specific and stay in the respective kernels. Shared
+/// between the dense and block-sparse traces, mirroring how [`crate::perm`]'s
+/// `validate_perm` serves both permutation kernels.
+pub(crate) fn validate_trace_pairs(
+    pairs: &[(usize, usize)],
+    rank: usize,
+) -> Result<Vec<bool>, LinalgError> {
+    let mut used = vec![false; rank];
+    for &(a, b) in pairs {
+        if a >= rank || b >= rank {
+            return Err(LinalgError::InvalidArgument(format!(
+                "Bond index out of range: ({a}, {b}) for rank {rank}"
+            )));
+        }
+        if a == b {
+            return Err(LinalgError::InvalidArgument(format!(
+                "Self-pair not allowed: ({a}, {b})"
+            )));
+        }
+        if used[a] || used[b] {
+            return Err(LinalgError::InvalidArgument(format!(
+                "Bond index used in multiple pairs: ({a}, {b})"
+            )));
+        }
+        used[a] = true;
+        used[b] = true;
+    }
+    Ok(used)
+}
+
 /// Partial trace over matched bond index pairs.
 ///
 /// Each pair `(a, b)` traces over two bond indices by summing over
@@ -47,33 +83,17 @@ pub(crate) fn trace_dense<T: Scalar>(
     let rm_tensor = normalize_to_data(tensor, MemoryOrder::RowMajor);
     let tensor: &DenseTensorData<T> = &rm_tensor;
 
-    // Validate pairs
-    let mut used = vec![false; rank];
+    // Shared range / self / reuse checks; the dense dimension-match check
+    // stays here.
+    let used = validate_trace_pairs(pairs, rank)?;
     let mut trace_dims = Vec::with_capacity(pairs.len());
     for &(a, b) in pairs {
-        if a >= rank || b >= rank {
-            return Err(LinalgError::InvalidArgument(format!(
-                "Bond index out of range: ({a}, {b}) for rank {rank}"
-            )));
-        }
-        if a == b {
-            return Err(LinalgError::InvalidArgument(format!(
-                "Self-pair not allowed: ({a}, {b})"
-            )));
-        }
-        if used[a] || used[b] {
-            return Err(LinalgError::InvalidArgument(format!(
-                "Bond index used in multiple pairs: ({a}, {b})"
-            )));
-        }
         if shape[a] != shape[b] {
             return Err(LinalgError::InvalidArgument(format!(
                 "Dimension mismatch for pair ({a}, {b}): {} vs {}",
                 shape[a], shape[b]
             )));
         }
-        used[a] = true;
-        used[b] = true;
         trace_dims.push(shape[a]);
     }
 
