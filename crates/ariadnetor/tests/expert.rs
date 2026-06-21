@@ -20,8 +20,8 @@ fn expert_layer_reachable_through_umbrella() {
     for (i, v) in [1.0, 2.0, 3.0, 4.0, 5.0, 6.0].into_iter().enumerate() {
         t.set([i / 3, i % 3], v);
     }
-    let tt = arnet::expert::transpose(&backend, &t, &[1, 0], ExecPolicy::Sequential)
-        .expect("expert::transpose via umbrella");
+    let tt = arnet::expert::permute(&backend, &t, &[1, 0], ExecPolicy::Sequential)
+        .expect("expert::permute via umbrella");
     assert_eq!(tt.shape(), &[3, 2]);
 
     // Reference the remaining four entry points: naming each generic fn item

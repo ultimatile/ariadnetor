@@ -112,18 +112,18 @@ fn svd_output_feeds_into_contract() {
 }
 
 #[test]
-fn transpose_output_feeds_into_contract() {
+fn permute_output_feeds_into_contract() {
     // (A^T)^T = A
     let a = cm(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
 
-    let at = a.transpose(&[1, 0]).unwrap();
-    let att = at.transpose(&[1, 0]).unwrap();
+    let at = a.permute(&[1, 0]).unwrap();
+    let att = at.permute(&[1, 0]).unwrap();
 
-    // Feed transpose output into transpose — roundtrip should recover original
+    // Feed permute output into permute — roundtrip should recover original
     for (original, roundtrip) in a.data_slice().iter().zip(att.data_slice()) {
         assert!(
             (original - roundtrip).abs() < 1e-15,
-            "transpose roundtrip: (A^T)^T != A"
+            "permute roundtrip: (A^T)^T != A"
         );
     }
 }

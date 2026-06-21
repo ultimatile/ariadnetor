@@ -204,13 +204,13 @@ fn einsum_routes_to_passed_backend() {
 }
 
 #[test]
-fn transpose_routes_to_passed_backend() {
+fn permute_routes_to_passed_backend() {
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     let t = mat23();
-    let out = transpose_with_backend(&rec, &t, &[1, 0]).unwrap();
+    let out = permute_with_backend(&rec, &t, &[1, 0]).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let hout = transpose_with_backend(&host, &t, &[1, 0]).unwrap();
+    let hout = permute_with_backend(&host, &t, &[1, 0]).unwrap();
     approx_eq(out.data().data(), hout.data().data());
 }
 

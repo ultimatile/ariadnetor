@@ -24,7 +24,7 @@ use crate::with_backend::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
     eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, solve_with_backend, trace_with_backend, transpose_with_backend,
+    inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
 };
 
 mod block_sparse;
@@ -74,8 +74,8 @@ pub trait DenseHostOps<T: Scalar> {
     fn contract(&self, rhs: &DenseTensor<T>, notation: &str)
     -> Result<DenseTensor<T>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::transpose_with_backend`].
-    fn transpose(&self, perm: &[usize]) -> Result<DenseTensor<T>, LinalgError>;
+    /// Host-defaulting counterpart of [`crate::permute_with_backend`].
+    fn permute(&self, perm: &[usize]) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::trace_with_backend`].
     fn trace(&self, pairs: &[(usize, usize)]) -> Result<DenseTensor<T>, LinalgError>;
@@ -160,8 +160,8 @@ impl<T: Scalar> DenseHostOps<T> for DenseTensor<T> {
         contract_with_backend(Host::shared().as_ref(), self, rhs, notation)
     }
 
-    fn transpose(&self, perm: &[usize]) -> Result<DenseTensor<T>, LinalgError> {
-        transpose_with_backend(Host::shared().as_ref(), self, perm)
+    fn permute(&self, perm: &[usize]) -> Result<DenseTensor<T>, LinalgError> {
+        permute_with_backend(Host::shared().as_ref(), self, perm)
     }
 
     fn trace(&self, pairs: &[(usize, usize)]) -> Result<DenseTensor<T>, LinalgError> {
