@@ -214,6 +214,46 @@ fn permute_routes_to_passed_backend() {
     approx_eq(out.data().data(), hout.data().data());
 }
 
+/// An invalid `perm` must surface as `LinalgError::InvalidArgument` rather than
+/// an index-out-of-bounds panic. `mat23` has rank 2, so a length-3 perm is too
+/// long, axis 5 is out of range, and `[0, 0]` duplicates axis 0. The
+/// auto-policy entry point routes through the shared `transpose_inner`
+/// validation.
+#[test]
+fn permute_with_backend_rejects_invalid_perm() {
+    let host = NativeBackend::new();
+    let t = mat23();
+
+    let err = permute_with_backend(&host, &t, &[0, 1, 2]).unwrap_err();
+    assert!(matches!(err, LinalgError::InvalidArgument(_)));
+    assert!(err.to_string().contains("perm length"));
+
+    let err = permute_with_backend(&host, &t, &[0, 5]).unwrap_err();
+    assert!(err.to_string().contains("out of range"));
+
+    let err = permute_with_backend(&host, &t, &[0, 0]).unwrap_err();
+    assert!(err.to_string().contains("duplicate"));
+}
+
+/// Expert-layer counterpart: the explicit-policy `expert::permute` shares the
+/// same `transpose_inner` chokepoint, so the same three invalid perms are
+/// rejected identically.
+#[test]
+fn expert_permute_rejects_invalid_perm() {
+    let host = NativeBackend::new();
+    let t = mat23();
+
+    let err = expert::permute(&host, &t, &[0, 1, 2], ExecPolicy::Sequential).unwrap_err();
+    assert!(matches!(err, LinalgError::InvalidArgument(_)));
+    assert!(err.to_string().contains("perm length"));
+
+    let err = expert::permute(&host, &t, &[0, 5], ExecPolicy::Sequential).unwrap_err();
+    assert!(err.to_string().contains("out of range"));
+
+    let err = expert::permute(&host, &t, &[0, 0], ExecPolicy::Sequential).unwrap_err();
+    assert!(err.to_string().contains("duplicate"));
+}
+
 #[test]
 fn solve_routes_to_passed_backend() {
     let rec = RecordingBackend::new();

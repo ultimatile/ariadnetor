@@ -51,6 +51,7 @@ mod einsum;
 mod error;
 mod expm;
 mod host_ops;
+mod perm;
 mod scalar_ops;
 mod solve;
 mod tensor_bridge;
