@@ -1,6 +1,6 @@
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
+use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
 use crate::error::LinalgError;
 use arnet_tensor::reorder_data;
@@ -27,25 +27,7 @@ pub(crate) fn solve_dense<T: Scalar>(
     solve_with_policy_dense(backend, a, b, nrow_a, policy)
 }
 
-/// Linear solve with an explicit backend and caller-specified execution
-/// policy.
-///
-/// Expert-layer counterpart of [`crate::solve_with_backend`]; that entry point
-/// consults `backend.par_for_solve`, while this one takes `policy` directly.
-/// The backend is supplied at the call site and neither operand's own backend
-/// is consulted.
-pub fn solve_with_policy<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    a: &DenseTensor<T>,
-    b: &DenseTensor<T>,
-    nrow_a: usize,
-    policy: ExecPolicy,
-) -> Result<DenseTensor<T>, LinalgError> {
-    let result = solve_with_policy_dense(backend, a.data(), b.data(), nrow_a, policy)?;
-    Ok(DenseTensor::from_data(result))
-}
-
-/// Internal kernel for [`solve_with_policy`] on the joined
+/// Internal kernel for [`crate::expert::solve`] on the joined
 /// [`DenseTensorData<T>`] form.
 pub(crate) fn solve_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
