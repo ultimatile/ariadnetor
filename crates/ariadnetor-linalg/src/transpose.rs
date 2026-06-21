@@ -3,6 +3,7 @@ use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
 use arnet_tensor::{DenseTensorData, normalize_to_data};
 
 use crate::error::LinalgError;
+use crate::perm::validate_perm;
 
 /// Crate-internal kernel shared by [`crate::expert::permute`] and the
 /// explicit-backend [`crate::permute_with_backend`] path.
@@ -36,6 +37,12 @@ pub(crate) fn conjugate_transpose_dense<T: Scalar>(
 /// Reads `tensor.data()` (via the storage half) under the backend's
 /// preferred order; normalize_to_data inserts a reorder at the
 /// boundary when the caller's tensor is in a different order.
+///
+/// # Errors
+///
+/// Returns `LinalgError::InvalidArgument` if `perm` is not a valid
+/// permutation of `0..tensor.rank()` (wrong length, an out-of-range index, or
+/// a duplicate axis), before any shape indexing occurs.
 pub(crate) fn transpose_inner<T: Scalar>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
@@ -43,6 +50,8 @@ pub(crate) fn transpose_inner<T: Scalar>(
     conj: bool,
     policy: ExecPolicy,
 ) -> Result<DenseTensorData<T>, LinalgError> {
+    validate_perm(perm, tensor.shape().len())?;
+
     let order = backend.preferred_order();
     let new_shape: Vec<usize> = perm.iter().map(|&i| tensor.shape()[i]).collect();
     let total = tensor.len();

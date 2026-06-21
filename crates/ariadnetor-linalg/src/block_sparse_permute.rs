@@ -9,6 +9,7 @@ use arnet_tensor::{BlockCoord, BlockSparseTensorData, Sector};
 
 use crate::block_sparse_contract::transpose_block_data;
 use crate::error::LinalgError;
+use crate::perm::validate_perm;
 
 /// Permute the axes of a block-sparse tensor.
 ///
@@ -38,27 +39,7 @@ where
 {
     let rank = tensor.layout().rank();
 
-    // Validate permutation
-    if perm.len() != rank {
-        return Err(LinalgError::InvalidArgument(format!(
-            "perm length {} != tensor rank {rank}",
-            perm.len()
-        )));
-    }
-    let mut seen = vec![false; rank];
-    for (i, &p) in perm.iter().enumerate() {
-        if p >= rank {
-            return Err(LinalgError::InvalidArgument(format!(
-                "perm[{i}] = {p} out of range for rank {rank}"
-            )));
-        }
-        if seen[p] {
-            return Err(LinalgError::InvalidArgument(format!(
-                "perm contains duplicate axis {p}"
-            )));
-        }
-        seen[p] = true;
-    }
+    validate_perm(perm, rank)?;
 
     // Identity permutation → clone
     if perm.iter().enumerate().all(|(i, &p)| p == i) {
