@@ -15,7 +15,8 @@ use crate::block_sparse_with_backend::{
     eigvals_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
     expm_antihermitian_block_sparse_with_backend, expm_block_sparse_with_backend,
     expm_hermitian_block_sparse_with_backend, fuse_legs_block_sparse_with_backend,
-    permute_block_sparse_with_backend, trace_block_sparse_with_backend,
+    inverse_block_sparse_with_backend, permute_block_sparse_with_backend,
+    solve_block_sparse_with_backend, trace_block_sparse_with_backend,
 };
 use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};
 use crate::decomposition::TruncSvdParams;
@@ -108,6 +109,19 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
     /// Host-defaulting counterpart of
     /// [`crate::expm_antihermitian_block_sparse_with_backend`].
     fn expm_antihermitian(&self, nrow: usize) -> Result<BlockSparseTensor<T, S>, LinalgError>;
+
+    /// Host-defaulting counterpart of
+    /// [`crate::solve_block_sparse_with_backend`]; the receiver is the
+    /// operator `A` in `A X = B`.
+    fn solve(
+        &self,
+        b: &BlockSparseTensor<T, S>,
+        nrow_a: usize,
+    ) -> Result<BlockSparseTensor<T, S>, LinalgError>;
+
+    /// Host-defaulting counterpart of
+    /// [`crate::inverse_block_sparse_with_backend`].
+    fn inverse(&self, nrow: usize) -> Result<BlockSparseTensor<T, S>, LinalgError>;
 }
 
 impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> {
@@ -197,5 +211,17 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> 
 
     fn expm_antihermitian(&self, nrow: usize) -> Result<BlockSparseTensor<T, S>, LinalgError> {
         expm_antihermitian_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
+    }
+
+    fn solve(
+        &self,
+        b: &BlockSparseTensor<T, S>,
+        nrow_a: usize,
+    ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
+        solve_block_sparse_with_backend(Host::shared().as_ref(), self, b, nrow_a)
+    }
+
+    fn inverse(&self, nrow: usize) -> Result<BlockSparseTensor<T, S>, LinalgError> {
+        inverse_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
     }
 }
