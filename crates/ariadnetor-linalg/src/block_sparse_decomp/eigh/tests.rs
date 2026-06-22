@@ -32,6 +32,25 @@ fn run<T: Scalar, S: Sector>(
     eigh_block_sparse_with_policy_dense(&backend(), tensor, nrow, ExecPolicy::Sequential)
 }
 
+/// Assert a result is `Err(LinalgError::InvalidArgument)`, optionally carrying
+/// a message substring. Matching the variant explicitly fails a test when the
+/// error comes from a different variant or code path, not just any error whose
+/// message happens to contain the substring.
+fn expect_invalid_argument<T: Scalar>(result: EighRunResult<T, U1Sector>, substr: Option<&str>) {
+    match result {
+        Err(crate::error::LinalgError::InvalidArgument(msg)) => {
+            if let Some(s) = substr {
+                assert!(
+                    msg.contains(s),
+                    "expected InvalidArgument containing {s:?}, got: {msg}"
+                );
+            }
+        }
+        Err(other) => panic!("expected InvalidArgument, got {other:?}"),
+        Ok(_) => panic!("expected an error, got Ok"),
+    }
+}
+
 fn mat_idx(row: usize, col: usize, rows: usize, cols: usize, order: MemoryOrder) -> usize {
     match order {
         MemoryOrder::RowMajor => row * cols + col,
@@ -254,8 +273,7 @@ fn nonidentity_flux_rejected() {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1), order());
-    let err = run(&bs, 1).err().expect("expected error");
-    assert!(err.to_string().contains("flux"), "got: {err}");
+    expect_invalid_argument(run(&bs, 1), Some("flux"));
 }
 
 #[test]
@@ -265,8 +283,7 @@ fn missing_partner_sector_rejected() {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
-    let err = run(&bs, 1).err().expect("expected error");
-    assert!(err.to_string().contains("square"), "got: {err}");
+    expect_invalid_argument(run(&bs, 1), Some("square"));
 }
 
 #[test]
@@ -275,13 +292,12 @@ fn dimension_mismatch_rejected() {
     let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::In);
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
-    let err = run(&bs, 1).err().expect("expected error");
-    assert!(err.to_string().contains("square"), "got: {err}");
+    expect_invalid_argument(run(&bs, 1), Some("square"));
 }
 
 #[test]
 fn nrow_out_of_range_rejected() {
     let h = hermitian_rank2_f64();
-    assert!(run(&h, 0).is_err());
-    assert!(run(&h, 2).is_err());
+    expect_invalid_argument(run(&h, 0), Some("nrow"));
+    expect_invalid_argument(run(&h, 2), Some("nrow"));
 }
