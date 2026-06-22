@@ -43,6 +43,7 @@ mod block_sparse_expm;
 mod block_sparse_fuse;
 mod block_sparse_permute;
 mod block_sparse_scale;
+mod block_sparse_solve;
 mod block_sparse_trace;
 mod block_sparse_with_backend;
 mod contract;
@@ -90,7 +91,8 @@ pub use block_sparse_with_backend::{
     eigvals_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
     expm_antihermitian_block_sparse_with_backend, expm_block_sparse_with_backend,
     expm_hermitian_block_sparse_with_backend, fuse_legs_block_sparse_with_backend,
-    permute_block_sparse_with_backend, trace_block_sparse_with_backend,
+    inverse_block_sparse_with_backend, permute_block_sparse_with_backend,
+    solve_block_sparse_with_backend, trace_block_sparse_with_backend,
 };
 pub use with_backend::{
     contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,

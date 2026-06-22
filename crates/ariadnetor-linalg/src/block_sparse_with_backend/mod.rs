@@ -35,6 +35,7 @@ use crate::block_sparse_expm::{
 use crate::block_sparse_fuse::fuse_legs_block_sparse_dense;
 use crate::block_sparse_permute::permute_block_sparse_dense;
 use crate::block_sparse_scale::diagonal_scale_block_sparse_dense;
+use crate::block_sparse_solve::{inverse_block_sparse_dense, solve_block_sparse_dense};
 use crate::block_sparse_trace::trace_block_sparse_dense;
 use crate::error::LinalgError;
 use crate::tensor_bridge::check_bsp_data_layout_order_matches;
@@ -280,6 +281,53 @@ where
 {
     check_bsp_data_layout_order_matches(tensor.data(), backend, "expm_antihermitian_block_sparse")?;
     let result = expm_antihermitian_block_sparse_dense(backend, tensor.data(), nrow)?;
+    Ok(BlockSparseTensor::from_data(result))
+}
+
+/// Block-sparse linear solve `A X = B`, using the supplied backend.
+///
+/// `a` is the operator and `b` the right-hand side; `nrow_a` splits `a`'s legs
+/// into row / column groups. `a` must be a leg-mirrored square operator with
+/// identity flux, and `b`'s leading `nrow_a` legs must match `a`'s row legs.
+/// The system is solved per fused sector and `X` is returned with `b`'s index
+/// structure. The layout-order invariant is checked against the supplied
+/// backend for both operands before the per-sector work.
+pub fn solve_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    a: &BlockSparseTensor<T, S>,
+    b: &BlockSparseTensor<T, S>,
+    nrow_a: usize,
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    check_bsp_data_layout_order_matches(a.data(), backend, "solve_block_sparse")?;
+    check_bsp_data_layout_order_matches(b.data(), backend, "solve_block_sparse")?;
+    let result = solve_block_sparse_dense(backend, a.data(), b.data(), nrow_a)?;
+    Ok(BlockSparseTensor::from_data(result))
+}
+
+/// Block-sparse matrix inverse, using the supplied backend.
+///
+/// Like [`solve_block_sparse_with_backend`] with an implicit identity
+/// right-hand side: `tensor` must be a leg-mirrored square operator with
+/// identity flux, and the per-sector dense inverse is reassembled into a
+/// same-shape operator. The layout-order invariant is checked against the
+/// supplied backend before the per-sector work.
+pub fn inverse_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
+    nrow: usize,
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "inverse_block_sparse")?;
+    let result = inverse_block_sparse_dense(backend, tensor.data(), nrow)?;
     Ok(BlockSparseTensor::from_data(result))
 }
 

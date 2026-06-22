@@ -41,6 +41,16 @@ pub(crate) struct FusedSectorGroup<S: Sector> {
     pub(crate) n: usize,
 }
 
+impl<S: Sector> FusedSectorGroup<S> {
+    /// The fused left sector keying this group. `pub(crate)` so the
+    /// block-sparse `solve` kernel (a sibling module) can pair an operator
+    /// group with a right-hand-side group by sector; the field itself stays
+    /// `pub(super)`.
+    pub(crate) fn sector(&self) -> &S {
+        &self.sector
+    }
+}
+
 /// Compute fused sector groups for a bipartition at `nrow`.
 ///
 /// For each fused left sector with a matching fused right sector (determined
