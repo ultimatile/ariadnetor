@@ -319,6 +319,34 @@ fn expm_antihermitian_host_method_matches_with_backend() {
     bsp_eq_complex(&method, &backend);
 }
 
+#[test]
+fn expm_hermitian_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = hermitian_rank2();
+    let r = expm_hermitian_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    assert!(
+        total_recorded(&rec) > 0,
+        "passed backend must run the expm_hermitian kernel"
+    );
+    let hr = expm_hermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
+    bsp_eq(&r, &hr);
+}
+
+#[test]
+fn expm_antihermitian_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = rank2_c();
+    let r = expm_antihermitian_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    assert!(
+        total_recorded(&rec) > 0,
+        "passed backend must run the expm_antihermitian kernel"
+    );
+    let hr = expm_antihermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
+    bsp_eq_complex(&r, &hr);
+}
+
 /// Whether two real block-sparse tensors coincide block-by-block within `1e-10`.
 fn bsp_coincides(
     a: &BlockSparseTensor<f64, U1Sector>,
