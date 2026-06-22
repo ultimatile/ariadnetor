@@ -11,6 +11,7 @@ use crate::block_sparse_decomp::{
 use crate::block_sparse_with_backend::{
     contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
     fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
+    trace_block_sparse_with_backend,
 };
 use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};
 use crate::decomposition::TruncSvdParams;
@@ -71,6 +72,10 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
         weights: &BlockSingularValues<T::Real, S>,
         axis: usize,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError>;
+
+    /// Host-defaulting counterpart of
+    /// [`crate::trace_block_sparse_with_backend`].
+    fn trace(&self, pairs: &[(usize, usize)]) -> Result<BlockSparseTensor<T, S>, LinalgError>;
 }
 
 impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> {
@@ -128,5 +133,9 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> 
         axis: usize,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
         diagonal_scale_block_sparse_with_backend(Host::shared().as_ref(), self, weights, axis)
+    }
+
+    fn trace(&self, pairs: &[(usize, usize)]) -> Result<BlockSparseTensor<T, S>, LinalgError> {
+        trace_block_sparse_with_backend(Host::shared().as_ref(), self, pairs)
     }
 }
