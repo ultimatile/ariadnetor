@@ -15,6 +15,7 @@
 //! check by fabricating a tensor whose layout disagrees with the supplied
 //! backend's preferred order.
 
+use arnet_core::Complex;
 use arnet_core::backend::{ExecPolicy, MemoryOrder};
 use arnet_native::NativeBackend;
 use arnet_tensor::{
@@ -185,6 +186,76 @@ fn eigh_host_method_matches_with_backend() {
     let (w_method, v_method) = t.eigh(1).unwrap();
     eigenvalues_eq(&w_method, &w_backend);
     bsp_eq(&v_method, &v_backend);
+}
+
+fn eig_eigenvalues_eq(
+    a: &BlockScalars<Complex<f64>, U1Sector>,
+    b: &BlockScalars<Complex<f64>, U1Sector>,
+) {
+    assert_eq!(a.values.len(), b.values.len(), "sector count mismatch");
+    for ((sa, va), (sb, vb)) in a.values.iter().zip(&b.values) {
+        assert_eq!(sa, sb, "sector mismatch");
+        assert_eq!(va.len(), vb.len(), "eigenvalue count mismatch");
+        for (x, y) in va.iter().zip(vb) {
+            assert!((x - y).norm() < 1e-10, "eigenvalue mismatch: {x} vs {y}");
+        }
+    }
+}
+
+/// Block-by-block equality for complex eigenvector tensors.
+fn bsp_eq_complex(
+    a: &BlockSparseTensor<Complex<f64>, U1Sector>,
+    b: &BlockSparseTensor<Complex<f64>, U1Sector>,
+) {
+    let (da, db) = (a.data(), b.data());
+    assert_eq!(da.shape(), db.shape(), "shape mismatch");
+    assert_eq!(da.num_blocks(), db.num_blocks(), "block count mismatch");
+    for meta in da.block_metas() {
+        let xa = da.block_data(&meta.coord).unwrap();
+        let xb = db.block_data(&meta.coord).unwrap();
+        assert_eq!(xa.len(), xb.len());
+        for (x, y) in xa.iter().zip(xb) {
+            assert!((x - y).norm() < 1e-10, "value mismatch: {x} vs {y}");
+        }
+    }
+}
+
+#[test]
+fn eig_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    // `rank2()` is non-symmetric, so this genuinely exercises the general path.
+    let t = rank2();
+    let (w, v) = eig_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    let policies = rec.eig_policies.lock().unwrap().clone();
+    assert!(
+        !policies.is_empty(),
+        "passed backend must run the eig kernel"
+    );
+    // The auto path pins per-sector Sequential.
+    assert!(policies.iter().all(|p| matches!(p, ExecPolicy::Sequential)));
+    let (hw, hv) = eig_block_sparse_with_backend(&host, &t, 1).unwrap();
+    eig_eigenvalues_eq(&w, &hw);
+    bsp_eq_complex(&v, &hv);
+}
+
+#[test]
+fn eigvals_matches_eig() {
+    let host = NativeBackend::new();
+    let t = rank2();
+    let (w, _v) = eig_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let w_only = eigvals_block_sparse_with_backend(&host, &t, 1).unwrap();
+    eig_eigenvalues_eq(&w, &w_only);
+}
+
+#[test]
+fn eig_host_method_matches_with_backend() {
+    let host = NativeBackend::new();
+    let t = rank2();
+    let (w_backend, v_backend) = eig_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (w_method, v_method) = t.eig(1).unwrap();
+    eig_eigenvalues_eq(&w_method, &w_backend);
+    bsp_eq_complex(&v_method, &v_backend);
 }
 
 #[test]

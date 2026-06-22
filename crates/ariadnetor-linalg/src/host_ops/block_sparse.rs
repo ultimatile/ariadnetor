@@ -6,12 +6,13 @@ use arnet_tensor::{BlockSparseTensor, Direction, Host, Sector};
 
 use crate::block_sparse_contract::BlockSparseContractResult;
 use crate::block_sparse_decomp::{
-    BlockScalars, BlockSparseEighResult, BlockSparseQrResult, BlockSparseSvdResult,
-    BlockSparseTruncSvdResult,
+    BlockScalars, BlockSparseEigResult, BlockSparseEighResult, BlockSparseQrResult,
+    BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
 use crate::block_sparse_with_backend::{
     contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
-    eigh_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
+    eig_block_sparse_with_backend, eigh_block_sparse_with_backend,
+    eigvals_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
     fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
     trace_block_sparse_with_backend,
 };
@@ -86,6 +87,14 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
     /// Host-defaulting counterpart of
     /// [`crate::eigvalsh_block_sparse_with_backend`].
     fn eigvalsh(&self, nrow: usize) -> Result<BlockScalars<T::Real, S>, LinalgError>;
+
+    /// Host-defaulting counterpart of
+    /// [`crate::eig_block_sparse_with_backend`].
+    fn eig(&self, nrow: usize) -> Result<BlockSparseEigResult<T, S>, LinalgError>;
+
+    /// Host-defaulting counterpart of
+    /// [`crate::eigvals_block_sparse_with_backend`].
+    fn eigvals(&self, nrow: usize) -> Result<BlockScalars<T::Complex, S>, LinalgError>;
 }
 
 impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> {
@@ -155,5 +164,13 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> 
 
     fn eigvalsh(&self, nrow: usize) -> Result<BlockScalars<T::Real, S>, LinalgError> {
         eigvalsh_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
+    }
+
+    fn eig(&self, nrow: usize) -> Result<BlockSparseEigResult<T, S>, LinalgError> {
+        eig_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
+    }
+
+    fn eigvals(&self, nrow: usize) -> Result<BlockScalars<T::Complex, S>, LinalgError> {
+        eigvals_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
     }
 }

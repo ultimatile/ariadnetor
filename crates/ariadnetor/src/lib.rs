@@ -86,8 +86,8 @@ pub use ops::{LinalgDecompose, lq, qr, svd, trunc_svd};
 // umbrella user must be able to name them — mirroring the dense result
 // aliases re-exported further down.
 pub use arnet_linalg::{
-    BlockScalars, BlockSparseContractResult, BlockSparseEighResult, BlockSparseQrResult,
-    BlockSparseSvdResult, BlockSparseTruncSvdResult,
+    BlockScalars, BlockSparseContractResult, BlockSparseEigResult, BlockSparseEighResult,
+    BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.
