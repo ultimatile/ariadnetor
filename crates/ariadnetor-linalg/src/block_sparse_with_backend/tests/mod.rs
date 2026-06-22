@@ -123,6 +123,70 @@ fn lq_routes_to_passed_backend() {
     bsp_eq(&q, &hq);
 }
 
+/// Rank-2 symmetric (Hermitian) U1 tensor, identity flux, in the recording
+/// backend's order. Symmetric data is order-agnostic in flat form.
+fn hermitian_rank2() -> BlockSparseTensor<f64, U1Sector> {
+    let order = RecordingBackend::new().preferred_order();
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order);
+    bs.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[2.0, 1.0, 1.0, 3.0]);
+    bs.block_data_mut(&BlockCoord(vec![1, 1]))
+        .unwrap()
+        .copy_from_slice(&[5.0, 1.0, 0.0, 1.0, 6.0, 2.0, 0.0, 2.0, 7.0]);
+    BlockSparseTensor::from_data(bs)
+}
+
+fn eigenvalues_eq(a: &BlockScalars<f64, U1Sector>, b: &BlockScalars<f64, U1Sector>) {
+    assert_eq!(a.values.len(), b.values.len(), "sector count mismatch");
+    for ((sa, va), (sb, vb)) in a.values.iter().zip(&b.values) {
+        assert_eq!(sa, sb, "sector mismatch");
+        assert_eq!(va.len(), vb.len(), "eigenvalue count mismatch");
+        for (x, y) in va.iter().zip(vb) {
+            assert!((x - y).abs() < 1e-10, "eigenvalue mismatch: {x} vs {y}");
+        }
+    }
+}
+
+#[test]
+fn eigh_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = hermitian_rank2();
+    let (w, v) = eigh_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    let policies = rec.eigh_policies.lock().unwrap().clone();
+    assert!(
+        !policies.is_empty(),
+        "passed backend must run the eigh kernel"
+    );
+    // The auto path pins per-sector Sequential.
+    assert!(policies.iter().all(|p| matches!(p, ExecPolicy::Sequential)));
+    let (hw, hv) = eigh_block_sparse_with_backend(&host, &t, 1).unwrap();
+    eigenvalues_eq(&w, &hw);
+    bsp_eq(&v, &hv);
+}
+
+#[test]
+fn eigvalsh_matches_eigh() {
+    let host = NativeBackend::new();
+    let t = hermitian_rank2();
+    let (w, _v) = eigh_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let w_only = eigvalsh_block_sparse_with_backend(&host, &t, 1).unwrap();
+    eigenvalues_eq(&w, &w_only);
+}
+
+#[test]
+fn eigh_host_method_matches_with_backend() {
+    let host = NativeBackend::new();
+    let t = hermitian_rank2();
+    let (w_backend, v_backend) = eigh_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let (w_method, v_method) = t.eigh(1).unwrap();
+    eigenvalues_eq(&w_method, &w_backend);
+    bsp_eq(&v_method, &v_backend);
+}
+
 #[test]
 fn contract_routes_to_passed_backend() {
     let rec = RecordingBackend::new();

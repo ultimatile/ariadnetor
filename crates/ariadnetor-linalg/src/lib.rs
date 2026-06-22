@@ -69,7 +69,8 @@ pub use error::LinalgError;
 
 pub use block_sparse_contract::BlockSparseContractResult;
 pub use block_sparse_decomp::{
-    BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
+    BlockScalars, BlockSparseEighResult, BlockSparseQrResult, BlockSparseSvdResult,
+    BlockSparseTruncSvdResult,
 };
 pub use decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 pub use eigen::{EigResult, EighResult};
@@ -84,6 +85,7 @@ pub use decompose_dispatch::{LinalgDecompose, lq, qr, svd, trunc_svd};
 // unified free fns above.
 pub use block_sparse_with_backend::{
     contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
+    eigh_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
     fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
     trace_block_sparse_with_backend,
 };

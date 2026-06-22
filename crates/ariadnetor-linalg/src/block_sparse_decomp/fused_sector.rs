@@ -187,7 +187,8 @@ pub(super) fn assemble_sector_matrix<T: Scalar, S: Sector>(
     matrix
 }
 
-/// Build the left output tensor (U, Q, or L) from per-sector matrices.
+/// Build the left output tensor (SVD `U`, QR `Q`, LQ `L`, or `eigh`
+/// eigenvectors) from per-sector matrices.
 ///
 /// Legs: `[original_left_legs..., bond(In)]`, flux = identity.
 /// `order` specifies the memory layout of both source matrices and output block data.

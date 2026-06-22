@@ -375,7 +375,7 @@ fn bsp_approx_eq(a: &BlockSparseTensor<f64, U1Sector>, b: &BlockSparseTensor<f64
 }
 
 /// Compare two singular-value sets sector by sector, with tolerance.
-fn sv_approx_eq(a: &BlockSingularValues<f64, U1Sector>, b: &BlockSingularValues<f64, U1Sector>) {
+fn sv_approx_eq(a: &BlockScalars<f64, U1Sector>, b: &BlockScalars<f64, U1Sector>) {
     assert_eq!(a.values.len(), b.values.len(), "sector count mismatch");
     for ((sa, va), (sb, vb)) in a.values.iter().zip(&b.values) {
         assert_eq!(sa, sb, "sector mismatch");
