@@ -25,7 +25,8 @@ use crate::block_sparse_contract::{
     contract_block_sparse_with_policy_dense,
 };
 use crate::block_sparse_decomp::{
-    BlockScalars, BlockSparseEighResult, eigh_block_sparse_with_policy_dense,
+    BlockScalars, BlockSparseEigResult, BlockSparseEighResult, eig_block_sparse_with_policy_dense,
+    eigh_block_sparse_with_policy_dense,
 };
 use crate::block_sparse_fuse::fuse_legs_block_sparse_dense;
 use crate::block_sparse_permute::permute_block_sparse_dense;
@@ -168,6 +169,51 @@ where
     B: OpsFor<BlockSparseStorage<T>>,
 {
     let (w, _v) = eigh_block_sparse_with_backend(backend, tensor, nrow)?;
+    Ok(w)
+}
+
+/// Block-sparse general (non-Hermitian) eigenvalue decomposition, using the
+/// supplied backend.
+///
+/// The operand must be a QN-square operator: identity flux and a symmetric
+/// fused-sector universe (every fused sector paired with its dual at equal
+/// dimension). Unlike [`eigh_block_sparse_with_backend`] it makes no Hermiticity
+/// assumption, and returns complex per-sector eigenvalues (in the dense kernel's
+/// order, no canonical sort) and the complex eigenvector tensor (legs
+/// `[row_legs..., bond(In)]`, identity flux). The layout-order invariant is
+/// checked against the supplied backend before the per-sector decompositions.
+pub fn eig_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
+    nrow: usize,
+) -> Result<BlockSparseEigResult<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "eig_block_sparse")?;
+    let (w, v) =
+        eig_block_sparse_with_policy_dense(backend, tensor.data(), nrow, ExecPolicy::Sequential)?;
+    Ok((w, BlockSparseTensor::from_data(v)))
+}
+
+/// Block-sparse eigenvalues-only general decomposition, using the supplied
+/// backend.
+///
+/// Counterpart of [`eig_block_sparse_with_backend`] that discards the
+/// eigenvectors, returning only the per-sector complex eigenvalues.
+pub fn eigvals_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
+    nrow: usize,
+) -> Result<BlockScalars<T::Complex, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    let (w, _v) = eig_block_sparse_with_backend(backend, tensor, nrow)?;
     Ok(w)
 }
 

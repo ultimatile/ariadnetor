@@ -10,9 +10,11 @@
 //! right tensor with `flux = original_flux`. The new bond uses fused left
 //! sectors with direction `In` on the left side and `Out` on the right side.
 
+mod eig;
 mod eigh;
 pub(crate) mod fused_sector;
 
+pub(crate) use eig::eig_block_sparse_with_policy_dense;
 pub(crate) use eigh::eigh_block_sparse_with_policy_dense;
 
 use arnet_core::Scalar;
@@ -110,6 +112,30 @@ pub type BlockSparseEighResult<T, S> = (
 pub(crate) type BlockSparseEighResultBsp<T, S> = (
     BlockScalars<<T as Scalar>::Real, S>,
     BlockSparseTensorData<T, S>,
+);
+
+/// Result of a block-sparse general (non-Hermitian) eigenvalue decomposition:
+/// `(eigenvalues, eigenvectors)`.
+///
+/// Unlike the self-adjoint [`BlockSparseEighResult`], a general
+/// eigendecomposition yields complex eigenvalues and complex eigenvectors even
+/// for a real operand, so both components carry `T::Complex`.
+///
+/// - eigenvalues: [`BlockScalars`] of complex values. There is no canonical
+///   order; within each sector eigenvector column `i` corresponds to
+///   eigenvalue `i`, in the order the dense kernel returns.
+/// - eigenvectors: [`BlockSparseTensor`] with legs `[original_row_legs..., bond(In)]`
+///   and identity flux, the per-sector eigenvector columns (built exactly like
+///   the SVD `U` factor)
+pub type BlockSparseEigResult<T, S> = (
+    BlockScalars<<T as Scalar>::Complex, S>,
+    BlockSparseTensor<<T as Scalar>::Complex, S>,
+);
+
+/// Internal kernel form of [`BlockSparseEigResult`] on joined-form [`BlockSparseTensorData<T, S>`].
+pub(crate) type BlockSparseEigResultBsp<T, S> = (
+    BlockScalars<<T as Scalar>::Complex, S>,
+    BlockSparseTensorData<<T as Scalar>::Complex, S>,
 );
 
 // Public API -- SVD =======================================================

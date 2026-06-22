@@ -28,13 +28,14 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy};
-use arnet_tensor::{BlockSparseTensorData, DenseTensorData, QNIndex, Sector};
+use arnet_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::eigen::eigh_with_policy_dense;
 use crate::error::LinalgError;
 
 use super::fused_sector::{
-    FusedSectorGroup, assemble_sector_matrix, build_left_tensor, compute_fused_sector_groups,
+    assemble_sector_matrix, build_left_tensor, compute_fused_sector_groups,
+    validate_square_universe,
 };
 use super::{BlockScalars, BlockSparseEighResultBsp, to_vec_in_order, validate_nrow};
 
@@ -65,7 +66,7 @@ pub(crate) fn eigh_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
-    validate_square_universe(tensor, &groups, nrow)?;
+    validate_square_universe(tensor, &groups, nrow, "eigh")?;
 
     let mut v_matrices = Vec::with_capacity(groups.len());
     let mut w_values = Vec::with_capacity(groups.len());
@@ -94,63 +95,6 @@ pub(crate) fn eigh_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     );
 
     Ok((BlockScalars { values: w_values }, v_tensor))
-}
-
-/// Verify the bipartition forms a QN-square operator: every matched fused
-/// sector is square, and the matched sectors together cover the entire row and
-/// column space so none is silently dropped.
-///
-/// [`compute_fused_sector_groups`] keys groups by left fused sector and
-/// silently omits any left sector lacking a right partner. Summing each side's
-/// matched dimensions and comparing against the full leg-dimension products
-/// detects both an unmatched sector (the sum falls short) and a per-sector
-/// rectangular block (`m != n`) — directly from the already-computed `groups`,
-/// without re-enumerating the fused-sector universe. The hard `m == n` check
-/// is what the per-sector dense `eigh` relies on (so no release-stripped
-/// `debug_assert` is needed in the loop).
-fn validate_square_universe<T: Scalar, S: Sector>(
-    tensor: &BlockSparseTensorData<T, S>,
-    groups: &[FusedSectorGroup<S>],
-    nrow: usize,
-) -> Result<(), LinalgError> {
-    let indices = tensor.layout().indices();
-    let total_left = leg_dim_product(&indices[..nrow]);
-    let total_right = leg_dim_product(&indices[nrow..]);
-
-    let mut matched_left = 0usize;
-    let mut matched_right = 0usize;
-    for group in groups {
-        if group.m != group.n {
-            return Err(LinalgError::InvalidArgument(format!(
-                "eigh requires a square operator: fused sector {:?} has a {}x{} block",
-                group.sector, group.m, group.n
-            )));
-        }
-        matched_left += group.m;
-        matched_right += group.n;
-    }
-
-    if matched_left != total_left || matched_right != total_right {
-        return Err(LinalgError::InvalidArgument(format!(
-            "eigh requires a square operator: matched fused sectors cover {matched_left}/{total_left} row and {matched_right}/{total_right} column dimensions, so a sector has no matching partner"
-        )));
-    }
-
-    Ok(())
-}
-
-/// Total dimension spanned by a set of legs: the product over legs of each
-/// leg's summed block dimensions. Equals the sum of every fused sector's
-/// dimension on that side, without enumerating the fused sectors.
-fn leg_dim_product<S: Sector>(indices: &[QNIndex<S>]) -> usize {
-    indices
-        .iter()
-        .map(|idx| {
-            (0..idx.num_blocks())
-                .map(|b| idx.block_dim(b))
-                .sum::<usize>()
-        })
-        .product()
 }
 
 #[cfg(test)]

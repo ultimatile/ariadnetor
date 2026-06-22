@@ -9,6 +9,8 @@ use arnet_core::backend::MemoryOrder;
 use arnet_tensor::Sector;
 use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
 
+use crate::error::LinalgError;
+
 /// Per-sector grouping of block-index tuples for matrix assembly.
 pub(super) struct FusedSectorGroup<S: Sector> {
     /// The fused left sector that keys this group.
@@ -313,6 +315,67 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
         bond_idx += 1;
     }
     output
+}
+
+/// Verify the bipartition forms a QN-square operator: every matched fused
+/// sector is square, and the matched sectors together cover the entire row and
+/// column space so none is silently dropped.
+///
+/// [`compute_fused_sector_groups`] keys groups by left fused sector and
+/// silently omits any left sector lacking a right partner. Summing each side's
+/// matched dimensions and comparing against the full leg-dimension products
+/// detects both an unmatched sector (the sum falls short) and a per-sector
+/// rectangular block (`m != n`) — directly from the already-computed `groups`,
+/// without re-enumerating the fused-sector universe. The hard `m == n` check
+/// is what the per-sector dense decomposition relies on (so no release-stripped
+/// `debug_assert` is needed in the caller's loop).
+///
+/// Shared by the square-operator decompositions (`eigh`, `eig`); `op` names the
+/// operation in the rejection messages.
+pub(super) fn validate_square_universe<T: Scalar, S: Sector>(
+    tensor: &BlockSparseTensorData<T, S>,
+    groups: &[FusedSectorGroup<S>],
+    nrow: usize,
+    op: &str,
+) -> Result<(), LinalgError> {
+    let indices = tensor.layout().indices();
+    let total_left = leg_dim_product(&indices[..nrow]);
+    let total_right = leg_dim_product(&indices[nrow..]);
+
+    let mut matched_left = 0usize;
+    let mut matched_right = 0usize;
+    for group in groups {
+        if group.m != group.n {
+            return Err(LinalgError::InvalidArgument(format!(
+                "{op} requires a square operator: fused sector {:?} has a {}x{} block",
+                group.sector, group.m, group.n
+            )));
+        }
+        matched_left += group.m;
+        matched_right += group.n;
+    }
+
+    if matched_left != total_left || matched_right != total_right {
+        return Err(LinalgError::InvalidArgument(format!(
+            "{op} requires a square operator: matched fused sectors cover {matched_left}/{total_left} row and {matched_right}/{total_right} column dimensions, so a sector has no matching partner"
+        )));
+    }
+
+    Ok(())
+}
+
+/// Total dimension spanned by a set of legs: the product over legs of each
+/// leg's summed block dimensions. Equals the sum of every fused sector's
+/// dimension on that side, without enumerating the fused sectors.
+fn leg_dim_product<S: Sector>(indices: &[QNIndex<S>]) -> usize {
+    indices
+        .iter()
+        .map(|idx| {
+            (0..idx.num_blocks())
+                .map(|b| idx.block_dim(b))
+                .sum::<usize>()
+        })
+        .product()
 }
 
 #[cfg(test)]
