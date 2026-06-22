@@ -1,6 +1,9 @@
 //! Fused sector computation, matrix assembly, and output tensor construction.
 //!
-//! Internal helpers shared by SVD, QR, and LQ block-sparse decompositions.
+//! Internal helpers shared by the block-sparse fused-sector operations: the
+//! SVD / QR / LQ / eigh / eig decompositions and the same-shape matrix
+//! exponential (`block_sparse_expm`). `pub(crate)` so the latter, which lives
+//! outside this module, can reach them.
 
 use std::collections::BTreeMap;
 
@@ -12,7 +15,12 @@ use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
 use crate::error::LinalgError;
 
 /// Per-sector grouping of block-index tuples for matrix assembly.
-pub(super) struct FusedSectorGroup<S: Sector> {
+///
+/// `pub(crate)` so kernels outside `block_sparse_decomp` (e.g.
+/// `block_sparse_expm`) can read the per-sector dimensions `m` / `n` when
+/// assembling the dense block; the remaining fields are consumed only within
+/// this module's builders and stay `pub(super)`.
+pub(crate) struct FusedSectorGroup<S: Sector> {
     /// The fused left sector that keys this group.
     pub(super) sector: S,
     /// Left block-index tuples (sorted lexicographically).
@@ -28,16 +36,16 @@ pub(super) struct FusedSectorGroup<S: Sector> {
     /// Cumulative column offsets.
     pub(super) right_offsets: Vec<usize>,
     /// Total row dimension.
-    pub(super) m: usize,
+    pub(crate) m: usize,
     /// Total column dimension.
-    pub(super) n: usize,
+    pub(crate) n: usize,
 }
 
 /// Compute fused sector groups for a bipartition at `nrow`.
 ///
 /// For each fused left sector with a matching fused right sector (determined
 /// by flux), collects the left/right block-index tuples and their dimensions.
-pub(super) fn compute_fused_sector_groups<T, S: Sector>(
+pub(crate) fn compute_fused_sector_groups<T, S: Sector>(
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Vec<FusedSectorGroup<S>> {
@@ -144,7 +152,7 @@ fn cumulative_offsets(dims: &[usize]) -> Vec<usize> {
 /// Assemble a dense matrix from all blocks in one fused sector group.
 ///
 /// The output matrix layout follows the given `order`.
-pub(super) fn assemble_sector_matrix<T: Scalar, S: Sector>(
+pub(crate) fn assemble_sector_matrix<T: Scalar, S: Sector>(
     tensor: &BlockSparseTensorData<T, S>,
     group: &FusedSectorGroup<S>,
     order: MemoryOrder,
@@ -317,6 +325,73 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
     output
 }
 
+/// Build a same-shape operator tensor from per-sector dense matrices.
+///
+/// The inverse of [`assemble_sector_matrix`]: where assembly gathers a fused
+/// sector's blocks into one dense `m × n` matrix, this scatters each sector's
+/// `m × n` result back into the original `(left_tup ++ right_tup)` block
+/// coordinates. Used by operations whose output has the same legs as the
+/// operand (e.g. the matrix exponential), in contrast to the decompositions
+/// which introduce a new bond via [`build_left_tensor`] / [`build_right_tensor`].
+///
+/// Legs and `flux` are the operand's own; for a square operator `flux` is
+/// identity. The output may be denser than the operand — a per-sector result
+/// is generally full even where the operand had absent blocks — but every
+/// scattered coordinate is flux-allowed (it pairs a left tuple with a right
+/// tuple of the same fused sector), so the blocks `zeros` pre-allocates cover
+/// them all and `block_data_mut` never misses. `order` is the memory layout of
+/// both the source matrices and the output block data.
+pub(crate) fn build_square_tensor<T: Scalar, S: Sector>(
+    groups: &[FusedSectorGroup<S>],
+    sector_matrices: &[Vec<T>],
+    original_indices: &[QNIndex<S>],
+    flux: S,
+    order: MemoryOrder,
+) -> BlockSparseTensorData<T, S> {
+    let mut output = BlockSparseTensorData::zeros(original_indices.to_vec(), flux, order);
+
+    for (gi, group) in groups.iter().enumerate() {
+        let m = group.m;
+        let n = group.n;
+        let mat = &sector_matrices[gi];
+        for (li, left_tup) in group.left_tuples.iter().enumerate() {
+            let row_off = group.left_offsets[li];
+            let m_i = group.left_dims[li];
+
+            for (ri, right_tup) in group.right_tuples.iter().enumerate() {
+                let col_off = group.right_offsets[ri];
+                let n_j = group.right_dims[ri];
+
+                let mut coord_vec = Vec::with_capacity(left_tup.len() + right_tup.len());
+                coord_vec.extend_from_slice(left_tup);
+                coord_vec.extend_from_slice(right_tup);
+                let coord = BlockCoord(coord_vec);
+
+                let block_data = output
+                    .block_data_mut(&coord)
+                    .expect("internal error: missing output block in build_square_tensor");
+                match order {
+                    MemoryOrder::RowMajor => {
+                        for r in 0..m_i {
+                            let src = (row_off + r) * n + col_off;
+                            let dst = r * n_j;
+                            block_data[dst..dst + n_j].copy_from_slice(&mat[src..src + n_j]);
+                        }
+                    }
+                    MemoryOrder::ColumnMajor => {
+                        for c in 0..n_j {
+                            let src = (col_off + c) * m + row_off;
+                            let dst = c * m_i;
+                            block_data[dst..dst + m_i].copy_from_slice(&mat[src..src + m_i]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    output
+}
+
 /// Verify the bipartition forms a QN-square operator: every matched fused
 /// sector is square, and the matched sectors together cover the entire row and
 /// column space so none is silently dropped.
@@ -330,9 +405,10 @@ pub(super) fn build_right_tensor<T: Scalar, S: Sector>(
 /// is what the per-sector dense decomposition relies on (so no release-stripped
 /// `debug_assert` is needed in the caller's loop).
 ///
-/// Shared by the square-operator decompositions (`eigh`, `eig`); `op` names the
-/// operation in the rejection messages.
-pub(super) fn validate_square_universe<T: Scalar, S: Sector>(
+/// Shared by the square-operator paths: the `eigh` / `eig` decompositions and
+/// the matrix exponential (`expm` family); `op` names the operation in the
+/// rejection messages.
+pub(crate) fn validate_square_universe<T: Scalar, S: Sector>(
     tensor: &BlockSparseTensorData<T, S>,
     groups: &[FusedSectorGroup<S>],
     nrow: usize,

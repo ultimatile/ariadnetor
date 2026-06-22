@@ -28,6 +28,10 @@ use crate::block_sparse_decomp::{
     BlockScalars, BlockSparseEigResult, BlockSparseEighResult, eig_block_sparse_with_policy_dense,
     eigh_block_sparse_with_policy_dense,
 };
+use crate::block_sparse_expm::{
+    expm_antihermitian_block_sparse_dense, expm_block_sparse_dense,
+    expm_hermitian_block_sparse_dense,
+};
 use crate::block_sparse_fuse::fuse_legs_block_sparse_dense;
 use crate::block_sparse_permute::permute_block_sparse_dense;
 use crate::block_sparse_scale::diagonal_scale_block_sparse_dense;
@@ -215,6 +219,68 @@ where
 {
     let (w, _v) = eig_block_sparse_with_backend(backend, tensor, nrow)?;
     Ok(w)
+}
+
+/// Block-sparse general matrix exponential, using the supplied backend.
+///
+/// The operand must be a QN-square operator: identity flux and a symmetric
+/// fused-sector universe (every fused sector paired with its dual at equal
+/// dimension). A dense per-sector exponential is run and reassembled into a
+/// tensor with the same legs and identity flux. The layout-order invariant is
+/// checked against the supplied backend before the per-sector work.
+pub fn expm_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
+    nrow: usize,
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "expm_block_sparse")?;
+    let result = expm_block_sparse_dense(backend, tensor.data(), nrow)?;
+    Ok(BlockSparseTensor::from_data(result))
+}
+
+/// Block-sparse Hermitian matrix exponential, using the supplied backend.
+///
+/// Like [`expm_block_sparse_with_backend`], but each per-sector block is
+/// exponentiated through the Hermitian dense kernel; per-sector Hermiticity is
+/// trusted, not validated.
+pub fn expm_hermitian_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
+    nrow: usize,
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "expm_hermitian_block_sparse")?;
+    let result = expm_hermitian_block_sparse_dense(backend, tensor.data(), nrow)?;
+    Ok(BlockSparseTensor::from_data(result))
+}
+
+/// Block-sparse anti-Hermitian matrix exponential, using the supplied backend.
+///
+/// Like [`expm_block_sparse_with_backend`], but each per-sector block is
+/// exponentiated through the anti-Hermitian dense kernel; per-sector
+/// anti-Hermiticity is trusted, not validated. A real element type is rejected.
+pub fn expm_antihermitian_block_sparse_with_backend<T, S, B>(
+    backend: &B,
+    tensor: &BlockSparseTensor<T, S>,
+    nrow: usize,
+) -> Result<BlockSparseTensor<T, S>, LinalgError>
+where
+    T: Scalar,
+    S: Sector,
+    B: OpsFor<BlockSparseStorage<T>>,
+{
+    check_bsp_data_layout_order_matches(tensor.data(), backend, "expm_antihermitian_block_sparse")?;
+    let result = expm_antihermitian_block_sparse_dense(backend, tensor.data(), nrow)?;
+    Ok(BlockSparseTensor::from_data(result))
 }
 
 /// Block-sparse per-sector diagonal scaling, using the supplied backend.

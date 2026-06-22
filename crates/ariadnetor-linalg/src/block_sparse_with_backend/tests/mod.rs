@@ -258,6 +258,143 @@ fn eig_host_method_matches_with_backend() {
     bsp_eq_complex(&v_method, &v_backend);
 }
 
+/// Complex rank-2 tensor in the recording backend's order. The data is not
+/// constructed to be anti-Hermitian — the `expm_antihermitian` routing /
+/// delegation tests only require the two paths to agree, and kernel-level
+/// numerical correctness is covered by the `block_sparse_expm` unit tests.
+fn rank2_c() -> BlockSparseTensor<Complex<f64>, U1Sector> {
+    let order = RecordingBackend::new().preferred_order();
+    let c = |re: f64, im: f64| Complex::new(re, im);
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
+    let mut bs =
+        BlockSparseTensorData::<Complex<f64>, U1Sector>::zeros(vec![row, col], U1Sector(0), order);
+    bs.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[c(0.0, 1.0), c(1.0, 1.0), c(-1.0, 1.0), c(0.0, 2.0)]);
+    bs.block_data_mut(&BlockCoord(vec![1, 1]))
+        .unwrap()
+        .copy_from_slice(&[c(0.0, 3.0)]);
+    BlockSparseTensor::from_data(bs)
+}
+
+#[test]
+fn expm_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = rank2();
+    let r = expm_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    assert!(
+        total_recorded(&rec) > 0,
+        "passed backend must run the expm kernel"
+    );
+    let hr = expm_block_sparse_with_backend(&host, &t, 1).unwrap();
+    bsp_eq(&r, &hr);
+}
+
+#[test]
+fn expm_host_method_matches_with_backend() {
+    let host = NativeBackend::new();
+    let t = rank2();
+    let backend = expm_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let method = t.expm(1).unwrap();
+    bsp_eq(&method, &backend);
+}
+
+#[test]
+fn expm_hermitian_host_method_matches_with_backend() {
+    let host = NativeBackend::new();
+    let t = hermitian_rank2();
+    let backend = expm_hermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let method = t.expm_hermitian(1).unwrap();
+    bsp_eq(&method, &backend);
+}
+
+#[test]
+fn expm_antihermitian_host_method_matches_with_backend() {
+    let host = NativeBackend::new();
+    let t = rank2_c();
+    let backend = expm_antihermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
+    let method = t.expm_antihermitian(1).unwrap();
+    bsp_eq_complex(&method, &backend);
+}
+
+#[test]
+fn expm_hermitian_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = hermitian_rank2();
+    let r = expm_hermitian_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    assert!(
+        total_recorded(&rec) > 0,
+        "passed backend must run the expm_hermitian kernel"
+    );
+    let hr = expm_hermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
+    bsp_eq(&r, &hr);
+}
+
+#[test]
+fn expm_antihermitian_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let t = rank2_c();
+    let r = expm_antihermitian_block_sparse_with_backend(&rec, &t, 1).unwrap();
+    assert!(
+        total_recorded(&rec) > 0,
+        "passed backend must run the expm_antihermitian kernel"
+    );
+    let hr = expm_antihermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
+    bsp_eq_complex(&r, &hr);
+}
+
+/// Whether two real block-sparse tensors coincide block-by-block within `1e-10`.
+fn bsp_coincides(
+    a: &BlockSparseTensor<f64, U1Sector>,
+    b: &BlockSparseTensor<f64, U1Sector>,
+) -> bool {
+    let (da, db) = (a.data(), b.data());
+    da.block_metas().iter().all(|meta| {
+        let (xa, xb) = (
+            da.block_data(&meta.coord).unwrap(),
+            db.block_data(&meta.coord).unwrap(),
+        );
+        xa.iter().zip(xb).all(|(x, y)| (x - y).abs() < 1e-10)
+    })
+}
+
+#[test]
+fn expm_hermitian_is_not_cross_wired_to_expm() {
+    // On a Hermitian input the general and Hermitian exponentials coincide, so
+    // `expm_hermitian_host_method_matches_with_backend` (Hermitian fixture)
+    // cannot detect a host-method delegation swap. A non-Hermitian input
+    // discriminates: the Hermitian host method must match its Hermitian twin
+    // (eigh-based, trusting hermiticity) and differ from the general exponential.
+    let host = NativeBackend::new();
+    let t = rank2(); // non-symmetric, so the Hermitian and general paths diverge
+    let method = t.expm_hermitian(1).unwrap();
+    let twin = expm_hermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
+    bsp_eq(&method, &twin);
+    let general = expm_block_sparse_with_backend(&host, &t, 1).unwrap();
+    assert!(
+        !bsp_coincides(&method, &general),
+        "hermitian path unexpectedly equals the general exponential on a \
+         non-Hermitian input; the fixture cannot discriminate a delegation swap"
+    );
+}
+
+#[test]
+fn expm_antihermitian_host_rejects_real_input() {
+    // The anti-Hermitian host method rejects real element types; its siblings
+    // (`expm` / `expm_hermitian`) accept them, so this discriminates that the
+    // host method delegates to the anti-Hermitian twin and not a sibling.
+    let t = rank2();
+    let err = t.expm_antihermitian(1).unwrap_err();
+    assert!(
+        matches!(err, LinalgError::InvalidArgument(_)),
+        "expected InvalidArgument, got {err:?}"
+    );
+}
+
 #[test]
 fn contract_routes_to_passed_backend() {
     let rec = RecordingBackend::new();

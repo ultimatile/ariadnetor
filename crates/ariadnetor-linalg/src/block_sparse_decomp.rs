@@ -403,7 +403,7 @@ fn truncate_rows<T: Scalar>(
     }
 }
 
-fn validate_nrow(rank: usize, nrow: usize) -> Result<(), LinalgError> {
+pub(crate) fn validate_nrow(rank: usize, nrow: usize) -> Result<(), LinalgError> {
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
             "nrow must satisfy 1 <= nrow < rank, got nrow={nrow} for rank={rank}"
@@ -509,7 +509,10 @@ fn cross_sector_truncate<T: Scalar>(
 /// Extract tensor data in `order`. `reorder_data` is a no-op clone
 /// when `tensor.order() == order`, so passing the backend's preferred
 /// order short-circuits to the existing buffer.
-fn to_vec_in_order<T: Scalar>(tensor: &DenseTensorData<T>, order: MemoryOrder) -> Vec<T> {
+pub(crate) fn to_vec_in_order<T: Scalar>(
+    tensor: &DenseTensorData<T>,
+    order: MemoryOrder,
+) -> Vec<T> {
     reorder_data(tensor, order).storage().data().to_vec()
 }
 
