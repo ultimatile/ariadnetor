@@ -392,6 +392,17 @@ fn solve_nrow_out_of_range_rejected() {
     expect_invalid_argument(solve_block_sparse_dense(&backend(), &a, &b, 2), "nrow");
 }
 
+/// A vector RHS — a `B` with no column legs — is unsupported: a block-sparse RHS
+/// must carry at least one column leg. A rank-1 `B` trips the `nrow_a < rank`
+/// bound, pinning the documented "at least one column leg" contract.
+#[test]
+fn solve_vector_rhs_rejected() {
+    let a = mirrored_rank2_f64();
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
+    let b = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row], U1Sector(0), order());
+    expect_invalid_argument(solve_block_sparse_dense(&backend(), &a, &b, 1), "nrow");
+}
+
 #[test]
 fn solve_nonidentity_a_flux_rejected() {
     let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
