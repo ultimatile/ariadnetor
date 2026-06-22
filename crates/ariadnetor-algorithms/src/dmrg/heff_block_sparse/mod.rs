@@ -41,7 +41,7 @@ mod validation;
 pub use operator::EffectiveHamiltonian2SiteBlockSparse;
 
 use arnet_core::Scalar;
-use arnet_linalg::{BlockSingularValues, TruncSvdParams, trunc_svd};
+use arnet_linalg::{BlockScalars, TruncSvdParams, trunc_svd};
 use arnet_mps::{Mpo, Mps};
 use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Host, Sector};
 
@@ -80,7 +80,7 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
     pub u: BlockSparseTensor<T, S>,
     /// Singular values per fused sector (descending within each
     /// sector).
-    pub s: BlockSingularValues<<T as Scalar>::Real, S>,
+    pub s: BlockScalars<<T as Scalar>::Real, S>,
     /// Right singular vectors. Legs `[bond(Out), d_{i+1}, chi_r]`,
     /// `flux = psi_flux`. Right-canonical at axes `(d_{i+1}, chi_r)`.
     pub vt: BlockSparseTensor<T, S>,

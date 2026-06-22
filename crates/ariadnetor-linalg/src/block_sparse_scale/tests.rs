@@ -9,8 +9,7 @@ use crate::block_sparse_contract::{
     BlockSparseContractResultBsp, contract_block_sparse_with_policy_dense,
 };
 use crate::block_sparse_decomp::{
-    BlockSingularValues, svd_block_sparse_with_policy_dense,
-    trunc_svd_block_sparse_with_policy_dense,
+    BlockScalars, svd_block_sparse_with_policy_dense, trunc_svd_block_sparse_with_policy_dense,
 };
 
 use super::diagonal_scale_block_sparse_dense;
@@ -178,7 +177,7 @@ fn scale_identity_weights() {
 #[test]
 fn scale_axis_out_of_range() {
     let bs = sample_u1_rank2();
-    let weights = BlockSingularValues {
+    let weights = BlockScalars {
         values: vec![(U1Sector(0), vec![1.0])],
     };
     let result = diagonal_scale_block_sparse_dense(&backend(), &bs, &weights, 5);
@@ -246,7 +245,7 @@ fn scale_rank3_middle_axis_element_values() {
     }
 
     // Weights for sector 0 at axis=1: 3 elements → [2.0, 3.0, 5.0].
-    let weights = BlockSingularValues {
+    let weights = BlockScalars {
         values: vec![(U1Sector(0), vec![2.0, 3.0, 5.0])],
     };
 
@@ -270,12 +269,12 @@ fn scale_rank3_middle_axis_element_values() {
 }
 
 // =========================================================================
-// BlockSingularValues::map
+// BlockScalars::map
 // =========================================================================
 
 #[test]
 fn bsv_map_basic() {
-    let bsv = BlockSingularValues {
+    let bsv = BlockScalars {
         values: vec![
             (U1Sector(0), vec![4.0_f64, 1.0]),
             (U1Sector(1), vec![9.0, 16.0, 25.0]),
@@ -323,7 +322,7 @@ fn rowmajor_branch_distinguishes_inner_stride_at_non_trailing_axis() {
         .iter_mut()
         .for_each(|e| *e = 1.0);
 
-    let weights = BlockSingularValues {
+    let weights = BlockScalars {
         values: vec![(U1Sector(0), vec![1.0, 2.0, 3.0])],
     };
 

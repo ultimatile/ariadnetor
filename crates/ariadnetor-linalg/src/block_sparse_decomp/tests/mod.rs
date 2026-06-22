@@ -132,7 +132,7 @@ fn assert_approx_eq(a: &[f64], b: &[f64], tol: f64) {
 fn verify_svd_reconstruction<S: Sector + PartialEq>(
     tensor: &BlockSparseTensorData<f64, S>,
     u: &BlockSparseTensorData<f64, S>,
-    sv: &BlockSingularValues<f64, S>,
+    sv: &BlockScalars<f64, S>,
     vt: &BlockSparseTensorData<f64, S>,
     nrow: usize,
     order: MemoryOrder,

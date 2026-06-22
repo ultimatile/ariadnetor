@@ -10,7 +10,10 @@
 //! right tensor with `flux = original_flux`. The new bond uses fused left
 //! sectors with direction `In` on the left side and `Out` on the right side.
 
+mod eigh;
 pub(crate) mod fused_sector;
+
+pub(crate) use eigh::eigh_block_sparse_with_policy_dense;
 
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
@@ -25,23 +28,26 @@ use fused_sector::*;
 
 // Public types ============================================================
 
-/// SVD singular values stored per fused sector.
+/// Per-sector real scalar values keyed by fused sector.
 ///
-/// Each sector's values are sorted in descending order. Sectors with no
-/// retained values are omitted.
+/// The block-sparse analog of the dense flat `DenseTensor<T::Real>`: the same
+/// container serves any per-sector real spectrum, so both SVD singular values
+/// (non-negative, descending) and `eigh` eigenvalues (signed, ascending) use
+/// it. The ordering within each sector is fixed by the producing operation,
+/// not by this type. Sectors with no values are omitted.
 #[derive(Debug)]
-pub struct BlockSingularValues<R, S: Sector> {
-    /// (fused sector, singular values) pairs, sorted by sector.
+pub struct BlockScalars<R, S: Sector> {
+    /// (fused sector, value list) pairs, sorted by sector.
     pub values: Vec<(S, Vec<R>)>,
 }
 
-impl<R, S: Sector> BlockSingularValues<R, S> {
-    /// Transform each singular value, preserving the sector structure.
-    pub fn map<U, F>(&self, mut f: F) -> BlockSingularValues<U, S>
+impl<R, S: Sector> BlockScalars<R, S> {
+    /// Transform each value, preserving the sector structure.
+    pub fn map<U, F>(&self, mut f: F) -> BlockScalars<U, S>
     where
         F: FnMut(&R) -> U,
     {
-        BlockSingularValues {
+        BlockScalars {
             values: self
                 .values
                 .iter()
@@ -54,21 +60,21 @@ impl<R, S: Sector> BlockSingularValues<R, S> {
 /// Result of a block-sparse SVD: `(U, S, Vt)`.
 pub type BlockSparseSvdResult<T, S> = (
     BlockSparseTensor<T, S>,
-    BlockSingularValues<<T as Scalar>::Real, S>,
+    BlockScalars<<T as Scalar>::Real, S>,
     BlockSparseTensor<T, S>,
 );
 
 /// Internal kernel form of [`BlockSparseSvdResult`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) type BlockSparseSvdResultBsp<T, S> = (
     BlockSparseTensorData<T, S>,
-    BlockSingularValues<<T as Scalar>::Real, S>,
+    BlockScalars<<T as Scalar>::Real, S>,
     BlockSparseTensorData<T, S>,
 );
 
 /// Result of a truncated block-sparse SVD: `(U, S, Vt, trunc_err)`.
 pub type BlockSparseTruncSvdResult<T, S> = (
     BlockSparseTensor<T, S>,
-    BlockSingularValues<<T as Scalar>::Real, S>,
+    BlockScalars<<T as Scalar>::Real, S>,
     BlockSparseTensor<T, S>,
     <T as Scalar>::Real,
 );
@@ -76,7 +82,7 @@ pub type BlockSparseTruncSvdResult<T, S> = (
 /// Internal kernel form of [`BlockSparseTruncSvdResult`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) type BlockSparseTruncSvdResultBsp<T, S> = (
     BlockSparseTensorData<T, S>,
-    BlockSingularValues<<T as Scalar>::Real, S>,
+    BlockScalars<<T as Scalar>::Real, S>,
     BlockSparseTensorData<T, S>,
     <T as Scalar>::Real,
 );
@@ -87,6 +93,24 @@ pub type BlockSparseQrResult<T, S> = (BlockSparseTensor<T, S>, BlockSparseTensor
 /// Internal kernel form of [`BlockSparseQrResult`] on joined-form [`BlockSparseTensorData<T, S>`].
 pub(crate) type BlockSparseQrResultBsp<T, S> =
     (BlockSparseTensorData<T, S>, BlockSparseTensorData<T, S>);
+
+/// Result of a block-sparse self-adjoint eigenvalue decomposition:
+/// `(eigenvalues, eigenvectors)`.
+///
+/// - eigenvalues: [`BlockScalars`] of real values, ascending within each sector
+/// - eigenvectors: [`BlockSparseTensor`] with legs `[original_row_legs..., bond(In)]`
+///   and identity flux, the per-sector eigenvector columns (built exactly like
+///   the SVD `U` factor)
+pub type BlockSparseEighResult<T, S> = (
+    BlockScalars<<T as Scalar>::Real, S>,
+    BlockSparseTensor<T, S>,
+);
+
+/// Internal kernel form of [`BlockSparseEighResult`] on joined-form [`BlockSparseTensorData<T, S>`].
+pub(crate) type BlockSparseEighResultBsp<T, S> = (
+    BlockScalars<<T as Scalar>::Real, S>,
+    BlockSparseTensorData<T, S>,
+);
 
 // Public API -- SVD =======================================================
 
@@ -137,11 +161,7 @@ pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
         order,
     );
 
-    Ok((
-        u_tensor,
-        BlockSingularValues { values: s_values },
-        vt_tensor,
-    ))
+    Ok((u_tensor, BlockScalars { values: s_values }, vt_tensor))
 }
 
 /// Internal kernel for the truncated block-sparse SVD on joined-form
@@ -231,7 +251,7 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 
     Ok((
         u_tensor,
-        BlockSingularValues { values: sv_pairs },
+        BlockScalars { values: sv_pairs },
         vt_tensor,
         trunc_err,
     ))

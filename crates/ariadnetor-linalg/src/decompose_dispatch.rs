@@ -53,7 +53,7 @@ use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 /// Implemented for [`DenseLayout`] and [`BlockSparseLayout<S>`], each pairing a
 /// storage type via [`Storage`](Self::Storage) and routing each operation to
 /// its storage-specific kernel. The structural difference between the dense
-/// `(U, S_flat, Vt)` SVD and the block-sparse `(U, BlockSingularValues, Vt)`
+/// `(U, S_flat, Vt)` SVD and the block-sparse `(U, BlockScalars, Vt)`
 /// form is absorbed by the associated output types; QR and LQ are structurally
 /// identical across layouts.
 pub trait LinalgDecompose<T: Scalar>: TensorLayout + Sized {

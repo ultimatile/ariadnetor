@@ -6,10 +6,12 @@ use arnet_tensor::{BlockSparseTensor, Direction, Host, Sector};
 
 use crate::block_sparse_contract::BlockSparseContractResult;
 use crate::block_sparse_decomp::{
-    BlockSingularValues, BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
+    BlockScalars, BlockSparseEighResult, BlockSparseQrResult, BlockSparseSvdResult,
+    BlockSparseTruncSvdResult,
 };
 use crate::block_sparse_with_backend::{
     contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
+    eigh_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
     fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend,
     trace_block_sparse_with_backend,
 };
@@ -69,13 +71,21 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
     /// [`crate::diagonal_scale_block_sparse_with_backend`].
     fn diagonal_scale(
         &self,
-        weights: &BlockSingularValues<T::Real, S>,
+        weights: &BlockScalars<T::Real, S>,
         axis: usize,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError>;
 
     /// Host-defaulting counterpart of
     /// [`crate::trace_block_sparse_with_backend`].
     fn trace(&self, pairs: &[(usize, usize)]) -> Result<BlockSparseTensor<T, S>, LinalgError>;
+
+    /// Host-defaulting counterpart of
+    /// [`crate::eigh_block_sparse_with_backend`].
+    fn eigh(&self, nrow: usize) -> Result<BlockSparseEighResult<T, S>, LinalgError>;
+
+    /// Host-defaulting counterpart of
+    /// [`crate::eigvalsh_block_sparse_with_backend`].
+    fn eigvalsh(&self, nrow: usize) -> Result<BlockScalars<T::Real, S>, LinalgError>;
 }
 
 impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> {
@@ -129,7 +139,7 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> 
 
     fn diagonal_scale(
         &self,
-        weights: &BlockSingularValues<T::Real, S>,
+        weights: &BlockScalars<T::Real, S>,
         axis: usize,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
         diagonal_scale_block_sparse_with_backend(Host::shared().as_ref(), self, weights, axis)
@@ -137,5 +147,13 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> 
 
     fn trace(&self, pairs: &[(usize, usize)]) -> Result<BlockSparseTensor<T, S>, LinalgError> {
         trace_block_sparse_with_backend(Host::shared().as_ref(), self, pairs)
+    }
+
+    fn eigh(&self, nrow: usize) -> Result<BlockSparseEighResult<T, S>, LinalgError> {
+        eigh_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
+    }
+
+    fn eigvalsh(&self, nrow: usize) -> Result<BlockScalars<T::Real, S>, LinalgError> {
+        eigvalsh_block_sparse_with_backend(Host::shared().as_ref(), self, nrow)
     }
 }

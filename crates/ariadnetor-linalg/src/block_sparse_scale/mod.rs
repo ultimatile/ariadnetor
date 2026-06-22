@@ -1,7 +1,7 @@
 //! Diagonal scaling for block-sparse tensors.
 //!
 //! Scales each slice along a specified axis by per-sector weights from
-//! [`BlockSingularValues`], typically used to absorb singular values
+//! [`BlockScalars`], typically used to absorb singular values
 //! after block-sparse SVD (e.g., S·Vt or U·S in MPS truncation).
 
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_tensor::BlockSparseTensorData;
 use arnet_tensor::Sector;
 
-use crate::block_sparse_decomp::BlockSingularValues;
+use crate::block_sparse_decomp::BlockScalars;
 use crate::error::LinalgError;
 
 /// Scale each slice along `axis` by per-sector diagonal weights.
@@ -34,7 +34,7 @@ use crate::error::LinalgError;
 pub(crate) fn diagonal_scale_block_sparse_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
-    weights: &BlockSingularValues<T::Real, S>,
+    weights: &BlockScalars<T::Real, S>,
     axis: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError>
 where
