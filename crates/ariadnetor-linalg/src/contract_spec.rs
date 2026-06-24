@@ -1,4 +1,5 @@
-//! Shared parse + validation for the two-operand `contract` notation.
+//! Shared parse + validation for the two-operand `contract` inputs, in both the
+//! notation and axis-pair forms.
 //!
 //! Both the dense and block-sparse layouts route their `contract` through this
 //! module so they accept and reject exactly the same notation. The supported
@@ -9,6 +10,12 @@
 //! the output), batch indices (a label in both operands and the output), and
 //! any operand count other than two are rejected here with `InvalidArgument`
 //! rather than reaching a downstream panic.
+//!
+//! The axis-pair face of the same contraction — the `tensordot` entry, where the
+//! caller names contracted axes directly instead of via labels — shares the
+//! range / duplicate / arity checks through [`validate_contraction_axes_pair`],
+//! so the dense and block-sparse axis kernels reject identical malformed axes
+//! with one message.
 
 use std::collections::HashSet;
 
@@ -147,6 +154,53 @@ impl ContractSpec {
             rhs_arity: rhs.len(),
         })
     }
+}
+
+/// Validate a set of contraction axis pairs: `axes_lhs` and `axes_rhs` must have
+/// equal length, every axis must be in range for its operand rank, and no axis
+/// may repeat within either list. Shared by the dense and block-sparse axis-pair
+/// contraction kernels (the block-sparse kernel layers its quantum-number
+/// compatibility checks on top).
+///
+/// Messages are operand-neutral — they carry no `tensordot:` prefix — because
+/// the block-sparse `contract` kernel reaches this check on the axis pairs it
+/// derives from a parsed notation, not only the direct `tensordot` entry.
+pub(crate) fn validate_contraction_axes_pair(
+    axes_lhs: &[usize],
+    lhs_rank: usize,
+    axes_rhs: &[usize],
+    rhs_rank: usize,
+) -> Result<(), LinalgError> {
+    if axes_lhs.len() != axes_rhs.len() {
+        return Err(LinalgError::InvalidArgument(format!(
+            "axes_lhs length {} != axes_rhs length {}",
+            axes_lhs.len(),
+            axes_rhs.len()
+        )));
+    }
+    reject_out_of_range_or_duplicate(axes_lhs, lhs_rank, "axes_lhs")?;
+    reject_out_of_range_or_duplicate(axes_rhs, rhs_rank, "axes_rhs")?;
+    Ok(())
+}
+
+fn reject_out_of_range_or_duplicate(
+    axes: &[usize],
+    rank: usize,
+    which: &str,
+) -> Result<(), LinalgError> {
+    for (i, &a) in axes.iter().enumerate() {
+        if a >= rank {
+            return Err(LinalgError::InvalidArgument(format!(
+                "{which}[{i}] = {a} out of range for rank {rank}"
+            )));
+        }
+        if axes[..i].contains(&a) {
+            return Err(LinalgError::InvalidArgument(format!(
+                "{which} contains duplicate axis {a}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn reject_repeat(indices: &[u8], where_: &str) -> Result<(), LinalgError> {

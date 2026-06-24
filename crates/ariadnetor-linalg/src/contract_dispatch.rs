@@ -35,7 +35,7 @@ use arnet_tensor::{
 
 use crate::block_sparse_contract::contract_block_sparse_with_policy_dense;
 use crate::block_sparse_permute::permute_block_sparse_dense;
-use crate::contract::{contract_dense, contract_with_policy_dense};
+use crate::contract::{contract_axes_dense, contract_dense, contract_with_policy_dense};
 use crate::contract_spec::ContractSpec;
 use crate::error::LinalgError;
 use crate::tensor_bridge::check_bsp_data_layout_order_matches;
@@ -75,11 +75,10 @@ pub trait LinalgContract<T: Scalar>: TensorLayout + Sized {
     /// legs in their natural order (free left legs then free right legs, each in
     /// input axis order), with the layout's auto-selected execution policy.
     ///
-    /// The axis-pair face of [`contract`](Self::contract). The block-sparse
-    /// kernel is natively axis-based, so its implementation dispatches to it
-    /// directly; the dense kernel is notation-based, so its implementation
-    /// builds the equivalent natural-order notation. Either way the output order
-    /// is natural — no reorder pass runs.
+    /// The axis-pair face of [`contract`](Self::contract). Both kernels are
+    /// natively axis-based, so each implementation dispatches to its kernel
+    /// directly over the axis pairs. The output order is natural — no reorder
+    /// pass runs.
     fn tensordot<B: OpsFor<Self::Storage>>(
         backend: &B,
         lhs: &Tensor<Self::Storage, Self>,
@@ -124,10 +123,10 @@ impl<T: Scalar> LinalgContract<T> for DenseLayout {
         axes_lhs: &[usize],
         axes_rhs: &[usize],
     ) -> Result<Tensor<DenseStorage<T>, DenseLayout>, LinalgError> {
-        // The dense kernel only speaks einsum notation, so build the
-        // natural-order notation for the axis pairs and route through `contract`.
-        let notation = tensordot_notation(lhs.rank(), rhs.rank(), axes_lhs, axes_rhs)?;
-        Self::contract(backend, lhs, rhs, &notation)
+        // The dense kernel is axis-native, so call it directly over the axis
+        // pairs — no notation synthesis, and no leg-count cap from labels.
+        let result = contract_axes_dense(backend, lhs.data(), rhs.data(), axes_lhs, axes_rhs)?;
+        Ok(Tensor::from_data(result))
     }
 }
 
@@ -269,86 +268,6 @@ where
     B: OpsFor<L::Storage>,
 {
     L::tensordot(backend, lhs, rhs, axes_lhs, axes_rhs)
-}
-
-/// Build the natural-order einsum notation for a tensordot over the given axis
-/// pairs. Left axes get labels `a, b, …`; right contracted axes inherit their
-/// paired left label; right free axes get fresh labels. The output lists free
-/// left labels (left axis order) then free right labels (right axis order) — the
-/// order the block-sparse and dense kernels already produce — so the dispatched
-/// `contract` performs no output reorder.
-fn tensordot_notation(
-    lhs_rank: usize,
-    rhs_rank: usize,
-    axes_lhs: &[usize],
-    axes_rhs: &[usize],
-) -> Result<String, LinalgError> {
-    if axes_lhs.len() != axes_rhs.len() {
-        return Err(LinalgError::InvalidArgument(format!(
-            "tensordot: axes_lhs length {} != axes_rhs length {}",
-            axes_lhs.len(),
-            axes_rhs.len()
-        )));
-    }
-    validate_axes(axes_lhs, lhs_rank, "axes_lhs")?;
-    validate_axes(axes_rhs, rhs_rank, "axes_rhs")?;
-
-    // Single-letter labels: lhs_rank distinct left labels plus one fresh label
-    // per free right axis. Guard the 26-letter budget (every real call site uses
-    // a handful of legs).
-    let free_rhs = rhs_rank - axes_rhs.len();
-    if lhs_rank + free_rhs > 26 {
-        return Err(LinalgError::InvalidArgument(format!(
-            "tensordot: {} output + contracted labels exceed the 26-letter limit",
-            lhs_rank + free_rhs
-        )));
-    }
-
-    let lhs_labels: Vec<u8> = (0..lhs_rank).map(|i| b'a' + i as u8).collect();
-    let mut rhs_labels = vec![0u8; rhs_rank];
-    for (k, &ar) in axes_rhs.iter().enumerate() {
-        rhs_labels[ar] = lhs_labels[axes_lhs[k]];
-    }
-    let mut next = lhs_rank;
-    for (j, slot) in rhs_labels.iter_mut().enumerate() {
-        if !axes_rhs.contains(&j) {
-            *slot = b'a' + next as u8;
-            next += 1;
-        }
-    }
-
-    let mut out = Vec::with_capacity(free_rhs + (lhs_rank - axes_lhs.len()));
-    for (i, &c) in lhs_labels.iter().enumerate() {
-        if !axes_lhs.contains(&i) {
-            out.push(c);
-        }
-    }
-    for (j, &c) in rhs_labels.iter().enumerate() {
-        if !axes_rhs.contains(&j) {
-            out.push(c);
-        }
-    }
-
-    let lhs_str = String::from_utf8(lhs_labels).expect("ASCII labels");
-    let rhs_str = String::from_utf8(rhs_labels).expect("ASCII labels");
-    let out_str = String::from_utf8(out).expect("ASCII labels");
-    Ok(format!("{lhs_str},{rhs_str}->{out_str}"))
-}
-
-fn validate_axes(axes: &[usize], rank: usize, which: &str) -> Result<(), LinalgError> {
-    for (i, &a) in axes.iter().enumerate() {
-        if a >= rank {
-            return Err(LinalgError::InvalidArgument(format!(
-                "tensordot: {which}[{i}] = {a} out of range for rank {rank}"
-            )));
-        }
-        if axes[..i].contains(&a) {
-            return Err(LinalgError::InvalidArgument(format!(
-                "tensordot: {which} contains duplicate axis {a}"
-            )));
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

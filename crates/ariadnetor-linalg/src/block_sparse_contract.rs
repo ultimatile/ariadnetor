@@ -11,6 +11,7 @@ use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrde
 use arnet_tensor::Sector;
 use arnet_tensor::{BlockCoord, BlockSparseTensorData, QNIndex};
 
+use crate::contract_spec::validate_contraction_axes_pair;
 use crate::error::LinalgError;
 
 /// Internal tensordot kernel for the block-sparse contraction on joined-form
@@ -76,41 +77,11 @@ fn validate_contraction_axes<T, S: Sector>(
     axes_lhs: &[usize],
     axes_rhs: &[usize],
 ) -> Result<(), LinalgError> {
-    if axes_lhs.len() != axes_rhs.len() {
-        return Err(LinalgError::InvalidArgument(format!(
-            "axes_lhs length {} != axes_rhs length {}",
-            axes_lhs.len(),
-            axes_rhs.len()
-        )));
-    }
+    // Arity / range / duplicate checks are shared with the dense axis kernel.
+    validate_contraction_axes_pair(axes_lhs, lhs.layout().rank(), axes_rhs, rhs.layout().rank())?;
 
-    let lhs_rank = lhs.layout().rank();
-    let rhs_rank = rhs.layout().rank();
-    for (i, &a) in axes_lhs.iter().enumerate() {
-        if a >= lhs_rank {
-            return Err(LinalgError::InvalidArgument(format!(
-                "axes_lhs[{i}] = {a} out of range for lhs rank {lhs_rank}"
-            )));
-        }
-        if axes_lhs[..i].contains(&a) {
-            return Err(LinalgError::InvalidArgument(format!(
-                "axes_lhs contains duplicate axis {a}"
-            )));
-        }
-    }
-    for (i, &a) in axes_rhs.iter().enumerate() {
-        if a >= rhs_rank {
-            return Err(LinalgError::InvalidArgument(format!(
-                "axes_rhs[{i}] = {a} out of range for rhs rank {rhs_rank}"
-            )));
-        }
-        if axes_rhs[..i].contains(&a) {
-            return Err(LinalgError::InvalidArgument(format!(
-                "axes_rhs contains duplicate axis {a}"
-            )));
-        }
-    }
-
+    // Quantum-number compatibility is block-sparse-specific: each contracted
+    // pair must oppose directions and agree on the per-sector block structure.
     for (i, (&al, &ar)) in axes_lhs.iter().zip(axes_rhs.iter()).enumerate() {
         let il = &lhs.layout().indices()[al];
         let ir = &rhs.layout().indices()[ar];
