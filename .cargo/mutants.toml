@@ -90,30 +90,33 @@ exclude_re = [
     "delete ! in compute_rhs_trans_flag",
     "replace compute_lhs_trans_flag -> bool with false",
     "replace compute_rhs_trans_flag -> bool with false",
-    # nrow=0 validation in the *_with_policy_dense / inverse_dense entry points:
-    # only the `|| → &&` mutation is equivalent — `&&` requires `nrow == 0 AND
-    # nrow >= rank`, impossible together for rank > 0, so the early return is
-    # disabled but the downstream `m != n` check still rejects the bad input.
-    # The peer `== → !=` / `>= → <` mutations on the same predicate ARE caught
-    # (they let a valid square input through to a panic), so a broad
-    # `replace .* with && in <fn>` is not used — only the `|| → &&` form.
-    "replace \\|\\| with && in eigh_with_policy_dense",
-    "replace \\|\\| with && in eig_with_policy_dense",
-    "replace \\|\\| with && in solve_with_policy_dense",
-    "replace \\|\\| with && in inverse_dense",
-    # Auto-policy *_dense wrappers compute only an execution-policy key
-    # (Sequential/Parallel hint) before delegating to *_with_policy_dense; the
-    # predicate never affects numerical output, so every mutation in these
-    # functions (|| → &&, == → !=, >= → <) is performance-only. Verified
-    # caught.txt has zero mutants in these functions, so the function-name
-    # anchor excludes only equivalent mutants.
-    "in eigh_dense$",
-    "in eig_dense$",
-    "in solve_dense$",
-    "in svd_dense$",
-    "in trunc_svd_dense$",
-    "in qr_dense$",
-    "in lq_dense$",
+    # nrow-validation branches in *_with_policy_dense / inverse_dense and the
+    # *_dense wrappers: the `|| → &&` and `>= → <` mutants are NOT equivalent.
+    # The guard `if nrow == 0 || nrow >= rank { Err }` runs before the code
+    # slices `shape[..nrow]`. Disabling it (via `&&`, or via `>= → <` in the
+    # wrapper) lets execution reach `shape[..nrow]` for `nrow > rank`, which
+    # panics (out-of-bounds slice) instead of returning InvalidArgument. The
+    # existing `test_*_invalid_nrow` tests only cover `nrow == 0` and
+    # `nrow == rank` (both still hit the downstream `m != n` Err under the
+    # mutation), so the `nrow > rank` path is an uncovered TEST GAP, not an
+    # equivalent mutant. Killing them needs a `nrow > rank` case added to those
+    # tests — tracked by the linalg-validation coverage issue (#156). Left in
+    # scope deliberately; do NOT exclude.
+    #
+    # Only the policy-key `== → !=` in the auto-policy *_dense wrappers is truly
+    # equivalent: the wrapper's `nrow == 0` merely selects the `n` fed to
+    # `backend.par_for_*(n)` (a Sequential/Parallel hint), then re-delegates to
+    # *_with_policy_dense which recomputes everything. Flipping it changes only
+    # the policy hint, never a returned value, and never reaches a panic
+    # (`!=` short-circuits to n=0 for nrow > rank). caught.txt has zero mutants
+    # in these wrappers, consistent with the == being equivalent.
+    "replace == with != in eigh_dense$",
+    "replace == with != in eig_dense$",
+    "replace == with != in solve_dense$",
+    "replace == with != in svd_dense$",
+    "replace == with != in trunc_svd_dense$",
+    "replace == with != in qr_dense$",
+    "replace == with != in lq_dense$",
     # NOTE: contract_dense's `== → !=` is deliberately NOT excluded. The two
     # operands of the fast-path key (`lhs.rank() == lhs_indices.len()` at 27 and
     # `rhs.rank() == rhs_indices.len()` at 28) are asymmetric in the run: 27 is
