@@ -22,6 +22,10 @@ pub(crate) fn contract_dense<T: Scalar>(
     // independent avoids plumbing parsed state through the expert signature.
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
+    // Reject unsupported notation before `ContractionPlan::from_expr`, which
+    // assumes two operands (`rhs_indices()` panics otherwise). The policy-explicit
+    // `contract_with_policy_dense` re-runs this guard for its own callers.
+    validate_contract_notation(&expr)?;
     let plan = ContractionPlan::from_expr(&expr);
 
     let (m, n, k) = if plan.batch.is_empty()

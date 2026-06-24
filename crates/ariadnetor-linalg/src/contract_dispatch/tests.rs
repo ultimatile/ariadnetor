@@ -85,6 +85,17 @@ fn rejects_duplicate_axis() {
 }
 
 #[test]
+fn dense_contract_rejects_single_operand_notation_without_panic() {
+    // The dense auto-policy path computes a GEMM-size plan before validating;
+    // a single-operand notation must return InvalidArgument, not panic inside
+    // ContractionPlan::from_expr (which assumes two operands).
+    let be = NativeBackend::new();
+    let a = DenseTensor::<f64>::zeros(vec![2, 2]);
+    let err = contract(&be, &a, &a, "ii->").unwrap_err();
+    assert!(matches!(err, LinalgError::InvalidArgument(_)));
+}
+
+#[test]
 fn dense_tensordot_matches_contract_with_natural_notation() {
     // The dense `tensordot` impl builds natural-order notation and routes
     // through `contract`; confirm it equals the explicit natural notation.
