@@ -163,6 +163,17 @@ fn dense_tensordot_rejects_mismatched_contracted_extents() {
         tensordot(&be, &a, &b, &[1], &[0]),
         Err(LinalgError::InvalidArgument(_))
     ));
+
+    // Two contracted pairs whose extents differ per axis (2 vs 3, 6 vs 4) yet
+    // whose products coincide (2*6 == 3*4 == 12). This pins the check to a
+    // per-pair extent comparison: a coarser `k_lhs == k_rhs` product check would
+    // wrongly accept these and panic downstream.
+    let c = DenseTensor::<f64>::zeros(vec![2, 6, 7]);
+    let d = DenseTensor::<f64>::zeros(vec![3, 4, 8]);
+    assert!(matches!(
+        tensordot(&be, &c, &d, &[0, 1], &[0, 1]),
+        Err(LinalgError::InvalidArgument(_))
+    ));
 }
 
 #[test]
