@@ -3,7 +3,7 @@ use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrde
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
-use crate::contract_spec::validate_contract_notation;
+use crate::contract_spec::{validate_contract_notation, validate_contraction_axes_pair};
 use crate::error::LinalgError;
 use crate::transpose::transpose_dense;
 use arnet_tensor::{normalize_to_data, reorder_data};
@@ -99,18 +99,6 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
-    let lhs_permuted = if let Some(perm) = lhs_perm {
-        transpose_dense(backend, lhs, &perm)?
-    } else {
-        lhs.clone()
-    };
-
-    let rhs_permuted = if let Some(perm) = rhs_perm {
-        transpose_dense(backend, rhs, &perm)?
-    } else {
-        rhs.clone()
-    };
-
     let m: usize = plan
         .free_lhs
         .iter()
@@ -131,6 +119,145 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
         .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
         .product::<usize>()
         .max(1);
+
+    let gemm = DenseGemm {
+        lhs_perm,
+        rhs_perm,
+        m,
+        n,
+        k,
+        output_shape: compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape()),
+        policy,
+    };
+    let result = gemm_reshape_dense(backend, lhs, rhs, gemm)?;
+
+    // Reorder output dimensions to match the requested output index order.
+    // GEMM produces [free_lhs, free_rhs]; the notation may request a different order.
+    reorder_output(backend, result, &plan, &expr)
+}
+
+/// Internal kernel for [`crate::LinalgContract::tensordot`] on the dense
+/// [`DenseTensorData<T>`] form. Contracts `axes_lhs` against `axes_rhs` and emits
+/// the output legs in their natural order (free left legs, then free right legs,
+/// each in input axis order), with the GEMM execution policy auto-selected over
+/// the reshaped `(m, n, k)`. A full contraction yields a rank-0 tensor.
+///
+/// The axis-native counterpart of [`contract_dense`]: it derives the contraction
+/// partition directly from the axis pairs instead of from a parsed notation, so
+/// no single-letter label budget bounds the operand rank. Both paths share
+/// [`gemm_reshape_dense`] for the transpose / GEMM / reshape; this one needs no
+/// final reorder because the natural leg order is exactly what the GEMM emits.
+pub(crate) fn contract_axes_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
+    axes_lhs: &[usize],
+    axes_rhs: &[usize],
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let lhs_rank = lhs.rank();
+    let rhs_rank = rhs.rank();
+    validate_contraction_axes_pair(axes_lhs, lhs_rank, axes_rhs, rhs_rank)?;
+
+    let free_lhs: Vec<usize> = (0..lhs_rank).filter(|a| !axes_lhs.contains(a)).collect();
+    let free_rhs: Vec<usize> = (0..rhs_rank).filter(|a| !axes_rhs.contains(a)).collect();
+
+    // perm[new_axis] = old_axis. Reorder lhs legs to [free, contracted] and rhs
+    // legs to [contracted, free] so the GEMM reads them as (m, k) and (k, n).
+    // An identity permutation skips the transpose.
+    let lhs_perm = identity_or_perm(free_lhs.iter().chain(axes_lhs).copied().collect());
+    let rhs_perm = identity_or_perm(axes_rhs.iter().chain(&free_rhs).copied().collect());
+
+    let m: usize = free_lhs
+        .iter()
+        .map(|&a| lhs.shape()[a])
+        .product::<usize>()
+        .max(1);
+    let n: usize = free_rhs
+        .iter()
+        .map(|&a| rhs.shape()[a])
+        .product::<usize>()
+        .max(1);
+    let k: usize = axes_lhs
+        .iter()
+        .map(|&a| lhs.shape()[a])
+        .product::<usize>()
+        .max(1);
+
+    // Natural tensordot output shape: free left dims then free right dims, each
+    // in input axis order — the order the GEMM already produces, so no reorder.
+    let mut output_shape = Vec::with_capacity(free_lhs.len() + free_rhs.len());
+    output_shape.extend(free_lhs.iter().map(|&a| lhs.shape()[a]));
+    output_shape.extend(free_rhs.iter().map(|&a| rhs.shape()[a]));
+
+    let gemm = DenseGemm {
+        lhs_perm,
+        rhs_perm,
+        m,
+        n,
+        k,
+        output_shape,
+        policy: backend.par_for_gemm(m, n, k),
+    };
+    gemm_reshape_dense(backend, lhs, rhs, gemm)
+}
+
+/// `None` when `perm` is the identity (no transpose needed), else `Some(perm)`.
+fn identity_or_perm(perm: Vec<usize>) -> Option<Vec<usize>> {
+    if perm.iter().enumerate().all(|(i, &p)| i == p) {
+        None
+    } else {
+        Some(perm)
+    }
+}
+
+/// Per-contraction GEMM recipe derived by either dense path (notation or
+/// axis-pair) and consumed by [`gemm_reshape_dense`]. `lhs_perm` / `rhs_perm`
+/// reorder each operand into GEMM order (`perm[new] = old`; `None` = already
+/// ordered); `m` / `n` / `k` are the reshaped GEMM dimensions; `output_shape` is
+/// the natural `[free_lhs, free_rhs]` result shape.
+struct DenseGemm {
+    lhs_perm: Option<Vec<usize>>,
+    rhs_perm: Option<Vec<usize>>,
+    m: usize,
+    n: usize,
+    k: usize,
+    output_shape: Vec<usize>,
+    policy: ExecPolicy,
+}
+
+/// Label-agnostic GEMM core shared by the notation and axis-pair dense kernels.
+///
+/// Permutes each operand into GEMM order, runs the reshaped `(m, k) · (k, n)`
+/// GEMM, and reconstructs `output_shape` in the backend's preferred order. The
+/// result legs are in natural `[free_lhs, free_rhs]` order; a notation caller
+/// that requested a different order applies its own reorder afterward.
+fn gemm_reshape_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    lhs: &DenseTensorData<T>,
+    rhs: &DenseTensorData<T>,
+    gemm: DenseGemm,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    let DenseGemm {
+        lhs_perm,
+        rhs_perm,
+        m,
+        n,
+        k,
+        output_shape,
+        policy,
+    } = gemm;
+
+    let lhs_permuted = if let Some(perm) = lhs_perm {
+        transpose_dense(backend, lhs, &perm)?
+    } else {
+        lhs.clone()
+    };
+
+    let rhs_permuted = if let Some(perm) = rhs_perm {
+        transpose_dense(backend, rhs, &perm)?
+    } else {
+        rhs.clone()
+    };
 
     let order = backend.preferred_order();
 
@@ -163,9 +290,8 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
 
     // Output in preferred_order. For rank > 2, reconstruct multi-dimensional shape
     // via RowMajor 2D intermediate (correct axis split semantics).
-    let output_shape = compute_output_shape(&plan, &expr, lhs.shape(), rhs.shape());
-    let result = if output_shape.len() <= 2 {
-        backend.make_tensor(c_data, output_shape)
+    if output_shape.len() <= 2 {
+        Ok(backend.make_tensor(c_data, output_shape))
     } else {
         // 2D preferred_order -> RowMajor 2D -> reshape to multi-dim -> preferred_order
         let result_2d = DenseTensorData::from_raw_parts(c_data, vec![m, n], order);
@@ -175,12 +301,8 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
             output_shape,
             MemoryOrder::RowMajor,
         );
-        reorder_data(&multi_dim, order)
-    };
-
-    // Reorder output dimensions to match the requested output index order.
-    // GEMM produces [free_lhs, free_rhs]; the notation may request a different order.
-    reorder_output(backend, result, &plan, &expr)
+        Ok(reorder_data(&multi_dim, order))
+    }
 }
 
 /// Reshape a permuted operand to 2D and convert to the target memory order.
