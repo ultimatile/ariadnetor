@@ -133,9 +133,10 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
-    // `.max(1)` is deliberately not applied to `m`/`n`/`k`: a zero extent must
-    // reach `gemm_reshape_dense` as a `0` so its degenerate-dimension guard can
-    // return the zero tensor instead of feeding an empty buffer to the GEMM.
+    // `.max(1)` is deliberately not applied to `m`/`n`/`k`: clamping a zero extent
+    // to 1 was the original panic — it claims a non-empty operand against an empty
+    // buffer in the GEMM reshape. Left as a raw `0`, the extent is caught by the
+    // degenerate-dimension guard in `gemm_reshape_dense`.
     let gemm = DenseGemm {
         lhs_perm,
         rhs_perm,
@@ -196,9 +197,10 @@ pub(crate) fn contract_axes_dense<T: Scalar>(
     let lhs_perm = identity_or_perm(free_lhs.iter().chain(axes_lhs).copied().collect());
     let rhs_perm = identity_or_perm(axes_rhs.iter().chain(&free_rhs).copied().collect());
 
-    // `.max(1)` is deliberately not applied: a zero extent (the per-pair check
-    // above passes a paired `0 == 0`) must reach `gemm_reshape_dense` as a `0` so
-    // its degenerate-dimension guard returns the zero tensor.
+    // `.max(1)` is deliberately not applied: clamping a zero extent to 1 would
+    // claim a non-empty operand against an empty buffer in the GEMM reshape and
+    // panic. A paired `0 == 0` passes the per-pair check above, so the raw `0`
+    // reaches the degenerate-dimension guard in `gemm_reshape_dense`.
     let m: usize = free_lhs.iter().map(|&a| lhs.shape()[a]).product();
     let n: usize = free_rhs.iter().map(|&a| rhs.shape()[a]).product();
     let k: usize = axes_lhs.iter().map(|&a| lhs.shape()[a]).product();
@@ -269,11 +271,10 @@ fn gemm_reshape_dense<T: Scalar>(
 
     // A degenerate GEMM dimension (`m`, `n`, or `k == 0`) means the contraction is
     // empty along some axis, so the result is the zero tensor of `output_shape`
-    // (an empty contraction is an empty sum). The `k == 0` reshape to `(k, n)`
-    // would otherwise mismatch the empty operand buffer and panic; feeding any
-    // zero dimension through the backend GEMM is pointless regardless. Both dense
-    // kernels reach the GEMM here, so the guard lives at this shared boundary
-    // rather than duplicated per kernel.
+    // (an empty contraction is an empty sum). Short-circuit at this one point both
+    // dense kernels funnel through, rather than relying on every `ComputeBackend`
+    // to return a correctly-zeroed result from a zero-sized GEMM — and to skip the
+    // pointless transpose / GEMM work on empty operands.
     if m == 0 || n == 0 || k == 0 {
         let total: usize = output_shape.iter().product();
         return Ok(backend.make_tensor(vec![T::zero(); total], output_shape));
