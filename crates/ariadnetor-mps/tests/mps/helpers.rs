@@ -1,9 +1,6 @@
 //! Shared test helpers for MPS tests.
 
-use arnet_linalg::{
-    BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
-    permute_with_backend,
-};
+use arnet_linalg::{contract, permute_with_backend, tensordot};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
@@ -97,7 +94,7 @@ pub(crate) fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let rm2d = rm.reshape(vec![m, k]);
     let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
-    let qtq = contract_with_backend(&NativeBackend::new(), &mat, &mat, "ab,ac->bc").unwrap();
+    let qtq = contract(&NativeBackend::new(), &mat, &mat, "ab,ac->bc").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -121,7 +118,7 @@ pub(crate) fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let rm2d = rm.reshape(vec![k, n]);
     let mat = rm2d.reordered(MemoryOrder::ColumnMajor);
 
-    let qqt = contract_with_backend(&NativeBackend::new(), &mat, &mat, "ab,cb->ac").unwrap();
+    let qqt = contract(&NativeBackend::new(), &mat, &mat, "ab,cb->ac").unwrap();
 
     let order = MemoryOrder::ColumnMajor;
     for i in 0..k {
@@ -160,8 +157,7 @@ pub(crate) fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTe
         let site_2d_rm = site_rm.reshape(vec![s_first, s_rest]);
         let site_2d = site_2d_rm.reordered(order);
 
-        let contracted =
-            contract_with_backend(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
+        let contracted = contract(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
 
         let contracted_rm = contracted.reordered(rm);
         let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
@@ -398,14 +394,8 @@ pub(crate) fn bsp_mps_contract_full(
     for j in 1..n {
         let site = mps.site(j);
         let last_axis = acc.rank() - 1;
-        let result = contract_block_sparse_with_backend(&backend, &acc, site, &[last_axis], &[0])
+        acc = tensordot(&backend, &acc, site, &[last_axis], &[0])
             .expect("chain contraction failed in bsp_mps_contract_full");
-        acc = match result {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("chain contraction leaves at least the physical legs free")
-            }
-        };
     }
     acc
 }

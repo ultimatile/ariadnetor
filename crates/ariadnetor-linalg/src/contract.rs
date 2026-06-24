@@ -3,6 +3,7 @@ use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrde
 use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
+use crate::contract_spec::validate_contract_notation;
 use crate::error::LinalgError;
 use crate::transpose::transpose_dense;
 use arnet_tensor::{normalize_to_data, reorder_data};
@@ -21,6 +22,10 @@ pub(crate) fn contract_dense<T: Scalar>(
     // independent avoids plumbing parsed state through the expert signature.
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
+    // Reject unsupported notation before `ContractionPlan::from_expr`, which
+    // assumes two operands (`rhs_indices()` panics otherwise). The policy-explicit
+    // `contract_with_policy_dense` re-runs this guard for its own callers.
+    validate_contract_notation(&expr)?;
     let plan = ContractionPlan::from_expr(&expr);
 
     let (m, n, k) = if plan.batch.is_empty()
@@ -66,6 +71,10 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
     let expr = EinsumExpr::parse(notation)
         .map_err(|e| LinalgError::InvalidArgument(format!("Failed to parse einsum: {e}")))?;
 
+    // Reject unsupported notation (wrong operand count, partial trace, implicit
+    // reduction, batch) up front so it never reaches a downstream panic.
+    validate_contract_notation(&expr)?;
+
     // Validate tensor ranks against notation
     if lhs.rank() != expr.lhs_indices().len() {
         return Err(LinalgError::InvalidArgument(format!(
@@ -83,14 +92,6 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
     }
 
     let plan = ContractionPlan::from_expr(&expr);
-
-    // Reject batch indices — batch/Hadamard belongs in the einsum layer
-    if !plan.batch.is_empty() {
-        return Err(LinalgError::InvalidArgument(format!(
-            "contract() does not support batch indices {:?}; use einsum() instead",
-            plan.batch.iter().map(|&b| b as char).collect::<String>()
-        )));
-    }
 
     // Permute operands so indices are in [free, contracted] order.
     // These internal transposes self-tune via par_for_transpose (they are
@@ -254,10 +255,7 @@ fn compute_output_shape(
         output_shape.push(dim_of(idx, expr.rhs_indices(), rhs_shape));
     }
 
-    // Scalar result (no free indices) -> shape [1]
-    if output_shape.is_empty() {
-        output_shape.push(1);
-    }
-
+    // Full contraction (no free indices) -> rank-0 tensor (shape []). A rank-0
+    // dense tensor holds one element (the product over an empty shape is 1).
     output_shape
 }

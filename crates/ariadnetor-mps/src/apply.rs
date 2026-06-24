@@ -5,9 +5,9 @@ use std::num::NonZeroUsize;
 
 use arnet_core::Scalar;
 use arnet_linalg::{
-    BlockSparseContractResult, TruncSvdParams, contract_block_sparse_with_backend,
-    contract_with_backend, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
-    fuse_legs_block_sparse_with_backend, permute_block_sparse_with_backend, qr, trunc_svd,
+    TruncSvdParams, contract, diagonal_scale_block_sparse_with_backend,
+    diagonal_scale_with_backend, fuse_legs_block_sparse_with_backend,
+    permute_block_sparse_with_backend, qr, tensordot, trunc_svd,
 };
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
@@ -70,7 +70,7 @@ where
     for j in 0..n {
         let w = op.site(j);
         let a = psi.site(j);
-        let local = contract_with_backend(backend, w, a, "abcd,ebf->aecdf")
+        let local = contract(backend, w, a, "abcd,ebf->aecdf")
             .expect("MPO-MPS contraction: validated by entry point");
         // Fuse the (w_l, chi_l) and (w_r, chi_r) boundary pairs, keeping
         // the physical bra leg: (w_l*chi_l, d_bra, w_r*chi_r). A two-group
@@ -81,7 +81,7 @@ where
         let mut p = local.reshape_logical(vec![w_l * chi_l, d_bra, w_r * chi_r]);
 
         if let Some(c) = carry.as_ref() {
-            p = contract_with_backend(backend, c, &p, "ab,bcd->acd")
+            p = contract(backend, c, &p, "ab,bcd->acd")
                 .expect("carry absorption: validated by entry point");
         }
 
@@ -149,14 +149,8 @@ where
 {
     // Contract over physical index (d_ket = W axis 1, d = A axis 1):
     // Output: [w_L, d_bra, w_R, χ_L, χ_R]
-    let contracted = match contract_block_sparse_with_backend(backend, w, a, &[1], &[1])
-        .expect("MPO-MPS contraction: validated by entry point")
-    {
-        BlockSparseContractResult::Tensor(t) => t,
-        BlockSparseContractResult::Scalar(_) => {
-            unreachable!("MPO-MPS contraction always produces a tensor")
-        }
-    };
+    let contracted = tensordot(backend, w, a, &[1], &[1])
+        .expect("MPO-MPS contraction: validated by entry point");
 
     // Permute to [w_L, χ_L, d_bra, w_R, χ_R].
     let permuted = permute_block_sparse_with_backend(backend, &contracted, &[0, 3, 1, 2, 4])
@@ -208,14 +202,8 @@ where
         let mut p = local_product_bsp(op.site(j), psi.site(j), backend);
 
         if let Some(c) = carry.as_ref() {
-            p = match contract_block_sparse_with_backend(backend, c, &p, &[1], &[0])
-                .expect("carry absorption: validated by entry point")
-            {
-                BlockSparseContractResult::Tensor(t) => t,
-                BlockSparseContractResult::Scalar(_) => {
-                    unreachable!("carry absorption is a rank-3 result")
-                }
-            };
+            p = tensordot(backend, c, &p, &[1], &[0])
+                .expect("carry absorption: validated by entry point");
         }
 
         if j < n - 1 {

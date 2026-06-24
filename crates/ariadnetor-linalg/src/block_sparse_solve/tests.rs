@@ -7,7 +7,6 @@ use arnet_tensor::{
 };
 
 use super::{inverse_block_sparse_dense, solve_block_sparse_dense};
-use crate::BlockSparseContractResult;
 use crate::BlockSparseHostOps;
 use crate::block_sparse_decomp::fused_sector::{
     assemble_sector_matrix, compute_fused_sector_groups,
@@ -353,10 +352,9 @@ fn solve_reconstructs_b_via_contraction() {
     let a = BlockSparseTensor::from_data(mirrored_rank2_f64());
     let b = BlockSparseTensor::from_data(rhs_rank2_f64());
     let x = a.solve(&b, 1).unwrap();
-    match a.contract(&x, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(ax) => assert_data_close(ax.data(), b.data(), 1e-9),
-        BlockSparseContractResult::Scalar(_) => panic!("expected a tensor result"),
-    }
+    // Contract A's column leg (axis 1) with X's row leg (axis 0): a_{ab} x_{bc} -> ax_{ac}.
+    let ax = a.contract(&x, "ab,bc->ac").unwrap();
+    assert_data_close(ax.data(), b.data(), 1e-9);
 }
 
 /// `A` contracted with its inverse yields the identity on each sector block.
@@ -364,22 +362,19 @@ fn solve_reconstructs_b_via_contraction() {
 fn inverse_contracts_to_identity() {
     let a = BlockSparseTensor::from_data(mirrored_rank2_f64());
     let inv = a.inverse(1).unwrap();
-    match a.contract(&inv, &[1], &[0]).unwrap() {
-        BlockSparseContractResult::Tensor(prod) => {
-            let order = order();
-            for group in &compute_fused_sector_groups(prod.data(), 1) {
-                let n = group.n;
-                let block = assemble_sector_matrix(prod.data(), group, order);
-                for i in 0..n {
-                    for j in 0..n {
-                        let want = if i == j { 1.0 } else { 0.0 };
-                        let got = block[mat_idx(i, j, n, n, order)];
-                        assert!((got - want).abs() < 1e-9, "I[{i},{j}] = {got}");
-                    }
-                }
+    // a_{ab} inv_{bc} -> prod_{ac}: contract A's column leg with the inverse's row leg.
+    let prod = a.contract(&inv, "ab,bc->ac").unwrap();
+    let order = order();
+    for group in &compute_fused_sector_groups(prod.data(), 1) {
+        let n = group.n;
+        let block = assemble_sector_matrix(prod.data(), group, order);
+        for i in 0..n {
+            for j in 0..n {
+                let want = if i == j { 1.0 } else { 0.0 };
+                let got = block[mat_idx(i, j, n, n, order)];
+                assert!((got - want).abs() < 1e-9, "I[{i},{j}] = {got}");
             }
         }
-        BlockSparseContractResult::Scalar(_) => panic!("expected a tensor result"),
     }
 }
 

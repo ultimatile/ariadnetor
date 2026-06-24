@@ -90,10 +90,8 @@ fn test_spin_half_commutation() {
     let sm = SpinHalf.sm::<f64>();
     let sz = SpinHalf.sz::<f64>();
 
-    let sp_sm =
-        arnet_linalg::contract_with_backend(&NativeBackend::new(), &sp, &sm, "ij,jk->ik").unwrap();
-    let sm_sp =
-        arnet_linalg::contract_with_backend(&NativeBackend::new(), &sm, &sp, "ij,jk->ik").unwrap();
+    let sp_sm = arnet_linalg::contract(&NativeBackend::new(), &sp, &sm, "ij,jk->ik").unwrap();
+    let sm_sp = arnet_linalg::contract(&NativeBackend::new(), &sm, &sp, "ij,jk->ik").unwrap();
 
     // [S+, S-] = S+S- - S-S+
     for i in 0..2 {
@@ -187,8 +185,7 @@ fn test_qubit_proj1_f64() {
 #[test]
 fn test_qubit_x_squared_is_identity() {
     let x = Qubit.x::<f64>();
-    let x2 =
-        arnet_linalg::contract_with_backend(&NativeBackend::new(), &x, &x, "ij,jk->ik").unwrap();
+    let x2 = arnet_linalg::contract(&NativeBackend::new(), &x, &x, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {
@@ -200,8 +197,7 @@ fn test_qubit_x_squared_is_identity() {
 #[test]
 fn test_qubit_hadamard_squared_is_identity() {
     let h = Qubit.h::<f64>();
-    let h2 =
-        arnet_linalg::contract_with_backend(&NativeBackend::new(), &h, &h, "ij,jk->ik").unwrap();
+    let h2 = arnet_linalg::contract(&NativeBackend::new(), &h, &h, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {

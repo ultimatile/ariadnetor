@@ -16,15 +16,16 @@ use std::ops::Mul;
 use arnet_core::Scalar;
 use arnet_tensor::{DenseTensor, Host};
 
+use crate::contract_dispatch::contract;
 use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};
 use crate::decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 use crate::eigen::{EigResult, EighResult};
 use crate::error::LinalgError;
 use crate::with_backend::{
-    contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
-    eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend,
-    expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
+    diag_with_backend, diagonal_scale_with_backend, eig_with_backend, eigh_with_backend,
+    eigvals_with_backend, eigvalsh_with_backend, expm_antihermitian_with_backend,
+    expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,
+    solve_with_backend, trace_with_backend,
 };
 
 mod block_sparse;
@@ -69,7 +70,7 @@ pub trait DenseHostOps<T: Scalar> {
     /// Host-defaulting counterpart of [`crate::eigvals_with_backend`].
     fn eigvals(&self, nrow: usize) -> Result<DenseTensor<T::Complex>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::contract_with_backend`];
+    /// Host-defaulting counterpart of [`crate::contract`];
     /// the receiver is the left operand.
     fn contract(&self, rhs: &DenseTensor<T>, notation: &str)
     -> Result<DenseTensor<T>, LinalgError>;
@@ -157,7 +158,7 @@ impl<T: Scalar> DenseHostOps<T> for DenseTensor<T> {
         rhs: &DenseTensor<T>,
         notation: &str,
     ) -> Result<DenseTensor<T>, LinalgError> {
-        contract_with_backend(Host::shared().as_ref(), self, rhs, notation)
+        contract(Host::shared().as_ref(), self, rhs, notation)
     }
 
     fn permute(&self, perm: &[usize]) -> Result<DenseTensor<T>, LinalgError> {

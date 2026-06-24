@@ -9,17 +9,16 @@
 //! Most operations are exposed in two forms over the same kernels:
 //!
 //! - An explicit-backend free function that takes the backend at the call
-//!   site. The non-decomposition ops use the `*_with_backend` form — e.g.
-//!   [`contract_with_backend`], [`permute_with_backend`],
-//!   [`trace_with_backend`], the block-sparse family
-//!   ([`contract_block_sparse_with_backend`], …). The four decompositions
-//!   (`svd` / `trunc_svd` / `qr` / `lq`) instead dispatch over layout through
-//!   the unified [`svd`] / [`trunc_svd`] / [`qr`] / [`lq`] free fns
-//!   ([`LinalgDecompose`]), so one call serves both Dense and BlockSparse. The
-//!   `*_with_policy` variants add an explicit
+//!   site. Most ops use the `*_with_backend` form — e.g.
+//!   [`permute_with_backend`], [`trace_with_backend`], the block-sparse family
+//!   ([`permute_block_sparse_with_backend`], …). Contraction and the four
+//!   decompositions instead dispatch over layout through the unified
+//!   [`contract`] and [`svd`] / [`trunc_svd`] / [`qr`] / [`lq`] free fns
+//!   ([`LinalgContract`] / [`LinalgDecompose`]), so one call serves both Dense
+//!   and BlockSparse. The `*_with_policy` variants add an explicit
 //!   [`ExecPolicy`](arnet_core::backend::ExecPolicy); they are published under
 //!   bare names through the [`expert`] module (`expert::permute`,
-//!   `expert::svd`, …).
+//!   `expert::contract`, `expert::svd`, …).
 //! - An ergonomic method form on tensors over the default [`Host`](arnet_tensor::Host)
 //!   substrate via the [`DenseHostOps`] / [`BlockSparseHostOps`] extension
 //!   traits (`t.svd(nrow)` instead of `svd(&backend, &t, nrow)`).
@@ -47,6 +46,8 @@ mod block_sparse_solve;
 mod block_sparse_trace;
 mod block_sparse_with_backend;
 mod contract;
+mod contract_dispatch;
+mod contract_spec;
 mod decompose_dispatch;
 mod decomposition;
 mod eigen;
@@ -69,7 +70,6 @@ pub mod expert;
 pub use arnet_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
-pub use block_sparse_contract::BlockSparseContractResult;
 pub use block_sparse_decomp::{
     BlockScalars, BlockSparseEigResult, BlockSparseEighResult, BlockSparseQrResult,
     BlockSparseSvdResult, BlockSparseTruncSvdResult,
@@ -77,26 +77,28 @@ pub use block_sparse_decomp::{
 pub use decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 pub use eigen::{EigResult, EighResult};
 
-// Layout-keyed decomposition dispatch: the unified `svd` / `trunc_svd` / `qr` /
-// `lq` entry points serve both Dense and BlockSparse via [`LinalgDecompose`].
-// The policy-explicit forms are published under bare names through [`expert`].
+// Layout-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
+// (decomposition) and `contract` entry points serve both Dense and BlockSparse
+// via [`LinalgDecompose`] / [`LinalgContract`]. The policy-explicit forms are
+// published under bare names through [`expert`].
+pub use contract_dispatch::{LinalgContract, contract, tensordot};
 pub use decompose_dispatch::{LinalgDecompose, lq, qr, svd, trunc_svd};
 
 // Explicit-backend operation paths (backend supplied at the call site). The
-// decomposition ops are not here — they dispatch over layout through the
-// unified free fns above.
+// decomposition and `contract` ops are not here — they dispatch over layout
+// through the unified free fns above.
 pub use block_sparse_with_backend::{
-    contract_block_sparse_with_backend, diagonal_scale_block_sparse_with_backend,
-    eig_block_sparse_with_backend, eigh_block_sparse_with_backend,
-    eigvals_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
-    expm_antihermitian_block_sparse_with_backend, expm_block_sparse_with_backend,
-    expm_hermitian_block_sparse_with_backend, fuse_legs_block_sparse_with_backend,
-    inverse_block_sparse_with_backend, permute_block_sparse_with_backend,
-    solve_block_sparse_with_backend, trace_block_sparse_with_backend,
+    diagonal_scale_block_sparse_with_backend, eig_block_sparse_with_backend,
+    eigh_block_sparse_with_backend, eigvals_block_sparse_with_backend,
+    eigvalsh_block_sparse_with_backend, expm_antihermitian_block_sparse_with_backend,
+    expm_block_sparse_with_backend, expm_hermitian_block_sparse_with_backend,
+    fuse_legs_block_sparse_with_backend, inverse_block_sparse_with_backend,
+    permute_block_sparse_with_backend, solve_block_sparse_with_backend,
+    trace_block_sparse_with_backend,
 };
 pub use with_backend::{
-    contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
-    eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
+    diag_with_backend, diagonal_scale_with_backend, eig_with_backend, eigh_with_backend,
+    eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
     inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
 };

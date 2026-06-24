@@ -11,9 +11,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 
-use arnet_linalg::{
-    DenseHostOps, TruncSvdParams, contract_block_sparse_with_backend, lq, qr, svd, trunc_svd,
-};
+use arnet_linalg::{DenseHostOps, TruncSvdParams, lq, qr, svd, tensordot, trunc_svd};
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparseTensor, DenseTensor, Direction, QNIndex, U1Sector};
 
@@ -92,9 +90,7 @@ fn bench_contract(c: &mut Criterion) {
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| {
-                    contract_block_sparse_with_backend(&backend, a, b, &[1], &[0]).unwrap()
-                });
+                bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[1], &[0]).unwrap());
             },
         );
 
@@ -125,9 +121,7 @@ fn bench_contract_permuted(c: &mut Criterion) {
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| {
-                    contract_block_sparse_with_backend(&backend, a, b, &[0], &[1]).unwrap()
-                });
+                bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[0], &[1]).unwrap());
             },
         );
 
@@ -158,9 +152,7 @@ fn bench_contract_rank3(c: &mut Criterion) {
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| {
-                    contract_block_sparse_with_backend(&backend, a, b, &[2], &[0]).unwrap()
-                });
+                bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[2], &[0]).unwrap());
             },
         );
     }
@@ -282,9 +274,7 @@ fn bench_singh_reference(c: &mut Criterion) {
             BenchmarkId::new("matmul_bsp", &p.label),
             &(&a, &b),
             |bench, (a, b)| {
-                bench.iter_with_large_drop(|| {
-                    contract_block_sparse_with_backend(&backend, a, b, &[1], &[0]).unwrap()
-                });
+                bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[1], &[0]).unwrap());
             },
         );
         group.bench_with_input(

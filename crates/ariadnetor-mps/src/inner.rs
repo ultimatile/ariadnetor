@@ -1,9 +1,7 @@
 //! Inner product, norm, and expectation value for MPS.
 
 use arnet_core::Scalar;
-use arnet_linalg::{
-    BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
-};
+use arnet_linalg::{contract, tensordot};
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
     DenseStorage, DenseTensor, Direction, OpsFor, QNIndex, Sector,
@@ -41,11 +39,11 @@ where
         let phi_j = phi.site(j);
 
         // env(a,b) × conj(ψ)(a,d,c) → temp(b,d,c)
-        let temp = contract_with_backend(backend, &env, &psi_j, "ab,adc->bdc")
+        let temp = contract(backend, &env, &psi_j, "ab,adc->bdc")
             .expect("inner product contraction failed");
 
         // temp(b,d,c) × φ(b,d,e) → new_env(c,e)
-        env = contract_with_backend(backend, &temp, phi_j, "bdc,bde->ce")
+        env = contract(backend, &temp, phi_j, "bdc,bde->ce")
             .expect("inner product contraction failed");
     }
 
@@ -100,15 +98,15 @@ where
         let phi_j = phi.site(j); // ket: (φ_L, d_ket, φ_R)
 
         // env(a,b,c) × conj(ψ)(a,d,e) → temp1(b,c,d,e)
-        let temp1 = contract_with_backend(backend, &env, &psi_j, "abc,ade->bcde")
+        let temp1 = contract(backend, &env, &psi_j, "abc,ade->bcde")
             .expect("braket contraction step 1 failed");
 
         // temp1(b,c,d,e) × A(b,f,d,g) → temp2(c,e,f,g)
-        let temp2 = contract_with_backend(backend, &temp1, a_j, "bcde,bfdg->cefg")
+        let temp2 = contract(backend, &temp1, a_j, "bcde,bfdg->cefg")
             .expect("braket contraction step 2 failed");
 
         // temp2(c,e,f,g) × φ(c,f,h) → env_new(e,g,h)
-        env = contract_with_backend(backend, &temp2, phi_j, "cefg,cfh->egh")
+        env = contract(backend, &temp2, phi_j, "cefg,cfh->egh")
             .expect("braket contraction step 3 failed");
     }
 
@@ -156,23 +154,11 @@ where
         let bra_j = psi.site(j).dagger();
         let phi_j = phi.site(j);
 
-        let step1 = match contract_block_sparse_with_backend(backend, &env, &bra_j, &[0], &[0])
-            .expect("inner product step 1 contraction failed")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("step 1 always produces a tensor (rank >= 2)")
-            }
-        };
+        let step1 = tensordot(backend, &env, &bra_j, &[0], &[0])
+            .expect("inner product step 1 contraction failed");
 
-        env = match contract_block_sparse_with_backend(backend, &step1, phi_j, &[0, 1], &[0, 1])
-            .expect("inner product step 2 contraction failed")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("step 2 always produces a tensor (output rank is 2)")
-            }
-        };
+        env = tensordot(backend, &step1, phi_j, &[0, 1], &[0, 1])
+            .expect("inner product step 2 contraction failed");
     }
 
     // Extract scalar from the final rank-2 env (shape [1, 1]).
@@ -230,32 +216,14 @@ where
         let a_j = op.site(j);
         let phi_j = phi.site(j);
 
-        let step1 = match contract_block_sparse_with_backend(backend, &env, &bra_j, &[0], &[0])
-            .expect("braket step 1 contraction failed")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("step 1 always produces a tensor (rank >= 3)")
-            }
-        };
+        let step1 =
+            tensordot(backend, &env, &bra_j, &[0], &[0]).expect("braket step 1 contraction failed");
 
-        let step2 = match contract_block_sparse_with_backend(backend, &step1, a_j, &[0, 2], &[0, 2])
-            .expect("braket step 2 contraction failed")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("step 2 always produces a tensor (rank >= 2)")
-            }
-        };
+        let step2 = tensordot(backend, &step1, a_j, &[0, 2], &[0, 2])
+            .expect("braket step 2 contraction failed");
 
-        env = match contract_block_sparse_with_backend(backend, &step2, phi_j, &[0, 2], &[0, 1])
-            .expect("braket step 3 contraction failed")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("step 3 always produces a tensor (rank >= 1)")
-            }
-        };
+        env = tensordot(backend, &step2, phi_j, &[0, 2], &[0, 1])
+            .expect("braket step 3 contraction failed");
     }
 
     match env.data().block_data(&BlockCoord(vec![0, 0, 0])) {

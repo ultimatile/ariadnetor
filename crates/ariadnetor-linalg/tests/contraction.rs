@@ -45,8 +45,8 @@ fn test_inner_product() {
 
     let c = a.contract(&b, "i,i->").unwrap();
 
-    // Scalar result → shape [1]
-    assert_eq!(c.shape(), &[1]);
+    // Full contraction → rank-0 scalar (shape [])
+    assert_eq!(c.shape(), &[] as &[usize]);
     // 1*4 + 2*5 + 3*6 = 32
     assert_eq!(c.data_slice()[0], 32.0);
 }
@@ -71,7 +71,8 @@ fn test_double_contraction() {
 
     let c = a.contract(&b, "ij,ij->").unwrap();
 
-    assert_eq!(c.shape(), &[1]);
+    // Full contraction → rank-0 scalar (shape [])
+    assert_eq!(c.shape(), &[] as &[usize]);
     // 1*5 + 2*6 + 3*7 + 4*8 = 70
     assert_eq!(c.data_slice()[0], 70.0);
 }
@@ -130,7 +131,8 @@ fn test_scalar_contraction() {
 
     let c = a.contract(&b, ",->").unwrap();
 
-    assert_eq!(c.shape(), &[1]);
+    // Full contraction → rank-0 scalar (shape [])
+    assert_eq!(c.shape(), &[] as &[usize]);
     assert_eq!(c.data_slice()[0], 15.0);
 }
 

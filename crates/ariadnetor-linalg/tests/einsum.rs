@@ -231,7 +231,9 @@ fn test_einsum_3_tensor_trace_of_product() {
 
     let result = einsum(&[&a, &b, &c], "ij,jk,ki->").unwrap();
 
-    assert_eq!(result.shape(), &[1]);
+    // The multi-operand chain's final pairwise step is a full contraction,
+    // which now yields a rank-0 scalar (shape []) via the unified `contract`.
+    assert_eq!(result.shape(), &[] as &[usize]);
 
     // A·B = [[19,22],[43,50]], A·B·C = [[19,22],[43,50]], tr = 19+50 = 69
     assert_eq!(result.data_slice()[0], 69.0);

@@ -6,7 +6,7 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use arnet_linalg::contract_with_backend;
+use arnet_linalg::contract;
 use arnet_mps::{Mpo, Mps, TensorChain, braket};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
@@ -103,10 +103,9 @@ fn fold_left_to_boundary(
     let mut env = initial.clone();
     for i in 0..upto {
         let bra = mps.site(i).conj();
-        let t1 = contract_with_backend(&backend, &env, &bra, "abc,ade->bcde").expect("step 1");
-        let t2 =
-            contract_with_backend(&backend, &t1, mpo.site(i), "bcde,bfdg->cefg").expect("step 2");
-        env = contract_with_backend(&backend, &t2, mps.site(i), "cefg,cfh->egh").expect("step 3");
+        let t1 = contract(&backend, &env, &bra, "abc,ade->bcde").expect("step 1");
+        let t2 = contract(&backend, &t1, mpo.site(i), "bcde,bfdg->cefg").expect("step 2");
+        env = contract(&backend, &t2, mps.site(i), "cefg,cfh->egh").expect("step 3");
     }
     env
 }

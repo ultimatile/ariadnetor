@@ -10,9 +10,7 @@
 //! point, so the internal `expect` failures are unreachable in practice.
 
 use arnet_core::Scalar;
-use arnet_linalg::{
-    BlockSparseContractResult, contract_block_sparse_with_backend, contract_with_backend,
-};
+use arnet_linalg::{contract, tensordot};
 use arnet_tensor::{
     BlockSparseStorage, BlockSparseTensor, DenseStorage, DenseTensor, OpsFor, Sector,
 };
@@ -34,7 +32,7 @@ where
     // split the fused leg back; axis 0 carries the factor's new bond.
     let next_shape = next.shape().to_vec();
     let next_2d = next.fuse_legs(1..next_shape.len());
-    let result_2d = contract_with_backend(backend, factor, &next_2d, "ab,bc->ac")
+    let result_2d = contract(backend, factor, &next_2d, "ab,bc->ac")
         .expect("left absorption: validated by entry point");
     result_2d.split_leg(1, &next_shape[1..])
 }
@@ -54,7 +52,7 @@ where
     let prev_shape = prev.shape().to_vec();
     let split = prev_shape.len() - 1;
     let prev_2d = prev.fuse_legs(0..split);
-    let result_2d = contract_with_backend(backend, &prev_2d, factor, "ab,bc->ac")
+    let result_2d = contract(backend, &prev_2d, factor, "ab,bc->ac")
         .expect("right absorption: validated by entry point");
     result_2d.split_leg(0, &prev_shape[..split])
 }
@@ -71,14 +69,7 @@ where
     S: Sector,
     B: OpsFor<BlockSparseStorage<T>>,
 {
-    match contract_block_sparse_with_backend(backend, factor, next, &[1], &[0])
-        .expect("left absorption: validated by entry point")
-    {
-        BlockSparseContractResult::Tensor(t) => t,
-        BlockSparseContractResult::Scalar(_) => {
-            unreachable!("left absorption contraction always produces a tensor")
-        }
-    }
+    tensordot(backend, factor, next, &[1], &[0]).expect("left absorption: validated by entry point")
 }
 
 /// BlockSparse analogue of [`absorb_from_right`]: contract the prev site's
@@ -94,12 +85,6 @@ where
     B: OpsFor<BlockSparseStorage<T>>,
 {
     let last = prev.rank() - 1;
-    match contract_block_sparse_with_backend(backend, prev, factor, &[last], &[0])
+    tensordot(backend, prev, factor, &[last], &[0])
         .expect("right absorption: validated by entry point")
-    {
-        BlockSparseContractResult::Tensor(t) => t,
-        BlockSparseContractResult::Scalar(_) => {
-            unreachable!("right absorption contraction always produces a tensor")
-        }
-    }
 }

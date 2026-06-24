@@ -18,7 +18,7 @@
 //!    match the psi template derived from the MPS sites at
 //!    `(site, site+1)`.
 //! 2. **Contract** through the env / W tensors using
-//!    [`arnet_linalg::contract_block_sparse_with_backend`] in four steps. The
+//!    [`arnet_linalg::tensordot`] in four steps. The
 //!    axis convention mirrors `arnet_mps::inner::braket_bsp` and
 //!    the Phase 6.1 `extend_*_step` kernels; the natural output
 //!    order `lhs_free | rhs_free` ends in
@@ -30,7 +30,7 @@
 //!    in the contracted output by coordinate.
 //!
 //! Symmetry preservation is structural: the psi template only
-//! allocates flux-allowed blocks, and `contract_block_sparse_with_backend`
+//! allocates flux-allowed blocks, and `tensordot`
 //! propagates flux as `lhs.flux().fuse(rhs.flux())`. With env /
 //! MPO fluxes pre-validated to identity at the entry point, the
 //! matvec output's flux equals `psi.flux()` by construction.

@@ -10,18 +10,19 @@ a host-baking path that bypasses the call-site-backend design.
 
 This check enforces the positive invariant: every method body in the two
 host-ext files must contain a call to its own twin — the `*_with_backend(`
-form for most ops, or the unified bare name for the four layout-dispatched
-decompositions (see below). A descriptor-only negative check is insufficient
+form for most ops, or the unified bare name for the layout-dispatched ops
+(see below). A descriptor-only negative check is insufficient
 (a `svd_dense(Host::shared().as_ref(), ..)` bypass contains no descriptor
 token), so the body must be inspected per method. Scope is honestly limited
 to these two files; structurally obfuscated forms remain review territory.
 
 The four decompositions (`svd` / `trunc_svd` / `qr` / `lq`) dispatch over
-layout via `LinalgDecompose` (issue #299), so their host methods delegate to
-the unified bare-name free fns (`svd(`, …) rather than a `*_with_backend`
-twin. The generic free fn is the call-site-backend twin; only its name
-differs, so the invariant is unchanged and the name pattern matches the bare
-name (not `*_with_backend`) for this set alone.
+layout via `LinalgDecompose` (issue #299), and `contract` dispatches over
+layout via `LinalgContract` (issue #372), so their host methods delegate to
+the unified bare-name free fns (`svd(`, `contract(`, …) rather than a
+`*_with_backend` twin. The generic free fn is the call-site-backend twin; only
+its name differs, so the invariant is unchanged and the name pattern matches
+the bare name (not `*_with_backend`) for this set alone.
 """
 
 import re
@@ -37,25 +38,26 @@ TARGETS = [
 ]
 
 
-# The four decompositions dispatch over layout via `LinalgDecompose`
-# (issue #299): host methods delegate to the unified bare-name free fns
-# (`svd(`, `trunc_svd(`, `qr(`, `lq(`), not a `*_with_backend` twin.
-DECOMPOSE_DISPATCH_OPS = frozenset({"svd", "trunc_svd", "qr", "lq"})
+# Layout-dispatched ops delegate to the unified bare-name free fns, not a
+# `*_with_backend` twin: the four decompositions via `LinalgDecompose`
+# (issue #299) — `svd` / `trunc_svd` / `qr` / `lq` — and `contract` via
+# `LinalgContract` (issue #372).
+LAYOUT_DISPATCH_OPS = frozenset({"svd", "trunc_svd", "qr", "lq", "contract"})
 
 
 def twin_pattern(name: str) -> re.Pattern:
     """The method's own twin: dense `<name>_with_backend` or block-sparse
-    `<name>_block_sparse_with_backend`. The four layout-dispatched
-    decompositions ([`DECOMPOSE_DISPATCH_OPS`]) instead accept *only* the
-    unified bare name `<name>(` — their `*_with_backend` forms were removed, so
-    accepting them would bless a delegation to a symbol that no longer exists.
-    Anchoring to the method name rejects a body that delegates to some *other*
-    method's twin (e.g. `svd` calling `qr_with_backend`), which a generic
-    `_with_backend` match would accept; the `\\b{name}\\s*\\(` boundary also
-    rejects inline kernel dispatch such as `svd_dense(` (the `_` after the name
-    blocks the bare-name match).
+    `<name>_block_sparse_with_backend`. The layout-dispatched ops
+    ([`LAYOUT_DISPATCH_OPS`]) instead accept *only* the unified bare name
+    `<name>(` — their `*_with_backend` forms were removed, so accepting them
+    would bless a delegation to a symbol that no longer exists. Anchoring to the
+    method name rejects a body that delegates to some *other* method's twin
+    (e.g. `svd` calling `qr_with_backend`), which a generic `_with_backend`
+    match would accept; the `\\b{name}\\s*\\(` boundary also rejects inline
+    kernel dispatch such as `svd_dense(` (the `_` after the name blocks the
+    bare-name match).
     """
-    if name in DECOMPOSE_DISPATCH_OPS:
+    if name in LAYOUT_DISPATCH_OPS:
         return re.compile(rf"\b{re.escape(name)}\s*\(")
     return re.compile(rf"\b{re.escape(name)}(?:_block_sparse)?_with_backend\s*\(")
 

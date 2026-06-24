@@ -329,7 +329,7 @@ fn apply_scenario_multi_sector() {
     }
 
     // Contract W and A over d_ket: W axis 1, A axis 1
-    let contracted = contract_block_sparse_with_policy_dense(
+    let result = contract_block_sparse_with_policy_dense(
         &backend(),
         &w,
         &a,
@@ -338,10 +338,6 @@ fn apply_scenario_multi_sector() {
         arnet_core::backend::ExecPolicy::Sequential,
     )
     .unwrap();
-    let result = match contracted {
-        crate::block_sparse_contract::BlockSparseContractResultBsp::Tensor(t) => t,
-        _ => panic!("expected tensor"),
-    };
     assert_eq!(result.rank(), 5); // [w_L, d_bra, w_R, chi_L, chi_R]
 
     // Permute → fuse → fuse

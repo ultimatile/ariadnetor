@@ -23,7 +23,7 @@
 //! succeed.
 
 use arnet_core::Scalar;
-use arnet_linalg::{LinalgError, contract_with_backend};
+use arnet_linalg::{LinalgError, contract};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::{DenseLayout, DenseStorage, Host, Storage, StorageFor, Tensor, TensorLayout};
 
@@ -64,7 +64,7 @@ pub enum DmrgEnvError {
         /// Index of the stale (`None`) env slot.
         index: usize,
     },
-    /// An underlying `arnet_linalg::contract_with_backend` call failed. The
+    /// An underlying `arnet_linalg::contract` call failed. The
     /// source is preserved so callers see the real cause (dimension
     /// mismatch, backend failure, etc.) rather than a panic.
     #[error("contract failure during DMRG environment update")]
@@ -180,9 +180,9 @@ impl<T: Scalar> DmrgEnvOps<T> for DenseLayout {
     ) -> Result<Tensor<Self::Storage, Self>, LinalgError> {
         let backend = Host::shared();
         let bra = site.conj();
-        let t1 = contract_with_backend(backend.as_ref(), env, &bra, "abc,ade->bcde")?;
-        let t2 = contract_with_backend(backend.as_ref(), &t1, mpo_site, "bcde,bfdg->cefg")?;
-        contract_with_backend(backend.as_ref(), &t2, site, "cefg,cfh->egh")
+        let t1 = contract(backend.as_ref(), env, &bra, "abc,ade->bcde")?;
+        let t2 = contract(backend.as_ref(), &t1, mpo_site, "bcde,bfdg->cefg")?;
+        contract(backend.as_ref(), &t2, site, "cefg,cfh->egh")
     }
 
     /// Per-site right extension for `DenseLayout`.
@@ -193,9 +193,9 @@ impl<T: Scalar> DmrgEnvOps<T> for DenseLayout {
     ) -> Result<Tensor<Self::Storage, Self>, LinalgError> {
         let backend = Host::shared();
         let bra = site.conj();
-        let t1 = contract_with_backend(backend.as_ref(), env, site, "egh,cfh->egcf")?;
-        let t2 = contract_with_backend(backend.as_ref(), &t1, mpo_site, "egcf,bfdg->ecbd")?;
-        contract_with_backend(backend.as_ref(), &t2, &bra, "ecbd,ade->abc")
+        let t1 = contract(backend.as_ref(), env, site, "egh,cfh->egcf")?;
+        let t2 = contract(backend.as_ref(), &t1, mpo_site, "egcf,bfdg->ecbd")?;
+        contract(backend.as_ref(), &t2, &bra, "ecbd,ade->abc")
     }
 }
 

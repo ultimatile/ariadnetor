@@ -67,16 +67,17 @@ pub use arnet_tensor::linear_combine;
 // The single-backend ergonomic surface is the `DenseHostOps` /
 // `BlockSparseHostOps` extension traits re-exported below, not free functions.
 pub use ops::{
-    contract_with_backend, diag_with_backend, diagonal_scale_with_backend, eig_with_backend,
-    eigh_with_backend, eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
+    diag_with_backend, diagonal_scale_with_backend, eig_with_backend, eigh_with_backend,
+    eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
     expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
     inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
 };
 
-// Layout-keyed decomposition dispatch: the unified `svd` / `trunc_svd` / `qr` /
-// `lq` free fns serve both Dense and BlockSparse via [`LinalgDecompose`], so one
-// call site covers both flavors. The policy-explicit forms live under `expert`.
-pub use ops::{LinalgDecompose, lq, qr, svd, trunc_svd};
+// Layout-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
+// (decomposition) and `contract` / `tensordot` free fns serve both Dense and
+// BlockSparse via [`LinalgDecompose`] / [`LinalgContract`], so one call site
+// covers both flavors. The policy-explicit forms live under `expert`.
+pub use ops::{LinalgContract, LinalgDecompose, contract, lq, qr, svd, tensordot, trunc_svd};
 
 // The block-sparse low-level free functions are intentionally not
 // re-exported: they are consumer-internal API that `arnet-mps` /
@@ -86,8 +87,8 @@ pub use ops::{LinalgDecompose, lq, qr, svd, trunc_svd};
 // umbrella user must be able to name them — mirroring the dense result
 // aliases re-exported further down.
 pub use arnet_linalg::{
-    BlockScalars, BlockSparseContractResult, BlockSparseEigResult, BlockSparseEighResult,
-    BlockSparseQrResult, BlockSparseSvdResult, BlockSparseTruncSvdResult,
+    BlockScalars, BlockSparseEigResult, BlockSparseEighResult, BlockSparseQrResult,
+    BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.

@@ -17,29 +17,29 @@
 //! dropped this way. Two internal tiers legitimately keep `_with_policy` and
 //! are deliberately not surfaced here:
 //!
-//! - The [`LinalgDecompose`] `*_with_policy` trait methods are genuine
-//!   siblings of the auto-policy `svd` / `trunc_svd` / `qr` / `lq` methods on
-//!   the same trait; the bare name is taken by the auto method, so the
-//!   explicit method needs a distinct one. This is not a re-alias.
+//! - The [`LinalgDecompose`] / [`LinalgContract`] `*_with_policy` trait methods
+//!   are genuine siblings of the auto-policy `svd` / `trunc_svd` / `qr` / `lq` /
+//!   `contract` methods on the same trait; the bare name is taken by the auto
+//!   method, so the explicit method needs a distinct one. This is not a re-alias.
 //! - The `*_with_policy_dense` `pub(crate)` kernels are a different tier — the
 //!   joined-data form the dense ops here delegate to — not a re-alias.
 //!
-//! The four decompositions (`svd` / `trunc_svd` / `qr` / `lq`) dispatch over
-//! layout via [`LinalgDecompose`], so their `expert` forms serve both Dense
-//! and BlockSparse from one bare name. This is also the only public entry that
-//! pins an [`ExecPolicy`] on a block-sparse decomposition; the auto-policy
-//! crate-root forms keep block-sparse on `Sequential`.
+//! The four decompositions (`svd` / `trunc_svd` / `qr` / `lq`) and `contract`
+//! dispatch over layout via [`LinalgDecompose`] / [`LinalgContract`], so their
+//! `expert` forms serve both Dense and BlockSparse from one bare name. These are
+//! also the only public entries that pin an [`ExecPolicy`] on a block-sparse
+//! decomposition or contraction; the auto-policy crate-root forms keep
+//! block-sparse on `Sequential`.
 
 use arnet_core::Scalar;
 use arnet_core::backend::ExecPolicy;
 use arnet_tensor::{DenseStorage, DenseTensor, OpsFor, Tensor};
 
-use crate::contract::contract_with_policy_dense;
 use crate::eigen::{EigResult, EighResult, eig_with_policy_dense, eigh_with_policy_dense};
 use crate::error::LinalgError;
 use crate::solve::solve_with_policy_dense;
 use crate::transpose::transpose_inner;
-use crate::{LinalgDecompose, TruncSvdParams};
+use crate::{LinalgContract, LinalgDecompose, TruncSvdParams};
 
 /// Axis permutation with an explicit backend and caller-specified execution
 /// policy.
@@ -70,16 +70,21 @@ pub fn permute<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 /// is consulted. Output is returned in `backend.preferred_order()`, consistent
 /// with the decomposition functions.
 ///
-/// Expert-layer counterpart of [`crate::contract_with_backend`].
-pub fn contract<T: Scalar, B: OpsFor<DenseStorage<T>>>(
+/// Dispatches over layout via [`LinalgContract`], so one bare name serves both
+/// Dense and BlockSparse — the policy-explicit counterpart of [`crate::contract`].
+pub fn contract<T, L, B>(
     backend: &B,
-    lhs: &DenseTensor<T>,
-    rhs: &DenseTensor<T>,
+    lhs: &Tensor<L::Storage, L>,
+    rhs: &Tensor<L::Storage, L>,
     notation: &str,
     policy: ExecPolicy,
-) -> Result<DenseTensor<T>, LinalgError> {
-    let result = contract_with_policy_dense(backend, lhs.data(), rhs.data(), notation, policy)?;
-    Ok(DenseTensor::from_data(result))
+) -> Result<Tensor<L::Storage, L>, LinalgError>
+where
+    T: Scalar,
+    L: LinalgContract<T>,
+    B: OpsFor<L::Storage>,
+{
+    L::contract_with_policy(backend, lhs, rhs, notation, policy)
 }
 
 /// Linear solve with an explicit backend and caller-specified execution

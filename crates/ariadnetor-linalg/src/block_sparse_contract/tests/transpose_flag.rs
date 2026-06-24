@@ -72,7 +72,7 @@ fn lhs_non_prefix_axes_pin_physical_transpose_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse_with_policy_dense(
+    let out = contract_block_sparse_with_policy_dense(
         &b(),
         &lhs,
         &rhs,
@@ -81,10 +81,6 @@ fn lhs_non_prefix_axes_pin_physical_transpose_path() {
         ExecPolicy::Sequential,
     )
     .unwrap();
-    let out = match result {
-        BlockSparseContractResultBsp::Tensor(t) => t,
-        _ => panic!("expected tensor"),
-    };
 
     // Output axes: [free_lhs[0]=lhs_axis_2, free_rhs[0]=rhs_axis_2].
     // out[k, m] = sum_{i, j} lhs[i, j, k] * rhs[j, i, m]
@@ -129,7 +125,7 @@ fn lhs_prefix_axes_pin_trans_flag_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse_with_policy_dense(
+    let out = contract_block_sparse_with_policy_dense(
         &b(),
         &lhs,
         &rhs,
@@ -138,10 +134,6 @@ fn lhs_prefix_axes_pin_trans_flag_path() {
         ExecPolicy::Sequential,
     )
     .unwrap();
-    let out = match result {
-        BlockSparseContractResultBsp::Tensor(t) => t,
-        _ => panic!("expected tensor"),
-    };
 
     // out[k, m] = sum_{i, j} lhs[i, j, k] * rhs[i, j, m]
     let l = lhs_rank3_data();
@@ -185,7 +177,7 @@ fn rhs_non_prefix_axes_pin_physical_transpose_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse_with_policy_dense(
+    let out = contract_block_sparse_with_policy_dense(
         &b(),
         &lhs,
         &rhs,
@@ -194,10 +186,6 @@ fn rhs_non_prefix_axes_pin_physical_transpose_path() {
         ExecPolicy::Sequential,
     )
     .unwrap();
-    let out = match result {
-        BlockSparseContractResultBsp::Tensor(t) => t,
-        _ => panic!("expected tensor"),
-    };
 
     // axes_lhs[0]=1 ↔ axes_rhs[0]=2; axes_lhs[1]=2 ↔ axes_rhs[1]=1.
     // free_lhs=[0], free_rhs=[0]. out[i, m] = sum_{j, k} lhs[i, j, k] * rhs[m, k, j].
@@ -239,7 +227,7 @@ fn rhs_suffix_axes_pin_trans_flag_path() {
         &rhs_rank3_data(),
     );
 
-    let result = contract_block_sparse_with_policy_dense(
+    let out = contract_block_sparse_with_policy_dense(
         &b(),
         &lhs,
         &rhs,
@@ -248,10 +236,6 @@ fn rhs_suffix_axes_pin_trans_flag_path() {
         ExecPolicy::Sequential,
     )
     .unwrap();
-    let out = match result {
-        BlockSparseContractResultBsp::Tensor(t) => t,
-        _ => panic!("expected tensor"),
-    };
 
     // axes_lhs[0]=1 ↔ axes_rhs[0]=1; axes_lhs[1]=2 ↔ axes_rhs[1]=2.
     // free_lhs=[0], free_rhs=[0]. out[i, m] = sum_{j, k} lhs[i, j, k] * rhs[m, j, k].
