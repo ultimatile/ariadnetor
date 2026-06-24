@@ -174,31 +174,20 @@ exclude_re = [
     # would silently un-track that test's regression detection. Re-anchor on
     # reformat using the rationale above (line drifted 210 → 222 at 2d9ef96).
     "lanczos.rs:222:14: replace \\+ with \\* in lanczos_smallest",
-    # Order-equality guards `w_raw.order() == v_j.order()` (165) and
-    # `h_psi_raw.order() == psi.order()` (260): for the rank-1 (1D) tensors the
-    # Lanczos recurrence operates on, `reordered()` is metadata-only (identical
-    # values), so `== → !=` cannot change any numerical output. line:col
-    # anchored because two same-named `== → !=` mutants in this function ARE
-    # caught (caught.txt has 2) — a function-name anchor would over-exclude
-    # them. NOTE: a test feeding an operator whose output order differs from the
-    # basis would make these killable; if such a test is added, drop these.
-    "lanczos.rs:165:38: replace == with != in lanczos_smallest",
-    "lanczos.rs:260:38: replace == with != in lanczos_smallest",
-
-    # --- fused_sector build_square_tensor: RowMajor arm is unreachable ---
-    # The arm at fused_sector.rs:383 dispatches on `backend.preferred_order()`,
-    # which NativeBackend hard-codes to ColumnMajor, so under `cargo test` only
-    # the ColumnMajor arm (393-395) runs and the RowMajor branch (386-388) is
-    # dead. The peer ColumnMajor arm is fully caught, so these are line:col
-    # anchored to avoid excluding the killable ColumnMajor mutants.
-    # FRAGILE: an in-tree `RowMajorBackend` fixture (linalg test_util.rs) already
-    # exists and is wired through diagonal_scale; if it is ever routed through a
-    # block-sparse solve/expm/inverse test, these mutants become killable and
-    # these excludes MUST be dropped (they would then hide a real coverage gap).
-    "fused_sector.rs:386:48: replace \\+ with [-*] in build_square_tensor",
-    "fused_sector.rs:386:53: replace \\* with [+/] in build_square_tensor",
-    "fused_sector.rs:386:57: replace \\+ with [-*] in build_square_tensor",
-    "fused_sector.rs:387:41: replace \\* with [+/] in build_square_tensor",
-    "fused_sector.rs:388:49: replace \\+ with [-*] in build_square_tensor",
-    "fused_sector.rs:388:86: replace \\+ with [-*] in build_square_tensor",
+    # NOTE: lanczos order-equality guards (`w_raw.order() == v_j.order()` and
+    # `h_psi_raw.order() == psi.order()`) are deliberately NOT excluded. The
+    # `== → !=` mutant is equivalent only while every operator returns the same
+    # order as the basis. `LinearOp::apply` is permitted to return a different
+    # order; for such an operator the mutant skips the reorder and feeds a
+    # mismatched-order tensor to `linear_combine`, which panics. That is a
+    # supported-but-uncovered path (a test with an order-flipping operator kills
+    # it), i.e. a coverage gap, not an equivalent mutant. Left in scope.
+    #
+    # NOTE: fused_sector build_square_tensor's RowMajor arm (386-388) is also
+    # NOT excluded. It is unreachable only because no `cargo test` routes a
+    # RowMajor-preferred backend through a block-sparse solve/expm/inverse —
+    # but RowMajor is a supported `ComputeBackend::preferred_order()` and an
+    # in-tree `RowMajorBackend` fixture (linalg test_util.rs) already exists.
+    # Wiring it through these ops kills the mutants, so this is a coverage gap,
+    # not equivalence. Left in scope. (The ColumnMajor arm 393-395 is caught.)
 ]
