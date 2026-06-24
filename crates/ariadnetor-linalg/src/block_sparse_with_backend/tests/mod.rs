@@ -413,14 +413,18 @@ fn contract_routes_to_passed_backend() {
 fn contract_rejects_notation_arity_mismatch() {
     // A notation naming fewer axes than the operand rank must error, not
     // silently treat the undeclared axes as free (which would yield an outer
-    // product). rank2() is rank 2; "a,b->ab" declares one axis per operand.
+    // product). rank2() is rank 2. Exercise both operand checks independently:
+    // "a,b->ab" mismatches both, "ab,c->abc" matches the LHS and mismatches the
+    // RHS (so the RHS branch is the one that must fire).
     let host = NativeBackend::new();
     let t = rank2();
-    let err = contract(&host, &t, &t, "a,b->ab").unwrap_err();
-    assert!(
-        matches!(err, LinalgError::InvalidArgument(_)),
-        "expected InvalidArgument for arity mismatch, got {err:?}"
-    );
+    for notation in ["a,b->ab", "ab,c->abc"] {
+        let err = contract(&host, &t, &t, notation).unwrap_err();
+        assert!(
+            matches!(err, LinalgError::InvalidArgument(_)),
+            "expected InvalidArgument for arity mismatch in {notation:?}, got {err:?}"
+        );
+    }
 }
 
 #[test]
