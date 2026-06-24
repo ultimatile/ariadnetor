@@ -9,30 +9,18 @@ use std::collections::HashMap;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
 use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparseTensor, BlockSparseTensorData, QNIndex};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, QNIndex};
 
 use crate::error::LinalgError;
 
-/// Result of a block-sparse tensor contraction.
-pub enum BlockSparseContractResult<T, S: Sector> {
-    /// Partial contraction produced a block-sparse tensor.
-    Tensor(BlockSparseTensor<T, S>),
-    /// Full contraction produced a scalar.
-    Scalar(T),
-}
-
-/// Internal kernel form of [`BlockSparseContractResult`] operating on
-/// joined-form [`BlockSparseTensorData<T, S>`].
-pub(crate) enum BlockSparseContractResultBsp<T, S: Sector> {
-    Tensor(BlockSparseTensorData<T, S>),
-    Scalar(T),
-}
-
-/// Internal kernel for the block-sparse contraction on joined-form
-/// [`BlockSparseTensorData<T, S>`]. The public entry point is
-/// [`crate::contract_block_sparse_with_backend`], which hardcodes
-/// `ExecPolicy::Sequential`; this kernel takes `policy` directly and forwards
-/// it to every per-sector GEMM descriptor.
+/// Internal tensordot kernel for the block-sparse contraction on joined-form
+/// [`BlockSparseTensorData<T, S>`], contracting `axes_lhs` against `axes_rhs`
+/// and emitting the output legs in their natural order
+/// (free left legs, then free right legs, each in input axis order). Free output
+/// reordering is layered on top by the layout-dispatch entry
+/// [`crate::LinalgContract::contract`]. A full contraction (no free legs) yields
+/// a rank-0 tensor — one block holding the scalar for identity flux, zero blocks
+/// for flux mismatch. `policy` is forwarded to every per-sector GEMM descriptor.
 pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     lhs: &BlockSparseTensorData<T, S>,
@@ -40,7 +28,7 @@ pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     policy: ExecPolicy,
-) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
+) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
     validate_contraction_axes(lhs, rhs, axes_lhs, axes_rhs)?;
 
     let num_contracted = axes_lhs.len();
@@ -55,7 +43,14 @@ pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 
     if output_rank == 0 {
         let order = backend.preferred_order();
-        return contract_to_scalar(lhs, rhs, axes_lhs, axes_rhs, &rhs_groups, order);
+        return Ok(contract_to_scalar(
+            lhs,
+            rhs,
+            axes_lhs,
+            axes_rhs,
+            &rhs_groups,
+            order,
+        ));
     }
 
     contract_to_tensor(
@@ -182,9 +177,14 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
     axes_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     order: MemoryOrder,
-) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
-    if lhs.layout().flux().fuse(rhs.layout().flux()) != S::identity() {
-        return Ok(BlockSparseContractResultBsp::Scalar(T::zero()));
+) -> BlockSparseTensorData<T, S> {
+    let output_flux = lhs.layout().flux().fuse(rhs.layout().flux());
+    // Rank-0 output: identity flux yields one block holding the scalar; a
+    // non-identity fused flux is symmetry-forbidden and yields zero blocks (the
+    // zero scalar). `block_data_mut` returns `Some` only in the identity case.
+    let mut output = BlockSparseTensorData::zeros(Vec::new(), output_flux, order);
+    if output.block_data_mut(&BlockCoord(Vec::new())).is_none() {
+        return output;
     }
 
     let lhs_rank = lhs.layout().rank();
@@ -232,7 +232,9 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
         }
     }
 
-    Ok(BlockSparseContractResultBsp::Scalar(sum))
+    // The identity-flux block was confirmed present above.
+    output.block_data_mut(&BlockCoord(Vec::new())).unwrap()[0] = sum;
+    output
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +252,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     free_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
     policy: ExecPolicy,
-) -> Result<BlockSparseContractResultBsp<T, S>, LinalgError> {
+) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
     let lhs_rank = lhs.layout().rank();
     let rhs_rank = rhs.layout().rank();
     let order = backend.preferred_order();
@@ -380,7 +382,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
         }
     }
 
-    Ok(BlockSparseContractResultBsp::Tensor(output))
+    Ok(output)
 }
 
 // ---------------------------------------------------------------------------

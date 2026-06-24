@@ -3,7 +3,7 @@
 //!
 //! The flat-buffer matvec lives here: scatter the flat input into a
 //! pre-allocated psi `BlockSparseTensor` template, run four
-//! `contract_block_sparse_with_backend` calls against the operator's
+//! `tensordot` calls against the operator's
 //! host substrate handle (the natural `lhs_free | rhs_free` order ends
 //! in `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
 //! no axis swap), gather the rank-4 result back into a flat vector.
@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use arnet_core::{ComputeBackend, Scalar};
-use arnet_linalg::{BlockSparseContractResult, contract_block_sparse_with_backend};
+use arnet_linalg::tensordot;
 use arnet_tensor::{
     BlockCoord, BlockSparseTensor, ComputeBackendTensorExt, DenseTensor, Host, Sector,
 };
@@ -67,7 +67,7 @@ where
     /// Asserts that the four contracted operands (`left`, `w_i`,
     /// `w_ip1`, `right`) have a layout `MemoryOrder` matching the host
     /// substrate's `preferred_order()`. The matvec body's
-    /// `contract_block_sparse_with_backend` calls put intermediates
+    /// `tensordot` calls put intermediates
     /// into the host's preferred order; an operand whose layout was
     /// built with a different order would fail the release-active
     /// layout-order check at the next contract entry, but failing here
@@ -172,68 +172,20 @@ where
         );
 
         // env(a,b,c) × psi(c,i,j,f) → tmp1(a,b,i,j,f)
-        let tmp1 = match contract_block_sparse_with_backend(
-            self.backend.as_ref(),
-            self.left,
-            &psi,
-            &[2],
-            &[0],
-        )
-        .expect("BlockSparse heff step 1: validated by entry point")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("rank 3 + rank 4 over 1 axis keeps rank 5")
-            }
-        };
+        let tmp1 = tensordot(self.backend.as_ref(), self.left, &psi, &[2], &[0])
+            .expect("BlockSparse heff step 1: validated by entry point");
 
         // tmp1(a,b,i,j,f) × W[i](b,i,s,m) → tmp2(a,j,f,s,m)
-        let tmp2 = match contract_block_sparse_with_backend(
-            self.backend.as_ref(),
-            &tmp1,
-            self.w_i,
-            &[1, 2],
-            &[0, 1],
-        )
-        .expect("BlockSparse heff step 2: validated by entry point")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("rank 5 + rank 4 over 2 axes keeps rank 5")
-            }
-        };
+        let tmp2 = tensordot(self.backend.as_ref(), &tmp1, self.w_i, &[1, 2], &[0, 1])
+            .expect("BlockSparse heff step 2: validated by entry point");
 
         // tmp2(a,j,f,s,m) × W[i+1](m,j,t,g) → tmp3(a,f,s,t,g)
-        let tmp3 = match contract_block_sparse_with_backend(
-            self.backend.as_ref(),
-            &tmp2,
-            self.w_ip1,
-            &[1, 4],
-            &[1, 0],
-        )
-        .expect("BlockSparse heff step 3: validated by entry point")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("rank 5 + rank 4 over 2 axes keeps rank 5")
-            }
-        };
+        let tmp3 = tensordot(self.backend.as_ref(), &tmp2, self.w_ip1, &[1, 4], &[1, 0])
+            .expect("BlockSparse heff step 3: validated by entry point");
 
         // tmp3(a,f,s,t,g) × right(h,g,f) → out(a,s,t,h)
-        let out = match contract_block_sparse_with_backend(
-            self.backend.as_ref(),
-            &tmp3,
-            self.right,
-            &[1, 4],
-            &[2, 1],
-        )
-        .expect("BlockSparse heff step 4: validated by entry point")
-        {
-            BlockSparseContractResult::Tensor(t) => t,
-            BlockSparseContractResult::Scalar(_) => {
-                unreachable!("rank 5 + rank 3 over 2 axes keeps rank 4")
-            }
-        };
+        let out = tensordot(self.backend.as_ref(), &tmp3, self.right, &[1, 4], &[2, 1])
+            .expect("BlockSparse heff step 4: validated by entry point");
 
         assert_eq!(
             out.flux(),

@@ -18,9 +18,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_core::Scalar;
-use arnet_linalg::{
-    TruncSvdParams, contract_with_backend, diagonal_scale_with_backend, eigh_with_backend,
-};
+use arnet_linalg::{TruncSvdParams, contract, diagonal_scale_with_backend, eigh_with_backend};
 use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
@@ -365,8 +363,7 @@ fn heff_svd_split_is_canonical() {
 
     // U^T U: contract `[chi_l, d, chi_new]` with itself, summing the
     // (chi_l, d) axes → Identity on the chi_new axis.
-    let utu = contract_with_backend(&NativeBackend::new(), &result.u, &result.u, "abc,abd->cd")
-        .expect("U^T U");
+    let utu = contract(&NativeBackend::new(), &result.u, &result.u, "abc,abd->cd").expect("U^T U");
     let chi_new = result.u.shape()[2];
     assert_eq!(utu.shape(), &[chi_new, chi_new]);
     let utu_data = utu.data_slice();
@@ -378,8 +375,8 @@ fn heff_svd_split_is_canonical() {
     }
     // Vt Vt^T: contract `[chi_new, d, chi_r]` with itself summing
     // the (d, chi_r) axes → Identity on the chi_new axis.
-    let vvt = contract_with_backend(&NativeBackend::new(), &result.vt, &result.vt, "abc,dbc->ad")
-        .expect("Vt Vt^T");
+    let vvt =
+        contract(&NativeBackend::new(), &result.vt, &result.vt, "abc,dbc->ad").expect("Vt Vt^T");
     assert_eq!(vvt.shape(), &[chi_new, chi_new]);
     let vvt_data = vvt.data_slice();
     for i in 0..chi_new {
@@ -444,8 +441,7 @@ fn heff_svd_reconstruction_round_trips() {
     let us =
         diagonal_scale_with_backend(&NativeBackend::new(), &result.u, result.s.data_slice(), 2)
             .expect("U·diag(S)");
-    let recon = contract_with_backend(&NativeBackend::new(), &us, &result.vt, "aik,kjb->aijb")
-        .expect("U·S·Vt");
+    let recon = contract(&NativeBackend::new(), &us, &result.vt, "aik,kjb->aijb").expect("U·S·Vt");
 
     let heff = make_heff(&envs, &mps, &mpo, site);
     let dim = heff.dim();

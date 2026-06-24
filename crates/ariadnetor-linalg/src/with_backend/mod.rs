@@ -21,12 +21,12 @@ use arnet_core::backend::ComputeBackend;
 use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
 use crate::eigen::{EigResult, EighResult, eig_dense, eigh_dense};
+use crate::einsum::einsum_dense;
 use crate::error::LinalgError;
 use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
 use crate::scalar_ops::{diag_dense, diagonal_scale_dense, trace_dense};
 use crate::solve::{inverse_dense, solve_dense};
 use crate::transpose::transpose_dense;
-use crate::{contract::contract_dense, einsum::einsum_dense};
 
 #[cfg(test)]
 mod tests;
@@ -69,17 +69,6 @@ pub fn eigvals_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 ) -> Result<DenseTensor<T::Complex>, LinalgError> {
     let (w, _v) = eig_with_backend(backend, tensor, nrow)?;
     Ok(w)
-}
-
-/// Pure tensor contraction of two operands, using the supplied backend.
-pub fn contract_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    lhs: &DenseTensor<T>,
-    rhs: &DenseTensor<T>,
-    notation: &str,
-) -> Result<DenseTensor<T>, LinalgError> {
-    let result = contract_dense(backend, lhs.data(), rhs.data(), notation)?;
-    Ok(DenseTensor::from_data(result))
 }
 
 /// N-input Einstein summation, using the supplied backend.

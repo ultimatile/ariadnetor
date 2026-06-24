@@ -5,9 +5,7 @@ use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
 use arnet_core::backend::{ExecPolicy, MemoryOrder};
 
 use crate::TruncSvdParams;
-use crate::block_sparse_contract::{
-    BlockSparseContractResultBsp, contract_block_sparse_with_policy_dense,
-};
+use crate::block_sparse_contract::contract_block_sparse_with_policy_dense;
 use crate::block_sparse_decomp::{
     BlockScalars, svd_block_sparse_with_policy_dense, trunc_svd_block_sparse_with_policy_dense,
 };
@@ -41,7 +39,7 @@ fn contract_uv(
     vt: &BlockSparseTensorData<f64, U1Sector>,
 ) -> BlockSparseTensorData<f64, U1Sector> {
     // Contract over bond axis: U's last axis with Vt's first axis.
-    let result = contract_block_sparse_with_policy_dense(
+    contract_block_sparse_with_policy_dense(
         &backend(),
         u,
         vt,
@@ -49,11 +47,7 @@ fn contract_uv(
         &[0],
         ExecPolicy::Sequential,
     )
-    .unwrap();
-    match result {
-        BlockSparseContractResultBsp::Tensor(t) => t,
-        BlockSparseContractResultBsp::Scalar(_) => panic!("expected tensor, got scalar"),
-    }
+    .unwrap()
 }
 
 /// Assert two BlockSparse tensors are approximately equal.

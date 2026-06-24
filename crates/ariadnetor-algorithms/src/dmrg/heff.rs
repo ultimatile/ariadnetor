@@ -25,7 +25,7 @@
 //! per `apply`.
 
 use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract_with_backend, trunc_svd};
+use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_tensor::{DenseTensor, Host};
 
@@ -138,13 +138,13 @@ impl<'a, T: Scalar> LinearOp<T> for EffectiveHamiltonian2Site<'a, T> {
         let backend = Host::shared();
         let psi = v.reshape(vec![self.chi_l, self.d_i, self.d_ip1, self.chi_r]);
 
-        let tmp1 = contract_with_backend(backend.as_ref(), self.left, &psi, "abc,cijf->abijf")
+        let tmp1 = contract(backend.as_ref(), self.left, &psi, "abc,cijf->abijf")
             .expect("heff matvec step 1: shape pre-validated");
-        let tmp2 = contract_with_backend(backend.as_ref(), &tmp1, self.w_i, "abijf,bism->asmjf")
+        let tmp2 = contract(backend.as_ref(), &tmp1, self.w_i, "abijf,bism->asmjf")
             .expect("heff matvec step 2: shape pre-validated");
-        let tmp3 = contract_with_backend(backend.as_ref(), &tmp2, self.w_ip1, "asmjf,mjtg->astgf")
+        let tmp3 = contract(backend.as_ref(), &tmp2, self.w_ip1, "asmjf,mjtg->astgf")
             .expect("heff matvec step 3: shape pre-validated");
-        let out = contract_with_backend(backend.as_ref(), &tmp3, self.right, "astgf,hgf->asth")
+        let out = contract(backend.as_ref(), &tmp3, self.right, "astgf,hgf->asth")
             .expect("heff matvec step 4: shape pre-validated");
 
         out.reshape(vec![self.dim()])

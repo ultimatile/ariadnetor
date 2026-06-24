@@ -185,9 +185,9 @@ fn contract_routes_to_passed_backend() {
     let host = NativeBackend::new();
     let lhs = mat22();
     let rhs = mat22();
-    let out = contract_with_backend(&rec, &lhs, &rhs, "ab,bc->ac").unwrap();
+    let out = contract(&rec, &lhs, &rhs, "ab,bc->ac").unwrap();
     assert!(total_recorded(&rec) > 0);
-    let hout = contract_with_backend(&host, &lhs, &rhs, "ab,bc->ac").unwrap();
+    let hout = contract(&host, &lhs, &rhs, "ab,bc->ac").unwrap();
     approx_eq(out.data().data(), hout.data().data());
 }
 

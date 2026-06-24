@@ -403,15 +403,46 @@ fn contract_routes_to_passed_backend() {
     // sectors, opposite direction.
     let t1 = rank2();
     let t2 = rank2();
-    let out = contract_block_sparse_with_backend(&rec, &t1, &t2, &[1], &[0]).unwrap();
+    let out = tensordot(&rec, &t1, &t2, &[1], &[0]).unwrap();
     assert!(total_recorded(&rec) > 0);
-    let hout = contract_block_sparse_with_backend(&host, &t1, &t2, &[1], &[0]).unwrap();
-    match (out, hout) {
-        (BlockSparseContractResult::Tensor(t), BlockSparseContractResult::Tensor(ht)) => {
-            bsp_eq(&t, &ht);
+    let hout = tensordot(&host, &t1, &t2, &[1], &[0]).unwrap();
+    bsp_eq(&out, &hout);
+}
+
+#[test]
+fn contract_free_output_reorder_matches_tensordot_then_permute() {
+    // The dispatched `contract` reorders the natural tensordot output legs into
+    // the notation's requested order. In production this path is only reached
+    // once the MPS / DMRG bodies merge (#302); validate it here against the
+    // explicit composition it is defined to equal — a natural-order tensordot
+    // followed by `permute_block_sparse`.
+    let host = NativeBackend::new();
+    let t1 = rank2();
+    let t2 = rank2();
+
+    // Contract t1's In leg (axis 1) against t2's Out leg (axis 0). The natural
+    // output order is [t1_free(0), t2_free(1)] = "ac"; the notation requests the
+    // swapped order "ca", so the block-sparse reorder pass must fire.
+    let reordered = contract(&host, &t1, &t2, "ab,bc->ca").unwrap();
+
+    let natural = tensordot(&host, &t1, &t2, &[1], &[0]).unwrap();
+    let permuted = permute_block_sparse_with_backend(&host, &natural, &[1, 0]).unwrap();
+    bsp_eq(&reordered, &permuted);
+
+    // Guard against a silent no-op: the reordered result must differ from the
+    // natural one (the diagonal blocks are transposed, not identical).
+    let (nat, reo) = (natural.data(), reordered.data());
+    let differs = nat.block_metas().iter().any(|m| {
+        let a = nat.block_data(&m.coord).unwrap();
+        match reo.block_data(&m.coord) {
+            Some(b) => a.iter().zip(b).any(|(x, y)| (x - y).abs() > 1e-9),
+            None => true,
         }
-        _ => panic!("expected a tensor result"),
-    }
+    });
+    assert!(
+        differs,
+        "reorder produced the natural order; the permute pass did not fire"
+    );
 }
 
 // --- Allocation-only ops: the backend drives no observable kernel, so only

@@ -24,10 +24,17 @@ fn expert_layer_reachable_through_umbrella() {
         .expect("expert::permute via umbrella");
     assert_eq!(tt.shape(), &[3, 2]);
 
-    // Reference the remaining four entry points: naming each generic fn item
+    // `expert::contract` is now layout-generic (`<T, L, B>`); calling it on
+    // `DenseTensor` operands fixes the layout to dense by inference, so the
+    // umbrella-only test exercises it end to end without naming `DenseLayout`
+    // (which the umbrella does not re-export).
+    let prod = arnet::expert::contract(&backend, &t, &tt, "ab,bc->ac", ExecPolicy::Sequential)
+        .expect("expert::contract via umbrella");
+    assert_eq!(prod.shape(), &[2, 2]);
+
+    // Reference the remaining three entry points: naming each generic fn item
     // proves the umbrella re-export resolves and its bounds hold for the
     // `(f64, NativeBackend)` instantiation, without asserting per-op numerics.
-    let _ = arnet::expert::contract::<f64, NativeBackend>;
     let _ = arnet::expert::solve::<f64, NativeBackend>;
     let _ = arnet::expert::eigh::<f64, NativeBackend>;
     let _ = arnet::expert::eig::<f64, NativeBackend>;

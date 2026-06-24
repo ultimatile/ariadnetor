@@ -170,7 +170,7 @@ fn contract_matches_twin() {
     let lhs = mat22();
     let rhs = mat22();
     let out = lhs.contract(&rhs, "ab,bc->ac").unwrap();
-    let r = contract_with_backend(&host, &lhs, &rhs, "ab,bc->ac").unwrap();
+    let r = contract(&host, &lhs, &rhs, "ab,bc->ac").unwrap();
     approx_eq(out.data().data(), r.data().data());
 }
 
@@ -440,14 +440,10 @@ fn bsp_contract_matches_twin() {
     // sectors, opposite direction.
     let t1 = rank2();
     let t2 = rank2();
-    let out = t1.contract(&t2, &[1], &[0]).unwrap();
-    let r = contract_block_sparse_with_backend(&host, &t1, &t2, &[1], &[0]).unwrap();
-    match (out, r) {
-        (BlockSparseContractResult::Tensor(t), BlockSparseContractResult::Tensor(rt)) => {
-            bsp_approx_eq(&t, &rt);
-        }
-        _ => panic!("expected a tensor result"),
-    }
+    // t1's In leg (axis 1) ↔ t2's Out leg (axis 0): a_{ab} b_{bc} -> ab_{ac}.
+    let out = t1.contract(&t2, "ab,bc->ac").unwrap();
+    let r = tensordot(&host, &t1, &t2, &[1], &[0]).unwrap();
+    bsp_approx_eq(&out, &r);
 }
 
 #[test]

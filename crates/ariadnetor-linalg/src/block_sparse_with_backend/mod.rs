@@ -20,10 +20,6 @@ use arnet_core::Scalar;
 use arnet_core::backend::ExecPolicy;
 use arnet_tensor::{BlockSparseStorage, BlockSparseTensor, Direction, OpsFor, Sector};
 
-use crate::block_sparse_contract::{
-    BlockSparseContractResult, BlockSparseContractResultBsp,
-    contract_block_sparse_with_policy_dense,
-};
 use crate::block_sparse_decomp::{
     BlockScalars, BlockSparseEigResult, BlockSparseEighResult, eig_block_sparse_with_policy_dense,
     eigh_block_sparse_with_policy_dense,
@@ -42,39 +38,6 @@ use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 
 #[cfg(test)]
 mod tests;
-
-/// Block-sparse contraction over the given axis pairs, using the supplied backend.
-///
-/// The layout-order invariant is checked against the supplied backend for both
-/// operands before the per-sector GEMMs.
-pub fn contract_block_sparse_with_backend<
-    T: Scalar,
-    S: Sector,
-    B: OpsFor<BlockSparseStorage<T>>,
->(
-    backend: &B,
-    lhs: &BlockSparseTensor<T, S>,
-    rhs: &BlockSparseTensor<T, S>,
-    axes_lhs: &[usize],
-    axes_rhs: &[usize],
-) -> Result<BlockSparseContractResult<T, S>, LinalgError> {
-    check_bsp_data_layout_order_matches(lhs.data(), backend, "contract_block_sparse: lhs")?;
-    check_bsp_data_layout_order_matches(rhs.data(), backend, "contract_block_sparse: rhs")?;
-    let result = contract_block_sparse_with_policy_dense(
-        backend,
-        lhs.data(),
-        rhs.data(),
-        axes_lhs,
-        axes_rhs,
-        ExecPolicy::Sequential,
-    )?;
-    match result {
-        BlockSparseContractResultBsp::Tensor(t) => Ok(BlockSparseContractResult::Tensor(
-            BlockSparseTensor::from_data(t),
-        )),
-        BlockSparseContractResultBsp::Scalar(s) => Ok(BlockSparseContractResult::Scalar(s)),
-    }
-}
 
 /// Block-sparse axis permutation, using the supplied backend.
 pub fn permute_block_sparse_with_backend<T, S, B>(
