@@ -229,10 +229,18 @@ mod tests {
     #[test]
     fn profile_for_parallelism_pins_core_count_boundary() {
         // The boundary is `n > 16`: 16 stays on `laptop`, 17 crosses to
-        // `workstation`. `gemm` differs between the two profiles (192 vs 768),
-        // so it witnesses which branch was taken without needing PartialEq.
-        assert_eq!(ThresholdTable::profile_for_parallelism(16).gemm, 192);
-        assert_eq!(ThresholdTable::profile_for_parallelism(17).gemm, 768);
+        // `workstation`. `gemm` differs between the two profiles, so it
+        // witnesses which branch was taken without needing PartialEq;
+        // comparing against the named profiles keeps the test on the boundary
+        // rather than duplicating the calibration constants.
+        assert_eq!(
+            ThresholdTable::profile_for_parallelism(16).gemm,
+            ThresholdTable::laptop().gemm
+        );
+        assert_eq!(
+            ThresholdTable::profile_for_parallelism(17).gemm,
+            ThresholdTable::workstation().gemm
+        );
     }
 
     #[test]
