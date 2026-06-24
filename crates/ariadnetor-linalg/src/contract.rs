@@ -158,6 +158,19 @@ pub(crate) fn contract_axes_dense<T: Scalar>(
     let rhs_rank = rhs.rank();
     validate_contraction_axes_pair(axes_lhs, lhs_rank, axes_rhs, rhs_rank)?;
 
+    // Each contracted pair must share an extent; otherwise `k` (taken from the
+    // left operand) disagrees with the right operand's contracted dimension and
+    // the reshape to (k, n) would panic on a buffer-size mismatch.
+    for (i, (&al, &ar)) in axes_lhs.iter().zip(axes_rhs.iter()).enumerate() {
+        if lhs.shape()[al] != rhs.shape()[ar] {
+            return Err(LinalgError::InvalidArgument(format!(
+                "contracted axis pair {i} (lhs axis {al}, rhs axis {ar}) has mismatched extents {} != {}",
+                lhs.shape()[al],
+                rhs.shape()[ar]
+            )));
+        }
+    }
+
     let free_lhs: Vec<usize> = (0..lhs_rank).filter(|a| !axes_lhs.contains(a)).collect();
     let free_rhs: Vec<usize> = (0..rhs_rank).filter(|a| !axes_rhs.contains(a)).collect();
 

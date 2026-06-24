@@ -153,6 +153,19 @@ fn dense_tensordot_rejects_duplicate_axis() {
 }
 
 #[test]
+fn dense_tensordot_rejects_mismatched_contracted_extents() {
+    // Paired contracted axes with different extents (lhs axis 1 has dim 3, rhs
+    // axis 0 has dim 4) must return InvalidArgument, not panic in the reshape.
+    let be = NativeBackend::new();
+    let a = DenseTensor::<f64>::zeros(vec![2, 3]);
+    let b = DenseTensor::<f64>::zeros(vec![4, 5]);
+    assert!(matches!(
+        tensordot(&be, &a, &b, &[1], &[0]),
+        Err(LinalgError::InvalidArgument(_))
+    ));
+}
+
+#[test]
 fn dense_contract_rejects_single_operand_notation_without_panic() {
     // The dense auto-policy path computes a GEMM-size plan before validating;
     // a single-operand notation must return InvalidArgument, not panic inside
