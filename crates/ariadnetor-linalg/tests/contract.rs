@@ -1,5 +1,5 @@
 use arnet_core::backend::ComputeBackend;
-use arnet_linalg::DenseHostOps;
+use arnet_linalg::{DenseHostOps, LinalgError};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
@@ -101,6 +101,40 @@ fn test_contract_rank_mismatch() {
 
     let result = a.contract(&b, "ijk,kl->ijl");
     assert!(result.is_err());
+}
+
+#[test]
+fn test_contract_rejects_mismatched_contracted_extents() {
+    // Notation path: the paired contracted index `k` has extent 3 on the left and
+    // 4 on the right. Must return InvalidArgument, not panic in the GEMM reshape.
+    let a = DenseTensor::<f64>::zeros(vec![2, 3]);
+    let b = DenseTensor::<f64>::zeros(vec![4, 5]);
+    assert!(matches!(
+        a.contract(&b, "ik,kj->ij"),
+        Err(LinalgError::InvalidArgument(_))
+    ));
+}
+
+#[test]
+fn test_contract_zero_length_contracted_axis() {
+    // Notation path: a zero-extent contracted axis is an empty sum, so the result
+    // is the zero tensor of the free shape rather than a panic.
+    let a = DenseTensor::<f64>::zeros(vec![2, 0]);
+    let b = DenseTensor::<f64>::zeros(vec![0, 3]);
+    let c = a.contract(&b, "ik,kj->ij").unwrap();
+    assert_eq!(c.shape(), &[2, 3]);
+    assert!(c.data_slice().iter().all(|&x| x == 0.0));
+}
+
+#[test]
+fn test_contract_zero_length_free_axis() {
+    // Notation path: a zero-extent free axis yields an empty tensor (the shape
+    // carries the zero), again rather than a panic.
+    let a = DenseTensor::<f64>::zeros(vec![0, 3]);
+    let b = DenseTensor::<f64>::zeros(vec![3, 4]);
+    let c = a.contract(&b, "ik,kj->ij").unwrap();
+    assert_eq!(c.shape(), &[0, 4]);
+    assert_eq!(c.data_slice().len(), 0);
 }
 
 // ============================================================================

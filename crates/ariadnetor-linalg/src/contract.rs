@@ -93,33 +93,50 @@ pub(crate) fn contract_with_policy_dense<T: Scalar>(
 
     let plan = ContractionPlan::from_expr(&expr);
 
+    // Each contracted index must share an extent across the two operands;
+    // otherwise `k` (taken from the left operand only) disagrees with the right
+    // operand's contracted dimension and the reshape to `(k, n)` panics on a
+    // buffer-size mismatch. Mirrors the axis-native (`contract_axes_dense`) and
+    // block-sparse per-pair extent checks.
+    for &idx in &plan.contracted {
+        let lhs_dim = dim_of(idx, expr.lhs_indices(), lhs.shape());
+        let rhs_dim = dim_of(idx, expr.rhs_indices(), rhs.shape());
+        if lhs_dim != rhs_dim {
+            return Err(LinalgError::InvalidArgument(format!(
+                "contracted index '{}' has mismatched extents {lhs_dim} != {rhs_dim}",
+                idx as char
+            )));
+        }
+    }
+
+    let m: usize = plan
+        .free_lhs
+        .iter()
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .product();
+
+    let n: usize = plan
+        .free_rhs
+        .iter()
+        .map(|&idx| dim_of(idx, expr.rhs_indices(), rhs.shape()))
+        .product();
+
+    let k: usize = plan
+        .contracted
+        .iter()
+        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
+        .product();
+
     // Permute operands so indices are in [free, contracted] order.
     // These internal transposes self-tune via par_for_transpose (they are
     // preprocessing, not the main kernel).
     let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
     let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
 
-    let m: usize = plan
-        .free_lhs
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .product::<usize>()
-        .max(1);
-
-    let n: usize = plan
-        .free_rhs
-        .iter()
-        .map(|&idx| dim_of(idx, expr.rhs_indices(), rhs.shape()))
-        .product::<usize>()
-        .max(1);
-
-    let k: usize = plan
-        .contracted
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .product::<usize>()
-        .max(1);
-
+    // `.max(1)` is deliberately not applied to `m`/`n`/`k`: clamping a zero extent
+    // to 1 was the original panic — it claims a non-empty operand against an empty
+    // buffer in the GEMM reshape. Left as a raw `0`, the extent is caught by the
+    // degenerate-dimension guard in `gemm_reshape_dense`.
     let gemm = DenseGemm {
         lhs_perm,
         rhs_perm,
@@ -180,21 +197,13 @@ pub(crate) fn contract_axes_dense<T: Scalar>(
     let lhs_perm = identity_or_perm(free_lhs.iter().chain(axes_lhs).copied().collect());
     let rhs_perm = identity_or_perm(axes_rhs.iter().chain(&free_rhs).copied().collect());
 
-    let m: usize = free_lhs
-        .iter()
-        .map(|&a| lhs.shape()[a])
-        .product::<usize>()
-        .max(1);
-    let n: usize = free_rhs
-        .iter()
-        .map(|&a| rhs.shape()[a])
-        .product::<usize>()
-        .max(1);
-    let k: usize = axes_lhs
-        .iter()
-        .map(|&a| lhs.shape()[a])
-        .product::<usize>()
-        .max(1);
+    // `.max(1)` is deliberately not applied: clamping a zero extent to 1 would
+    // claim a non-empty operand against an empty buffer in the GEMM reshape and
+    // panic. A paired `0 == 0` passes the per-pair check above, so the raw `0`
+    // reaches the degenerate-dimension guard in `gemm_reshape_dense`.
+    let m: usize = free_lhs.iter().map(|&a| lhs.shape()[a]).product();
+    let n: usize = free_rhs.iter().map(|&a| rhs.shape()[a]).product();
+    let k: usize = axes_lhs.iter().map(|&a| lhs.shape()[a]).product();
 
     // Natural tensordot output shape: free left dims then free right dims, each
     // in input axis order — the order the GEMM already produces, so no reorder.
@@ -259,6 +268,17 @@ fn gemm_reshape_dense<T: Scalar>(
         output_shape,
         policy,
     } = gemm;
+
+    // A degenerate GEMM dimension (`m`, `n`, or `k == 0`) means the contraction is
+    // empty along some axis, so the result is the zero tensor of `output_shape`
+    // (an empty contraction is an empty sum). Short-circuit at this one point both
+    // dense kernels funnel through, rather than relying on every `ComputeBackend`
+    // to return a correctly-zeroed result from a zero-sized GEMM — and to skip the
+    // pointless transpose / GEMM work on empty operands.
+    if m == 0 || n == 0 || k == 0 {
+        let total: usize = output_shape.iter().product();
+        return Ok(backend.make_tensor(vec![T::zero(); total], output_shape));
+    }
 
     let lhs_permuted = if let Some(perm) = lhs_perm {
         transpose_dense(backend, lhs, &perm)?

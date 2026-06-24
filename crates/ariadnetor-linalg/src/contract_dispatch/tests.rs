@@ -177,6 +177,31 @@ fn dense_tensordot_rejects_mismatched_contracted_extents() {
 }
 
 #[test]
+fn dense_tensordot_zero_length_contracted_axis() {
+    // A zero-extent contracted axis is an empty sum: the result is the zero tensor
+    // of the free shape, not a panic. The paired `0 == 0` extents pass the per-pair
+    // check, so this exercises the degenerate-GEMM short-circuit.
+    let be = NativeBackend::new();
+    let a = DenseTensor::<f64>::zeros(vec![2, 0]);
+    let b = DenseTensor::<f64>::zeros(vec![0, 3]);
+    let td = tensordot(&be, &a, &b, &[1], &[0]).unwrap();
+    assert_eq!(td.shape(), &[2, 3]);
+    assert!(td.data_slice().iter().all(|&x| x == 0.0));
+}
+
+#[test]
+fn dense_tensordot_zero_length_free_axis() {
+    // A zero-extent free axis yields an empty tensor (the shape carries the zero),
+    // again via the short-circuit rather than a panic in the GEMM.
+    let be = NativeBackend::new();
+    let a = DenseTensor::<f64>::zeros(vec![0, 3]);
+    let b = DenseTensor::<f64>::zeros(vec![3, 4]);
+    let td = tensordot(&be, &a, &b, &[1], &[0]).unwrap();
+    assert_eq!(td.shape(), &[0, 4]);
+    assert_eq!(td.data_slice().len(), 0);
+}
+
+#[test]
 fn dense_contract_rejects_single_operand_notation_without_panic() {
     // The dense auto-policy path computes a GEMM-size plan before validating;
     // a single-operand notation must return InvalidArgument, not panic inside
