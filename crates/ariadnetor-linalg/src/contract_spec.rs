@@ -85,6 +85,12 @@ pub(crate) struct ContractSpec {
     pub(crate) axes_rhs: Vec<usize>,
     pub(crate) natural_labels: Vec<u8>,
     pub(crate) out_labels: Vec<u8>,
+    /// Number of indices the notation assigns to the left / right operand. The
+    /// caller checks these against the actual operand ranks (a notation naming
+    /// fewer axes than the operand has would otherwise silently treat the
+    /// undeclared axes as free).
+    pub(crate) lhs_arity: usize,
+    pub(crate) rhs_arity: usize,
 }
 
 impl ContractSpec {
@@ -137,6 +143,8 @@ impl ContractSpec {
             axes_rhs,
             natural_labels,
             out_labels,
+            lhs_arity: lhs.len(),
+            rhs_arity: rhs.len(),
         })
     }
 }

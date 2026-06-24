@@ -158,6 +158,24 @@ impl<T: Scalar, S: Sector> LinalgContract<T> for BlockSparseLayout<S> {
         check_bsp_data_layout_order_matches(rhs.data(), backend, "contract_block_sparse: rhs")?;
 
         let spec = ContractSpec::from_notation(notation)?;
+        // Reject a notation whose operand arity does not match the tensor rank,
+        // mirroring the dense kernel's rank check. Without this, a notation
+        // naming fewer axes than the operand has would silently treat the
+        // undeclared axes as free and return an outer product.
+        if lhs.rank() != spec.lhs_arity {
+            return Err(LinalgError::InvalidArgument(format!(
+                "LHS tensor rank {} doesn't match notation arity {}",
+                lhs.rank(),
+                spec.lhs_arity
+            )));
+        }
+        if rhs.rank() != spec.rhs_arity {
+            return Err(LinalgError::InvalidArgument(format!(
+                "RHS tensor rank {} doesn't match notation arity {}",
+                rhs.rank(),
+                spec.rhs_arity
+            )));
+        }
         let natural = contract_block_sparse_with_policy_dense(
             backend,
             lhs.data(),

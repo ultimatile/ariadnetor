@@ -410,6 +410,20 @@ fn contract_routes_to_passed_backend() {
 }
 
 #[test]
+fn contract_rejects_notation_arity_mismatch() {
+    // A notation naming fewer axes than the operand rank must error, not
+    // silently treat the undeclared axes as free (which would yield an outer
+    // product). rank2() is rank 2; "a,b->ab" declares one axis per operand.
+    let host = NativeBackend::new();
+    let t = rank2();
+    let err = contract(&host, &t, &t, "a,b->ab").unwrap_err();
+    assert!(
+        matches!(err, LinalgError::InvalidArgument(_)),
+        "expected InvalidArgument for arity mismatch, got {err:?}"
+    );
+}
+
+#[test]
 fn contract_free_output_reorder_matches_tensordot_then_permute() {
     // The dispatched `contract` reorders the natural tensordot output legs into
     // the notation's requested order. In production this path is only reached
