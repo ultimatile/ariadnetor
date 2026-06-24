@@ -107,12 +107,20 @@ impl ThresholdTable {
 
     /// Pick a profile based on `std::thread::available_parallelism()`.
     ///
-    /// `> 16` logical cores → `workstation`, otherwise `laptop`. If the
-    /// query fails, fall back to the more conservative `laptop` profile.
+    /// Reads the logical-core count (falling back to the conservative `1`
+    /// when the query fails) and delegates the profile choice to
+    /// [`Self::profile_for_parallelism`].
     pub fn detect() -> Self {
         let n = std::thread::available_parallelism()
             .map(|v| v.get())
             .unwrap_or(1);
+        Self::profile_for_parallelism(n)
+    }
+
+    /// Map a logical-core count to a profile: `> 16` cores → `workstation`,
+    /// otherwise `laptop`. Kept pure (no environment read) so the boundary
+    /// is testable independently of the host's actual core count.
+    fn profile_for_parallelism(n: usize) -> Self {
         if n > 16 {
             Self::workstation()
         } else {
@@ -216,6 +224,15 @@ mod tests {
             PerformanceManager::policy_by_n(256, 1024),
             ExecPolicy::Parallel(0)
         );
+    }
+
+    #[test]
+    fn profile_for_parallelism_pins_core_count_boundary() {
+        // The boundary is `n > 16`: 16 stays on `laptop`, 17 crosses to
+        // `workstation`. `gemm` differs between the two profiles (192 vs 768),
+        // so it witnesses which branch was taken without needing PartialEq.
+        assert_eq!(ThresholdTable::profile_for_parallelism(16).gemm, 192);
+        assert_eq!(ThresholdTable::profile_for_parallelism(17).gemm, 768);
     }
 
     #[test]

@@ -284,3 +284,18 @@ fn test_get_set_accept_any_asref_coords() {
     t.set(&coords, 9.0);
     assert_eq!(t.get([1, 2]), 9.0);
 }
+
+#[test]
+fn tensor_len_and_is_empty() {
+    // Exercises `Tensor::len` / `is_empty` directly. Existing tests touch
+    // `DenseTensorData::len` (a distinct method), leaving the logical-shape
+    // wrappers uncovered.
+    let t = DenseTensor::<f64>::zeros(vec![2, 3]);
+    assert_eq!(t.len(), 6); // product of the shape
+    assert!(!t.is_empty());
+
+    // A zero-sized dimension makes the shape product zero.
+    let empty = DenseTensor::<f64>::zeros(vec![0]);
+    assert_eq!(empty.len(), 0);
+    assert!(empty.is_empty());
+}

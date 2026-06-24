@@ -397,3 +397,20 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_edge_bond_mpo_detail_is_distinct() {
+        // The mpo arm of `edge_bond_detail` adds the identity-flux clause that
+        // the mps / wildcard text omits; rendering an mpo edge must surface it,
+        // so deleting that arm (collapsing to the wildcard) is observable.
+        let mpo = DmrgEnvError::MalformedEdgeBond { leg: "mpo_left" }.to_string();
+        assert!(mpo.contains("fusing to identity flux"));
+
+        let mps = DmrgEnvError::MalformedEdgeBond { leg: "mps_left" }.to_string();
+        assert!(!mps.contains("fusing to identity flux"));
+    }
+}

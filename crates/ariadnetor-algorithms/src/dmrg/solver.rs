@@ -131,3 +131,58 @@ impl<T: Scalar> DmrgScalar for T {}
 pub trait DmrgScalar: Scalar + crate::krylov::ArpackScalar {}
 #[cfg(feature = "arpack")]
 impl<T: Scalar + crate::krylov::ArpackScalar> DmrgScalar for T {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The `From` conversions and `eigensolver_tol` have no caller in tests;
+    // these pin the payload-preserving behavior so conversions cannot decay
+    // to `Default::default()` and the accessor cannot decay to a constant.
+
+    #[test]
+    fn from_lanczos_preserves_payload() {
+        // Values chosen to differ from `LanczosParams::default()` (200 / 1e-10)
+        // so a `Default::default()` substitution is observable.
+        let p = LocalEigensolverParams::from(LanczosParams {
+            max_iter: 7,
+            tol: 0.5,
+            seed: None,
+        });
+        match p {
+            LocalEigensolverParams::Lanczos(q) => {
+                assert_eq!(q.max_iter, 7);
+                assert_eq!(q.tol, 0.5);
+            }
+            #[cfg(feature = "arpack")]
+            other => panic!("expected Lanczos variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn eigensolver_tol_reads_lanczos_tol() {
+        let p = LocalEigensolverParams::Lanczos(LanczosParams {
+            tol: 0.5,
+            ..LanczosParams::default()
+        });
+        assert_eq!(eigensolver_tol(&p), 0.5);
+    }
+
+    #[cfg(feature = "arpack")]
+    #[test]
+    fn from_arpack_preserves_payload_and_tol() {
+        let p = LocalEigensolverParams::from(ArpackParams {
+            tol: 0.5,
+            max_iter: 7,
+            ncv: None,
+        });
+        match &p {
+            LocalEigensolverParams::Arpack(q) => {
+                assert_eq!(q.max_iter, 7);
+                assert_eq!(q.tol, 0.5);
+            }
+            other => panic!("expected Arpack variant, got {other:?}"),
+        }
+        assert_eq!(eigensolver_tol(&p), 0.5);
+    }
+}
