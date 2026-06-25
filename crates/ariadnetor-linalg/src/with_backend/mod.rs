@@ -7,24 +7,19 @@
 //!
 //! The dense operation surface is gated by
 //! [`OpsFor<DenseStorage<T>>`](arnet_tensor::OpsFor): a backend that has not
-//! declared it operates on dense storage cannot be passed here. The sole
-//! exception is `diagonal_scale`, whose signature admits non-`Scalar` element
-//! types (`T: Clone + Mul`) that the `Scalar`-keyed `OpsFor` impls cannot
-//! express; it keeps the looser `ComputeBackend` bound so those documented uses
-//! keep compiling. Internal kernels stay `ComputeBackend`-bound; they are
-//! reachable only through this gate.
-
-use std::ops::Mul;
+//! declared it operates on dense storage cannot be passed here. Internal
+//! kernels stay `ComputeBackend`-bound; they are reachable only through this
+//! gate. `diagonal_scale` dispatches over layout via
+//! [`LinalgScale`](crate::LinalgScale) and lives in `scale_dispatch`, not here.
 
 use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
 use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
 use crate::eigen::{EigResult, EighResult, eig_dense, eigh_dense};
 use crate::einsum::einsum_dense;
 use crate::error::LinalgError;
 use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
-use crate::scalar_ops::{diag_dense, diagonal_scale_dense, trace_dense};
+use crate::scalar_ops::{diag_dense, trace_dense};
 use crate::solve::{inverse_dense, solve_dense};
 use crate::transpose::transpose_dense;
 
@@ -117,22 +112,6 @@ pub fn diag_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     tensor: &DenseTensor<T>,
 ) -> Result<DenseTensor<T>, LinalgError> {
     let result = diag_dense(tensor.data())?;
-    Ok(DenseTensor::from_data(result))
-}
-
-/// Per-slice diagonal scaling along `axis`, using the supplied backend.
-pub fn diagonal_scale_with_backend<T, S, B>(
-    backend: &B,
-    tensor: &DenseTensor<T>,
-    weights: &[S],
-    axis: usize,
-) -> Result<DenseTensor<T>, LinalgError>
-where
-    T: Clone + Mul<S, Output = T> + 'static,
-    S: Clone,
-    B: ComputeBackend,
-{
-    let result = diagonal_scale_dense(backend, tensor.data(), weights, axis)?;
     Ok(DenseTensor::from_data(result))
 }
 

@@ -77,11 +77,16 @@ def test_twin_pattern_requires_own_twin():
     assert twin.twin_pattern("qr").search("qr(b, x, nrow)")
     assert twin.twin_pattern("lq").search("lq(b, x, nrow)")
     assert twin.twin_pattern("contract").search("contract(b, x, n)")
+    assert twin.twin_pattern("diagonal_scale").search("diagonal_scale(b, x, w, 0)")
     assert not twin.twin_pattern("svd").search("svd_with_backend(b, x)")
     assert not twin.twin_pattern("svd").search("svd_block_sparse_with_backend(b, x)")
     assert not twin.twin_pattern("qr").search("qr_with_backend(b, x)")
     assert not twin.twin_pattern("lq").search("lq_block_sparse_with_backend(b, x)")
     assert not twin.twin_pattern("contract").search("contract_with_backend(b, x)")
+    assert not twin.twin_pattern("diagonal_scale").search("diagonal_scale_with_backend(b, x)")
+    assert not twin.twin_pattern("diagonal_scale").search(
+        "diagonal_scale_block_sparse_with_backend(b, x)"
+    )
     # bare-name allowance is scoped to layout-dispatch ops: a non-dispatch op
     # does NOT accept its bare name, still requiring its `*_with_backend` twin
     assert not twin.twin_pattern("eigh").search("eigh(b, x)")

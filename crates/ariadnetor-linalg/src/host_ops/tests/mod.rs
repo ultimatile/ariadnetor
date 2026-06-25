@@ -207,7 +207,7 @@ fn diagonal_scale_matches_twin() {
     let t = mat23();
     let weights = [10.0, 20.0];
     let out = t.diagonal_scale(&weights, 0).unwrap();
-    let r = diagonal_scale_with_backend(&host, &t, &weights, 0).unwrap();
+    let r = diagonal_scale(&host, &t, &weights, 0).unwrap();
     assert_eq!(out.data().data(), r.data().data());
 }
 
@@ -476,10 +476,7 @@ fn bsp_diagonal_scale_matches_twin() {
     // on axis 0 from an SVD of `t`.
     let (_u, sv, vt) = t.svd(1).unwrap();
     let out = vt.diagonal_scale(&sv, 0).unwrap();
-    bsp_eq(
-        &out,
-        &diagonal_scale_block_sparse_with_backend(&host, &vt, &sv, 0).unwrap(),
-    );
+    bsp_eq(&out, &diagonal_scale(&host, &vt, &sv, 0).unwrap());
 }
 
 #[test]

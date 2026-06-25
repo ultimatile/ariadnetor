@@ -498,11 +498,8 @@ fn diagonal_scale_matches_host() {
     // Derive a valid weight set (singular values) and a tensor with the bond
     // on axis 0 from an SVD of `t`.
     let (_u, sv, vt) = svd(&host, &t, 1).unwrap();
-    let out = diagonal_scale_block_sparse_with_backend(&rec, &vt, &sv, 0).unwrap();
-    bsp_eq(
-        &out,
-        &diagonal_scale_block_sparse_with_backend(&host, &vt, &sv, 0).unwrap(),
-    );
+    let out = diagonal_scale(&rec, &vt, &sv, 0).unwrap();
+    bsp_eq(&out, &diagonal_scale(&host, &vt, &sv, 0).unwrap());
 }
 
 // ---------------------------------------------------------------------------

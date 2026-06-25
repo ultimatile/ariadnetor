@@ -5,8 +5,7 @@ use std::num::NonZeroUsize;
 
 use arnet_core::Scalar;
 use arnet_linalg::{
-    TruncSvdParams, contract, diagonal_scale_block_sparse_with_backend,
-    diagonal_scale_with_backend, fuse_legs_block_sparse_with_backend,
+    TruncSvdParams, contract, diagonal_scale, fuse_legs_block_sparse_with_backend,
     permute_block_sparse_with_backend, qr, tensordot, trunc_svd,
 };
 use arnet_tensor::{
@@ -112,7 +111,7 @@ where
                 let u_site = u.split_leg(0, &[left, d]);
                 tensors.push(u_site);
 
-                let svt = diagonal_scale_with_backend(backend, &vt, s_vec.data_slice(), 0)
+                let svt = diagonal_scale(backend, &vt, s_vec.data_slice(), 0)
                     .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }
@@ -226,7 +225,7 @@ where
                     .expect("trunc_svd: validated by entry point");
                 tensors.push(u);
 
-                let svt = diagonal_scale_block_sparse_with_backend(backend, &vt, &s_vec, 0)
+                let svt = diagonal_scale(backend, &vt, &s_vec, 0)
                     .expect("S·Vt scaling: validated by entry point");
                 carry = Some(svt);
             }

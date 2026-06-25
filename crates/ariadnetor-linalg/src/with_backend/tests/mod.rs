@@ -347,26 +347,9 @@ fn diagonal_scale_matches_host() {
     let host = NativeBackend::new();
     let t = mat23();
     let weights = [10.0, 20.0];
-    let out = diagonal_scale_with_backend(&rec, &t, &weights, 0).unwrap();
-    let hout = diagonal_scale_with_backend(&host, &t, &weights, 0).unwrap();
+    let out = diagonal_scale(&rec, &t, &weights, 0).unwrap();
+    let hout = diagonal_scale(&host, &t, &weights, 0).unwrap();
     approx_eq(out.data().data(), hout.data().data());
-}
-
-/// `diagonal_scale_with_backend` admits non-`Scalar` element types
-/// (`T: Clone + Mul`), unlike the `OpsFor`-gated kernel twins. This locks that
-/// contract: a `Scalar`-keyed `OpsFor` bound here would make `i32` fail to
-/// compile, so the test guards against re-tightening the bound.
-#[test]
-fn diagonal_scale_supports_non_scalar_elements() {
-    let host = NativeBackend::new();
-    let t = Host::shared().dense(vec![1, 2, 3, 4], vec![2, 2]);
-    let out = diagonal_scale_with_backend(&host, &t, &[10, 100], 0).unwrap();
-    // The contract under test is that non-`Scalar` `T` compiles and runs; the
-    // value check is order-agnostic (the scaled multiset is layout-invariant):
-    // {1,3} on row 0 ×10 and {2,4} on row 1 ×100 → {10, 30, 200, 400}.
-    let mut got = out.data().data().to_vec();
-    got.sort_unstable();
-    assert_eq!(got, vec![10, 30, 200, 400]);
 }
 
 /// Dense counterpart of the block-sparse `expert::*` policy-forwarding tests:

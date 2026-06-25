@@ -11,8 +11,6 @@
 //! by — the shared `Host` substrate, spelled through the [`Host`] alias rather
 //! than a concrete backend type.
 
-use std::ops::Mul;
-
 use arnet_core::Scalar;
 use arnet_tensor::{DenseTensor, Host};
 
@@ -21,11 +19,12 @@ use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};
 use crate::decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 use crate::eigen::{EigResult, EighResult};
 use crate::error::LinalgError;
+use crate::scale_dispatch::diagonal_scale;
 use crate::with_backend::{
-    diag_with_backend, diagonal_scale_with_backend, eig_with_backend, eigh_with_backend,
-    eigvals_with_backend, eigvalsh_with_backend, expm_antihermitian_with_backend,
-    expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,
-    solve_with_backend, trace_with_backend,
+    diag_with_backend, eig_with_backend, eigh_with_backend, eigvals_with_backend,
+    eigvalsh_with_backend, expm_antihermitian_with_backend, expm_hermitian_with_backend,
+    expm_with_backend, inverse_with_backend, permute_with_backend, solve_with_backend,
+    trace_with_backend,
 };
 
 mod block_sparse;
@@ -84,20 +83,12 @@ pub trait DenseHostOps<T: Scalar> {
     /// Host-defaulting counterpart of [`crate::diag_with_backend`].
     fn diag(&self) -> Result<DenseTensor<T>, LinalgError>;
 
-    /// Host-defaulting counterpart of [`crate::diagonal_scale_with_backend`].
-    ///
-    /// Narrower than the free fn: the trait's `T: Scalar` bound excludes
-    /// the non-`Scalar` element types `diagonal_scale_with_backend`
-    /// accepts (`T: Clone + Mul + 'static`); the free fn remains the path
-    /// for those.
-    fn diagonal_scale<S2>(
+    /// Host-defaulting counterpart of [`crate::diagonal_scale`].
+    fn diagonal_scale(
         &self,
-        weights: &[S2],
+        weights: &[T::Real],
         axis: usize,
-    ) -> Result<DenseTensor<T>, LinalgError>
-    where
-        T: Mul<S2, Output = T>,
-        S2: Clone;
+    ) -> Result<DenseTensor<T>, LinalgError>;
 
     /// Host-defaulting counterpart of [`crate::solve_with_backend`];
     /// the receiver is the coefficient matrix `A` in `AX = B`.
@@ -173,12 +164,12 @@ impl<T: Scalar> DenseHostOps<T> for DenseTensor<T> {
         diag_with_backend(Host::shared().as_ref(), self)
     }
 
-    fn diagonal_scale<S2>(&self, weights: &[S2], axis: usize) -> Result<DenseTensor<T>, LinalgError>
-    where
-        T: Mul<S2, Output = T>,
-        S2: Clone,
-    {
-        diagonal_scale_with_backend(Host::shared().as_ref(), self, weights, axis)
+    fn diagonal_scale(
+        &self,
+        weights: &[T::Real],
+        axis: usize,
+    ) -> Result<DenseTensor<T>, LinalgError> {
+        diagonal_scale(Host::shared().as_ref(), self, weights, axis)
     }
 
     fn solve(&self, b: &DenseTensor<T>, nrow_a: usize) -> Result<DenseTensor<T>, LinalgError> {

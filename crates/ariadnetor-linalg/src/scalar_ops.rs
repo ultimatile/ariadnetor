@@ -252,7 +252,7 @@ pub(crate) fn diag_dense<T: Scalar>(
 ///
 /// Internal kernel for the diagonal-scale operation on the joined
 /// [`DenseTensorData<T>`] form. The public entry point is
-/// [`crate::diagonal_scale_with_backend`].
+/// [`crate::diagonal_scale`].
 pub(crate) fn diagonal_scale_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
