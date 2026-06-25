@@ -116,7 +116,8 @@ where
     type Output = DenseTensorData<T>;
 
     /// Scale by `rhs`, consuming `self`. Reuses the owned buffer in
-    /// place (no extra allocation when the storage is uniquely owned).
+    /// place (no extra allocation when the storage is uniquely owned;
+    /// a buffer still shared via copy-on-write is cloned first).
     fn mul(mut self, rhs: T) -> Self::Output {
         self.scale(rhs);
         self

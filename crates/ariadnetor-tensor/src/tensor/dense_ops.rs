@@ -180,7 +180,9 @@ where
 {
     type Output = Tensor<DenseStorage<S>, DenseLayout>;
 
-    /// Scale by `rhs`, consuming `self` (in-place on the owned buffer).
+    /// Scale by `rhs`, consuming `self`. Reuses the owned buffer in
+    /// place (no extra allocation when the storage is uniquely owned;
+    /// a buffer still shared via copy-on-write is cloned first).
     fn mul(mut self, rhs: S) -> Self::Output {
         self.scale(rhs);
         self
