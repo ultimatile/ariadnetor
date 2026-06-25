@@ -1,3 +1,17 @@
+# This is the SHIPPED mutation pass: it runs with default features, i.e.
+# hptt ON (ariadnetor-native) and arpack OFF (ariadnetor-algorithms). Two
+# code regions are therefore out of THIS run's scope by construction, not
+# because they are spec gaps:
+#   - the ARPACK backend (krylov/arpack.rs, #[cfg(feature = "arpack")]) is
+#     never compiled here, so its mutants trivially pass;
+#   - the naive transpose fallback (transpose.rs,
+#     #[cfg(not(feature = "hptt"))]) is masked by hptt, so its mutants are
+#     unviable.
+# Both are covered by dedicated feature-flipped passes — `cargo make
+# mutants-arpack` and `cargo make mutants-naive` (see Makefile.toml and
+# CONTRIBUTING.md). Read this run's missed.txt knowing those regions are
+# audited there, not here.
+
 # Reduce timeout from default 5x to 2x baseline.
 # Most timeouts are FFI glue mutations (gemm/qr/lq/svd/solve/transpose)
 # that cause LAPACK to hang on garbage input — 2x is enough to detect them.
