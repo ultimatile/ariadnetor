@@ -231,9 +231,9 @@ pub enum DmrgSweepError {
         #[source]
         source: DmrgEnvError,
     },
-    /// The post-step S-absorb (`arnet_linalg::diagonal_scale_with_backend`
-    /// for Dense or `arnet_linalg::diagonal_scale_block_sparse_with_backend`
-    /// for BlockSparse) failed. Carries the same `(sweep, direction, site)`
+    /// The post-step S-absorb (`arnet_linalg::diagonal_scale`, which
+    /// dispatches over layout for both Dense and BlockSparse) failed.
+    /// Carries the same `(sweep, direction, site)`
     /// breadcrumbs as `Step` / `Env` so the caller can pin down
     /// where the failure occurred without having to walk the
     /// `DmrgResult::sweeps` history manually.

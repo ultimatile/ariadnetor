@@ -14,14 +14,16 @@
 pub use arnet_linalg::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
 
 // ============================================================================
-// Layout-keyed dispatch — `svd` / `trunc_svd` / `qr` / `lq` (decomposition) and
-// `contract` / `tensordot` serve both Dense and BlockSparse via
-// `LinalgDecompose` / `LinalgContract`. The backend is supplied at the call
-// site; the policy-explicit forms live under `expert`.
+// Layout-keyed dispatch — `svd` / `trunc_svd` / `qr` / `lq` (decomposition),
+// `contract` / `tensordot`, and `diagonal_scale` serve both Dense and
+// BlockSparse via `LinalgDecompose` / `LinalgContract` / `LinalgScale`. The
+// backend is supplied at the call site; the policy-explicit forms live under
+// `expert`.
 // ============================================================================
 
 pub use arnet_linalg::{
-    LinalgContract, LinalgDecompose, contract, lq, qr, svd, tensordot, trunc_svd,
+    LinalgContract, LinalgDecompose, LinalgScale, contract, diagonal_scale, lq, qr, svd, tensordot,
+    trunc_svd,
 };
 
 // ============================================================================
@@ -29,8 +31,8 @@ pub use arnet_linalg::{
 // ============================================================================
 
 pub use arnet_linalg::{
-    diag_with_backend, diagonal_scale_with_backend, eig_with_backend, eigh_with_backend,
-    eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
-    expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
+    diag_with_backend, eig_with_backend, eigh_with_backend, eigvals_with_backend,
+    eigvalsh_with_backend, einsum_with_backend, expm_antihermitian_with_backend,
+    expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,
+    solve_with_backend, trace_with_backend,
 };

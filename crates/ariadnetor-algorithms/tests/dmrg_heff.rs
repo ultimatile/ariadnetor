@@ -18,7 +18,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, diagonal_scale_with_backend, eigh_with_backend};
+use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh_with_backend};
 use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
@@ -438,9 +438,8 @@ fn heff_svd_reconstruction_round_trips() {
     // Reconstruct U · diag(S) · Vt and verify it is a valid 2-site
     // block of the original eigenvector (re-running Lanczos with
     // the same seed is deterministic, so we can compare exactly).
-    let us =
-        diagonal_scale_with_backend(&NativeBackend::new(), &result.u, result.s.data_slice(), 2)
-            .expect("U·diag(S)");
+    let us = diagonal_scale(&NativeBackend::new(), &result.u, result.s.data_slice(), 2)
+        .expect("U·diag(S)");
     let recon = contract(&NativeBackend::new(), &us, &result.vt, "aik,kjb->aijb").expect("U·S·Vt");
 
     let heff = make_heff(&envs, &mps, &mpo, site);

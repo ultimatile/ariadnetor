@@ -30,7 +30,6 @@ use crate::block_sparse_expm::{
 };
 use crate::block_sparse_fuse::fuse_legs_block_sparse_dense;
 use crate::block_sparse_permute::permute_block_sparse_dense;
-use crate::block_sparse_scale::diagonal_scale_block_sparse_dense;
 use crate::block_sparse_solve::{inverse_block_sparse_dense, solve_block_sparse_dense};
 use crate::block_sparse_trace::trace_block_sparse_dense;
 use crate::error::LinalgError;
@@ -291,22 +290,5 @@ where
 {
     check_bsp_data_layout_order_matches(tensor.data(), backend, "inverse_block_sparse")?;
     let result = inverse_block_sparse_dense(backend, tensor.data(), nrow)?;
-    Ok(BlockSparseTensor::from_data(result))
-}
-
-/// Block-sparse per-sector diagonal scaling, using the supplied backend.
-pub fn diagonal_scale_block_sparse_with_backend<T, S, B>(
-    backend: &B,
-    tensor: &BlockSparseTensor<T, S>,
-    weights: &BlockScalars<T::Real, S>,
-    axis: usize,
-) -> Result<BlockSparseTensor<T, S>, LinalgError>
-where
-    T: Scalar,
-    S: Sector,
-    B: OpsFor<BlockSparseStorage<T>>,
-{
-    check_bsp_data_layout_order_matches(tensor.data(), backend, "diagonal_scale_block_sparse")?;
-    let result = diagonal_scale_block_sparse_dense(backend, tensor.data(), weights, axis)?;
     Ok(BlockSparseTensor::from_data(result))
 }

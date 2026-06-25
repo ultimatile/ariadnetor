@@ -1,10 +1,7 @@
 //! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps.
 
 use arnet_core::Scalar;
-use arnet_linalg::{
-    TruncSvdParams, diagonal_scale_block_sparse_with_backend, diagonal_scale_with_backend,
-    trunc_svd,
-};
+use arnet_linalg::{TruncSvdParams, diagonal_scale, trunc_svd};
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, OpsFor, Sector,
 };
@@ -112,22 +109,22 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 // U stays at j (left-canonical), S·Vt absorbed into j+1.
-                let svt = diagonal_scale_with_backend(backend, &vt, s.data_slice(), 0)
+                let svt = diagonal_scale(backend, &vt, s.data_slice(), 0)
                     .expect("S·Vt scaling failed during truncate");
                 (reshape_u(u), svt, err)
             }
             SvdAbsorb::Left => {
                 // U·S stays at j, Vt absorbed into j+1.
-                let us = diagonal_scale_with_backend(backend, &u, s.data_slice(), 1)
+                let us = diagonal_scale(backend, &u, s.data_slice(), 1)
                     .expect("U·S scaling failed during truncate");
                 (reshape_u(us), vt, err)
             }
             SvdAbsorb::Both => {
                 // sqrt(S) applied to both sides.
                 let sqrt_s: Vec<T::Real> = s.data_slice().iter().map(|v| v.sqrt()).collect();
-                let u_scaled = diagonal_scale_with_backend(backend, &u, &sqrt_s, 1)
+                let u_scaled = diagonal_scale(backend, &u, &sqrt_s, 1)
                     .expect("sqrt(S)*U scaling failed during truncate");
-                let vt_scaled = diagonal_scale_with_backend(backend, &vt, &sqrt_s, 0)
+                let vt_scaled = diagonal_scale(backend, &vt, &sqrt_s, 0)
                     .expect("sqrt(S)*Vt scaling failed during truncate");
                 (reshape_u(u_scaled), vt_scaled, err)
             }
@@ -172,20 +169,20 @@ where
 
         match absorb {
             SvdAbsorb::Right => {
-                let us = diagonal_scale_with_backend(backend, &u, s.data_slice(), 1)
+                let us = diagonal_scale(backend, &u, s.data_slice(), 1)
                     .expect("U·S scaling failed during truncate");
                 (reshape_vt(vt), us, err)
             }
             SvdAbsorb::Left => {
-                let svt = diagonal_scale_with_backend(backend, &vt, s.data_slice(), 0)
+                let svt = diagonal_scale(backend, &vt, s.data_slice(), 0)
                     .expect("S·Vt scaling failed during truncate");
                 (reshape_vt(svt), u, err)
             }
             SvdAbsorb::Both => {
                 let sqrt_s: Vec<T::Real> = s.data_slice().iter().map(|v| v.sqrt()).collect();
-                let vt_scaled = diagonal_scale_with_backend(backend, &vt, &sqrt_s, 0)
+                let vt_scaled = diagonal_scale(backend, &vt, &sqrt_s, 0)
                     .expect("sqrt(S)*Vt scaling failed during truncate");
-                let u_scaled = diagonal_scale_with_backend(backend, &u, &sqrt_s, 1)
+                let u_scaled = diagonal_scale(backend, &u, &sqrt_s, 1)
                     .expect("sqrt(S)*U scaling failed during truncate");
                 (reshape_vt(vt_scaled), u_scaled, err)
             }
@@ -287,23 +284,22 @@ where
 
         match absorb {
             SvdAbsorb::Right => {
-                let svt = diagonal_scale_block_sparse_with_backend(backend, &vt, &s, 0)
+                let svt = diagonal_scale(backend, &vt, &s, 0)
                     .expect("S·Vt scaling failed during truncate");
                 (u, svt, err)
             }
             SvdAbsorb::Left => {
                 let u_rank = u.rank();
-                let us = diagonal_scale_block_sparse_with_backend(backend, &u, &s, u_rank - 1)
+                let us = diagonal_scale(backend, &u, &s, u_rank - 1)
                     .expect("U·S scaling failed during truncate");
                 (us, vt, err)
             }
             SvdAbsorb::Both => {
                 let sqrt_s = s.map(|v| (*v).sqrt());
                 let u_rank = u.rank();
-                let u_scaled =
-                    diagonal_scale_block_sparse_with_backend(backend, &u, &sqrt_s, u_rank - 1)
-                        .expect("√S·U scaling failed during truncate");
-                let vt_scaled = diagonal_scale_block_sparse_with_backend(backend, &vt, &sqrt_s, 0)
+                let u_scaled = diagonal_scale(backend, &u, &sqrt_s, u_rank - 1)
+                    .expect("√S·U scaling failed during truncate");
+                let vt_scaled = diagonal_scale(backend, &vt, &sqrt_s, 0)
                     .expect("√S·Vt scaling failed during truncate");
                 (u_scaled, vt_scaled, err)
             }
@@ -344,23 +340,22 @@ where
         match absorb {
             SvdAbsorb::Right => {
                 let u_rank = u.rank();
-                let us = diagonal_scale_block_sparse_with_backend(backend, &u, &s, u_rank - 1)
+                let us = diagonal_scale(backend, &u, &s, u_rank - 1)
                     .expect("U·S scaling failed during truncate");
                 (vt, us, err)
             }
             SvdAbsorb::Left => {
-                let svt = diagonal_scale_block_sparse_with_backend(backend, &vt, &s, 0)
+                let svt = diagonal_scale(backend, &vt, &s, 0)
                     .expect("S·Vt scaling failed during truncate");
                 (svt, u, err)
             }
             SvdAbsorb::Both => {
                 let sqrt_s = s.map(|v| (*v).sqrt());
-                let vt_scaled = diagonal_scale_block_sparse_with_backend(backend, &vt, &sqrt_s, 0)
+                let vt_scaled = diagonal_scale(backend, &vt, &sqrt_s, 0)
                     .expect("√S·Vt scaling failed during truncate");
                 let u_rank = u.rank();
-                let u_scaled =
-                    diagonal_scale_block_sparse_with_backend(backend, &u, &sqrt_s, u_rank - 1)
-                        .expect("√S·U scaling failed during truncate");
+                let u_scaled = diagonal_scale(backend, &u, &sqrt_s, u_rank - 1)
+                    .expect("√S·U scaling failed during truncate");
                 (vt_scaled, u_scaled, err)
             }
         }

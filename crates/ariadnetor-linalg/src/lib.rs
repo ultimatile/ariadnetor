@@ -11,11 +11,12 @@
 //! - An explicit-backend free function that takes the backend at the call
 //!   site. Most ops use the `*_with_backend` form — e.g.
 //!   [`permute_with_backend`], [`trace_with_backend`], the block-sparse family
-//!   ([`permute_block_sparse_with_backend`], …). Contraction and the four
-//!   decompositions instead dispatch over layout through the unified
-//!   [`contract`] and [`svd`] / [`trunc_svd`] / [`qr`] / [`lq`] free fns
-//!   ([`LinalgContract`] / [`LinalgDecompose`]), so one call serves both Dense
-//!   and BlockSparse. The `*_with_policy` variants add an explicit
+//!   ([`permute_block_sparse_with_backend`], …). Contraction, the four
+//!   decompositions, and diagonal scaling instead dispatch over layout through
+//!   the unified [`contract`], [`svd`] / [`trunc_svd`] / [`qr`] / [`lq`], and
+//!   [`diagonal_scale`] free fns ([`LinalgContract`] / [`LinalgDecompose`] /
+//!   [`LinalgScale`]), so one call serves both Dense and BlockSparse. The
+//!   `*_with_policy` variants add an explicit
 //!   [`ExecPolicy`](arnet_core::backend::ExecPolicy); they are published under
 //!   bare names through the [`expert`] module (`expert::permute`,
 //!   `expert::contract`, `expert::svd`, …).
@@ -57,6 +58,7 @@ mod expm;
 mod host_ops;
 mod perm;
 mod scalar_ops;
+mod scale_dispatch;
 mod solve;
 mod tensor_bridge;
 mod transpose;
@@ -83,24 +85,24 @@ pub use eigen::{EigResult, EighResult};
 // published under bare names through [`expert`].
 pub use contract_dispatch::{LinalgContract, contract, tensordot};
 pub use decompose_dispatch::{LinalgDecompose, lq, qr, svd, trunc_svd};
+pub use scale_dispatch::{LinalgScale, diagonal_scale};
 
 // Explicit-backend operation paths (backend supplied at the call site). The
-// decomposition and `contract` ops are not here — they dispatch over layout
-// through the unified free fns above.
+// decomposition, `contract`, and `diagonal_scale` ops are not here — they
+// dispatch over layout through the unified free fns above.
 pub use block_sparse_with_backend::{
-    diagonal_scale_block_sparse_with_backend, eig_block_sparse_with_backend,
-    eigh_block_sparse_with_backend, eigvals_block_sparse_with_backend,
-    eigvalsh_block_sparse_with_backend, expm_antihermitian_block_sparse_with_backend,
-    expm_block_sparse_with_backend, expm_hermitian_block_sparse_with_backend,
-    fuse_legs_block_sparse_with_backend, inverse_block_sparse_with_backend,
-    permute_block_sparse_with_backend, solve_block_sparse_with_backend,
-    trace_block_sparse_with_backend,
+    eig_block_sparse_with_backend, eigh_block_sparse_with_backend,
+    eigvals_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
+    expm_antihermitian_block_sparse_with_backend, expm_block_sparse_with_backend,
+    expm_hermitian_block_sparse_with_backend, fuse_legs_block_sparse_with_backend,
+    inverse_block_sparse_with_backend, permute_block_sparse_with_backend,
+    solve_block_sparse_with_backend, trace_block_sparse_with_backend,
 };
 pub use with_backend::{
-    diag_with_backend, diagonal_scale_with_backend, eig_with_backend, eigh_with_backend,
-    eigvals_with_backend, eigvalsh_with_backend, einsum_with_backend,
-    expm_antihermitian_with_backend, expm_hermitian_with_backend, expm_with_backend,
-    inverse_with_backend, permute_with_backend, solve_with_backend, trace_with_backend,
+    diag_with_backend, eig_with_backend, eigh_with_backend, eigvals_with_backend,
+    eigvalsh_with_backend, einsum_with_backend, expm_antihermitian_with_backend,
+    expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,
+    solve_with_backend, trace_with_backend,
 };
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.

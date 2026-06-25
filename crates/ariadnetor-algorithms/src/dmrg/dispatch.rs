@@ -7,10 +7,7 @@
 //! existing layout-specific free functions, with no logic duplication.
 
 use arnet_core::Scalar;
-use arnet_linalg::{
-    LinalgError, TruncSvdParams, diagonal_scale_block_sparse_with_backend,
-    diagonal_scale_with_backend,
-};
+use arnet_linalg::{LinalgError, TruncSvdParams, diagonal_scale};
 use arnet_mps::{Mpo, Mps, MpsOps};
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Host, Sector, Storage,
@@ -119,13 +116,11 @@ where
         let bond_dim = result.s.shape()[0];
         let (site_i, site_ip1) = match direction {
             SweepDirection::LeftToRight => {
-                let s_vt =
-                    diagonal_scale_with_backend(backend, &result.vt, result.s.data_slice(), 0)?;
+                let s_vt = diagonal_scale(backend, &result.vt, result.s.data_slice(), 0)?;
                 (result.u, s_vt)
             }
             SweepDirection::RightToLeft => {
-                let u_s =
-                    diagonal_scale_with_backend(backend, &result.u, result.s.data_slice(), 2)?;
+                let u_s = diagonal_scale(backend, &result.u, result.s.data_slice(), 2)?;
                 (u_s, result.vt)
             }
         };
@@ -180,13 +175,11 @@ where
         let bond_dim: usize = result.s.values.iter().map(|(_, v)| v.len()).sum();
         let (site_i, site_ip1) = match direction {
             SweepDirection::LeftToRight => {
-                let s_vt =
-                    diagonal_scale_block_sparse_with_backend(backend, &result.vt, &result.s, 0)?;
+                let s_vt = diagonal_scale(backend, &result.vt, &result.s, 0)?;
                 (result.u, s_vt)
             }
             SweepDirection::RightToLeft => {
-                let u_s =
-                    diagonal_scale_block_sparse_with_backend(backend, &result.u, &result.s, 2)?;
+                let u_s = diagonal_scale(backend, &result.u, &result.s, 2)?;
                 (u_s, result.vt)
             }
         };

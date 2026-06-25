@@ -17,12 +17,13 @@ token), so the body must be inspected per method. Scope is honestly limited
 to these two files; structurally obfuscated forms remain review territory.
 
 The four decompositions (`svd` / `trunc_svd` / `qr` / `lq`) dispatch over
-layout via `LinalgDecompose` (issue #299), and `contract` dispatches over
-layout via `LinalgContract` (issue #372), so their host methods delegate to
-the unified bare-name free fns (`svd(`, `contract(`, …) rather than a
-`*_with_backend` twin. The generic free fn is the call-site-backend twin; only
-its name differs, so the invariant is unchanged and the name pattern matches
-the bare name (not `*_with_backend`) for this set alone.
+layout via `LinalgDecompose` (issue #299), `contract` via `LinalgContract`
+(issue #372), and `diagonal_scale` via `LinalgScale` (issue #373), so their
+host methods delegate to the unified bare-name free fns (`svd(`, `contract(`,
+`diagonal_scale(`, …) rather than a `*_with_backend` twin. The generic free fn
+is the call-site-backend twin; only its name differs, so the invariant is
+unchanged and the name pattern matches the bare name (not `*_with_backend`) for
+this set alone.
 """
 
 import re
@@ -40,9 +41,12 @@ TARGETS = [
 
 # Layout-dispatched ops delegate to the unified bare-name free fns, not a
 # `*_with_backend` twin: the four decompositions via `LinalgDecompose`
-# (issue #299) — `svd` / `trunc_svd` / `qr` / `lq` — and `contract` via
-# `LinalgContract` (issue #372).
-LAYOUT_DISPATCH_OPS = frozenset({"svd", "trunc_svd", "qr", "lq", "contract"})
+# (issue #299) — `svd` / `trunc_svd` / `qr` / `lq` — `contract` via
+# `LinalgContract` (issue #372), and `diagonal_scale` via `LinalgScale`
+# (issue #373).
+LAYOUT_DISPATCH_OPS = frozenset(
+    {"svd", "trunc_svd", "qr", "lq", "contract", "diagonal_scale"}
+)
 
 
 def twin_pattern(name: str) -> re.Pattern:

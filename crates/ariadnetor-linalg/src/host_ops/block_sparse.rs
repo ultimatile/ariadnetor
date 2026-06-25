@@ -9,18 +9,18 @@ use crate::block_sparse_decomp::{
     BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
 use crate::block_sparse_with_backend::{
-    diagonal_scale_block_sparse_with_backend, eig_block_sparse_with_backend,
-    eigh_block_sparse_with_backend, eigvals_block_sparse_with_backend,
-    eigvalsh_block_sparse_with_backend, expm_antihermitian_block_sparse_with_backend,
-    expm_block_sparse_with_backend, expm_hermitian_block_sparse_with_backend,
-    fuse_legs_block_sparse_with_backend, inverse_block_sparse_with_backend,
-    permute_block_sparse_with_backend, solve_block_sparse_with_backend,
-    trace_block_sparse_with_backend,
+    eig_block_sparse_with_backend, eigh_block_sparse_with_backend,
+    eigvals_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
+    expm_antihermitian_block_sparse_with_backend, expm_block_sparse_with_backend,
+    expm_hermitian_block_sparse_with_backend, fuse_legs_block_sparse_with_backend,
+    inverse_block_sparse_with_backend, permute_block_sparse_with_backend,
+    solve_block_sparse_with_backend, trace_block_sparse_with_backend,
 };
 use crate::contract_dispatch::contract;
 use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
+use crate::scale_dispatch::diagonal_scale;
 
 /// Host-defaulting method forms of the block-sparse explicit-backend
 /// operations.
@@ -68,8 +68,7 @@ pub trait BlockSparseHostOps<T: Scalar, S: Sector> {
         fused_direction: Direction,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError>;
 
-    /// Host-defaulting counterpart of
-    /// [`crate::diagonal_scale_block_sparse_with_backend`].
+    /// Host-defaulting counterpart of [`crate::diagonal_scale`].
     fn diagonal_scale(
         &self,
         weights: &BlockScalars<T::Real, S>,
@@ -175,7 +174,7 @@ impl<T: Scalar, S: Sector> BlockSparseHostOps<T, S> for BlockSparseTensor<T, S> 
         weights: &BlockScalars<T::Real, S>,
         axis: usize,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
-        diagonal_scale_block_sparse_with_backend(Host::shared().as_ref(), self, weights, axis)
+        diagonal_scale(Host::shared().as_ref(), self, weights, axis)
     }
 
     fn trace(&self, pairs: &[(usize, usize)]) -> Result<BlockSparseTensor<T, S>, LinalgError> {

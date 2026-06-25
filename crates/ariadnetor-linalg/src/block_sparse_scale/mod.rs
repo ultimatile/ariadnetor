@@ -30,7 +30,7 @@ use crate::error::LinalgError;
 ///
 /// Internal kernel for the block-sparse diagonal-scale on joined-form
 /// [`BlockSparseTensorData<T, S>`]. The public entry point is
-/// [`crate::diagonal_scale_block_sparse_with_backend`].
+/// [`crate::diagonal_scale`].
 pub(crate) fn diagonal_scale_block_sparse_dense<T, S>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
