@@ -111,6 +111,43 @@ fn test_eig_c32() {
     assert_eig_laws(&a, 3, 1e-3, c32_to_c64, c32_to_c64);
 }
 
+// Real input matrices with complex-conjugate eigenpairs drive the
+// conjugate-pair branch of `real_to_cplx_f64` / `real_to_cplx_f32`. Every
+// other eig test uses purely real eigenvalues, so that branch — the imaginary
+// signs of the paired eigenvalues, the conjugate eigenvector packing, and the
+// two-column index advance — is otherwise never exercised. The A*v == w*v law
+// (over Complex<f64>) is order-independent and rejects a flipped imaginary sign
+// because each returned eigenvector is the conjugate-correct one for its value.
+
+#[test]
+fn test_eig_f64_complex_pair_2x2() {
+    // Rotation [[0, -1], [1, 0]] has eigenvalues ±i (char poly λ² + 1 = 0).
+    let a = [0.0f64, 1.0, -1.0, 0.0];
+    assert_eig_laws(&a, 2, 1e-10, f64_to_c64, c64_to_c64);
+}
+
+#[test]
+fn test_eig_f32_complex_pair_2x2() {
+    let a = [0.0f32, 1.0, -1.0, 0.0];
+    assert_eig_laws(&a, 2, 1e-4, f32_to_c64, c32_to_c64);
+}
+
+#[test]
+fn test_eig_f64_complex_pair_with_real_3x3() {
+    // Block-diagonal diag(2, [[0, -1], [1, 0]]): eigenvalues {2, ±i}
+    // ((2 - λ)(λ² + 1) = 0). The real eigenvalue takes the single-column
+    // advance before the conjugate pair takes the two-column advance, pinning
+    // the index bookkeeping a pure 2x2 pair cannot reach.
+    let a = [2.0f64, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0];
+    assert_eig_laws(&a, 3, 1e-10, f64_to_c64, c64_to_c64);
+}
+
+#[test]
+fn test_eig_f32_complex_pair_with_real_3x3() {
+    let a = [2.0f32, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0];
+    assert_eig_laws(&a, 3, 1e-4, f32_to_c64, c32_to_c64);
+}
+
 #[test]
 fn test_eig_rejects_row_major_order() {
     let backend = NativeBackend::new();
