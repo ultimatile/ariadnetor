@@ -256,10 +256,15 @@ fn test_dense_data_mul_complex() {
         vec![2],
         MemoryOrder::ColumnMajor,
     );
-    let product = &tensor * Complex::new(2.0, 3.0);
+    let factor = Complex::new(2.0, 3.0);
     // (1+0i)*(2+3i) = 2+3i ; (0+1i)*(2+3i) = -3+2i
-    assert_eq!(product.data()[0], Complex::new(2.0, 3.0));
-    assert_eq!(product.data()[1], Complex::new(-3.0, 2.0));
+    let expected = &[Complex::new(2.0, 3.0), Complex::new(-3.0, 2.0)];
+    // All three operator forms must agree for a complex factor.
+    assert_eq!((&tensor * factor).data(), expected);
+    assert_eq!((tensor.clone() * factor).data(), expected);
+    let mut assigned = tensor;
+    assigned *= factor;
+    assert_eq!(assigned.data(), expected);
 }
 
 #[test]
