@@ -8,6 +8,8 @@
 //! joined form's accessors back up to the `Tensor` surface so consumers
 //! can write `t.indices()`, `t.block_data(&coord)`, etc.
 
+use std::ops::Mul;
+
 use arnet_core::Scalar;
 use num_traits::Float;
 
@@ -98,5 +100,31 @@ where
     pub fn conj(&self) -> Self {
         let td = self.data.conj();
         Self { data: td }
+    }
+}
+
+impl<T, S> Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
+where
+    T: Clone,
+    S: Sector,
+{
+    /// Scale every stored element by a factor (in-place).
+    pub fn scale<F>(&mut self, factor: F)
+    where
+        T: Mul<F, Output = T>,
+        F: Clone,
+    {
+        self.data.scale(factor);
+    }
+
+    /// Scale every stored element by a factor (out-of-place).
+    pub fn scaled<F>(&self, factor: F) -> Self
+    where
+        T: Mul<F, Output = T>,
+        F: Clone,
+    {
+        Self {
+            data: self.data.scaled(factor),
+        }
     }
 }

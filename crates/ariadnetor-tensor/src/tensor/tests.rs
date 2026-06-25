@@ -269,6 +269,100 @@ fn block_sparse_tensor_conj_keeps_directions_and_flux() {
 }
 
 #[test]
+fn block_sparse_tensor_scale_multiplies_each_stored_block() {
+    use crate::{Direction, U1Sector};
+
+    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
+    // Tag each stored element by its flat position so the per-block
+    // multiplication is checkable.
+    let mut t = BlockSparseTensor::<f64, U1Sector>::from_block_fn(
+        vec![row, col],
+        U1Sector(0),
+        |_coord, block_shape| {
+            let len: usize = block_shape.iter().product();
+            (0..len).map(|i| 1.0 + i as f64).collect()
+        },
+    );
+
+    // Snapshot the stored blocks before scaling.
+    let before00: Vec<f64> = t.block_data(&BlockCoord(vec![0, 0])).unwrap().to_vec();
+    let before11: Vec<f64> = t.block_data(&BlockCoord(vec![1, 1])).unwrap().to_vec();
+
+    t.scale(3.0);
+
+    let after00 = t.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    let after11 = t.block_data(&BlockCoord(vec![1, 1])).unwrap();
+    for (a, b) in after00.iter().zip(before00.iter()) {
+        assert_eq!(*a, b * 3.0);
+    }
+    for (a, b) in after11.iter().zip(before11.iter()) {
+        assert_eq!(*a, b * 3.0);
+    }
+}
+
+#[test]
+fn block_sparse_tensor_scaled_preserves_original() {
+    use crate::{Direction, U1Sector};
+
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+    let a = BlockSparseTensor::<f64, U1Sector>::from_block_fn(
+        vec![row, col],
+        U1Sector(0),
+        |_coord, block_shape| {
+            let len: usize = block_shape.iter().product();
+            vec![2.0; len]
+        },
+    );
+
+    let b = a.scaled(2.5);
+
+    // Original untouched.
+    assert!(
+        a.block_data(&BlockCoord(vec![0, 0]))
+            .unwrap()
+            .iter()
+            .all(|&x| x == 2.0)
+    );
+    // Out-of-place copy scaled, layout preserved.
+    assert!(
+        b.block_data(&BlockCoord(vec![0, 0]))
+            .unwrap()
+            .iter()
+            .all(|&x| x == 5.0)
+    );
+    assert_eq!(b.shape(), a.shape());
+}
+
+#[test]
+fn block_sparse_tensor_scale_handles_complex_factors() {
+    use crate::{Direction, U1Sector};
+    use num_complex::Complex;
+
+    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
+    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
+    let mut t = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    {
+        let block = t.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
+        block[0] = Complex::new(1.0, 2.0);
+        block[1] = Complex::new(-3.0, 4.0);
+    }
+
+    // Real factor scales both parts.
+    let real_scaled = t.scaled(2.0);
+    let rs = real_scaled.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    assert_eq!(rs[0], Complex::new(2.0, 4.0));
+    assert_eq!(rs[1], Complex::new(-6.0, 8.0));
+
+    // Complex factor rotates and scales (in-place).
+    t.scale(Complex::new(0.0, 1.0));
+    let d = t.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    assert_eq!(d[0], Complex::new(-2.0, 1.0));
+    assert_eq!(d[1], Complex::new(-4.0, -3.0));
+}
+
+#[test]
 fn test_get_set_accept_any_asref_coords() {
     // get/set take `impl AsRef<[usize]>`: an array literal (no borrow), a
     // borrowed slice, and a `&Vec` must all address the same element.
