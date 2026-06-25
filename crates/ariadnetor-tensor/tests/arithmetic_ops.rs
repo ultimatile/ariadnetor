@@ -213,5 +213,71 @@ fn test_add_all_complex() {
     }
 }
 
+// ============================================================================
+// DenseTensorData scalar-multiplication operator tests (`*`, `*=`)
+// ============================================================================
+//
+// The operators are convenience aliases for `scale` / `scaled`; these
+// tests assert element-wise equivalence and the borrow-vs-consume split.
+
+#[test]
+fn test_dense_data_mul_owned_f64() {
+    let tensor = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
+    let expected = tensor.scaled(2.5);
+    let product = tensor * 2.5;
+    assert_eq!(product.data(), expected.data());
+}
+
+#[test]
+fn test_dense_data_mul_ref_leaves_original() {
+    let tensor = DenseTensorData::<f64>::filled_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
+    let product = &tensor * 2.5;
+    // Borrowing form does not consume or mutate the original.
+    assert_eq!(tensor.data()[0], 3.0);
+    for &val in product.data() {
+        assert_eq!(val, 7.5);
+    }
+}
+
+#[test]
+fn test_dense_data_mul_assign_f64() {
+    let mut tensor =
+        DenseTensorData::<f64>::filled_in_order(vec![2, 2], 3.0, MemoryOrder::ColumnMajor);
+    let mut expected = tensor.clone();
+    expected.scale(2.5);
+    tensor *= 2.5;
+    assert_eq!(tensor.data(), expected.data());
+}
+
+#[test]
+fn test_dense_data_mul_complex() {
+    let tensor = DenseTensorData::<Complex<f64>>::from_raw_parts(
+        vec![Complex::new(1.0, 0.0), Complex::new(0.0, 1.0)],
+        vec![2],
+        MemoryOrder::ColumnMajor,
+    );
+    let factor = Complex::new(2.0, 3.0);
+    // (1+0i)*(2+3i) = 2+3i ; (0+1i)*(2+3i) = -3+2i
+    let expected = &[Complex::new(2.0, 3.0), Complex::new(-3.0, 2.0)];
+    // All three operator forms must agree for a complex factor.
+    assert_eq!((&tensor * factor).data(), expected);
+    assert_eq!((tensor.clone() * factor).data(), expected);
+    let mut assigned = tensor;
+    assigned *= factor;
+    assert_eq!(assigned.data(), expected);
+}
+
+#[test]
+fn test_dense_data_mul_column_major_flat() {
+    // CM flat for [[1,2],[3,4]] is [1,3,2,4]; scaling preserves the order.
+    let tensor = DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 3.0, 2.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    );
+    let product = &tensor * 2.0;
+    assert_eq!(product.data(), &[2.0, 6.0, 4.0, 8.0]);
+}
+
 // Tensor-level tests (scale, linear_combine, etc.) are in ariadnetor/tests/
 // since Tensor is now defined in the ariadnetor crate.
