@@ -194,8 +194,10 @@ done
 # reach. The shipped run (.cargo/mutants.toml, default features) builds
 # hptt ON and arpack OFF, so two regions never see a live mutant: the
 # ARPACK backend (never compiled) and the naive transpose fallback (masked
-# by hptt). These two passes restore them. Triage each pass's mutants.out
-# separately; a "missed" there means untested, same as the shipped run.
+# by hptt). These two passes restore them. Each writes to its own
+# target/mutants-<pass> directory (set per task below); triage each pass's
+# output separately — a "missed" there means untested, same as the shipped
+# run's default mutants.out.
 
 # ARPACK pass: the krylov ARPACK backend (krylov/arpack.rs, wholly
 # #[cfg(feature = "arpack")]) and the ARPACK branch of

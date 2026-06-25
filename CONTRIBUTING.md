@@ -68,9 +68,10 @@ cargo make mutants-arpack  # the #[cfg(feature = "arpack")] krylov backend
 cargo make mutants-naive   # the #[cfg(not(feature = "hptt"))] naive transpose fallback
 ```
 
-`mutants-arpack` builds with `--features arpack` (needs the system ARPACK
-library; without it the ARPACK mutants trivially pass the shipped run
-because the code never compiles); `mutants-naive` builds native with
+`mutants-arpack` builds with `--features arpack`, compiling the ARPACK
+backend that the shipped pass (arpack off by default) never builds — which
+is why its mutants trivially pass the shipped run; the pass itself needs
+the system ARPACK library at build time. `mutants-naive` builds native with
 `--no-default-features` to unmask the fallback. Each pass scopes mutation
 with `--file` (and `--re` for the naive functions) to just its
 feature-gated region, so it audits what the shipped run cannot reach
