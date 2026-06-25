@@ -26,7 +26,7 @@ These are run on demand, not wired into `gate`:
 cargo make external-types  # layer-leak gate: no lower-layer/foreign type leaks through a public API
 cargo make public-api      # print the public API surface per crate (review surface changes)
 cargo semver-checks        # semver-compatibility check (once a baseline is published)
-cargo mutants              # mutation testing
+cargo mutants              # mutation testing (shipped pass; faithful run is all three below)
 cargo make litmus          # pluggability litmus: host-pinned crates against the alternate Host substrate
 ```
 
@@ -55,6 +55,36 @@ works, `nightly-2025-10-25` is too old). The version is not pinned in the
 repo — it is a `PATH` tool like the other ad-hoc QA commands. If a future
 nightly outpaces the tool's supported format, bump the tool or pin a
 compatible nightly.
+
+`cargo mutants` runs the shipped mutation pass with default features, so
+hptt is ON and arpack OFF. Two feature-gated regions fall outside that
+pass by construction — the ARPACK backend is never compiled, and the
+naive transpose fallback is masked by hptt — so each has a companion
+task and the faithful run is all three:
+
+```bash
+cargo mutants              # shipped pass: default features (hptt on, arpack off)
+cargo make mutants-arpack  # the #[cfg(feature = "arpack")] krylov backend
+cargo make mutants-naive   # the #[cfg(not(feature = "hptt"))] naive transpose fallback
+```
+
+`mutants-arpack` builds with `--features arpack`, compiling the ARPACK
+backend that the shipped pass (arpack off by default) never builds — which
+is why its mutants trivially pass the shipped run; the pass itself needs
+the system ARPACK library at build time. `mutants-naive` builds native with
+`--no-default-features` to unmask the fallback. Each pass scopes mutation
+with `--file` (and `--re` for the naive functions) to just its
+feature-gated region, so it audits what the shipped run cannot reach
+rather than re-mutating already-covered code — without that scope the
+naive pass would re-mutate the whole native crate and surface false gaps
+from the hptt-gated functions it compiles out. Both use
+`--test-workspace false`: for `mutants-naive` it is
+required, because a workspace test re-enables `native/hptt` through feature
+unification and compiles the naive path back out; for `mutants-arpack` it
+scopes testing to the only crate whose tests can kill the mutants. Each
+pass writes to its own `target/mutants-{arpack,naive}` directory so all
+three result sets coexist; triage each pass's `missed.txt` independently —
+there, as in the shipped run, "missed" means untested.
 
 ## Coding Conventions
 

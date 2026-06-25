@@ -7,9 +7,12 @@
 # discoverable; or when it has a canonical form that must not drift
 # run-to-run. Short commands whose flags are routinely varied stay ad hoc
 # (a fixed task there only removes flexibility). Genuinely ad-hoc QA
-# tools that sit outside the gate (semver-checks, mutation testing) are
-# listed in CONTRIBUTING.md rather than registered here; composite QA
-# loops with a canonical form (external-types, public-api) earn a task.
+# tools that sit outside the gate (semver-checks, the bare shipped
+# `cargo mutants` pass) are listed in CONTRIBUTING.md rather than
+# registered here; composite QA loops with a canonical form
+# (external-types, public-api) and the feature-gated mutation passes
+# (mutants-arpack, mutants-naive — whose non-obvious, order-sensitive
+# flags must not drift) earn a task.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
@@ -186,3 +189,75 @@ for crate in ariadnetor-core ariadnetor-tensor ariadnetor-linalg ariadnetor-nati
     cargo public-api -p "${crate}"
 done
 '''
+
+# Faithful mutation passes for code the shipped `cargo mutants` run cannot
+# reach. The shipped run (.cargo/mutants.toml, default features) builds
+# hptt ON and arpack OFF, so two regions never see a live mutant: the
+# ARPACK backend (never compiled) and the naive transpose fallback (masked
+# by hptt). These two passes restore them. Each writes to its own
+# target/mutants-<pass> directory (set per task below); triage each pass's
+# output separately — a "missed" there means untested, same as the shipped
+# run's default mutants.out.
+
+# ARPACK pass: the krylov ARPACK backend (krylov/arpack.rs, wholly
+# #[cfg(feature = "arpack")]) and the ARPACK branch of
+# validate_eigensolver_params (dmrg/solver.rs) are OFF by default, so their
+# mutants trivially pass the shipped run. `--features arpack` compiles them;
+# the two `--file` globs scope mutation to just those files so the pass
+# audits the feature-gated region instead of re-mutating the whole crate
+# (the rest is already covered by the shipped run). solver.rs is mutated
+# whole — its ARPACK match arm shares a function name with the sibling
+# Lanczos arm and cannot be name-filtered apart from it — so a few
+# non-ARPACK solver mutants overlap the shipped run; their verdicts are
+# identical there (algorithms has no cross-crate test consumer), so the
+# overlap is redundant, not contradictory. `--test-workspace false` scopes
+# testing to the algorithms crate's own unit + integration tests
+# (tests/arpack_smallest.rs, tests/dmrg_arpack.rs) — the only tests that can
+# kill these mutants; it is an optimization here, not a correctness
+# requirement. `--output` keeps this pass's results out of the shipped run's
+# default mutants.out. Needs the system ARPACK library at build time.
+[tasks.mutants-arpack]
+description = "Mutation pass over the feature-gated ARPACK backend (cargo mutants --features arpack); requires the system ARPACK library"
+command = "cargo"
+args = [
+    "mutants",
+    "-p", "ariadnetor-algorithms",
+    "--features", "arpack",
+    "--file", "crates/ariadnetor-algorithms/src/krylov/arpack.rs",
+    "--file", "crates/ariadnetor-algorithms/src/dmrg/solver.rs",
+    "--test-workspace", "false",
+    "--output", "target/mutants-arpack",
+]
+
+# Naive-transpose pass: naive / naive_sequential / naive_parallel /
+# new_to_old_idx / compute_strides in ariadnetor-native/src/transpose.rs are
+# #[cfg(not(feature = "hptt"))], unreachable under the default (hptt-on)
+# build. `--no-default-features` compiles them; `--file` + `--re` scope
+# mutation to exactly those fallback functions. The scope is REQUIRED for a
+# faithful result, not an optimization — without it the pass also mutates
+#   - the hptt-gated functions in the same file (cfg'd out here, so their
+#     mutants surface as false gaps), and
+#   - the rest of the native crate (gemm/qr/svd/...), which the shipped run
+#     already audits; re-mutating it here is redundant, and under the
+#     package-scoped tests this pass uses (see --test-workspace below) any
+#     native mutant the shipped run kills only via a cross-crate test
+#     (test_workspace = true) would additionally surface as a false gap.
+# `--test-workspace false` is likewise REQUIRED: under a workspace test cargo
+# feature unification re-enables native/hptt through default-feature
+# consumers (algorithms, mps, the umbrella), recompiling native with hptt ON
+# so the naive path is compiled out and its mutants become unviable.
+# Package-scoped testing (native's only dev-dep is rstest) keeps hptt off and
+# runs tests/transpose.rs against the naive path. `--output` keeps this
+# pass's results out of the shipped run's default mutants.out.
+[tasks.mutants-naive]
+description = "Mutation pass over the naive transpose fallback masked by hptt (cargo mutants --no-default-features)"
+command = "cargo"
+args = [
+    "mutants",
+    "-p", "ariadnetor-native",
+    "--no-default-features",
+    "--file", "crates/ariadnetor-native/src/transpose.rs",
+    "--re", "naive|new_to_old_idx|compute_strides",
+    "--test-workspace", "false",
+    "--output", "target/mutants-naive",
+]
