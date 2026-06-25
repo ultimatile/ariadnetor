@@ -69,15 +69,21 @@ cargo make mutants-naive   # the #[cfg(not(feature = "hptt"))] naive transpose f
 ```
 
 `mutants-arpack` builds with `--features arpack` (needs the system ARPACK
-library); without it the ARPACK mutants trivially pass the shipped run
-because the code never compiles. `mutants-naive` builds native with
-`--no-default-features` to unmask the fallback. Both companion passes use
-`--test-workspace false`: for `mutants-naive` it is required, because a
-workspace test re-enables `native/hptt` through feature unification and
-compiles the naive path back out; for `mutants-arpack` it scopes testing
-to the only crate whose tests can kill the mutants. Triage each pass's
-`missed.txt` independently — there, as in the shipped run, "missed" means
-untested.
+library; without it the ARPACK mutants trivially pass the shipped run
+because the code never compiles); `mutants-naive` builds native with
+`--no-default-features` to unmask the fallback. Each pass scopes mutation
+with `--file` (and `--re` for the naive functions) to just its
+feature-gated region, so it audits what the shipped run cannot reach
+rather than re-mutating already-covered code — without that scope the
+naive pass would re-mutate the whole native crate and surface false gaps
+from the hptt-gated functions it compiles out. Both use
+`--test-workspace false`: for `mutants-naive` it is
+required, because a workspace test re-enables `native/hptt` through feature
+unification and compiles the naive path back out; for `mutants-arpack` it
+scopes testing to the only crate whose tests can kill the mutants. Each
+pass writes to its own `target/mutants-{arpack,naive}` directory so all
+three result sets coexist; triage each pass's `missed.txt` independently —
+there, as in the shipped run, "missed" means untested.
 
 ## Coding Conventions
 
