@@ -1,7 +1,7 @@
 //! Reshape, element-wise, and arithmetic operations for `DenseTensorData<T>`.
 
 use num_traits::Zero;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, MulAssign};
 
 use crate::{DenseLayout, DenseTensorData, TensorData, TensorError};
 use arnet_core::MemoryOrder;
@@ -97,6 +97,51 @@ where
         let mut result = self.clone();
         result.storage_mut().scale(factor);
         result
+    }
+}
+
+// ============================================================================
+// Scalar-multiplication operators on DenseTensorData<T>
+// ============================================================================
+//
+// Convenience aliases for `scale` / `scaled`, restricted to a same-type
+// factor (`S = T`). Cross-type factors (e.g. scaling a complex tensor by
+// a real) cannot be expressed through a single `Mul` impl without
+// conflicting coherence, so those callers keep using the named methods.
+
+impl<T> Mul<T> for DenseTensorData<T>
+where
+    T: Clone + Mul<Output = T>,
+{
+    type Output = DenseTensorData<T>;
+
+    /// Scale by `rhs`, consuming `self`. Reuses the owned buffer in
+    /// place (no extra allocation when the storage is uniquely owned).
+    fn mul(mut self, rhs: T) -> Self::Output {
+        self.scale(rhs);
+        self
+    }
+}
+
+impl<T> Mul<T> for &DenseTensorData<T>
+where
+    T: Clone + Mul<Output = T>,
+{
+    type Output = DenseTensorData<T>;
+
+    /// Scale by `rhs`, leaving `self` untouched (out-of-place).
+    fn mul(self, rhs: T) -> Self::Output {
+        self.scaled(rhs)
+    }
+}
+
+impl<T> MulAssign<T> for DenseTensorData<T>
+where
+    T: Clone + Mul<Output = T>,
+{
+    /// Scale every element by `rhs` in place.
+    fn mul_assign(&mut self, rhs: T) {
+        self.scale(rhs);
     }
 }
 

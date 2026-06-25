@@ -4,7 +4,7 @@
 //! normalization, conjugation, zero-copy reshape, and reorder. These
 //! operations are storage-local: they do not need a backend for dispatch.
 
-use std::ops::Mul;
+use std::ops::{Mul, MulAssign};
 
 use arnet_core::Scalar;
 use num_traits::{One, Zero};
@@ -162,6 +162,50 @@ impl<S: Clone> Tensor<DenseStorage<S>, DenseLayout> {
         let order = self.data.layout().order();
         let td = DenseTensorData::from_raw_parts(new_data, shape, order);
         Self::from_data(td)
+    }
+}
+
+// ============================================================================
+// Scalar-multiplication operators on the joined DenseTensor surface
+// ============================================================================
+//
+// Convenience aliases for `scale` / `scaled`, restricted to a same-type
+// factor (`S` matches the element type). Cross-type factors keep using
+// the named methods, since a single `Mul` impl cannot cover them without
+// conflicting coherence.
+
+impl<S> Mul<S> for Tensor<DenseStorage<S>, DenseLayout>
+where
+    S: Clone + Mul<Output = S>,
+{
+    type Output = Tensor<DenseStorage<S>, DenseLayout>;
+
+    /// Scale by `rhs`, consuming `self` (in-place on the owned buffer).
+    fn mul(mut self, rhs: S) -> Self::Output {
+        self.scale(rhs);
+        self
+    }
+}
+
+impl<S> Mul<S> for &Tensor<DenseStorage<S>, DenseLayout>
+where
+    S: Clone + Mul<Output = S>,
+{
+    type Output = Tensor<DenseStorage<S>, DenseLayout>;
+
+    /// Scale by `rhs`, leaving `self` untouched (out-of-place).
+    fn mul(self, rhs: S) -> Self::Output {
+        self.scaled(rhs)
+    }
+}
+
+impl<S> MulAssign<S> for Tensor<DenseStorage<S>, DenseLayout>
+where
+    S: Clone + Mul<Output = S>,
+{
+    /// Scale every element by `rhs` in place.
+    fn mul_assign(&mut self, rhs: S) {
+        self.scale(rhs);
     }
 }
 

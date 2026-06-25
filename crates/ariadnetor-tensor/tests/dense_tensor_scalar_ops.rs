@@ -124,3 +124,74 @@ fn test_normalized_column_major() {
     assert!((normalized.data_slice()[0] - 1.0 * expected_scale).abs() < 1e-10);
     assert!((normalized.data_slice()[1] - 3.0 * expected_scale).abs() < 1e-10);
 }
+
+// --- scalar-multiplication operators (`*`, `*=`) ---
+//
+// Convenience aliases for `scale` / `scaled` on the joined `DenseTensor`
+// surface; equivalence to the named methods and the borrow-vs-consume
+// split are the properties under test.
+
+#[test]
+fn test_mul_owned_f64() {
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    ));
+    let product = tensor * 2.5;
+    assert_eq!(product.get([0, 0]), 2.5);
+    assert_eq!(product.get([0, 1]), 5.0);
+    assert_eq!(product.get([1, 0]), 7.5);
+    assert_eq!(product.get([1, 1]), 10.0);
+}
+
+#[test]
+fn test_mul_ref_leaves_original() {
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    ));
+    let product = &tensor * 2.5;
+    // Borrowing form does not consume or mutate the original.
+    assert_eq!(tensor.get([0, 0]), 1.0);
+    assert_eq!(product.get([1, 0]), 7.5);
+}
+
+#[test]
+fn test_mul_assign_f64() {
+    let mut tensor = t(DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 2.0, 3.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::RowMajor,
+    ));
+    let mut expected = tensor.clone();
+    expected.scale(2.5);
+    tensor *= 2.5;
+    assert_eq!(tensor.data_slice(), expected.data_slice());
+}
+
+#[test]
+fn test_mul_complex() {
+    use num_complex::Complex;
+    let tensor = t(DenseTensorData::from_raw_parts(
+        vec![Complex::new(1.0, 0.0), Complex::new(0.0, 1.0)],
+        vec![2],
+        MemoryOrder::ColumnMajor,
+    ));
+    let product = &tensor * Complex::new(2.0, 3.0);
+    // (1+0i)*(2+3i) = 2+3i ; (0+1i)*(2+3i) = -3+2i
+    assert_eq!(product.data_slice()[0], Complex::new(2.0, 3.0));
+    assert_eq!(product.data_slice()[1], Complex::new(-3.0, 2.0));
+}
+
+#[test]
+fn test_mul_column_major_flat() {
+    let tensor = t(DenseTensorData::<f64>::from_raw_parts(
+        vec![1.0, 3.0, 2.0, 4.0],
+        vec![2, 2],
+        MemoryOrder::ColumnMajor,
+    ));
+    let product = &tensor * 2.0;
+    assert_eq!(product.data_slice(), &[2.0, 6.0, 4.0, 8.0]);
+}
