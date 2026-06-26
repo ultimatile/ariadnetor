@@ -18,8 +18,12 @@ mod storage;
 mod tensor;
 mod tensor_data;
 
-#[cfg(test)]
-mod test_fixtures;
+// Shared BlockSparse leg-fixture builders. Reachable by this crate's own unit
+// tests under `cfg(test)`, and by other crates' tests via the `test-fixtures`
+// dev-dependency feature. See the module docs for why a separate crate cannot
+// serve the in-lib unit tests.
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod test_fixtures;
 
 // Re-export from ariadnetor-core
 pub use arnet_core::{

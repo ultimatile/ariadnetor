@@ -1,14 +1,20 @@
 //! Shared fixture builders for BlockSparse `QNIndex` leg construction.
 //!
-//! The crate's BlockSparse unit tests hand-roll `QNIndex` leg pairs at many
-//! sites across `tensor::tests` and `block_sparse::tests`. These builders
-//! centralize that construction for those modules: the leg-shape intent
+//! The workspace's BlockSparse tests hand-roll `QNIndex` leg pairs at many
+//! sites. These builders centralize that construction: the leg-shape intent
 //! (square / non-square / general) reads at the call site, and a `QNIndex::new`
-//! signature change is absorbed here rather than at every unit-test call site.
-//! Being `#[cfg(test)]` and `pub(crate)`, they cover only this crate's unit
-//! tests; integration tests under `tests/` and other crates construct legs
-//! independently. The builders are generic over the sector type so both
-//! `U1Sector` and `Z2Sector` fixtures share them.
+//! signature change is absorbed here rather than at every test call site. They
+//! are generic over the sector type so both `U1Sector` and `Z2Sector` fixtures
+//! share them.
+//!
+//! The module is gated on `cfg(any(test, feature = "test-fixtures"))`: this
+//! crate's own in-lib unit tests reach it as `crate::test_fixtures` under
+//! `cfg(test)`, while every other crate's tests enable the `test-fixtures`
+//! feature in their dev-dependencies and reach it as
+//! `arnet_tensor::test_fixtures`. A separate fixture crate cannot serve the
+//! in-lib unit tests: a dev-dependency cycle would link the non-test build of
+//! this crate, whose `Sector` / `QNIndex` types are a distinct instance from
+//! the `cfg(test)` build under test.
 
 use crate::block_sparse::{Direction, QNIndex};
 use crate::sector::Sector;
@@ -17,7 +23,7 @@ use crate::sector::Sector;
 ///
 /// The general builder underpinning [`out_in_legs`] and [`square_legs`]; use it
 /// directly for the irregular shapes — `Out`/`Out` pairs and rank-N legs.
-pub(crate) fn legs<S: Sector>(
+pub fn legs<S: Sector>(
     specs: impl IntoIterator<Item = (Vec<(S, usize)>, Direction)>,
 ) -> Vec<QNIndex<S>> {
     specs
@@ -27,14 +33,11 @@ pub(crate) fn legs<S: Sector>(
 }
 
 /// An `Out` row leg and an `In` column leg with independent sector lists.
-pub(crate) fn out_in_legs<S: Sector>(
-    row: Vec<(S, usize)>,
-    col: Vec<(S, usize)>,
-) -> Vec<QNIndex<S>> {
+pub fn out_in_legs<S: Sector>(row: Vec<(S, usize)>, col: Vec<(S, usize)>) -> Vec<QNIndex<S>> {
     legs([(row, Direction::Out), (col, Direction::In)])
 }
 
 /// An `Out` row leg and an `In` column leg sharing one sector list (square pair).
-pub(crate) fn square_legs<S: Sector>(sectors: Vec<(S, usize)>) -> Vec<QNIndex<S>> {
+pub fn square_legs<S: Sector>(sectors: Vec<(S, usize)>) -> Vec<QNIndex<S>> {
     out_in_legs(sectors.clone(), sectors)
 }

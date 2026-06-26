@@ -6,8 +6,9 @@
 
 use arnet::{
     BlockCoord, BlockSparseHostOps, BlockSparseSvdResult, BlockSparseTensor, DenseHostOps,
-    DenseTensor, Direction, QNIndex, U1Sector,
+    DenseTensor, U1Sector,
 };
+use arnet_tensor::test_fixtures::square_legs;
 
 #[test]
 fn dense_methods_resolve_through_umbrella() {
@@ -29,9 +30,10 @@ fn dense_methods_resolve_through_umbrella() {
 
 #[test]
 fn block_sparse_methods_resolve_through_umbrella() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
-    let mut t = BlockSparseTensor::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut t = BlockSparseTensor::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 2)]),
+        U1Sector(0),
+    );
     t.block_data_mut(&BlockCoord(vec![0, 0]))
         .expect("block (0,0) exists")
         .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
