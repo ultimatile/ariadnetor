@@ -4,6 +4,41 @@ use std::ops::Mul;
 use arnet_core::Scalar;
 
 use super::*;
+// `Direction` / `U1Sector` are not surfaced by `use super::*` (the module's
+// `use crate::{...}` block omits both), so they are imported here once for the
+// shared helpers and every BlockSparse test below.
+use crate::{Direction, U1Sector};
+
+/// Build a square U(1) BlockSparse tensor with an `Out` row leg and an `In`
+/// column leg sharing one sector list. Centralizes the leg-construction
+/// boilerplate repeated across the BlockSparse tests.
+fn u1_square_tensor<T>(
+    sectors: Vec<(U1Sector, usize)>,
+    flux: U1Sector,
+) -> BlockSparseTensor<T, U1Sector>
+where
+    T: Clone + Zero,
+{
+    let row = QNIndex::new(sectors.clone(), Direction::Out);
+    let col = QNIndex::new(sectors, Direction::In);
+    BlockSparseTensor::<T, U1Sector>::zeros(vec![row, col], flux)
+}
+
+/// Same square `Out`/`In` legs as [`u1_square_tensor`], but populated through
+/// `from_block_fn` so tests can tag each stored block.
+fn u1_square_tensor_from_block_fn<T, F>(
+    sectors: Vec<(U1Sector, usize)>,
+    flux: U1Sector,
+    f: F,
+) -> BlockSparseTensor<T, U1Sector>
+where
+    T: Clone + Zero,
+    F: FnMut(&BlockCoord, &[usize]) -> Vec<T>,
+{
+    let row = QNIndex::new(sectors.clone(), Direction::Out);
+    let col = QNIndex::new(sectors, Direction::In);
+    BlockSparseTensor::<T, U1Sector>::from_block_fn(vec![row, col], flux, f)
+}
 
 fn assert_tensor_mutation<S>(zero: S, val: S, fill_val: S, scale_factor: S)
 where
@@ -147,11 +182,7 @@ fn linear_combine_rejects_shape_mismatch() {
 
 #[test]
 fn block_sparse_tensor_alias_resolves_and_basics_work() {
-    use crate::{Direction, U1Sector};
-
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let t = BlockSparseTensor::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let t = u1_square_tensor::<f64>(vec![(U1Sector(0), 2), (U1Sector(1), 3)], U1Sector(0));
 
     assert_eq!(t.shape(), &[5, 5]);
     assert_eq!(t.rank(), 2);
@@ -172,13 +203,11 @@ fn dense_tensor_zeros_pins_order_to_host_preferred() {
 
 #[test]
 fn block_sparse_tensor_zeros_pins_order_to_host_preferred() {
-    use crate::{Direction, U1Sector};
     use arnet_core::backend::ComputeBackend;
     use arnet_native::NativeBackend;
 
-    let idx = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
     let expected_order = NativeBackend::shared().preferred_order();
-    let t = BlockSparseTensor::<f64, U1Sector>::zeros(vec![idx.clone(), idx], U1Sector(0));
+    let t = u1_square_tensor::<f64>(vec![(U1Sector(0), 2), (U1Sector(1), 1)], U1Sector(0));
 
     assert_eq!(t.rank(), 2);
     assert_eq!(t.data().layout().order(), expected_order);
@@ -196,11 +225,7 @@ fn dense_tensor_conj_real_path_is_identity() {
 
 #[test]
 fn block_sparse_tensor_dagger_is_involutive() {
-    use crate::{Direction, U1Sector};
-
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let t = BlockSparseTensor::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let t = u1_square_tensor::<f64>(vec![(U1Sector(0), 2)], U1Sector(0));
 
     let t_dd = t.dagger().dagger();
 
@@ -213,15 +238,9 @@ fn block_sparse_tensor_dagger_is_involutive() {
 
 #[test]
 fn block_sparse_tensor_dagger_conjugates_complex() {
-    use crate::{Direction, U1Sector};
     use num_complex::Complex;
 
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let mut t = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
-        vec![row.clone(), col.clone()],
-        U1Sector(0),
-    );
+    let mut t = u1_square_tensor::<Complex<f64>>(vec![(U1Sector(0), 2)], U1Sector(0));
     {
         let block = t
             .block_data_mut(&BlockCoord(vec![0, 0]))
@@ -246,15 +265,9 @@ fn block_sparse_tensor_dagger_conjugates_complex() {
 
 #[test]
 fn block_sparse_tensor_conj_keeps_directions_and_flux() {
-    use crate::{Direction, U1Sector};
     use num_complex::Complex;
 
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let mut t = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
-        vec![row.clone(), col.clone()],
-        U1Sector(0),
-    );
+    let mut t = u1_square_tensor::<Complex<f64>>(vec![(U1Sector(0), 2)], U1Sector(0));
     t.block_data_mut(&BlockCoord(vec![0, 0])).unwrap()[0] = Complex::new(2.0, 5.0);
 
     let c = t.conj();
@@ -270,14 +283,10 @@ fn block_sparse_tensor_conj_keeps_directions_and_flux() {
 
 #[test]
 fn block_sparse_tensor_scale_multiplies_each_stored_block() {
-    use crate::{Direction, U1Sector};
-
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
     // Tag each stored element by its flat position so the per-block
     // multiplication is checkable.
-    let mut t = BlockSparseTensor::<f64, U1Sector>::from_block_fn(
-        vec![row, col],
+    let mut t = u1_square_tensor_from_block_fn::<f64, _>(
+        vec![(U1Sector(0), 2), (U1Sector(1), 2)],
         U1Sector(0),
         |_coord, block_shape| {
             let len: usize = block_shape.iter().product();
@@ -303,12 +312,8 @@ fn block_sparse_tensor_scale_multiplies_each_stored_block() {
 
 #[test]
 fn block_sparse_tensor_scaled_preserves_original() {
-    use crate::{Direction, U1Sector};
-
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let a = BlockSparseTensor::<f64, U1Sector>::from_block_fn(
-        vec![row, col],
+    let a = u1_square_tensor_from_block_fn::<f64, _>(
+        vec![(U1Sector(0), 2)],
         U1Sector(0),
         |_coord, block_shape| {
             let len: usize = block_shape.iter().product();
@@ -337,12 +342,9 @@ fn block_sparse_tensor_scaled_preserves_original() {
 
 #[test]
 fn block_sparse_tensor_scale_handles_complex_factors() {
-    use crate::{Direction, U1Sector};
     use num_complex::Complex;
 
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let mut t = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(vec![row, col], U1Sector(0));
+    let mut t = u1_square_tensor::<Complex<f64>>(vec![(U1Sector(0), 2)], U1Sector(0));
     {
         let block = t.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
         block[0] = Complex::new(1.0, 2.0);
