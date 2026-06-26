@@ -18,6 +18,9 @@ mod storage;
 mod tensor;
 mod tensor_data;
 
+#[cfg(test)]
+mod test_fixtures;
+
 // Re-export from ariadnetor-core
 pub use arnet_core::{
     Complex, ComputeBackend, ContractionError, ContractionPlan, EinsumExpr, MemoryOrder, Scalar,

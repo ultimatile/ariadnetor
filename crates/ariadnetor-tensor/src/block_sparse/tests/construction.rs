@@ -8,6 +8,7 @@ use rand::SeedableRng;
 
 use crate::block_sparse::*;
 use crate::sector::{U1Sector, Z2Sector};
+use crate::test_fixtures::{legs, out_in_legs, square_legs};
 
 // ---------------------------------------------------------------------------
 // zeros constructor
@@ -15,11 +16,8 @@ use crate::sector::{U1Sector, Z2Sector};
 
 #[test]
 fn zeros_u1_identity_flux() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
@@ -42,11 +40,11 @@ fn zeros_u1_identity_flux() {
 
 #[test]
 fn zeros_u1_nonzero_flux() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
-
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+            vec![(U1Sector(0), 4)],
+        ),
         U1Sector(1),
         MemoryOrder::RowMajor,
     );
@@ -59,17 +57,11 @@ fn zeros_u1_nonzero_flux() {
 
 #[test]
 fn zeros_z2() {
-    let row = QNIndex::new(
-        vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 3)],
-        Direction::Out,
-    );
-    let col = QNIndex::new(
-        vec![(Z2Sector::new(0), 4), (Z2Sector::new(1), 5)],
-        Direction::In,
-    );
-
     let bs = BlockSparseTensorData::<f64, Z2Sector>::zeros(
-        vec![row, col],
+        out_in_legs(
+            vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 3)],
+            vec![(Z2Sector::new(0), 4), (Z2Sector::new(1), 5)],
+        ),
         Z2Sector::new(0),
         MemoryOrder::RowMajor,
     );
@@ -83,12 +75,12 @@ fn zeros_z2() {
 
 #[test]
 fn zeros_rank3() {
-    let leg0 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let leg1 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let leg2 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![leg0, leg1, leg2],
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 3)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In),
+        ]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
@@ -125,11 +117,11 @@ fn zeros_rank0_nonidentity_flux() {
 #[test]
 fn zeros_no_allowed_blocks() {
     // All sectors are charge 0/Out, flux = 1 → no blocks
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 3)], Direction::Out),
+        ]),
         U1Sector(1),
         MemoryOrder::RowMajor,
     );
@@ -141,11 +133,8 @@ fn zeros_no_allowed_blocks() {
 #[test]
 fn zeros_block_layout() {
     // Verify zeros produces correct block ordering and contiguous offsets
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
@@ -168,11 +157,8 @@ fn zeros_block_layout() {
 
 #[test]
 fn block_data_mut_fills_block() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
@@ -193,11 +179,8 @@ fn block_data_mut_fills_block() {
 
 #[test]
 fn block_data_mut_nonexistent_returns_none() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
@@ -206,11 +189,8 @@ fn block_data_mut_nonexistent_returns_none() {
 
 #[test]
 fn block_data_mut_cow_semantics() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
@@ -235,19 +215,18 @@ fn block_data_mut_cow_semantics() {
 #[test]
 fn random_matches_zeros_structure() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let row = QNIndex::new(
+    let indices = out_in_legs(
         vec![(U1Sector(0), 2), (U1Sector(1), 3), (U1Sector(2), 4)],
-        Direction::Out,
+        vec![(U1Sector(0), 5), (U1Sector(1), 2)],
     );
-    let col = QNIndex::new(vec![(U1Sector(0), 5), (U1Sector(1), 2)], Direction::In);
 
     let zeros = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row.clone(), col.clone()],
+        indices.clone(),
         U1Sector(1),
         MemoryOrder::RowMajor,
     );
     let rand_bs = BlockSparseTensorData::<f64, U1Sector>::random(
-        vec![row, col],
+        indices,
         U1Sector(1),
         MemoryOrder::RowMajor,
         &mut rng,
@@ -262,12 +241,11 @@ fn random_matches_zeros_structure() {
 
 #[test]
 fn random_reproducible() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
+    let indices = square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]);
 
     let mut rng1 = rand::rngs::StdRng::seed_from_u64(123);
     let bs1 = BlockSparseTensorData::<f64, U1Sector>::random(
-        vec![row.clone(), col.clone()],
+        indices.clone(),
         U1Sector(0),
         MemoryOrder::RowMajor,
         &mut rng1,
@@ -275,7 +253,7 @@ fn random_reproducible() {
 
     let mut rng2 = rand::rngs::StdRng::seed_from_u64(123);
     let bs2 = BlockSparseTensorData::<f64, U1Sector>::random(
-        vec![row, col],
+        indices,
         U1Sector(0),
         MemoryOrder::RowMajor,
         &mut rng2,
@@ -291,11 +269,8 @@ fn random_reproducible() {
 #[test]
 fn random_data_is_nonzero() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(7);
-    let row = QNIndex::new(vec![(U1Sector(0), 4), (U1Sector(1), 4)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 4), (U1Sector(1), 4)], Direction::In);
-
     let bs = BlockSparseTensorData::<f64, U1Sector>::random(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 4), (U1Sector(1), 4)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
         &mut rng,
@@ -317,10 +292,8 @@ fn random_data_is_nonzero() {
 
 #[test]
 fn is_allowed_block_matches_flux_conservation() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
