@@ -5,13 +5,15 @@ use arnet_core::Scalar;
 
 use super::*;
 // `Direction` / `U1Sector` are not surfaced by `use super::*` (the module's
-// `use crate::{...}` block omits both), so they are imported here once for the
-// shared helpers and every BlockSparse test below.
+// `use crate::{...}` block omits both); they are imported here once for the
+// BlockSparse tests' direction assertions and sector literals below.
+use crate::test_fixtures::square_legs;
 use crate::{Direction, U1Sector};
 
 /// Build a square U(1) BlockSparse tensor with an `Out` row leg and an `In`
-/// column leg sharing one sector list. Centralizes the leg-construction
-/// boilerplate repeated across the BlockSparse tests.
+/// column leg sharing one sector list. The square `Out`/`In` special case of
+/// [`crate::test_fixtures::square_legs`], wrapped for the `BlockSparseTensor`
+/// `zeros` surface.
 fn u1_square_tensor<T>(
     sectors: Vec<(U1Sector, usize)>,
     flux: U1Sector,
@@ -19,9 +21,7 @@ fn u1_square_tensor<T>(
 where
     T: Clone + Zero,
 {
-    let row = QNIndex::new(sectors.clone(), Direction::Out);
-    let col = QNIndex::new(sectors, Direction::In);
-    BlockSparseTensor::<T, U1Sector>::zeros(vec![row, col], flux)
+    BlockSparseTensor::<T, U1Sector>::zeros(square_legs(sectors), flux)
 }
 
 /// Same square `Out`/`In` legs as [`u1_square_tensor`], but populated through
@@ -35,9 +35,7 @@ where
     T: Clone + Zero,
     F: FnMut(&BlockCoord, &[usize]) -> Vec<T>,
 {
-    let row = QNIndex::new(sectors.clone(), Direction::Out);
-    let col = QNIndex::new(sectors, Direction::In);
-    BlockSparseTensor::<T, U1Sector>::from_block_fn(vec![row, col], flux, f)
+    BlockSparseTensor::<T, U1Sector>::from_block_fn(square_legs(sectors), flux, f)
 }
 
 fn assert_tensor_mutation<S>(zero: S, val: S, fill_val: S, scale_factor: S)

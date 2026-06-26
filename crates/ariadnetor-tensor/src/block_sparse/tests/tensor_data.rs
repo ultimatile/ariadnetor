@@ -4,19 +4,16 @@
 
 use arnet_core::backend::MemoryOrder;
 
-use crate::block_sparse::{
-    BlockCoord, BlockSparseLayout, BlockSparseTensorData, Direction, QNIndex,
-};
+use crate::block_sparse::{BlockCoord, BlockSparseLayout, BlockSparseTensorData, Direction};
 use crate::sector::U1Sector;
+use crate::test_fixtures::{out_in_legs, square_legs};
 use crate::{Storage, TensorLayout};
 
 /// Build a U(1)-symmetric BlockSparseTensorData with allowed blocks
 /// (0,0) and (1,1) on a 5×5 logical shape.
 fn sample_u1_rank2_data() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     )
@@ -34,10 +31,8 @@ fn zeros_constructor_exposes_order_via_layout_only() {
 
     // Construct again with ColumnMajor to confirm the parameter is
     // honored and surfaces through the accessor.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     let td_cm = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::ColumnMajor,
     );
@@ -79,10 +74,11 @@ fn logical_extent_and_storage_extent_diverge_when_symmetry_forbids_all_blocks() 
     // the conservation law: row and col carry only U1(0)/Out and
     // U1(0)/In, but flux is U1(1). The logical shape is non-trivial
     // (2x3 = 6 cells), but the stored buffer is empty.
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::In);
-    let layout: BlockSparseLayout<U1Sector> =
-        BlockSparseLayout::new(vec![row, col], U1Sector(1), MemoryOrder::RowMajor);
+    let layout: BlockSparseLayout<U1Sector> = BlockSparseLayout::new(
+        out_in_legs(vec![(U1Sector(0), 2)], vec![(U1Sector(0), 3)]),
+        U1Sector(1),
+        MemoryOrder::RowMajor,
+    );
 
     let logical_extent: usize = TensorLayout::shape(&layout).iter().product();
     assert_eq!(logical_extent, 6, "logical extent = product(shape) = 2*3");
@@ -134,10 +130,14 @@ fn dagger_flips_directions_duals_flux_and_conjugates_data() {
 
     // Build a rank-2 complex tensor with flux U1(1): allowed blocks
     // are coords where Out_i + In_j.dual() = 1, i.e. row charge 1.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let mut td: BlockSparseTensorData<Complex64, U1Sector> =
-        BlockSparseTensorData::zeros(vec![row, col], U1Sector(1), MemoryOrder::RowMajor);
+    let mut td: BlockSparseTensorData<Complex64, U1Sector> = BlockSparseTensorData::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 2)],
+            vec![(U1Sector(0), 2)],
+        ),
+        U1Sector(1),
+        MemoryOrder::RowMajor,
+    );
 
     {
         let slot = td.block_data_mut(&BlockCoord(vec![1, 0])).unwrap();
@@ -183,10 +183,11 @@ fn dagger_flips_directions_duals_flux_and_conjugates_data() {
 fn conj_preserves_layout_and_conjugates_data() {
     use num_complex::Complex64;
 
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let mut td: BlockSparseTensorData<Complex64, U1Sector> =
-        BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), MemoryOrder::RowMajor);
+    let mut td: BlockSparseTensorData<Complex64, U1Sector> = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2)]),
+        U1Sector(0),
+        MemoryOrder::RowMajor,
+    );
 
     {
         let slot = td.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
@@ -207,10 +208,8 @@ fn conj_preserves_layout_and_conjugates_data() {
 
 #[test]
 fn from_block_fn_populates_each_allowed_block_via_closure() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     let td: BlockSparseTensorData<f64, U1Sector> = BlockSparseTensorData::from_block_fn(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
         |coord, block_shape| {
@@ -247,10 +246,8 @@ fn from_block_fn_populates_each_allowed_block_via_closure() {
 #[test]
 #[should_panic(expected = "from_block_fn: closure returned")]
 fn from_block_fn_panics_on_wrong_block_length() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let _: BlockSparseTensorData<f64, U1Sector> = BlockSparseTensorData::from_block_fn(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         MemoryOrder::RowMajor,
         |_, _| vec![0.0; 99],
@@ -268,10 +265,11 @@ fn joined_path_pins_arbitrary_order_through_layout_storage_tensor_data() {
     use crate::{BlockSparseStorage, TensorData};
 
     for order in [MemoryOrder::RowMajor, MemoryOrder::ColumnMajor] {
-        let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-        let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-        let layout: BlockSparseLayout<U1Sector> =
-            BlockSparseLayout::new(vec![row, col], U1Sector(0), order);
+        let layout: BlockSparseLayout<U1Sector> = BlockSparseLayout::new(
+            square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+            U1Sector(0),
+            order,
+        );
 
         // Allowed (0,0) → 2×2 = 4 elements, (1,1) → 3×3 = 9 elements,
         // packed in lexicographic enumeration order ⇒ 13 elements.
@@ -301,10 +299,11 @@ fn joined_path_rejects_storage_layout_size_mismatch() {
     // that assertion when callers wire a mismatched pair.
     use crate::{BlockSparseStorage, TensorData};
 
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let layout: BlockSparseLayout<U1Sector> =
-        BlockSparseLayout::new(vec![row, col], U1Sector(0), MemoryOrder::RowMajor);
+    let layout: BlockSparseLayout<U1Sector> = BlockSparseLayout::new(
+        square_legs(vec![(U1Sector(0), 2)]),
+        U1Sector(0),
+        MemoryOrder::RowMajor,
+    );
 
     // storage_extent = 4 (block (0,0) is 2×2), but supply 5-element buffer.
     let storage = BlockSparseStorage::<f64>::new(vec![0.0; 5]);
