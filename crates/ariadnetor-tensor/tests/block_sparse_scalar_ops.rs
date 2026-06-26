@@ -1,13 +1,12 @@
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, MemoryOrder, QNIndex};
+use arnet_tensor::test_fixtures::{out_in_legs, square_legs};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, MemoryOrder};
 use arnet_tensor::{U1Sector, Z2Sector};
 use num_complex::Complex;
 
 /// Helper: rank-2 U1 tensor with flux=0, blocks (0,0):2×2 and (1,1):3×3.
 fn sample_u1_rank2() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::ColumnMajor,
     );
@@ -20,10 +19,8 @@ fn sample_u1_rank2() -> BlockSparseTensorData<f64, U1Sector> {
 
 /// Helper: rank-2 U1 complex tensor with flux=0.
 fn sample_u1_complex() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let mut bs = BlockSparseTensorData::<Complex<f64>, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         MemoryOrder::ColumnMajor,
     );
@@ -96,10 +93,8 @@ fn norm_u1_rank2() {
 
 #[test]
 fn norm_zero_tensor() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         MemoryOrder::ColumnMajor,
     );
@@ -123,16 +118,8 @@ fn norm_frobenius_alias() {
 
 #[test]
 fn norm_z2_sector() {
-    let row = QNIndex::new(
-        vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 1)],
-        Direction::Out,
-    );
-    let col = QNIndex::new(
-        vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 1)],
-        Direction::In,
-    );
     let mut bs = BlockSparseTensorData::<f64, Z2Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 1)]),
         Z2Sector::new(0),
         MemoryOrder::ColumnMajor,
     );
@@ -194,10 +181,11 @@ fn dagger_flips_directions() {
 #[test]
 fn dagger_duals_flux() {
     // Non-identity flux: rank-2 tensor with flux=U1(1)
-    let row = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        out_in_legs(
+            vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+            vec![(U1Sector(0), 1)],
+        ),
         U1Sector(1),
         MemoryOrder::ColumnMajor,
     );
@@ -265,10 +253,8 @@ fn normalize_complex() {
 #[test]
 #[should_panic(expected = "Cannot normalize zero tensor")]
 fn normalize_zero_panics() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         MemoryOrder::ColumnMajor,
     );

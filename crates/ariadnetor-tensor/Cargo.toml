@@ -10,6 +10,10 @@ description = "Pure Rust tensor library with support for dense, sparse, and bloc
 # host-pinned surface is proven to hold against a non-native substrate.
 # Run via the standalone `cargo make litmus` task, not the default gate.
 pluggability-litmus = []
+# Exposes the `test_fixtures` BlockSparse leg builders as `pub` so other
+# crates' tests can dev-depend on them. Test-only: under resolver v2 a
+# dev-dependency feature stays out of normal/published builds.
+test-fixtures = []
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
@@ -27,6 +31,10 @@ thiserror = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 rand = { workspace = true }
+# Self dev-dependency enabling `test-fixtures` for this crate's own
+# integration tests (`tests/*.rs`): they are separate crates that link the
+# non-`cfg(test)` lib build, so they reach `test_fixtures` only via the feature.
+ariadnetor-tensor = { path = ".", features = ["test-fixtures"] }
 
 [[bench]]
 name = "dense_ops"
