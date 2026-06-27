@@ -4,8 +4,9 @@ use approx::assert_abs_diff_eq;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, inner, norm};
 use arnet_native::NativeBackend;
 use arnet_tensor::U1Sector;
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction,
 };
 
 use super::helpers::{
@@ -61,10 +62,14 @@ fn inner_preserved_by_canonicalize() {
 #[test]
 fn inner_single_site() {
     let backend = NativeBackend::new();
-    let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 3.0;
 
     let mps = Mps::from_sites(vec![site]);
@@ -175,12 +180,15 @@ fn braket_diagonal_single_site() {
     let backend = NativeBackend::new();
     // Sz-like operator: diag(0.5, -0.5) on a single site.
     // MPO: (Out:{0:1}, In:{0:1,1:1}, Out:{0:1,1:1}, In:{0:1}), flux=0
-    let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut sz_site =
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+    let mut sz_site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     sz_site
         .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
         .unwrap()[0] = 0.5;
@@ -191,11 +199,14 @@ fn braket_diagonal_single_site() {
         Mpo::from_sites(vec![sz_site]);
 
     // |0⟩ state: charge-0 physical only
-    let s_left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let s_phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let s_right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut up_site =
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![s_left, s_phys, s_right], U1Sector(0));
+    let mut up_site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     up_site.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
     let up: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
         Mps::from_sites(vec![up_site]);

@@ -6,9 +6,9 @@ use arnet_mps::{
     TruncateParams, apply, inner, norm,
 };
 use arnet_native::NativeBackend;
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
-    U1Sector,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, U1Sector,
 };
 
 use super::helpers::{
@@ -229,10 +229,14 @@ fn streaming_naive_output_structure_and_flux() {
 /// product states for MPO correctness anchors.
 fn bsp_basis_site(left_c: i32, phys_c: usize, right_c: i32) -> BlockSparseTensor<f64, U1Sector> {
     assert!(phys_c <= 1, "physical dim assumed to be 2 (charges 0, 1)");
-    let left = QNIndex::new(vec![(U1Sector(left_c), 1)], Direction::Out);
-    let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right = QNIndex::new(vec![(U1Sector(right_c), 1)], Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(left_c), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(right_c), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site.block_data_mut(&BlockCoord(vec![0, phys_c, 0]))
         .unwrap()[0] = 1.0;
     site

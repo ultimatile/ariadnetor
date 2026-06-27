@@ -33,9 +33,10 @@ use arnet_mps::{
     canonicalize, truncate,
 };
 use arnet_native::NativeBackend;
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
-    DenseStorage, DenseTensor, Direction, OpsFor, QNIndex, U1Sector,
+    DenseStorage, DenseTensor, Direction, OpsFor, U1Sector,
 };
 
 // ---------------------------------------------------------------------------
@@ -164,10 +165,14 @@ fn u1_site(
     right: U1Sectors,
     counter: &mut f64,
 ) -> BlockSparseTensor<f64, U1Sector> {
-    let left = QNIndex::new(left, Direction::Out);
-    let phys = QNIndex::new(phys, Direction::Out);
-    let right = QNIndex::new(right, Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (left, Direction::Out),
+            (phys, Direction::Out),
+            (right, Direction::In),
+        ]),
+        U1Sector(0),
+    );
     fill_blocks(&mut site, counter);
     site
 }
@@ -213,12 +218,15 @@ fn u1_mpo() -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     for j in 0..n {
         let left_dim = if j == 0 { 1 } else { 2 };
         let right_dim = if j == n - 1 { 1 } else { 2 };
-        let left = QNIndex::new(vec![(U1Sector(0), left_dim)], Direction::Out);
-        let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-        let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-        let right = QNIndex::new(vec![(U1Sector(0), right_dim)], Direction::In);
-        let mut site =
-            BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+        let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+            legs([
+                (vec![(U1Sector(0), left_dim)], Direction::Out),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+                (vec![(U1Sector(0), right_dim)], Direction::In),
+            ]),
+            U1Sector(0),
+        );
         fill_blocks(&mut site, &mut counter);
         sites.push(site);
     }
