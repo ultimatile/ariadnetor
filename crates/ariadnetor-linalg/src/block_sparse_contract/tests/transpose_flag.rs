@@ -46,10 +46,7 @@ fn rank3_single_sector(
     directions: [Direction; 3],
     rm_data: &[f64],
 ) -> BlockSparseTensorData<f64, U1Sector> {
-    let indices: Vec<QNIndex<U1Sector>> = directions
-        .iter()
-        .map(|&d| QNIndex::new(vec![(U1Sector(0), 2)], d))
-        .collect();
+    let indices = legs(directions.iter().map(|&d| (vec![(U1Sector(0), 2)], d)));
     let mut t = BlockSparseTensorData::<f64, U1Sector>::zeros(indices, U1Sector(0), order());
     t.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .unwrap()
