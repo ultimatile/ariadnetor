@@ -1,7 +1,8 @@
 use super::*;
 use arnet_core::backend::ComputeBackend;
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
+use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction};
 use arnet_tensor::{U1Sector, Z2Sector};
 
 mod predicates;
@@ -54,9 +55,11 @@ fn to_order(data: &[f64], shape: &[usize]) -> Vec<f64> {
 
 #[test]
 fn error_on_length_mismatch() {
-    let idx = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
     let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![idx.clone(), idx.clone()],
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 2)], Direction::Out),
+        ]),
         U1Sector(0),
         order(),
     );
@@ -75,9 +78,11 @@ fn error_on_length_mismatch() {
 
 #[test]
 fn error_on_out_of_range() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2)]),
+        U1Sector(0),
+        order(),
+    );
     assert!(
         contract_block_sparse_with_policy_dense(&b(), &a, &a, &[5], &[0], ExecPolicy::Sequential)
             .is_err()
@@ -86,10 +91,13 @@ fn error_on_out_of_range() {
 
 #[test]
 fn error_on_duplicate_axis() {
-    let out = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let in_ = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![out.clone(), out, in_.clone(), in_],
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 2)], Direction::In),
+            (vec![(U1Sector(0), 2)], Direction::In),
+        ]),
         U1Sector(0),
         order(),
     );
@@ -108,14 +116,16 @@ fn error_on_duplicate_axis() {
 
 #[test]
 fn error_on_same_direction() {
-    let out = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let in_ = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
     let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![out.clone(), in_.clone()],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         order(),
     );
-    let c = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![out, in_], U1Sector(0), order());
+    let c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2)]),
+        U1Sector(0),
+        order(),
+    );
     // axis 0 (Out) vs axis 0 (Out) → same direction
     assert!(
         contract_block_sparse_with_policy_dense(&b(), &a, &c, &[0], &[0], ExecPolicy::Sequential)
@@ -125,15 +135,13 @@ fn error_on_same_direction() {
 
 #[test]
 fn error_on_sector_mismatch() {
-    let a_col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let b_row = QNIndex::new(vec![(U1Sector(1), 2)], Direction::Out);
     let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out), a_col],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         order(),
     );
     let c = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![b_row, QNIndex::new(vec![(U1Sector(1), 2)], Direction::In)],
+        square_legs(vec![(U1Sector(1), 2)]),
         U1Sector(0),
         order(),
     );
@@ -145,15 +153,13 @@ fn error_on_sector_mismatch() {
 
 #[test]
 fn error_on_dim_mismatch() {
-    let a_col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let b_row = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
     let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out), a_col],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         order(),
     );
     let c = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![b_row, QNIndex::new(vec![(U1Sector(0), 3)], Direction::In)],
+        square_legs(vec![(U1Sector(0), 3)]),
         U1Sector(0),
         order(),
     );
@@ -169,11 +175,8 @@ fn error_on_dim_mismatch() {
 
 #[test]
 fn rank2_single_block_matmul() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row.clone(), col.clone()],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         order(),
     );
@@ -181,7 +184,11 @@ fn rank2_single_block_matmul() {
         .unwrap()
         .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
 
-    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2)]),
+        U1Sector(0),
+        order(),
+    );
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
@@ -200,11 +207,8 @@ fn rank2_single_block_matmul() {
 
 #[test]
 fn rank2_multi_block_matmul() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row.clone(), col.clone()],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
         order(),
     );
@@ -215,7 +219,11 @@ fn rank2_multi_block_matmul() {
         .unwrap()
         .copy_from_slice(&[5.0]);
 
-    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
+        U1Sector(0),
+        order(),
+    );
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[6.0, 7.0, 8.0, 9.0], &[2, 2]));
@@ -240,12 +248,12 @@ fn rank2_multi_block_matmul() {
 
 #[test]
 fn rank2_nonzero_flux() {
-    let a_row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let shared = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
-
     // A: flux=1, block (1,0) shape 3×4
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![a_row, shared.clone()],
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+            vec![(U1Sector(0), 4)],
+        ),
         U1Sector(1),
         order(),
     );
@@ -254,12 +262,12 @@ fn rank2_nonzero_flux() {
         .iter_mut()
         .for_each(|v| *v = 1.0);
 
-    let b_col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let shared_out = QNIndex::new(vec![(U1Sector(0), 4)], Direction::Out);
-
     // B: flux=-1, block (0,1) shape 4×3
     let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![shared_out, b_col],
+        out_in_legs(
+            vec![(U1Sector(0), 4)],
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+        ),
         U1Sector(-1),
         order(),
     );
@@ -288,11 +296,8 @@ fn rank2_nonzero_flux() {
 
 #[test]
 fn full_contraction_scalar() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row.clone(), col.clone()],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         order(),
     );
@@ -300,7 +305,11 @@ fn full_contraction_scalar() {
         .unwrap()
         .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
 
-    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2)]),
+        U1Sector(0),
+        order(),
+    );
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
@@ -324,17 +333,15 @@ fn full_contraction_scalar() {
 
 #[test]
 fn full_contraction_nonidentity_flux_gives_zero() {
-    let shared = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let shared_in = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![shared.clone(), shared_in.clone()],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         order(),
     );
     a.block_data_mut(&BlockCoord(vec![0, 0])).unwrap().fill(1.0);
 
     let c = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![shared, shared_in],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(1),
         order(),
     );
@@ -361,12 +368,15 @@ fn full_contraction_nonidentity_flux_gives_zero() {
 #[test]
 fn accumulation_multiple_pairs_to_same_block() {
     // A: rank 3, flux=0
-    let a0 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let a1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let a2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-
-    let mut a =
-        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![a0, a1, a2], U1Sector(0), order());
+    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     // A blocks: (0,0,0) shape [2,1,1], (0,1,1) shape [2,1,1]
     a.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .unwrap()
@@ -376,12 +386,15 @@ fn accumulation_multiple_pairs_to_same_block() {
         .copy_from_slice(&[5.0, 6.0]);
 
     // B: rank 3, flux=0
-    let b0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let b1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let b2 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
-    let mut c =
-        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![b0, b1, b2], U1Sector(0), order());
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 2)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     // B blocks: (0,0,0) shape [1,1,2], (1,1,0) shape [1,1,2]
     c.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .unwrap()
@@ -418,11 +431,15 @@ fn accumulation_multiple_pairs_to_same_block() {
 #[test]
 fn contraction_with_axis_transpose() {
     // A: rank 3 (i,j,k), contract axis 0 → lhs_perm = [1,2,0] (non-trivial)
-    let a0 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let a1 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let a2 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let mut a =
-        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![a0, a1, a2], U1Sector(0), order());
+    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 3)], Direction::Out),
+            (vec![(U1Sector(0), 2)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     // Block (0,0,0) shape [2,3,2] = 12 elements
     // Conceptually RowMajor: A[i,j,k] = i*6+j*2+k+1
     let a_rm: Vec<f64> = (1..=12).map(|x| x as f64).collect();
@@ -431,9 +448,11 @@ fn contraction_with_axis_transpose() {
         .copy_from_slice(&to_order(&a_rm, &[2, 3, 2]));
 
     // B: rank 2, contract axis 1 → rhs_perm = [1,0] (non-trivial)
-    let b0 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let b1 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![b0, b1], U1Sector(0), order());
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        out_in_legs(vec![(U1Sector(0), 3)], vec![(U1Sector(0), 2)]),
+        U1Sector(0),
+        order(),
+    );
     let b_rm: Vec<f64> = (1..=6).map(|x| x as f64).collect();
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
@@ -463,11 +482,8 @@ fn contraction_with_axis_transpose() {
 fn full_contraction_identity_perm() {
     // [Out, In] × [In, Out] with axes=[0,1],[0,1] → rhs_perm is identity.
     // Exercises the no-transpose path in contract_to_scalar.
-    let out_idx = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let in_idx = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![out_idx.clone(), in_idx.clone()],
+        square_legs(vec![(U1Sector(0), 2)]),
         U1Sector(0),
         order(),
     );
@@ -475,8 +491,14 @@ fn full_contraction_identity_perm() {
         .unwrap()
         .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0], &[2, 2]));
 
-    let mut c =
-        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![in_idx, out_idx], U1Sector(0), order());
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::In),
+            (vec![(U1Sector(0), 2)], Direction::Out),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[5.0, 6.0, 7.0, 8.0], &[2, 2]));
@@ -499,11 +521,8 @@ fn full_contraction_identity_perm() {
 
 #[test]
 fn full_contraction_identity_perm_multi_block() {
-    let out_idx = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let in_idx = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![out_idx.clone(), in_idx.clone()],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
         order(),
     );
@@ -514,8 +533,14 @@ fn full_contraction_identity_perm_multi_block() {
         .unwrap()
         .copy_from_slice(&[5.0]);
 
-    let mut c =
-        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![in_idx, out_idx], U1Sector(0), order());
+    let mut c = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[2.0, 0.0, 0.0, 3.0], &[2, 2]));
@@ -546,15 +571,20 @@ fn full_contraction_identity_perm_multi_block() {
 #[test]
 fn contraction_rank2_with_rank1() {
     // Matrix-vector: output_rank = 2+1-2 = 1 (tensor), not 2*1-2 = 0 (scalar).
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::In);
-    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        out_in_legs(vec![(U1Sector(0), 2)], vec![(U1Sector(0), 3)]),
+        U1Sector(0),
+        order(),
+    );
     a.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]));
 
-    let v_out = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let mut v = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![v_out], U1Sector(0), order());
+    let mut v = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([(vec![(U1Sector(0), 3)], Direction::Out)]),
+        U1Sector(0),
+        order(),
+    );
     v.block_data_mut(&BlockCoord(vec![0]))
         .unwrap()
         .copy_from_slice(&[1.0, 0.0, 1.0]); // rank-1: order doesn't matter
@@ -575,17 +605,8 @@ fn contraction_rank2_with_rank1() {
 
 #[test]
 fn z2_rank2_matmul() {
-    let row = QNIndex::new(
-        vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 1)],
-        Direction::Out,
-    );
-    let col = QNIndex::new(
-        vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 1)],
-        Direction::In,
-    );
-
     let mut a = BlockSparseTensorData::<f64, Z2Sector>::zeros(
-        vec![row.clone(), col.clone()],
+        square_legs(vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 1)]),
         Z2Sector::new(0),
         order(),
     );
@@ -596,8 +617,11 @@ fn z2_rank2_matmul() {
         .unwrap()
         .copy_from_slice(&[5.0]);
 
-    let mut c =
-        BlockSparseTensorData::<f64, Z2Sector>::zeros(vec![row, col], Z2Sector::new(0), order());
+    let mut c = BlockSparseTensorData::<f64, Z2Sector>::zeros(
+        square_legs(vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 1)]),
+        Z2Sector::new(0),
+        order(),
+    );
     c.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&to_order(&[2.0, 0.0, 0.0, 2.0], &[2, 2])); // 2*I
@@ -627,12 +651,9 @@ fn z2_rank2_matmul() {
 #[test]
 fn contract_permuted_axes_rank2() {
     // A: 2×2 block (sector 0) + 1×1 block (sector 1), flux=0
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-
     // A block (0,0) = [[1,2],[3,4]], block (1,1) = [[5]]
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row.clone(), col.clone()],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
         order(),
     );

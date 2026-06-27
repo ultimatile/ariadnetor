@@ -2,8 +2,9 @@ use arnet_core::Complex;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_native::NativeBackend;
+use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
 use arnet_tensor::{
-    BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, QNIndex, Sector, U1Sector,
+    BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, Sector, U1Sector,
 };
 
 use super::{inverse_block_sparse_dense, solve_block_sparse_dense};
@@ -170,9 +171,11 @@ fn verify_inverse<T: Scalar<Real = f64>, S: Sector>(
 /// `[[1, -2], [2, 1]]` (det 5); sector 1 is an invertible 3×3 block (reused from
 /// the `expm` / `eig` fixtures).
 fn mirrored_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(0),
+        order(),
+    );
     fill_block(&mut bs, &[0, 0], &[1.0, -2.0, 2.0, 1.0], 2, 2, order());
     fill_block(
         &mut bs,
@@ -188,9 +191,11 @@ fn mirrored_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// Rank-2 U1, identity flux, leg-mirrored, complex invertible blocks.
 fn mirrored_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
     let c = |re: f64, im: f64| Complex::new(re, im);
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
+        U1Sector(0),
+        order(),
+    );
     fill_block(
         &mut bs,
         &[0, 0],
@@ -207,10 +212,16 @@ fn mirrored_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
 /// left/right tuples `[(0,1),(1,0)]` into an invertible 2×2 block; sectors 0 and
 /// 2 are dim-1. Reused from the `expm` rank-4 fixture.
 fn mirrored_rank4_f64() -> BlockSparseTensorData<f64, U1Sector> {
-    let out = || QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let inn = || QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut bs =
-        BlockSparseTensorData::zeros(vec![out(), out(), inn(), inn()], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        legs([
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     bs.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).unwrap()[0] = 2.0;
     bs.block_data_mut(&BlockCoord(vec![1, 1, 1, 1])).unwrap()[0] = 7.0;
     bs.block_data_mut(&BlockCoord(vec![0, 1, 0, 1])).unwrap()[0] = 3.0;
@@ -223,9 +234,14 @@ fn mirrored_rank4_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// RHS for [`mirrored_rank2_f64`]: row leg equal to the operator's, identity
 /// flux, one column block per sector. Sector 0 is `2×1`, sector 1 is `3×2`.
 fn rhs_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 2)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+            vec![(U1Sector(0), 1), (U1Sector(1), 2)],
+        ),
+        U1Sector(0),
+        order(),
+    );
     fill_block(&mut bs, &[0, 0], &[3.0, 7.0], 2, 1, order());
     fill_block(
         &mut bs,
@@ -241,9 +257,14 @@ fn rhs_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// RHS for [`mirrored_rank2_c64`]: complex, identity flux, one column per sector.
 fn rhs_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
     let c = |re: f64, im: f64| Complex::new(re, im);
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 1)],
+            vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+        ),
+        U1Sector(0),
+        order(),
+    );
     fill_block(
         &mut bs,
         &[0, 0],
@@ -260,9 +281,14 @@ fn rhs_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
 /// flux shifts each row-sector's RHS columns to a different right-sector, so the
 /// per-sector column counts differ from the identity-flux RHS.
 fn rhs_rank2_flux1_f64() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(-1), 2), (U1Sector(0), 1)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(1), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+            vec![(U1Sector(-1), 2), (U1Sector(0), 1)],
+        ),
+        U1Sector(1),
+        order(),
+    );
     // flux 1 selects blocks with row_sec - col_sec = 1: row 0 (sec 0) pairs with
     // the col block of sector -1, row 1 (sec 1) with the col block of sector 0.
     fill_block(&mut bs, &[0, 0], &[1.0, 2.0, 3.0, 4.0], 2, 2, order());
@@ -273,12 +299,18 @@ fn rhs_rank2_flux1_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// RHS for [`mirrored_rank4_f64`]: rank-3, leading two legs equal the operator's
 /// row legs, one column per fused sector.
 fn rhs_rank4_f64() -> BlockSparseTensorData<f64, U1Sector> {
-    let out = || QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(
-        vec![(U1Sector(0), 1), (U1Sector(1), 1), (U1Sector(2), 1)],
-        Direction::In,
+    let mut bs = BlockSparseTensorData::zeros(
+        legs([
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (
+                vec![(U1Sector(0), 1), (U1Sector(1), 1), (U1Sector(2), 1)],
+                Direction::In,
+            ),
+        ]),
+        U1Sector(0),
+        order(),
     );
-    let mut bs = BlockSparseTensorData::zeros(vec![out(), out(), col], U1Sector(0), order());
     bs.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap()[0] = 1.0;
     bs.block_data_mut(&BlockCoord(vec![0, 1, 1])).unwrap()[0] = 2.0;
     bs.block_data_mut(&BlockCoord(vec![1, 0, 1])).unwrap()[0] = 3.0;
@@ -393,16 +425,21 @@ fn solve_nrow_out_of_range_rejected() {
 #[test]
 fn solve_vector_rhs_rejected() {
     let a = mirrored_rank2_f64();
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let b = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row], U1Sector(0), order());
+    let b = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out)]),
+        U1Sector(0),
+        order(),
+    );
     expect_invalid_argument(solve_block_sparse_dense(&backend(), &a, &b, 1), "nrow");
 }
 
 #[test]
 fn solve_nonidentity_a_flux_rejected() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1), order());
+    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(1),
+        order(),
+    );
     let b = rhs_rank2_f64();
     expect_invalid_argument(solve_block_sparse_dense(&backend(), &a, &b, 1), "flux");
 }
@@ -411,9 +448,14 @@ fn solve_nonidentity_a_flux_rejected() {
 fn solve_non_mirrored_a_rejected() {
     // Square fused-sector universe but NOT leg-mirrored: both legs are `Out`, so
     // a column leg is not the dual of the row leg.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     let b = rhs_rank2_f64();
     expect_invalid_argument(solve_block_sparse_dense(&backend(), &a, &b, 1), "mirrored");
 }
@@ -422,9 +464,14 @@ fn solve_non_mirrored_a_rejected() {
 fn solve_b_row_legs_mismatch_rejected() {
     let a = mirrored_rank2_f64();
     // B's row leg has different block dims than A's row leg.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let b = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let b = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 2)],
+            vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+        ),
+        U1Sector(0),
+        order(),
+    );
     expect_invalid_argument(solve_block_sparse_dense(&backend(), &a, &b, 1), "row legs");
 }
 
@@ -437,16 +484,23 @@ fn inverse_nrow_out_of_range_rejected() {
 
 #[test]
 fn inverse_nonidentity_flux_rejected() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1), order());
+    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(1),
+        order(),
+    );
     expect_invalid_argument(inverse_block_sparse_dense(&backend(), &a, 1), "flux");
 }
 
 #[test]
 fn inverse_non_mirrored_rejected() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     expect_invalid_argument(inverse_block_sparse_dense(&backend(), &a, 1), "mirrored");
 }
