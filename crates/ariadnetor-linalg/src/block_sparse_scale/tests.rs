@@ -1,6 +1,7 @@
 use arnet_native::NativeBackend;
 use arnet_tensor::U1Sector;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
+use arnet_tensor::test_fixtures::{legs, square_legs};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction};
 
 use arnet_core::backend::{ExecPolicy, MemoryOrder};
 
@@ -18,10 +19,8 @@ fn backend() -> NativeBackend {
 
 /// Rank-2 U1, flux=0, blocks (0,0):2×2 and (1,1):3×3.
 fn sample_u1_rank2() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![row, col],
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
         U1Sector(0),
         MemoryOrder::ColumnMajor,
     );
@@ -224,11 +223,12 @@ fn scale_trunc_svd_reconstruction() {
 #[test]
 fn scale_rank3_middle_axis_element_values() {
     // Single-sector rank-3 tensor: shape (2, 3, 4), 24 elements.
-    let idx0 = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let idx1 = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let idx2 = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
     let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![idx0, idx1, idx2],
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 3)], Direction::Out),
+            (vec![(U1Sector(0), 4)], Direction::In),
+        ]),
         U1Sector(0),
         MemoryOrder::ColumnMajor,
     );
@@ -301,11 +301,12 @@ fn rowmajor_branch_distinguishes_inner_stride_at_non_trailing_axis() {
 
     let backend = RowMajorBackend::new();
 
-    let idx_a = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let idx_b = QNIndex::new(vec![(U1Sector(0), 3)], Direction::Out);
-    let idx_c = QNIndex::new(vec![(U1Sector(0), 4)], Direction::Out);
     let mut tensor = BlockSparseTensorData::<f64, U1Sector>::zeros(
-        vec![idx_a, idx_b, idx_c],
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 3)], Direction::Out),
+            (vec![(U1Sector(0), 4)], Direction::Out),
+        ]),
         U1Sector(0),
         MemoryOrder::RowMajor,
     );
