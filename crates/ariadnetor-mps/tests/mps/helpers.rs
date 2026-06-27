@@ -4,9 +4,9 @@ use arnet_linalg::{contract, permute_with_backend, tensordot};
 use arnet_mps::{Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::MemoryOrder;
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
-    BlockCoord, BlockSparseTensor, DenseLayout, DenseStorage, DenseTensor, Direction, QNIndex,
-    U1Sector,
+    BlockCoord, BlockSparseTensor, DenseLayout, DenseStorage, DenseTensor, Direction, U1Sector,
 };
 use arnet_tensor::{ComputeBackendTensorExt, Host};
 
@@ -193,10 +193,14 @@ fn make_u1_site(
     right_sectors: Vec<(U1Sector, usize)>,
     counter: &mut f64,
 ) -> BlockSparseTensor<f64, U1Sector> {
-    let left = QNIndex::new(left_sectors, Direction::Out);
-    let phys = QNIndex::new(phys_sectors, Direction::Out);
-    let right = QNIndex::new(right_sectors, Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (left_sectors, Direction::Out),
+            (phys_sectors, Direction::Out),
+            (right_sectors, Direction::In),
+        ]),
+        U1Sector(0),
+    );
 
     let coords: Vec<BlockCoord> = site
         .data()
@@ -466,11 +470,14 @@ pub(crate) fn assert_block_sparse_close(
 /// Build a 2-site U(1)-symmetric MPS in the total-charge-1 sector.
 pub(crate) fn make_2site_entangled_u1_mps()
 -> Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
-    let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site0 =
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
+    let mut site0 = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site0
         .data_mut()
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
@@ -480,11 +487,14 @@ pub(crate) fn make_2site_entangled_u1_mps()
         .block_data_mut(&BlockCoord(vec![0, 1, 1]))
         .unwrap()[0] = 2.0;
 
-    let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right1 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-    let mut site1 =
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
+    let mut site1 = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site1
         .data_mut()
         .block_data_mut(&BlockCoord(vec![0, 1, 0]))
@@ -506,12 +516,15 @@ pub(crate) fn make_total_n_u1_mpo(
     for j in 0..n {
         let left_dim = if j == 0 { 1 } else { 2 };
         let right_dim = if j == n - 1 { 1 } else { 2 };
-        let left = QNIndex::new(vec![(U1Sector(0), left_dim)], Direction::Out);
-        let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-        let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-        let right = QNIndex::new(vec![(U1Sector(0), right_dim)], Direction::In);
-        let mut site =
-            BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+        let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+            legs([
+                (vec![(U1Sector(0), left_dim)], Direction::Out),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+                (vec![(U1Sector(0), right_dim)], Direction::In),
+            ]),
+            U1Sector(0),
+        );
 
         let block_phys0 = site
             .data_mut()
@@ -572,12 +585,15 @@ pub(crate) fn make_identity_u1_mpo(
 ) -> Mpo<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
     let sites = (0..n)
         .map(|_| {
-            let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-            let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-            let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-            let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-            let mut site =
-                BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, ket, bra, right], U1Sector(0));
+            let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+                legs([
+                    (vec![(U1Sector(0), 1)], Direction::Out),
+                    (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+                    (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+                    (vec![(U1Sector(0), 1)], Direction::In),
+                ]),
+                U1Sector(0),
+            );
             site.data_mut()
                 .block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
                 .unwrap()[0] = 1.0;

@@ -177,14 +177,19 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
 /// the contract that charged input is not silently rejected.
 #[test]
 fn canonicalize_bsp_accepts_charged_single_site() {
-    use arnet_tensor::{BlockCoord, Direction, QNIndex};
+    use arnet_tensor::test_fixtures::legs;
+    use arnet_tensor::{BlockCoord, Direction};
 
     let backend = NativeBackend::new();
 
-    let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(1));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1)], Direction::In),
+        ]),
+        U1Sector(1),
+    );
     // flux=1 forces the unique allowed block to be (left=0, phys=1, right=0).
     site.block_data_mut(&BlockCoord(vec![0, 1, 0]))
         .expect("allowed block for flux=1")[0] = 7.5;

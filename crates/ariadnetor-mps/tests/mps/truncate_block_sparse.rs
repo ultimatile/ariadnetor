@@ -10,9 +10,9 @@ use arnet_mps::{
     truncate,
 };
 use arnet_native::NativeBackend;
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
-    U1Sector,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, U1Sector,
 };
 
 use super::helpers::{
@@ -204,13 +204,15 @@ fn truncate_bsp_absorb_both_sets_unknown() {
 
 #[test]
 fn truncate_bsp_single_site() {
-    use arnet_tensor::{BlockCoord, Direction, QNIndex};
-
     let backend = NativeBackend::new();
-    let left = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let phys = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![left, phys, right], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("allowed block")[0] = 3.0;
 
@@ -328,11 +330,14 @@ fn truncate_bsp_error_matches_reconstruction_error() {
 /// positions distinguish the original arithmetic from each missed mutant on
 /// `truncate.rs:349/354/424/482`.
 fn make_3site_u1_truncate_fixture() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
-    let left0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let phys0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right0 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site0 =
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![left0, phys0, right0], U1Sector(0));
+    let mut site0 = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site0
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("site0 block [0,0,0]")[0] = 1.0;
@@ -340,11 +345,14 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparseStorage<f64>, BlockSparseL
         .block_data_mut(&BlockCoord(vec![0, 1, 1]))
         .expect("site0 block [0,1,1]")[0] = 2.0;
 
-    let left1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let phys1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right1 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut site1 =
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![left1, phys1, right1], U1Sector(0));
+    let mut site1 = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site1
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("site1 block [0,0,0]")[0] = 3.0;
@@ -355,11 +363,14 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparseStorage<f64>, BlockSparseL
         .block_data_mut(&BlockCoord(vec![1, 0, 1]))
         .expect("site1 block [1,0,1]")[0] = 5.0;
 
-    let left2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let phys2 = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let right2 = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-    let mut site2 =
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![left2, phys2, right2], U1Sector(0));
+    let mut site2 = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+    );
     site2
         .block_data_mut(&BlockCoord(vec![0, 1, 0]))
         .expect("site2 block [0,1,0]")[0] = 6.0;
