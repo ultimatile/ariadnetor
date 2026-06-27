@@ -23,9 +23,10 @@ use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
-    DenseTensor, Direction, Host, QNIndex, Sector, U1Sector,
+    DenseTensor, Direction, Host, Sector, U1Sector,
 };
 use rand::RngExt;
 use rand::SeedableRng;
@@ -161,12 +162,12 @@ fn heisenberg_mpo_bsp_f64(
     // Acts as "identity-finished" (Dense row 4) projected to a single
     // W_l channel.
     let mut w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial1(), Direction::Out),
-            QNIndex::new(phys2(), Direction::In),
-            QNIndex::new(phys2(), Direction::Out),
-            QNIndex::new(bond5(), Direction::In),
-        ],
+        legs([
+            (trivial1(), Direction::Out),
+            (phys2(), Direction::In),
+            (phys2(), Direction::Out),
+            (bond5(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     // (vR=1, σ⁻, 2J) → block (0, ket=0, bra=1, W_r=U1(+1))
@@ -196,12 +197,12 @@ fn heisenberg_mpo_bsp_f64(
     // ---- Bulk sites (1 ..= n-2): W_l = bond5, W_r = bond5 ----
     for _ in 1..n - 1 {
         let mut w = BlockSparseTensor::<f64, U1Sector>::zeros(
-            vec![
-                QNIndex::new(bond5(), Direction::Out),
-                QNIndex::new(phys2(), Direction::In),
-                QNIndex::new(phys2(), Direction::Out),
-                QNIndex::new(bond5(), Direction::In),
-            ],
+            legs([
+                (bond5(), Direction::Out),
+                (phys2(), Direction::In),
+                (phys2(), Direction::Out),
+                (bond5(), Direction::In),
+            ]),
             U1Sector::identity(),
         );
         // (0,0,I,1) ket=k bra=k → block (U1(0), k, k, U1(0))
@@ -242,12 +243,12 @@ fn heisenberg_mpo_bsp_f64(
 
     // ---- Site n-1: W_l = bond5, W_r = trivial ----
     let mut wn = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(bond5(), Direction::Out),
-            QNIndex::new(phys2(), Direction::In),
-            QNIndex::new(phys2(), Direction::Out),
-            QNIndex::new(trivial1(), Direction::In),
-        ],
+        legs([
+            (bond5(), Direction::Out),
+            (phys2(), Direction::In),
+            (phys2(), Direction::Out),
+            (trivial1(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     // (vL=0, I, 1) ket=k bra=k: block (U1(0), k, k, 0); shape [3,1,1,1]; chan_l=id_start.
@@ -327,11 +328,11 @@ fn random_mps_bsp_center_zero_f64(
         };
 
         let mut s = BlockSparseTensor::<f64, U1Sector>::zeros(
-            vec![
-                QNIndex::new(left_legs, Direction::Out),
-                QNIndex::new(phys2(), Direction::Out),
-                QNIndex::new(right_legs, Direction::In),
-            ],
+            legs([
+                (left_legs, Direction::Out),
+                (phys2(), Direction::Out),
+                (right_legs, Direction::In),
+            ]),
             flux,
         );
         // Iterate every fusion-legal block and fill with random

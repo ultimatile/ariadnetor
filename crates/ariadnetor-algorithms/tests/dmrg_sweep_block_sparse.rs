@@ -23,9 +23,10 @@ use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, norm};
 use arnet_native::NativeBackend;
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
-    Sector, U1Sector,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, Sector,
+    U1Sector,
 };
 use num_complex::Complex;
 
@@ -424,23 +425,23 @@ fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
     let trivial = vec![(U1Sector(0), 1)];
     let phys = vec![(U1Sector(0), 1)];
     let mut mps_site = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(trivial.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::Out),
+            (trivial.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mps_site
         .block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("a")[0] = 1.0;
     let mut mpo_site = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mpo_site
@@ -476,12 +477,12 @@ fn bsp_sweep_error_step_error_propagated() {
     let trivial = vec![(U1Sector(0), 1)];
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
     let bad_w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(xy_bond, Direction::In),
-        ],
+        legs([
+            (trivial, Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::Out),
+            (xy_bond, Direction::In),
+        ]),
         U1Sector(2),
     );
     let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
