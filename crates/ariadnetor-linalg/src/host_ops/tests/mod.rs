@@ -15,9 +15,10 @@
 
 use arnet_core::Complex;
 use arnet_core::backend::MemoryOrder;
+use arnet_tensor::test_fixtures::square_legs;
 use arnet_tensor::{
     BlockCoord, BlockSparseTensor, BlockSparseTensorData, DenseTensor, Direction, NativeBackend,
-    QNIndex, U1Sector,
+    U1Sector,
 };
 use arnet_tensor::{ComputeBackendTensorExt, Host};
 
@@ -315,9 +316,11 @@ fn expm_antihermitian_matches_twin() {
 
 /// Rank-2 U1 data, flux 0: Out(0:2, 1:3), In(0:2, 1:3), laid out in `order`.
 fn rank2_data(order: MemoryOrder) -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order);
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(0),
+        order,
+    );
     bs.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);

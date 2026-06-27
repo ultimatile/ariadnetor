@@ -1,6 +1,7 @@
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, U1Sector, Z2Sector};
+use arnet_tensor::test_fixtures::{legs, square_legs};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector, Z2Sector};
 
 use super::permute_block_sparse_dense;
 
@@ -19,10 +20,15 @@ fn order() -> MemoryOrder {
 /// Rank-3 U1, flux=0, indices: Out(0:2, 1:3), Out(0:2, 1:1), In(0:2, 1:3).
 /// Blocks: (0,0,0) 2×2×2, (0,1,1) 2×1×3, (1,0,1) 3×2×3, (1,1,0) 3×1×2.
 fn sample_u1_rank3() -> BlockSparseTensorData<f64, U1Sector> {
-    let i0 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let i1 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let i2 = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![i0, i1, i2], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
 
     // Fill blocks with distinct values for traceability
     let mut val = 1.0;
@@ -58,10 +64,11 @@ fn identity_permutation_is_clone() {
 
 #[test]
 fn transpose_rank2() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs =
-        BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(0),
+        order(),
+    );
 
     // Block (0,0): 2×2 matrix [[1,2],[3,4]]
     let d = bs.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
@@ -168,16 +175,11 @@ fn perm_duplicate() {
 
 #[test]
 fn permute_z2_rank2() {
-    let row = QNIndex::new(
-        vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 3)],
-        Direction::Out,
+    let mut bs = BlockSparseTensorData::<f64, Z2Sector>::zeros(
+        square_legs(vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 3)]),
+        Z2Sector::new(0),
+        order(),
     );
-    let col = QNIndex::new(
-        vec![(Z2Sector::new(0), 2), (Z2Sector::new(1), 3)],
-        Direction::In,
-    );
-    let mut bs =
-        BlockSparseTensorData::<f64, Z2Sector>::zeros(vec![row, col], Z2Sector::new(0), order());
     let d = bs.block_data_mut(&BlockCoord(vec![0, 0])).unwrap();
     for (i, v) in d.iter_mut().enumerate() {
         *v = (i + 1) as f64;

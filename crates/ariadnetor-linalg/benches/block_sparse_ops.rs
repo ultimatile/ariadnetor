@@ -13,7 +13,8 @@ use rand::SeedableRng;
 
 use arnet_linalg::{DenseHostOps, TruncSvdParams, lq, qr, svd, tensordot, trunc_svd};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockSparseTensor, DenseTensor, Direction, QNIndex, U1Sector};
+use arnet_tensor::test_fixtures::{legs, square_legs};
+use arnet_tensor::{BlockSparseTensor, DenseTensor, Direction, U1Sector};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,9 +55,7 @@ fn singh_sweep() -> Vec<Params> {
 fn random_bsp_matrix(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sectors: Vec<(U1Sector, usize)> = (0..q as i32).map(|i| (U1Sector(i), d)).collect();
-    let row = QNIndex::new(sectors.clone(), Direction::Out);
-    let col = QNIndex::new(sectors, Direction::In);
-    BlockSparseTensor::random(vec![row, col], U1Sector(0), &mut rng)
+    BlockSparseTensor::random(square_legs(sectors), U1Sector(0), &mut rng)
 }
 
 /// Build a rank-3 `BlockSparseTensor`: (bond_left, physical, bond_right).
@@ -64,10 +63,15 @@ fn random_bsp_rank3(q: usize, d: usize) -> BlockSparseTensor<f64, U1Sector> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let bond_sectors: Vec<(U1Sector, usize)> = (0..q as i32).map(|i| (U1Sector(i), d)).collect();
     let phys_sectors = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
-    let left = QNIndex::new(bond_sectors.clone(), Direction::Out);
-    let phys = QNIndex::new(phys_sectors, Direction::Out);
-    let right = QNIndex::new(bond_sectors, Direction::In);
-    BlockSparseTensor::random(vec![left, phys, right], U1Sector(0), &mut rng)
+    BlockSparseTensor::random(
+        legs([
+            (bond_sectors.clone(), Direction::Out),
+            (phys_sectors, Direction::Out),
+            (bond_sectors, Direction::In),
+        ]),
+        U1Sector(0),
+        &mut rng,
+    )
 }
 
 fn random_dense_matrix(total_dim: usize) -> DenseTensor<f64> {

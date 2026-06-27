@@ -7,7 +7,8 @@
 
 use arnet_core::backend::{ComputeBackend, MemoryOrder};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, U1Sector};
+use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector};
 
 use super::trace_block_sparse_dense;
 
@@ -35,9 +36,11 @@ fn set_block(bs: &mut BlockSparseTensorData<f64, U1Sector>, coord: &[usize], dat
 // ---------------------------------------------------------------------------
 
 fn sample_rank2() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 2)]),
+        U1Sector(0),
+        order(),
+    );
     // Block (0,0) = [[1,2],[3,4]] -> diagonal 1+4 = 5.
     set_block(&mut bs, &[0, 0], &[1.0, 2.0, 3.0, 4.0]);
     // Block (1,1) = [[5,6],[7,8]] -> diagonal 5+8 = 13.
@@ -62,9 +65,11 @@ fn full_trace_rank2_sums_sector_diagonals() {
 fn full_trace_of_non_identity_flux_is_zero() {
     // flux 1: allowed blocks satisfy s_i - s_j == 1, i.e. (1,0) only — no
     // diagonal block, so the full trace has no diagonal support.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(1), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 2)]),
+        U1Sector(1),
+        order(),
+    );
     set_block(&mut bs, &[1, 0], &[1.0, 2.0, 3.0, 4.0]);
 
     let result = trace_block_sparse_dense(&backend(), &bs, &[(0, 1)]).unwrap();
@@ -84,11 +89,16 @@ fn full_trace_of_non_identity_flux_is_zero() {
 // ---------------------------------------------------------------------------
 
 fn sample_rank4() -> BlockSparseTensorData<f64, U1Sector> {
-    let f0 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-    let a = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let b = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
-    let f1 = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![f0, a, b, f1], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        legs([
+            (vec![(U1Sector(0), 1)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In),
+            (vec![(U1Sector(0), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     // Block (0,0,0,0): shape [1,2,2,1]; traced 2x2 part [[10,20],[30,40]] -> 50.
     set_block(&mut bs, &[0, 0, 0, 0], &[10.0, 20.0, 30.0, 40.0]);
     // Block (0,1,1,0): shape [1,2,2,1]; traced 2x2 part [[1,2],[3,4]] -> 5.
@@ -128,9 +138,11 @@ fn empty_pairs_is_clone() {
 // ---------------------------------------------------------------------------
 
 fn build_rank2(order: MemoryOrder) -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order);
+    let mut bs = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 2)]),
+        U1Sector(0),
+        order,
+    );
     // Logical [[1,2],[3,4]] in the requested order; the diagonal (1,4) is
     // layout-invariant, so the trace must match across orders.
     let (b00, b11): (&[f64], &[f64]) = match order {
@@ -161,9 +173,14 @@ fn trace_is_rowmajor_columnmajor_invariant() {
 #[test]
 fn rejects_mismatched_block_structure() {
     // leg0 {0:2, 1:2} vs leg1 {0:2, 1:3}: equal sectors, unequal dims.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 2)],
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+        ),
+        U1Sector(0),
+        order(),
+    );
     let Err(err) = trace_block_sparse_dense(&backend(), &bs, &[(0, 1)]) else {
         panic!("expected mismatched-block-structure error");
     };
@@ -173,9 +190,14 @@ fn rejects_mismatched_block_structure() {
 #[test]
 fn rejects_equal_directions() {
     // Two Out legs with identical blocks; flux 0 allows the (0,0) block.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out);
-    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 2)], Direction::Out),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     let Err(err) = trace_block_sparse_dense(&backend(), &bs, &[(0, 1)]) else {
         panic!("expected equal-directions error");
     };

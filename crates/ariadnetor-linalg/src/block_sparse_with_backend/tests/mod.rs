@@ -18,9 +18,8 @@
 use arnet_core::Complex;
 use arnet_core::backend::{ExecPolicy, MemoryOrder};
 use arnet_native::NativeBackend;
-use arnet_tensor::{
-    BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, QNIndex, U1Sector,
-};
+use arnet_tensor::test_fixtures::square_legs;
+use arnet_tensor::{BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, U1Sector};
 
 use crate::test_util::RecordingBackend;
 use crate::*;
@@ -37,9 +36,11 @@ fn total_recorded(b: &RecordingBackend) -> usize {
 
 /// Rank-2 U1 data, flux 0: Out(0:2, 1:3), In(0:2, 1:3), laid out in `order`.
 fn rank2_data(order: MemoryOrder) -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order);
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(0),
+        order,
+    );
     bs.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
@@ -128,9 +129,11 @@ fn lq_routes_to_passed_backend() {
 /// backend's order. Symmetric data is order-agnostic in flat form.
 fn hermitian_rank2() -> BlockSparseTensor<f64, U1Sector> {
     let order = RecordingBackend::new().preferred_order();
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order);
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(0),
+        order,
+    );
     bs.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&[2.0, 1.0, 1.0, 3.0]);
@@ -265,10 +268,11 @@ fn eig_host_method_matches_with_backend() {
 fn rank2_c() -> BlockSparseTensor<Complex<f64>, U1Sector> {
     let order = RecordingBackend::new().preferred_order();
     let c = |re: f64, im: f64| Complex::new(re, im);
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-    let mut bs =
-        BlockSparseTensorData::<Complex<f64>, U1Sector>::zeros(vec![row, col], U1Sector(0), order);
+    let mut bs = BlockSparseTensorData::<Complex<f64>, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
+        U1Sector(0),
+        order,
+    );
     bs.block_data_mut(&BlockCoord(vec![0, 0]))
         .unwrap()
         .copy_from_slice(&[c(0.0, 1.0), c(1.0, 1.0), c(-1.0, 1.0), c(0.0, 2.0)]);

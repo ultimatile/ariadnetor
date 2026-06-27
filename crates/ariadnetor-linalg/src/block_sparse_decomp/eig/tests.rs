@@ -2,7 +2,8 @@ use arnet_core::Complex;
 use arnet_core::Scalar;
 use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
 use arnet_native::NativeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, Sector, U1Sector};
+use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, Sector, U1Sector};
 use num_traits::Zero;
 
 use super::eig_block_sparse_with_policy_dense;
@@ -153,9 +154,11 @@ fn verify_reconstruction<T, S: Sector + PartialEq>(
 /// char. poly `λ² − 2λ + 5`, discriminant `−16 < 0`), so the real operand has a
 /// genuinely complex spectrum; sector 1 is a 3×3 general block.
 fn general_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 3)]),
+        U1Sector(0),
+        order(),
+    );
     fill_block(&mut bs, &[0, 0], &[1.0, -2.0, 2.0, 1.0], 2, 2, order());
     fill_block(
         &mut bs,
@@ -173,9 +176,11 @@ fn general_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// scalar.
 fn general_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
     let c = |re: f64, im: f64| Complex::new(re, im);
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::In);
-    let mut bs = BlockSparseTensorData::zeros(vec![row, col], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
+        U1Sector(0),
+        order(),
+    );
     fill_block(
         &mut bs,
         &[0, 0],
@@ -192,10 +197,16 @@ fn general_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
 /// tuples [(0,1),(1,0)] into a non-symmetric 2×2 block; sectors 0 and 2 are
 /// dim-1.
 fn general_rank4_f64() -> BlockSparseTensorData<f64, U1Sector> {
-    let out = || QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let inn = || QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let mut bs =
-        BlockSparseTensorData::zeros(vec![out(), out(), inn(), inn()], U1Sector(0), order());
+    let mut bs = BlockSparseTensorData::zeros(
+        legs([
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
     bs.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).unwrap()[0] = 2.0;
     bs.block_data_mut(&BlockCoord(vec![1, 1, 1, 1])).unwrap()[0] = 7.0;
     // Fused sector 1, 2×2 over tuples [(0,1),(1,0)] — non-symmetric.
@@ -254,9 +265,14 @@ fn eigenvalues_complex_for_real_operand() {
 
 #[test]
 fn nonidentity_flux_rejected() {
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 4)], Direction::In);
-    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(1), order());
+    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+            vec![(U1Sector(0), 4)],
+        ),
+        U1Sector(1),
+        order(),
+    );
     expect_invalid_argument(run(&bs, 1), Some("flux"));
 }
 
@@ -264,18 +280,25 @@ fn nonidentity_flux_rejected() {
 fn missing_partner_sector_rejected() {
     // Left has fused sectors {0, 1}; right has only {0}, so sector 1 has no
     // matching right partner.
-    let row = QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 2)], Direction::In);
-    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        out_in_legs(
+            vec![(U1Sector(0), 2), (U1Sector(1), 3)],
+            vec![(U1Sector(0), 2)],
+        ),
+        U1Sector(0),
+        order(),
+    );
     expect_invalid_argument(run(&bs, 1), Some("square"));
 }
 
 #[test]
 fn dimension_mismatch_rejected() {
     // Both sides have fused sector 0, but with mismatched total dimension.
-    let row = QNIndex::new(vec![(U1Sector(0), 2)], Direction::Out);
-    let col = QNIndex::new(vec![(U1Sector(0), 3)], Direction::In);
-    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(vec![row, col], U1Sector(0), order());
+    let bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        out_in_legs(vec![(U1Sector(0), 2)], vec![(U1Sector(0), 3)]),
+        U1Sector(0),
+        order(),
+    );
     expect_invalid_argument(run(&bs, 1), Some("square"));
 }
 
