@@ -30,6 +30,10 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
+# Enables `arnet_tensor::test_fixtures` for this crate's tests; resolver v2
+# keeps the test-only feature out of normal builds. See ariadnetor-tensor's
+# `test-fixtures` feature.
+ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"] }
 criterion = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }

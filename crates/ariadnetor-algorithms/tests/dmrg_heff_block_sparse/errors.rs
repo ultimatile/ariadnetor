@@ -8,9 +8,9 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, TensorChain};
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
-    BlockCoord, BlockSparseTensor, ComputeBackendTensorExt, Direction, Host, QNIndex, Sector,
-    U1Sector,
+    BlockCoord, BlockSparseTensor, ComputeBackendTensorExt, Direction, Host, Sector, U1Sector,
 };
 use num_complex::Complex;
 
@@ -94,12 +94,12 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_flux() {
     let trivial = vec![(U1Sector(0), 1)];
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
     let bad_w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(xy_bond, Direction::In),
-        ],
+        legs([
+            (trivial, Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::Out),
+            (xy_bond, Direction::In),
+        ]),
         U1Sector(2),
     );
     let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
@@ -142,22 +142,22 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
     let charged_right = vec![(U1Sector(2), 1)];
 
     let mut mps0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(trivial.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::Out),
+            (trivial.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mps0.block_data_mut(&BlockCoord(vec![0, 0, 0]))
         .expect("(0,0,0)")[0] = 1.0;
 
     let mps1 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(charged_right, Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::Out),
+            (charged_right, Direction::In),
+        ]),
         U1Sector(2),
     );
 
@@ -167,22 +167,22 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
     // the Phase 6.1 boundary contract. Identity propagator on the
     // single phys sector.
     let mut w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(trivial.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys.clone(), Direction::Out),
+            (trivial.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     w0.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
     let mut w1 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector::identity(),
     );
     w1.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
@@ -212,12 +212,12 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_bra_ket() {
     let trivial = vec![(U1Sector(0), 1)];
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
     let bad_w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::In), // <-- WRONG: should be Out
-            QNIndex::new(xy_bond, Direction::In),
-        ],
+        legs([
+            (trivial, Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::In), // <-- WRONG: should be Out
+            (xy_bond, Direction::In),
+        ]),
         U1Sector::identity(),
     );
     let mps = make_n2_mps_f64();
@@ -404,19 +404,19 @@ fn bsp_validate_inputs_qn_mismatch_contracted_axis_sectors() {
     let trivial = vec![(U1Sector(0), 1)];
 
     let mps_alt0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(alt_left, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(alt_mid.clone(), Direction::In),
-        ],
+        legs([
+            (alt_left, Direction::Out),
+            (phys.clone(), Direction::Out),
+            (alt_mid.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     let mps_alt1 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(alt_mid, Direction::Out),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (alt_mid, Direction::Out),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector(2),
     );
     let mps_alt = Mps::from_sites(vec![mps_alt0, mps_alt1]);

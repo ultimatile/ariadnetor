@@ -9,9 +9,10 @@
 
 use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
 use arnet_mps::{Mpo, Mps, TensorChain};
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
-    DenseLayout, DenseStorage, DenseTensor, Direction, Host, QNIndex, Sector, U1Sector,
+    DenseLayout, DenseStorage, DenseTensor, Direction, Host, Sector, U1Sector,
 };
 
 /// Run `DmrgEnvs::build` and assert it returns an error. Equivalent to
@@ -111,10 +112,14 @@ fn make_u1_mps_site(
     right: Vec<(U1Sector, usize)>,
     counter: &mut f64,
 ) -> BlockSparseTensor<f64, U1Sector> {
-    let l = QNIndex::new(left, Direction::Out);
-    let p = QNIndex::new(phys, Direction::Out);
-    let r = QNIndex::new(right, Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![l, p, r], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (left, Direction::Out),
+            (phys, Direction::Out),
+            (right, Direction::In),
+        ]),
+        U1Sector(0),
+    );
     let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
     for coord in coords {
         let data = site.block_data_mut(&coord).expect("allowed block");
@@ -166,11 +171,15 @@ fn make_u1_mpo_site(
     w_right: Vec<(U1Sector, usize)>,
     counter: &mut f64,
 ) -> BlockSparseTensor<f64, U1Sector> {
-    let w_l = QNIndex::new(w_left, Direction::Out);
-    let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-    let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-    let w_r = QNIndex::new(w_right, Direction::In);
-    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0));
+    let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs([
+            (w_left, Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (w_right, Direction::In),
+        ]),
+        U1Sector(0),
+    );
     let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
     for coord in coords {
         let data = site.block_data_mut(&coord).expect("allowed block");
@@ -448,11 +457,15 @@ fn bsp_envs_error_paths_qn_mismatch() {
     // MPO ket sector-set differs from MPS phys.
     let make_mismatched_mpo_site =
         |ket_sectors: Vec<(U1Sector, usize)>| -> BlockSparseTensor<f64, U1Sector> {
-            let w_l = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-            let ket = QNIndex::new(ket_sectors, Direction::In);
-            let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(2), 1)], Direction::Out);
-            let w_r = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-            BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0))
+            BlockSparseTensor::<f64, U1Sector>::zeros(
+                legs([
+                    (vec![(U1Sector(0), 1)], Direction::Out),
+                    (ket_sectors, Direction::In),
+                    (vec![(U1Sector(0), 1), (U1Sector(2), 1)], Direction::Out),
+                    (vec![(U1Sector(0), 1)], Direction::In),
+                ]),
+                U1Sector(0),
+            )
         };
     let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> = Mpo::from_sites(vec![
         make_mismatched_mpo_site(vec![(U1Sector(0), 1), (U1Sector(2), 1)]),
@@ -472,10 +485,14 @@ fn bsp_envs_error_paths_direction_mismatch() {
     // extend_right_step step 2 the contracted pair `(site.phys, MPO.ket)`
     // collapses to `(In, In)` and contract_block_sparse rejects it.
     let make_bad_mps_site = || -> BlockSparseTensor<f64, U1Sector> {
-        let l = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-        let p = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-        let r = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-        let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(vec![l, p, r], U1Sector(0));
+        let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+            legs([
+                (vec![(U1Sector(0), 1)], Direction::Out),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+                (vec![(U1Sector(0), 1)], Direction::In),
+            ]),
+            U1Sector(0),
+        );
         let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
         for coord in coords {
             let data = site.block_data_mut(&coord).unwrap();
@@ -489,12 +506,15 @@ fn bsp_envs_error_paths_direction_mismatch() {
         Mps::from_sites(vec![make_bad_mps_site(), make_bad_mps_site()]);
 
     let make_mpo_site = || -> BlockSparseTensor<f64, U1Sector> {
-        let w_l = QNIndex::new(vec![(U1Sector(0), 1)], Direction::Out);
-        let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-        let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-        let w_r = QNIndex::new(vec![(U1Sector(0), 1)], Direction::In);
-        let mut site =
-            BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0));
+        let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(
+            legs([
+                (vec![(U1Sector(0), 1)], Direction::Out),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+                (vec![(U1Sector(0), 1)], Direction::In),
+            ]),
+            U1Sector(0),
+        );
         let coords: Vec<BlockCoord> = site.block_metas().iter().map(|m| m.coord.clone()).collect();
         for coord in coords {
             let data = site.block_data_mut(&coord).unwrap();
@@ -608,11 +628,15 @@ fn bsp_envs_error_paths_flux_disallowed_boundary() {
 
     // MPO with charged left edge — single-sector but sector ≠ identity.
     let make_charged_left_mpo_site = || -> BlockSparseTensor<f64, U1Sector> {
-        let w_l = QNIndex::new(vec![(U1Sector(1), 1)], Direction::Out);
-        let ket = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In);
-        let bra = QNIndex::new(vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out);
-        let w_r = QNIndex::new(vec![(U1Sector(1), 1)], Direction::In);
-        BlockSparseTensor::<f64, U1Sector>::zeros(vec![w_l, ket, bra, w_r], U1Sector(0))
+        BlockSparseTensor::<f64, U1Sector>::zeros(
+            legs([
+                (vec![(U1Sector(1), 1)], Direction::Out),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+                (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+                (vec![(U1Sector(1), 1)], Direction::In),
+            ]),
+            U1Sector(0),
+        )
     };
     let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> = Mpo::from_sites(vec![
         make_charged_left_mpo_site(),
