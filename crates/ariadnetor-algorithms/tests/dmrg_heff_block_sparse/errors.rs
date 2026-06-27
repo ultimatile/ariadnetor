@@ -20,7 +20,7 @@ use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_c64, make_n2_mpo_f64, make_n2_mps_c64, make_n2_mps_f64,
     make_n3_mpo_f64, make_n3_mps_f64,
 };
-use super::helpers::densify_bsp_c64;
+use arnet_tensor::test_fixtures::densify_bsp_c64;
 
 #[test]
 fn bsp_heff_step_error_paths_invalid_site() {

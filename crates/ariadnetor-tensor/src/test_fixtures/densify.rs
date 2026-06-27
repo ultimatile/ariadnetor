@@ -1,12 +1,12 @@
-//! Test helpers shared across BlockSparse Heff integration test
-//! sub-modules: densify a `BlockSparseTensor<T, U1Sector>` to a CM
-//! `DenseTensor<T>`, build per-template-block flat offset tables, and
-//! convert back and forth between flat-template-aware vectors and
-//! Dense rank-4 tensors in the global shape.
+//! BlockSparse densify / template helpers shared across BlockSparse Heff
+//! integration test sub-modules: densify a `BlockSparseTensor<T, U1Sector>`
+//! to a CM `DenseTensor<T>`, build per-template-block flat offset tables, and
+//! convert back and forth between flat-template-aware vectors and Dense rank-4
+//! tensors in the global shape.
 
-use arnet_tensor::MemoryOrder;
-use arnet_tensor::{
-    BlockSparseTensor, ComputeBackendTensorExt, DenseTensor, Host, Sector, U1Sector,
+use crate::MemoryOrder;
+use crate::{
+    BlockSparseTensor, ComputeBackendTensorExt, DenseTensor, Host, Scalar, Sector, U1Sector,
 };
 use num_complex::Complex;
 
@@ -22,10 +22,7 @@ pub fn densify_bsp_c64(
     densify_bsp_generic(bsp, Complex::new(0.0, 0.0))
 }
 
-fn densify_bsp_generic<T: arnet_core::Scalar>(
-    bsp: &BlockSparseTensor<T, U1Sector>,
-    zero: T,
-) -> DenseTensor<T> {
+fn densify_bsp_generic<T: Scalar>(bsp: &BlockSparseTensor<T, U1Sector>, zero: T) -> DenseTensor<T> {
     let global_dims: Vec<usize> = bsp.shape().to_vec();
     let total: usize = global_dims.iter().product();
     let mut out = vec![zero; total];

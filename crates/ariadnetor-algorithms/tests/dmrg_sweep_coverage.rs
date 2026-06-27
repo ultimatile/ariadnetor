@@ -14,6 +14,7 @@
 //! - **`validate_params` boundaries on `target_trunc_err`**: zero
 //!   accepted, negative rejected, NaN rejected, positive accepted.
 
+use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_center_zero_f64};
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
@@ -27,7 +28,6 @@ use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTens
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use test_utils::dense_fixtures::{heisenberg_mpo_f64, random_mps_center_zero_f64};
 
 const D: usize = 2;
 

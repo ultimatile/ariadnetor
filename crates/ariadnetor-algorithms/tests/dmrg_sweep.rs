@@ -7,6 +7,7 @@
 //! variant gives a closed-form ground-energy reference
 //! (`prod_i min_eig(h_i)`) without a separate ED solver.
 
+use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
@@ -20,7 +21,6 @@ use num_complex::Complex;
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use test_utils::dense_fixtures::random_mps_center_zero_f64;
 
 // ---------------------------------------------------------------------------
 // Fixtures

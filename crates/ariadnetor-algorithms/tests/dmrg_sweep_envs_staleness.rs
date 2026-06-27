@@ -3,13 +3,13 @@
 //! boundary case codex flagged: every populated slot must match a
 //! fresh `DmrgEnvs::build` against the post-sweep MPS.
 
+use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::Mpo;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
-use test_utils::dense_fixtures::random_mps_center_zero_f64;
 
 /// Identity-Hermitian PSD-product MPO. Each site is `h_i ⊗ I ⊗ I ...`,
 /// where `h_i` is a random PSD matrix `R R^T` (`R` is the seeded random

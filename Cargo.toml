@@ -7,7 +7,7 @@ members = [
   "crates/ariadnetor-mps",
   "crates/ariadnetor-algorithms",
   "crates/ariadnetor",
-  "test-utils",
+  "algorithms-fixtures",
 ]
 resolver = "2"
 

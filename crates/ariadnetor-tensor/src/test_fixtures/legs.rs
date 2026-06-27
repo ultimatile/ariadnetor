@@ -1,4 +1,4 @@
-//! Shared fixture builders for BlockSparse `QNIndex` leg construction.
+//! BlockSparse `QNIndex` leg-construction builders.
 //!
 //! The workspace's BlockSparse tests hand-roll `QNIndex` leg pairs at many
 //! sites. These builders centralize that construction: the leg-shape intent
@@ -6,15 +6,6 @@
 //! signature change is absorbed here rather than at every test call site. They
 //! are generic over the sector type so both `U1Sector` and `Z2Sector` fixtures
 //! share them.
-//!
-//! The module is gated on `cfg(any(test, feature = "test-fixtures"))`: this
-//! crate's own in-lib unit tests reach it as `crate::test_fixtures` under
-//! `cfg(test)`, while every other crate's tests enable the `test-fixtures`
-//! feature in their dev-dependencies and reach it as
-//! `arnet_tensor::test_fixtures`. A separate fixture crate cannot serve the
-//! in-lib unit tests: a dev-dependency cycle would link the non-test build of
-//! this crate, whose `Sector` / `QNIndex` types are a distinct instance from
-//! the `cfg(test)` build under test.
 
 use crate::block_sparse::{Direction, QNIndex};
 use crate::sector::Sector;

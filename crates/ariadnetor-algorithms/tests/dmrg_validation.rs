@@ -3,17 +3,17 @@
 //! transverse-field Ising (TFI) and antiferromagnetic Heisenberg
 //! (XXX). The TFI MPO builder and ED reference are inlined here; the
 //! shared Heisenberg MPO and random-MPS builders come from
-//! `test_utils::dense_fixtures`. No public API is added.
+//! `algorithms_fixtures::dense_fixtures`. No public API is added.
 
+use algorithms_fixtures::dense_fixtures::{
+    build_mpo_site_f64, heisenberg_mpo_f64, op_id, op_sz, random_mps_center_zero_f64,
+};
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::{CanonicalForm, Mpo, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
-use test_utils::dense_fixtures::{
-    build_mpo_site_f64, heisenberg_mpo_f64, op_id, op_sz, random_mps_center_zero_f64,
-};
 
 // ---------------------------------------------------------------------------
 // Pauli matrix elements in computational basis (|0⟩=up, |1⟩=down).

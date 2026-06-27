@@ -25,11 +25,16 @@ timeout_multiplier = 2.0
 # never runs, not because of a real spec gap.
 test_workspace = true
 
-# test-utils is test infrastructure (shared DMRG / MPS fixtures, densify
-# helpers), not production code. Mutating it only asks whether the fixtures
+# The shared test fixtures are test infrastructure, not production code:
+# DMRG / MPS chains in the algorithms-fixtures crate, plus the QNIndex leg
+# builders and densify / template helpers in ariadnetor-tensor's feature-gated
+# test_fixtures module. Mutating them only asks whether the fixtures
 # themselves are asserted, which is not the property mutation testing is for
-# here. Excluding it removes ~150 noise mutants.
-exclude_globs = ["test-utils/**/*.rs"]
+# here. Excluding both removes that noise.
+exclude_globs = [
+    "algorithms-fixtures/**/*.rs",
+    "crates/ariadnetor-tensor/src/test_fixtures/**/*.rs",
+]
 
 exclude_re = [
     # Equivalent mutants: real types return 0.0 for im(), same as Default::default()

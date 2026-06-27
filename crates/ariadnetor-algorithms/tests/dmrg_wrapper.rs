@@ -12,6 +12,7 @@
 //! BlockSparse path is already implied by the Dense equivalence
 //! tests plus the BlockSparse `sweep_2site` validation suite.
 
+use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
 };
@@ -20,7 +21,6 @@ use arnet_linalg::TruncSvdParams;
 use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage};
-use test_utils::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 
 fn small_params(seed: u64) -> DmrgSweepParams {
     DmrgSweepParams {
