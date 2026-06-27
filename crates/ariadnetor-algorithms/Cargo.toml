@@ -37,7 +37,7 @@ ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"
 criterion = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }
-test-utils = { path = "../../test-utils" }
+algorithms-fixtures = { path = "../../algorithms-fixtures" }
 
 [lib]
 name = "arnet_algorithms"

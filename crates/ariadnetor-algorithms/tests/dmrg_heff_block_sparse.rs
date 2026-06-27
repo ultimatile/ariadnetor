@@ -15,11 +15,11 @@
 //!
 //! Test fixtures use the XY hopping interaction
 //! `H = J (S+_a S-_{a+1} + S-_a S+_{a+1})`. See the `fixtures`
-//! module of the `test-utils` crate for the concrete chain
+//! module of the `algorithms-fixtures` crate for the concrete chain
 //! constructions; matvec / step / canonical / flux tests live in
 //! `matvec.rs` and error / complex tests live in `errors.rs`.
 
-use test_utils::{fixtures, helpers};
+use algorithms_fixtures::fixtures;
 
 #[path = "dmrg_heff_block_sparse/matvec.rs"]
 mod matvec;

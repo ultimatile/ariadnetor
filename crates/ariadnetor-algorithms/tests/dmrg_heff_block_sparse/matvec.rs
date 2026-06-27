@@ -17,7 +17,7 @@ use arnet_tensor::{Sector, U1Sector};
 use super::fixtures::{
     build_envs_n2_f64, make_n2_mpo_f64, make_n2_mps_f64, make_n3_mpo_f64, make_n3_mps_f64,
 };
-use super::helpers::{
+use arnet_tensor::test_fixtures::{
     build_dense_psi_from_flat, dense_to_template_flat, densify_bsp_f64, template_block_offsets,
     template_from_mps_pair,
 };

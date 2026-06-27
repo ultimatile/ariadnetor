@@ -10,9 +10,10 @@
 
 use arnet_algorithms::dmrg::DmrgEnvs;
 use arnet_mps::{Mpo, Mps};
+use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
-    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, QNIndex,
-    Sector, U1Sector,
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, Sector,
+    U1Sector,
 };
 use num_complex::Complex;
 
@@ -28,11 +29,11 @@ pub fn make_n2_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sec
     let two_sec = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
 
     let mut mps0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(two_sec.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::Out),
+            (two_sec.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mps0.block_data_mut(&BlockCoord(vec![0, 0, 0]))
@@ -41,11 +42,11 @@ pub fn make_n2_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sec
         .expect("(0,1,1)")[0] = 0.4;
 
     let mut mps1 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(two_sec, Direction::Out),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (two_sec, Direction::Out),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector(1),
     );
     mps1.block_data_mut(&BlockCoord(vec![0, 1, 0]))
@@ -63,12 +64,12 @@ pub fn make_n2_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
     let xy_bond = vec![(U1Sector(-1), 1), (U1Sector(1), 1)];
 
     let mut w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(xy_bond.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys.clone(), Direction::Out),
+            (xy_bond.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     // J·S- at (W_l=0, ket=1, bra=0, W_r=U1(-1))
@@ -79,12 +80,12 @@ pub fn make_n2_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
         .expect("J·S+")[0] = j;
 
     let mut w1 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(xy_bond, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (xy_bond, Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector::identity(),
     );
     // S+ at (W_l=U1(-1), ket=0, bra=1, W_r=0)
@@ -118,22 +119,22 @@ pub fn make_n3_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sec
     let edge_right = vec![(U1Sector(1), 1)];
 
     let mut mps0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(edge_left, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(two_sec.clone(), Direction::In),
-        ],
+        legs([
+            (edge_left, Direction::Out),
+            (phys.clone(), Direction::Out),
+            (two_sec.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mps0.block_data_mut(&BlockCoord(vec![0, 0, 0])).expect("a")[0] = 0.6;
     mps0.block_data_mut(&BlockCoord(vec![0, 1, 1])).expect("b")[0] = 0.35;
 
     let mut mps1 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(two_sec.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(two_sec.clone(), Direction::In),
-        ],
+        legs([
+            (two_sec.clone(), Direction::Out),
+            (phys.clone(), Direction::Out),
+            (two_sec.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mps1.block_data_mut(&BlockCoord(vec![0, 0, 0])).expect("c")[0] = 0.4;
@@ -141,11 +142,11 @@ pub fn make_n3_mps_f64() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sec
     mps1.block_data_mut(&BlockCoord(vec![1, 0, 1])).expect("e")[0] = 0.5;
 
     let mut mps2 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(two_sec, Direction::Out),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(edge_right, Direction::In),
-        ],
+        legs([
+            (two_sec, Direction::Out),
+            (phys, Direction::Out),
+            (edge_right, Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mps2.block_data_mut(&BlockCoord(vec![0, 1, 0])).expect("f")[0] = 0.3;
@@ -163,12 +164,12 @@ pub fn make_n3_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
 
     // W[0]: identity propagator (1×d×d×1).
     let mut w0 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(trivial.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys.clone(), Direction::Out),
+            (trivial.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     w0.block_data_mut(&BlockCoord(vec![0, 0, 0, 0]))
@@ -178,12 +179,12 @@ pub fn make_n3_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
 
     // W[1]: XY pair-start (1×d×d×2 with multi-sector W_r bond).
     let mut w1 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(xy_bond.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys.clone(), Direction::Out),
+            (xy_bond.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     w1.block_data_mut(&BlockCoord(vec![0, 1, 0, 0]))
@@ -193,12 +194,12 @@ pub fn make_n3_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
 
     // W[2]: XY pair-finish (2×d×d×1 with multi-sector W_l bond).
     let mut w2 = BlockSparseTensor::<f64, U1Sector>::zeros(
-        vec![
-            QNIndex::new(xy_bond, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (xy_bond, Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector::identity(),
     );
     w2.block_data_mut(&BlockCoord(vec![0, 0, 1, 0]))
@@ -221,22 +222,22 @@ pub fn make_n2_mps_c64() -> Mps<BlockSparseStorage<Complex<f64>>, BlockSparseLay
     let two_sec = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
 
     let mut mps0 = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(two_sec.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::Out),
+            (two_sec.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     mps0.block_data_mut(&BlockCoord(vec![0, 0, 0])).expect("a")[0] = Complex::new(0.7, 0.1);
     mps0.block_data_mut(&BlockCoord(vec![0, 1, 1])).expect("b")[0] = Complex::new(0.4, -0.2);
 
     let mut mps1 = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
-        vec![
-            QNIndex::new(two_sec, Direction::Out),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (two_sec, Direction::Out),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector(1),
     );
     mps1.block_data_mut(&BlockCoord(vec![0, 1, 0])).expect("c")[0] = Complex::new(0.3, 0.05);
@@ -256,24 +257,24 @@ pub fn make_n2_mpo_c64(
     let one = Complex::new(1.0, 0.0);
 
     let mut w0 = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
-        vec![
-            QNIndex::new(trivial.clone(), Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys.clone(), Direction::Out),
-            QNIndex::new(xy_bond.clone(), Direction::In),
-        ],
+        legs([
+            (trivial.clone(), Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys.clone(), Direction::Out),
+            (xy_bond.clone(), Direction::In),
+        ]),
         U1Sector::identity(),
     );
     w0.block_data_mut(&BlockCoord(vec![0, 1, 0, 0])).expect("a")[0] = jj;
     w0.block_data_mut(&BlockCoord(vec![0, 0, 1, 1])).expect("b")[0] = jj;
 
     let mut w1 = BlockSparseTensor::<Complex<f64>, U1Sector>::zeros(
-        vec![
-            QNIndex::new(xy_bond, Direction::Out),
-            QNIndex::new(phys.clone(), Direction::In),
-            QNIndex::new(phys, Direction::Out),
-            QNIndex::new(trivial, Direction::In),
-        ],
+        legs([
+            (xy_bond, Direction::Out),
+            (phys.clone(), Direction::In),
+            (phys, Direction::Out),
+            (trivial, Direction::In),
+        ]),
         U1Sector::identity(),
     );
     w1.block_data_mut(&BlockCoord(vec![0, 0, 1, 0])).expect("c")[0] = one;

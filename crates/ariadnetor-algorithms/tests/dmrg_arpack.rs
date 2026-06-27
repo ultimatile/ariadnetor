@@ -14,12 +14,13 @@
 //!   `DmrgHeffError::Arpack` variant.
 //!
 //! The Heisenberg MPO + random MPS builders come from the shared
-//! `test_utils::dense_fixtures` module.
+//! `algorithms_fixtures::dense_fixtures` module.
 
 #![cfg(feature = "arpack")]
 
 use std::error::Error;
 
+use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgHeffError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, dmrg_2site_step,
@@ -27,7 +28,6 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::{ArpackError, ArpackParams, LanczosParams};
 use arnet_linalg::TruncSvdParams;
 use arnet_native::NativeBackend;
-use test_utils::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 
 // ---------------------------------------------------------------------------
 // Happy path: ARPACK and Lanczos must agree on the converged energy.

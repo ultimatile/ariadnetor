@@ -1,6 +1,7 @@
 //! Step-error propagation case for `sweep_2site`, split out from
 //! `dmrg_sweep.rs` to keep the per-test-file line cap.
 
+use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use arnet_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
@@ -9,7 +10,6 @@ use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, Mps, canonicalize};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
-use test_utils::dense_fixtures::random_mps_center_zero_f64;
 
 fn standard_params_f64(seed: u64) -> DmrgSweepParams {
     DmrgSweepParams {
