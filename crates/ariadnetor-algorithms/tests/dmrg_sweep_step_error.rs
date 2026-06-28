@@ -7,7 +7,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps, canonicalize};
+use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
@@ -39,7 +39,7 @@ fn t6_step_error_propagated() {
         .map(|_| Host::shared().dense(vec![1.0_f64, 0.0], vec![1, d_mps, 1]))
         .collect();
     let mut mps = Mps::from_sites(mps_storages);
-    canonicalize(&NativeBackend::new(), &mut mps, 0);
+    mps.canonicalize(&NativeBackend::new(), 0);
     let mpo_storages: Vec<DenseTensor<f64>> = (0..n)
         .map(|_| {
             let mut m = vec![0.0_f64; d_mpo * d_mpo];

@@ -21,7 +21,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, norm};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket};
 use arnet_native::NativeBackend;
 use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
@@ -64,7 +64,7 @@ fn setup_f64(
     mps: &mut Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
     mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
 ) -> DmrgEnvs<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
-    canonicalize(&NativeBackend::new(), mps, 0);
+    mps.canonicalize(&NativeBackend::new(), 0);
     DmrgEnvs::build(mps, mpo).expect("envs build")
 }
 
@@ -72,7 +72,7 @@ fn setup_c64(
     mps: &mut Mps<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>>,
     mpo: &Mpo<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>>,
 ) -> DmrgEnvs<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>> {
-    canonicalize(&NativeBackend::new(), mps, 0);
+    mps.canonicalize(&NativeBackend::new(), 0);
     DmrgEnvs::build(mps, mpo).expect("envs build")
 }
 
@@ -229,8 +229,8 @@ fn bsp_sweep_envs_equivalent_to_fresh_rebuild_after_sweep() {
     let e_a = braket(&NativeBackend::new(), &mps_a, &mpo, &mps_a);
     let e_b = braket(&NativeBackend::new(), &mps_b, &mpo, &mps_b);
     assert!((e_a - e_b).abs() < 1e-9);
-    let n_a = norm(&NativeBackend::new(), &mps_a);
-    let n_b = norm(&NativeBackend::new(), &mps_b);
+    let n_a = mps_a.norm(&NativeBackend::new());
+    let n_b = mps_b.norm(&NativeBackend::new());
     assert!((n_a - n_b).abs() < 1e-9);
 }
 

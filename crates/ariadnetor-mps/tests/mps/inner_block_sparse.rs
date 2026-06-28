@@ -1,7 +1,7 @@
 //! Inner product and norm tests for block-sparse MPS.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, canonicalize, inner, norm};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, inner};
 use arnet_native::NativeBackend;
 use arnet_tensor::U1Sector;
 use arnet_tensor::test_fixtures::legs;
@@ -22,7 +22,7 @@ fn inner_self_equals_norm_squared() {
     let backend = NativeBackend::new();
     let mps = make_4site_u1_mps();
     let overlap = inner(&backend, &mps, &mps);
-    let n = norm(&backend, &mps);
+    let n = mps.norm(&backend);
     assert_abs_diff_eq!(overlap, n * n, epsilon = 1e-10);
 }
 
@@ -53,7 +53,7 @@ fn inner_preserved_by_canonicalize() {
     let mut mps_b = make_2site_entangled_u1_mps();
 
     let overlap_before = inner(&backend, &mps_a, &mps_b);
-    canonicalize(&backend, &mut mps_b, 0);
+    mps_b.canonicalize(&backend, 0);
     let overlap_after = inner(&backend, &mps_a, &mps_b);
 
     assert_abs_diff_eq!(overlap_before, overlap_after, epsilon = 1e-10);
@@ -85,7 +85,7 @@ fn inner_single_site() {
 fn norm_agrees_with_full_contraction() {
     let backend = NativeBackend::new();
     let mps = make_2site_entangled_u1_mps();
-    let n = norm(&backend, &mps);
+    let n = mps.norm(&backend);
     assert_abs_diff_eq!(n, 73.0_f64.sqrt(), epsilon = 1e-10);
 }
 
@@ -94,28 +94,28 @@ fn norm_left_canonical_returns_one() {
     let backend = NativeBackend::new();
     let mut mps = make_2site_entangled_u1_mps();
     let last = mps.len() - 1;
-    canonicalize(&backend, &mut mps, last);
+    mps.canonicalize(&backend, last);
     mps.set_canonical_form(CanonicalForm::Left);
-    assert_abs_diff_eq!(norm(&backend, &mps), 1.0, epsilon = 1e-12);
+    assert_abs_diff_eq!(mps.norm(&backend), 1.0, epsilon = 1e-12);
 }
 
 #[test]
 fn norm_right_canonical_returns_one() {
     let backend = NativeBackend::new();
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
     mps.set_canonical_form(CanonicalForm::Right);
-    assert_abs_diff_eq!(norm(&backend, &mps), 1.0, epsilon = 1e-12);
+    assert_abs_diff_eq!(mps.norm(&backend), 1.0, epsilon = 1e-12);
 }
 
 #[test]
 fn norm_mixed_uses_center_tensor() {
     let backend = NativeBackend::new();
     let mut mps = make_2site_entangled_u1_mps();
-    let norm_full = norm(&backend, &mps);
+    let norm_full = mps.norm(&backend);
 
-    canonicalize(&backend, &mut mps, 1);
-    let norm_mixed = norm(&backend, &mps);
+    mps.canonicalize(&backend, 1);
+    let norm_mixed = mps.norm(&backend);
 
     assert_abs_diff_eq!(norm_full, norm_mixed, epsilon = 1e-10);
     let center_norm = mps.site(1).norm();
@@ -128,7 +128,7 @@ fn norm_unknown_uses_full_contraction() {
     let mps = make_4site_u1_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
-    let n = norm(&backend, &mps);
+    let n = mps.norm(&backend);
     let state = bsp_mps_contract_full(&mps);
     let frob = state.norm();
     assert_abs_diff_eq!(n, frob, epsilon = 1e-10);
@@ -166,7 +166,7 @@ fn braket_identity_equals_inner_entangled() {
 fn braket_identity_after_canonicalize() {
     let backend = NativeBackend::new();
     let mut mps = make_2site_entangled_u1_mps();
-    canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
     let identity = make_identity_u1_mpo(2);
 
     let braket_val = braket(&backend, &mps, &identity, &mps);

@@ -27,11 +27,12 @@ mod env_block_sparse;
 mod heff;
 mod heff_block_sparse;
 mod heff_error;
+mod sealed;
 mod solver;
 mod sweep;
 mod wrapper;
 
-pub use dispatch::{AbsorbedStep, DmrgOps};
+pub use dispatch::{AbsorbedStep, DmrgOps, FullStepError};
 pub use env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
 pub use heff::{EffectiveHamiltonian2Site, TwoSiteStepResult, dmrg_2site_step};
 pub use heff_block_sparse::{

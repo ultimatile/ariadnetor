@@ -21,7 +21,7 @@
 use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_with_backend};
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
@@ -349,7 +349,7 @@ fn random_mps_bsp_center_zero_f64(
     }
 
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&NativeBackend::new(), &mut mps, 0);
+    mps.canonicalize(&NativeBackend::new(), 0);
     assert_eq!(
         *mps.canonical_form(),
         CanonicalForm::Mixed { center: 0 },

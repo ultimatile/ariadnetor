@@ -20,11 +20,14 @@ mod site_ops;
 mod truncate;
 mod types;
 
-// Dispatch trait — enables generic algorithms over Dense / BlockSparse
+// Sealed chain-keyed dispatch trait — enables generic algorithms over the
+// Dense / BlockSparse `Mps` chains. Sealed (not downstream-implementable).
 pub use dispatch::MpsOps;
 
-// Unified free functions (dispatch via MpsOps trait)
-pub use dispatch::{apply, apply_with_method, braket, canonicalize, inner, norm, truncate};
+// Multi-arg free functions (dispatch via the MpsOps trait). The single-chain
+// operations `canonicalize` / `truncate` / `norm` are inherent methods on
+// `Mps` rather than free functions.
+pub use dispatch::{apply, apply_with_method, braket, inner};
 
 pub use chain::TensorChain;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};

@@ -3,7 +3,7 @@
 use approx::assert_abs_diff_eq;
 use arnet_mps::{
     self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
-    TruncateParams, apply, inner, norm,
+    TruncateParams, apply, inner,
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::test_fixtures::legs;
@@ -29,8 +29,8 @@ fn identity_mpo_preserves_norm_4site() {
 
     let result = apply(&backend, &identity, &mps, None);
 
-    let norm_before = norm(&backend, &mps);
-    let norm_after = norm(&backend, &result);
+    let norm_before = mps.norm(&backend);
+    let norm_after = result.norm(&backend);
     assert_abs_diff_eq!(norm_before, norm_after, epsilon = 1e-10);
 }
 
@@ -135,8 +135,8 @@ fn apply_with_truncation() {
     assert_eq!(*result.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
     // Norm should be approximately preserved (identity MPO, only truncation error)
-    let norm_before = norm(&backend, &mps);
-    let norm_after = norm(&backend, &result);
+    let norm_before = mps.norm(&backend);
+    let norm_after = result.norm(&backend);
     assert_abs_diff_eq!(norm_before, norm_after, epsilon = 1e-6);
 }
 

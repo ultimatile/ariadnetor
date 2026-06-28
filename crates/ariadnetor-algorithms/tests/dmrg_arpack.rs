@@ -91,7 +91,7 @@ fn dmrg_arpack_max_iter_one_returns_arpack_error() {
     let n = 4;
     let chi = 4;
     let mut psi = random_mps_unknown_f64(n, 2, chi, 0xCAFEBABE);
-    arnet_mps::canonicalize(&NativeBackend::new(), &mut psi, 0);
+    psi.canonicalize(&NativeBackend::new(), 0);
     let mpo = heisenberg_mpo_f64(n, 1.0);
     let mut envs = DmrgEnvs::build(&psi, &mpo).expect("envs build");
     // Walk the left env up so left(1) is populated for site=1.
