@@ -13,7 +13,7 @@ fn test_inner_self_equals_norm_squared() {
     let mps = make_4site_mps();
 
     let overlap = mps::inner(&backend, &mps, &mps);
-    let n = mps::norm(&backend, &mps);
+    let n = mps.norm(&backend);
 
     assert_abs_diff_eq!(overlap, n * n, epsilon = 1e-10);
 }
@@ -50,11 +50,11 @@ fn test_norm_canonicalized_is_fast() {
     let mut mps = make_4site_mps();
 
     // Compute norm before canonicalization (full contraction)
-    let norm_full = mps::norm(&backend, &mps);
+    let norm_full = mps.norm(&backend);
 
     // Canonicalize and compute norm (O(1) from center tensor)
-    mps::canonicalize(&backend, &mut mps, 2);
-    let norm_canonical = mps::norm(&backend, &mps);
+    mps.canonicalize(&backend, 2);
+    let norm_canonical = mps.norm(&backend);
 
     assert_abs_diff_eq!(norm_full, norm_canonical, epsilon = 1e-10);
 }
@@ -69,20 +69,20 @@ fn test_norm_product_state() {
     ];
     let psi = Mps::from_sites(storages);
 
-    assert_abs_diff_eq!(mps::norm(&backend, &psi), 1.0, epsilon = 1e-12);
+    assert_abs_diff_eq!(psi.norm(&backend), 1.0, epsilon = 1e-12);
 }
 
 #[test]
 fn test_norm_left_canonical_returns_one() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    let norm_full = mps::norm(&backend, &mps);
+    let norm_full = mps.norm(&backend);
 
     // Canonicalize to make all sites left-isometric, then mark as Left
-    mps::canonicalize(&backend, &mut mps, 3);
+    mps.canonicalize(&backend, 3);
     mps.set_canonical_form(CanonicalForm::Left);
 
-    let norm_left = mps::norm(&backend, &mps);
+    let norm_left = mps.norm(&backend);
     // Left canonical means normalized → norm should be 1.0
     assert_abs_diff_eq!(norm_left, 1.0, epsilon = 1e-12);
     // This should differ from the full norm (which is not 1.0 for make_4site_mps)
@@ -97,10 +97,10 @@ fn test_norm_right_canonical_returns_one() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
 
-    mps::canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
     mps.set_canonical_form(CanonicalForm::Right);
 
-    let norm_right = mps::norm(&backend, &mps);
+    let norm_right = mps.norm(&backend);
     assert_abs_diff_eq!(norm_right, 1.0, epsilon = 1e-12);
 }
 
@@ -108,11 +108,11 @@ fn test_norm_right_canonical_returns_one() {
 fn test_norm_mixed_uses_center_tensor() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    let norm_full = mps::norm(&backend, &mps);
+    let norm_full = mps.norm(&backend);
 
-    mps::canonicalize(&backend, &mut mps, 2);
+    mps.canonicalize(&backend, 2);
     // canonical_form is Mixed { center: 2 } after canonicalize
-    let norm_mixed = mps::norm(&backend, &mps);
+    let norm_mixed = mps.norm(&backend);
 
     // Both should agree
     assert_abs_diff_eq!(norm_full, norm_mixed, epsilon = 1e-10);
@@ -129,7 +129,7 @@ fn test_inner_preserved_by_canonicalize() {
 
     let overlap_before = mps::inner(&backend, &mps_a, &mps_b);
 
-    mps::canonicalize(&backend, &mut mps_b, 1);
+    mps_b.canonicalize(&backend, 1);
 
     let overlap_after = mps::inner(&backend, &mps_a, &mps_b);
 

@@ -19,13 +19,13 @@
 //!
 //! # Generic surface
 //!
-//! `dmrg_2site` is generic over `L: super::DmrgOps<T> + Clone`, so the
-//! same entry point covers both the Dense (`L = DenseLayout`) and
-//! BlockSparse / U(1) (`L = BlockSparseLayout<S>`) paths. The `Clone`
-//! bounds (on `L` and on the storage) are required because the wrapper
+//! `dmrg_2site` is generic over the `Mps<St, L>` chain
+//! (`Mps<St, L>: super::DmrgOps<T>` + `Clone`), so the same entry point
+//! covers both the Dense and BlockSparse / U(1) paths. The `Clone` bounds
+//! (on the storage and layout) are required because the wrapper
 //! defensively clones the input `Mps` before canonicalizing it. Both
-//! concrete layouts satisfy `Clone`, so the bound is met for every
-//! concrete layout in the workspace. DMRG is host-pinned in the
+//! concrete chains satisfy `Clone`, so the bound is met for every concrete
+//! chain in the workspace. DMRG is host-pinned in the
 //! CPU-only Stage B scope, so the boundary supplies the [`Host`]
 //! substrate rather than an arbitrary backend.
 //!
@@ -50,11 +50,11 @@
 //! visible as defense-in-depth.
 
 use arnet_core::Scalar;
-use arnet_mps::{Mpo, Mps, MpsOps, TensorChain, canonicalize};
-use arnet_tensor::{Host, OpsFor};
+use arnet_mps::{Mpo, Mps, MpsOps, TensorChain};
+use arnet_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
 
 use super::dispatch::DmrgOps;
-use super::env::{DmrgEnvError, DmrgEnvs};
+use super::env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
 use super::sweep::{DmrgResult, DmrgSweepError, DmrgSweepParams, sweep_2site};
 
 /// Errors raised by [`dmrg_2site`].
@@ -83,6 +83,10 @@ pub enum DmrgError {
     Sweep(#[from] DmrgSweepError),
 }
 
+/// Output of [`dmrg_2site`]: the diagnostic [`DmrgResult`] paired with the
+/// optimized MPS, or a [`DmrgError`].
+type Dmrg2SiteOutput<R, St, L> = Result<(DmrgResult<R>, Mps<St, L>), DmrgError>;
+
 /// Run a 2-site DMRG calculation with caller-friendly defaults for
 /// canonical-form management and environment construction.
 ///
@@ -102,20 +106,21 @@ pub enum DmrgError {
 /// [`DmrgError::LengthMismatch`] when MPO and MPS lengths disagree,
 /// [`DmrgError::Env`] on environment-build failure, and
 /// [`DmrgError::Sweep`] on driver failure.
-#[allow(clippy::type_complexity)]
-pub fn dmrg_2site<T, L>(
-    mpo: &Mpo<<L as MpsOps<T>>::Storage, L>,
-    psi0: &Mps<<L as MpsOps<T>>::Storage, L>,
+pub fn dmrg_2site<T, St, L>(
+    mpo: &Mpo<St, L>,
+    psi0: &Mps<St, L>,
     params: &DmrgSweepParams,
-) -> Result<(DmrgResult<T::Real>, Mps<<L as MpsOps<T>>::Storage, L>), DmrgError>
+) -> Dmrg2SiteOutput<T::Real, St, L>
 where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
-    L: DmrgOps<T> + Clone,
-    <L as MpsOps<T>>::Storage: Clone,
+    St: Storage + StorageFor<L> + Clone,
+    L: TensorLayout + Clone,
+    Mps<St, L>: DmrgOps<T> + MpsOps<T, Storage = St, Layout = L>,
+    DmrgEnvs<St, L>: DmrgEnvOps<T, Storage = St, Layout = L>,
     // Host-pinned: the host backend supplies every kernel, so it must declare
-    // capability for this layout's storage (satisfied by Dense / BlockSparse).
-    Host: OpsFor<<L as MpsOps<T>>::Storage>,
+    // capability for this chain's storage (satisfied by Dense / BlockSparse).
+    Host: OpsFor<St>,
 {
     if psi0.len() == 0 {
         return Err(DmrgError::EmptyMps);
@@ -128,8 +133,8 @@ where
     }
 
     let mut psi = psi0.clone();
-    canonicalize(Host::shared().as_ref(), &mut psi, 0);
-    let mut envs = DmrgEnvs::<<L as MpsOps<T>>::Storage, L>::build::<T>(&psi, mpo)?;
-    let result = sweep_2site::<T, L>(&mut envs, &mut psi, mpo, params)?;
+    psi.canonicalize(Host::shared().as_ref(), 0);
+    let mut envs = DmrgEnvs::<St, L>::build::<T>(&psi, mpo)?;
+    let result = sweep_2site::<T, St, L>(&mut envs, &mut psi, mpo, params)?;
     Ok((result, psi))
 }

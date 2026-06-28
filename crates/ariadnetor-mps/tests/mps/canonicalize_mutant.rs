@@ -20,7 +20,7 @@ use super::helpers::{
 fn test_left_sweep_all_sites_left_canonical() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&backend, &mut mps, 3);
+    mps.canonicalize(&backend, 3);
 
     let tol = 1e-10;
     // Sites 0, 1, 2 must be left-canonical (Q^T Q = I)
@@ -40,7 +40,7 @@ fn test_left_sweep_all_sites_left_canonical() {
 fn test_right_sweep_all_sites_right_canonical() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
 
     let tol = 1e-10;
     // Sites 1, 2, 3 must be right-canonical (Q Q^T = I)
@@ -60,7 +60,7 @@ fn test_right_sweep_all_sites_right_canonical() {
 fn test_mixed_canonical_center_1() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&backend, &mut mps, 1);
+    mps.canonicalize(&backend, 1);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 1 });
 
@@ -90,7 +90,7 @@ fn test_canonicalize_preserves_inner_product_center_0() {
     let inner_before = mps::inner(&backend, &mps, &mps);
 
     let mut mps_canon = mps.clone();
-    mps::canonicalize(&backend, &mut mps_canon, 0);
+    mps_canon.canonicalize(&backend, 0);
     let inner_after = mps::inner(&backend, &mps_canon, &mps_canon);
 
     assert_abs_diff_eq!(inner_before, inner_after, epsilon = 1e-10);
@@ -103,7 +103,7 @@ fn test_canonicalize_preserves_inner_product_center_3() {
     let inner_before = mps::inner(&backend, &mps, &mps);
 
     let mut mps_canon = mps.clone();
-    mps::canonicalize(&backend, &mut mps_canon, 3);
+    mps_canon.canonicalize(&backend, 3);
     let inner_after = mps::inner(&backend, &mps_canon, &mps_canon);
 
     assert_abs_diff_eq!(inner_before, inner_after, epsilon = 1e-10);
@@ -119,7 +119,7 @@ fn test_state_vector_preserved_center_2() {
     let mut mps = make_4site_mps();
     let dense_before = mps_to_dense(&mps);
 
-    mps::canonicalize(&backend, &mut mps, 2);
+    mps.canonicalize(&backend, 2);
     let dense_after = mps_to_dense(&mps);
 
     // Normalize both and compare
@@ -156,7 +156,7 @@ fn test_physical_dims_preserved_all_centers() {
         let mut mps = make_4site_mps();
         let phys: Vec<_> = (0..4).map(|j| mps.site(j).shape()[1]).collect();
 
-        mps::canonicalize(&backend, &mut mps, center);
+        mps.canonicalize(&backend, center);
 
         for (j, &expected) in phys.iter().enumerate() {
             assert_eq!(
@@ -176,7 +176,7 @@ fn test_physical_dims_preserved_all_centers() {
 fn test_tensors_remain_rank_3() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
-    mps::canonicalize(&backend, &mut mps, 2);
+    mps.canonicalize(&backend, 2);
 
     for j in 0..4 {
         assert_eq!(
@@ -196,7 +196,7 @@ fn test_bond_dim_compatibility_after_canonicalize() {
     let backend = NativeBackend::new();
     for center in 0..4 {
         let mut mps = make_4site_mps();
-        mps::canonicalize(&backend, &mut mps, center);
+        mps.canonicalize(&backend, center);
 
         for j in 0..3 {
             let right_bond = *mps.site(j).shape().last().unwrap();
@@ -231,7 +231,7 @@ fn test_two_site_canonicalize_center_0() {
         .sum::<f64>()
         .sqrt();
 
-    mps::canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
 
     // Site 1 should be right-canonical
     assert!(is_right_canonical(mps.site(1), 1e-10));
@@ -269,7 +269,7 @@ fn test_two_site_canonicalize_center_1() {
         .sum::<f64>()
         .sqrt();
 
-    mps::canonicalize(&backend, &mut mps, 1);
+    mps.canonicalize(&backend, 1);
 
     // Site 0 should be left-canonical
     assert!(is_left_canonical(mps.site(0), 1e-10));

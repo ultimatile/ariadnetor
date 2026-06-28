@@ -14,7 +14,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::{TruncSvdParams, eigh_with_backend};
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use num_complex::Complex;
@@ -49,7 +49,7 @@ fn random_mps_center_zero_c64(
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&NativeBackend::new(), &mut mps, 0);
+    mps.canonicalize(&NativeBackend::new(), 0);
     mps
 }
 
@@ -523,7 +523,7 @@ fn t6_canonical_form_left_rejected() {
         DmrgEnvs::build(&mps, &mpo).expect("build");
     // Move center to N-1 (i.e., left-canonical at sites 0..N-1) — not
     // allowed for the sweep entry point.
-    canonicalize(&NativeBackend::new(), &mut mps, n - 1);
+    mps.canonicalize(&NativeBackend::new(), n - 1);
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &standard_params_f64(0x2F))
         .expect_err("left canonical reject");
     assert!(matches!(err, DmrgSweepError::MpsNotRightCanonical { .. }));

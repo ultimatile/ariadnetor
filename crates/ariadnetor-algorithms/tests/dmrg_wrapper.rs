@@ -18,7 +18,7 @@ use arnet_algorithms::dmrg::{
 };
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, canonicalize};
+use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{DenseLayout, DenseStorage};
 
@@ -52,7 +52,7 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
 
     // Manual composition (mirroring the wrapper body).
     let mut psi_manual = psi0.clone();
-    canonicalize(&NativeBackend::new(), &mut psi_manual, 0);
+    psi_manual.canonicalize(&NativeBackend::new(), 0);
     let mut envs_manual = DmrgEnvs::build(&psi_manual, &mpo).expect("manual envs build");
     let result_manual =
         sweep_2site(&mut envs_manual, &mut psi_manual, &mpo, &params).expect("manual sweep");

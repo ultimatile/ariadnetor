@@ -21,7 +21,7 @@ fn test_col_major_canonicalize_preserves_state() {
 
     let dense_before = mps_to_dense(&mps_ref);
 
-    mps::canonicalize(&backend, &mut mps_cm, 1);
+    mps_cm.canonicalize(&backend, 1);
 
     let dense_after = mps_to_dense(&mps_cm);
     for (a, b) in dense_before
@@ -63,14 +63,14 @@ fn test_col_major_truncate_preserves_state() {
     let mps_ref = make_4site_mps();
     let mut mps_cm = make_4site_mps();
 
-    let norm_before = mps::norm(&backend, &mps_ref);
+    let norm_before = mps_ref.norm(&backend);
 
-    mps::canonicalize(&backend, &mut mps_cm, 1);
+    mps_cm.canonicalize(&backend, 1);
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(3),
         target_trunc_err: None,
     });
-    let result = mps::truncate(&backend, &mut mps_cm, &params);
+    let result = mps_cm.truncate(&backend, &params);
 
     assert!(
         result.error / norm_before < 0.5,
@@ -79,7 +79,7 @@ fn test_col_major_truncate_preserves_state() {
     );
 
     let overlap = mps::inner(&backend, &mps_ref, &mps_cm);
-    let norm_after = mps::norm(&backend, &mps_cm);
+    let norm_after = mps_cm.norm(&backend);
     assert!(overlap.abs() <= norm_before * norm_after + 1e-10);
     assert!(overlap.abs() > 0.0);
 }

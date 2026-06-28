@@ -1,7 +1,7 @@
 //! 2-site DMRG sweep driver.
 //!
 //! Runs alternating L→R / R→L half-sweeps over a [`super::DmrgOps`]
-//! layout type, dispatching the layout-specific local solve and
+//! chain, dispatching the storage-specific local solve and
 //! S-absorb through the trait. Mutates the MPS site tensors and the
 //! [`DmrgEnvs`] in place. Caller supplies a right-canonical (or
 //! `Mixed { center: 0 }`) MPS plus a freshly-built `DmrgEnvs`; the
@@ -33,13 +33,13 @@
 
 use arnet_core::Scalar;
 use arnet_linalg::LinalgError;
-use arnet_mps::{CanonicalForm, Mpo, Mps, MpsOps, TensorChain, braket, norm};
-use arnet_tensor::{Host, OpsFor};
+use arnet_mps::{CanonicalForm, Mpo, Mps, MpsOps, TensorChain, braket};
+use arnet_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
 
 use crate::numeric::try_real_from_f64;
 
-use super::dispatch::DmrgOps;
-use super::env::{DmrgEnvError, DmrgEnvs};
+use super::dispatch::{DmrgOps, FullStepError};
+use super::env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
 use super::heff_error::DmrgHeffError;
 use super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eigensolver_params};
 
@@ -56,8 +56,8 @@ pub enum SweepDirection {
     RightToLeft,
 }
 
-/// Caller-supplied parameters for [`sweep_2site`] (the layout-generic
-/// 2-site DMRG sweep driver, dispatched over `L: super::DmrgOps<T>`
+/// Caller-supplied parameters for [`sweep_2site`] (the chain-generic
+/// 2-site DMRG sweep driver, dispatched over `Mps<St, L>: super::DmrgOps<T>`
 /// so the same params type covers both the Dense and BlockSparse /
 /// U(1) paths).
 ///
@@ -252,14 +252,14 @@ pub enum DmrgSweepError {
 }
 
 /// Run alternating L→R / R→L sweeps until convergence or
-/// `max_sweeps` over a [`DmrgOps`] layout type. Mutates `mps` and
+/// `max_sweeps` over a [`DmrgOps`] chain. Mutates `mps` and
 /// `envs` in place; the final MPS state is
 /// `CanonicalForm::Mixed { center: 0 }` (R→L runs last).
 ///
-/// Generic over `L: DmrgOps<T>`, so a single call site covers
-/// both the Dense (`L = DenseLayout`) and BlockSparse / U(1)
-/// (`L = BlockSparseLayout<S>`) paths. The trait dispatches the
-/// local solve and S-absorb to the layout-specific implementations.
+/// Generic over the `Mps<St, L>` chain (`Mps<St, L>: DmrgOps<T>`), so a
+/// single call site covers both the Dense and BlockSparse / U(1) paths.
+/// The trait dispatches the local solve and S-absorb to the
+/// storage-specific implementations.
 ///
 /// The driver is host-pinned in this stage: the local solve, the
 /// S-absorb, and the post-sweep `braket` / `norm` all route their
@@ -269,19 +269,22 @@ pub enum DmrgSweepError {
 ///
 /// See the module-level rustdoc for the canonical-form contract on
 /// the input MPS and for the convergence criterion.
-pub fn sweep_2site<T, L>(
-    envs: &mut DmrgEnvs<<L as MpsOps<T>>::Storage, L>,
-    mps: &mut Mps<<L as MpsOps<T>>::Storage, L>,
-    mpo: &Mpo<<L as MpsOps<T>>::Storage, L>,
+pub fn sweep_2site<T, St, L>(
+    envs: &mut DmrgEnvs<St, L>,
+    mps: &mut Mps<St, L>,
+    mpo: &Mpo<St, L>,
     params: &DmrgSweepParams,
 ) -> Result<DmrgResult<T::Real>, DmrgSweepError>
 where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
-    L: DmrgOps<T>,
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+    Mps<St, L>: DmrgOps<T> + MpsOps<T, Storage = St, Layout = L>,
+    DmrgEnvs<St, L>: DmrgEnvOps<T, Storage = St, Layout = L>,
     // Host-pinned: the host backend supplies every kernel, so it must declare
-    // capability for this layout's storage (satisfied by Dense / BlockSparse).
-    Host: OpsFor<<L as MpsOps<T>>::Storage>,
+    // capability for this chain's storage (satisfied by Dense / BlockSparse).
+    Host: OpsFor<St>,
 {
     // ---- Length / size validation -------------------------------
     let n_sites = envs.n_sites();
@@ -352,7 +355,6 @@ where
                 params,
                 sweep_idx,
                 SweepDirection::LeftToRight,
-                backend.as_ref(),
             )?;
             steps.push(record);
 
@@ -380,7 +382,6 @@ where
                 params,
                 sweep_idx,
                 SweepDirection::RightToLeft,
-                backend.as_ref(),
             )?;
             steps.push(record);
 
@@ -413,7 +414,7 @@ where
 
         // ---- Post-sweep diagnostics -----------------------------
         let bra_h_ket: T = braket(backend.as_ref(), mps, mpo, mps);
-        let nrm: T::Real = norm(backend.as_ref(), mps);
+        let nrm: T::Real = mps.norm(backend.as_ref());
         let nrm_sq: T::Real = nrm * nrm;
         // The Float bound on the storage's real scalar type guarantees division.
         let sweep_energy: T::Real = bra_h_ket.re() / nrm_sq;
@@ -479,45 +480,53 @@ where
 /// Returns the step's diagnostics record. The caller is responsible
 /// for advancing the env afterwards (or skipping the advance at the
 /// trailing boundary of a half-sweep).
-#[allow(clippy::too_many_arguments)]
-fn run_step<T, L>(
-    envs: &DmrgEnvs<<L as MpsOps<T>>::Storage, L>,
-    mps: &mut Mps<<L as MpsOps<T>>::Storage, L>,
-    mpo: &Mpo<<L as MpsOps<T>>::Storage, L>,
+fn run_step<T, St, L>(
+    envs: &DmrgEnvs<St, L>,
+    mps: &mut Mps<St, L>,
+    mpo: &Mpo<St, L>,
     site: usize,
     params: &DmrgSweepParams,
     sweep_idx: usize,
     direction: SweepDirection,
-    backend: &Host,
 ) -> Result<DmrgStepRecord<T::Real>, DmrgSweepError>
 where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
-    L: DmrgOps<T>,
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+    Mps<St, L>: DmrgOps<T> + MpsOps<T, Storage = St, Layout = L>,
+    DmrgEnvs<St, L>: DmrgEnvOps<T, Storage = St, Layout = L>,
     // Host-pinned: the host backend supplies every kernel, so it must declare
-    // capability for this layout's storage (satisfied by Dense / BlockSparse).
-    Host: OpsFor<<L as MpsOps<T>>::Storage>,
+    // capability for this chain's storage (satisfied by Dense / BlockSparse).
+    Host: OpsFor<St>,
 {
-    let result = <L as DmrgOps<T>>::step(envs, mps, mpo, site, &params.eigensolver, &params.trunc)
-        .map_err(|source| DmrgSweepError::Step {
-            sweep: sweep_idx,
-            direction,
+    // The fused step builds `H_eff`, solves, projects the diagnostics, and
+    // absorbs `S` in one host-pinned call; mapping `FullStepError` keeps the
+    // `Step` (local solve) vs `Scale` (S-absorb) breadcrumb distinction.
+    let (absorbed, (eigenvalue, residual, trunc_err, iters, converged)) = mps
+        .full_step_k(
+            envs,
+            mpo,
             site,
-            source,
+            &params.eigensolver,
+            &params.trunc,
+            direction,
+        )
+        .map_err(|source| match source {
+            FullStepError::Heff(source) => DmrgSweepError::Step {
+                sweep: sweep_idx,
+                direction,
+                site,
+                source,
+            },
+            FullStepError::Scale(source) => DmrgSweepError::Scale {
+                sweep: sweep_idx,
+                direction,
+                site,
+                source,
+            },
         })?;
 
-    // Project the typed scalars before `commit_step` consumes `result`.
-    let (eigenvalue, residual, trunc_err, iters, converged) =
-        <L as DmrgOps<T>>::step_scalars(&result);
-
-    let scale_err = |source: LinalgError| DmrgSweepError::Scale {
-        sweep: sweep_idx,
-        direction,
-        site,
-        source,
-    };
-
-    let absorbed = <L as DmrgOps<T>>::commit_step(backend, result, direction).map_err(scale_err)?;
     *mps.site_mut(site) = absorbed.site_i;
     *mps.site_mut(site + 1) = absorbed.site_ip1;
 

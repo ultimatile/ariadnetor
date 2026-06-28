@@ -21,7 +21,7 @@ use arnet_tensor::{
     Sector,
 };
 
-use super::env::{DmrgEnvError, DmrgEnvOps};
+use super::env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
 
 fn flip(d: Direction) -> Direction {
     match d {
@@ -100,11 +100,12 @@ where
     }
 }
 
-impl<T, S> DmrgEnvOps<T> for BlockSparseLayout<S>
+impl<T, S> DmrgEnvOps<T> for DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Scalar,
     S: Sector,
 {
+    type Layout = BlockSparseLayout<S>;
     type Storage = BlockSparseStorage<T>;
 
     fn trivial_left_boundary(

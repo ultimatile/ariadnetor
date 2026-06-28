@@ -9,7 +9,7 @@
 //! keeps the two test surfaces directly comparable when that follow-up
 //! lands.
 
-use arnet_mps::{Mpo, Mps, canonicalize};
+use arnet_mps::{Mpo, Mps};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use rand::RngExt;
@@ -132,7 +132,7 @@ pub fn random_mps_center_zero_f64(
         })
         .collect();
     let mut mps = Mps::from_sites(storages);
-    canonicalize(&NativeBackend::new(), &mut mps, 0);
+    mps.canonicalize(&NativeBackend::new(), 0);
     mps
 }
 

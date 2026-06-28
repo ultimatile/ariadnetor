@@ -30,7 +30,6 @@ use arnet_core::{ComputeBackend, Scalar};
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{
     ApplyMethod, CanonicalForm, Mpo, Mps, TensorChain, TruncateParams, apply, apply_with_method,
-    canonicalize, truncate,
 };
 use arnet_native::NativeBackend;
 use arnet_tensor::test_fixtures::legs;
@@ -249,7 +248,7 @@ fn canonicalize_dense_routes_kernels_to_call_site_backend() {
     let backend = CountingBackend::new();
     let mut mps = dense_mps();
 
-    canonicalize(&backend, &mut mps, 1);
+    mps.canonicalize(&backend, 1);
 
     assert!(
         backend.count() > 0,
@@ -262,7 +261,7 @@ fn canonicalize_bsp_routes_kernels_to_call_site_backend() {
     let backend = CountingBackend::new();
     let mut mps = u1_mps();
 
-    canonicalize(&backend, &mut mps, 1);
+    mps.canonicalize(&backend, 1);
 
     assert!(
         backend.count() > 0,
@@ -283,7 +282,7 @@ fn truncate_dense_routes_kernels_to_call_site_backend() {
     let mut mps = dense_mps();
     mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
 
-    truncate(&backend, &mut mps, &trunc_params(2));
+    mps.truncate(&backend, &trunc_params(2));
 
     assert!(
         backend.count() > 0,
@@ -297,7 +296,7 @@ fn truncate_bsp_routes_kernels_to_call_site_backend() {
     let mut mps = u1_mps();
     mps.set_canonical_form(CanonicalForm::Mixed { center: 0 });
 
-    truncate(&backend, &mut mps, &trunc_params(2));
+    mps.truncate(&backend, &trunc_params(2));
 
     assert!(
         backend.count() > 0,

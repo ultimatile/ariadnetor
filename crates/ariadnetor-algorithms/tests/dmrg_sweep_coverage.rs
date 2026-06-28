@@ -22,7 +22,7 @@ use arnet_algorithms::dmrg::{
 use arnet_algorithms::krylov::LanczosParams;
 use arnet_core::Scalar;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps, braket, norm};
+use arnet_mps::{Mpo, Mps, braket};
 use arnet_native::NativeBackend;
 use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use rand::RngExt;
@@ -94,7 +94,7 @@ fn sweep_energy_renormalizes_post_truncation() {
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
 
-    let nrm = norm(&NativeBackend::new(), &mps);
+    let nrm = mps.norm(&NativeBackend::new());
     let nrm_sq = nrm * nrm;
     let bra_h_ket = braket(&NativeBackend::new(), &mps, &mpo, &mps).re();
     let sweep_energy = result.sweeps[0].sweep_energy;

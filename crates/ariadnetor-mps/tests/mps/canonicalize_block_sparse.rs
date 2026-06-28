@@ -6,7 +6,7 @@
 //! (multi-element sector blocks), which is essential for catching mutants in
 //! the per-sector sweep logic.
 
-use arnet_mps::{CanonicalForm, Mps, TensorChain, canonicalize};
+use arnet_mps::{CanonicalForm, Mps, TensorChain};
 use arnet_native::NativeBackend;
 use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, U1Sector};
 
@@ -27,7 +27,7 @@ fn canonicalize_bsp_sets_mixed_form_from_unknown() {
     let mut mps = make_4site_u1_mps();
     assert_eq!(*mps.canonical_form(), CanonicalForm::Unknown);
 
-    canonicalize(&backend, &mut mps, 2);
+    mps.canonicalize(&backend, 2);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 2 });
 }
@@ -40,7 +40,7 @@ fn canonicalize_bsp_sets_mixed_form_from_unknown() {
 fn canonicalize_bsp_center_0_all_right_isometric() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
     // All sites past the center must be right-canonical.
@@ -57,7 +57,7 @@ fn canonicalize_bsp_center_last_all_left_isometric() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
     let last = mps.len() - 1;
-    canonicalize(&backend, &mut mps, last);
+    mps.canonicalize(&backend, last);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: last });
     // Sites 0..last must be left-canonical.
@@ -73,7 +73,7 @@ fn canonicalize_bsp_center_last_all_left_isometric() {
 fn canonicalize_bsp_center_middle_has_mixed_isometry() {
     let backend = NativeBackend::new();
     let mut mps = make_4site_u1_mps();
-    canonicalize(&backend, &mut mps, 2);
+    mps.canonicalize(&backend, 2);
 
     // 0..2 left-canonical, 3..4 right-canonical; site 2 is the orthogonality center.
     for j in 0..2 {
@@ -101,7 +101,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_0() {
     let state_before = bsp_mps_contract_full(&mps);
 
     let mut mps_after = mps.clone();
-    canonicalize(&backend, &mut mps_after, 0);
+    mps_after.canonicalize(&backend, 0);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -114,7 +114,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_middle() {
     let state_before = bsp_mps_contract_full(&mps);
 
     let mut mps_after = mps.clone();
-    canonicalize(&backend, &mut mps_after, 2);
+    mps_after.canonicalize(&backend, 2);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -128,7 +128,7 @@ fn canonicalize_bsp_preserves_full_chain_state_center_last() {
 
     let mut mps_after = mps.clone();
     let last = mps_after.len() - 1;
-    canonicalize(&backend, &mut mps_after, last);
+    mps_after.canonicalize(&backend, last);
     let state_after = bsp_mps_contract_full(&mps_after);
 
     assert_block_sparse_close(&state_before, &state_after, TOL);
@@ -159,7 +159,7 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
     }
 
     let mut mps_after = mps;
-    canonicalize(&backend, &mut mps_after, 2);
+    mps_after.canonicalize(&backend, 2);
 
     for j in 0..mps_after.len() {
         assert_eq!(
@@ -202,7 +202,7 @@ fn canonicalize_bsp_accepts_charged_single_site() {
 
     let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
         Mps::from_sites(vec![site]);
-    canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
     assert_eq!(*mps.site(0).flux(), U1Sector(1));
@@ -234,7 +234,7 @@ fn canonicalize_bsp_single_site_only_updates_canonical_form() {
 
     let mut mps: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
         Mps::from_sites(vec![site]);
-    canonicalize(&backend, &mut mps, 0);
+    mps.canonicalize(&backend, 0);
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 
