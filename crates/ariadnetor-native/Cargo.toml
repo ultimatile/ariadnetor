@@ -6,7 +6,10 @@ license.workspace = true
 description = "Native backend for Ariadnetor (faer + hptt-rs)"
 
 [features]
-default = ["hptt"]
+# `hptt` is opt-in: the HPTT transpose kernel pulls a C++/CMake build, so the
+# default stays pure-Rust. Enable it directly or via a dependent crate's `hptt`
+# passthrough to use the accelerated kernel.
+default = []
 hptt = ["dep:hptt"]
 
 [dependencies]

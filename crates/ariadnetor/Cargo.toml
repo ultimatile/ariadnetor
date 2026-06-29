@@ -6,6 +6,9 @@ license.workspace = true
 description = "High-performance tensor network framework in Pure Rust"
 
 [features]
+# Opt-in passthrough enabling the native HPTT transpose kernel (off by default
+# -> pure-Rust). See `ariadnetor-native`'s `hptt`.
+hptt = ["ariadnetor-native/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches the umbrella's
 # public-API host-ergonomic tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]

@@ -6,13 +6,11 @@ license.workspace = true
 description = "Backend-agnostic linear algebra API for Ariadnetor"
 
 [features]
-# `native-hptt` is a passthrough that keeps the dev-dep `ariadnetor-native`
-# building with its `hptt` feature on. Default-on preserves existing
-# `cargo test` / `cargo bench` behavior; pass `--no-default-features`
-# to build dev-dep code (tests, benches) without HPTT — required
-# for the calibration sweep benches that must exercise the naive transpose fallback.
-default = ["native-hptt"]
-native-hptt = ["ariadnetor-native/hptt"]
+# Opt-in passthrough enabling the native HPTT transpose kernel through the
+# `ariadnetor-tensor` -> `ariadnetor-native` edge (off by default -> pure-Rust).
+# Tests / benches that want the accelerated kernel run with `--features hptt`;
+# the default exercises the naive transpose fallback.
+hptt = ["ariadnetor-tensor/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
@@ -25,7 +23,7 @@ num-traits = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-ariadnetor-native = { path = "../ariadnetor-native", default-features = false }
+ariadnetor-native = { path = "../ariadnetor-native" }
 # Enables `arnet_tensor::test_fixtures` for this crate's tests; resolver v2
 # keeps the test-only feature out of normal builds. See ariadnetor-tensor's
 # `test-fixtures` feature.
