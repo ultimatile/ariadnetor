@@ -90,8 +90,8 @@ pub struct LanczosResult<T: Scalar> {
 /// [`LinearOp::apply`] returning a tensor of shape other than `[dim]`)
 /// remain panics — they are programmer errors, not recoverable
 /// conditions. Failing to reach the requested `tol` is likewise not an
-/// error: it is reported as [`LanczosResult::converged`]` == false` so
-/// the caller keeps the best Ritz pair.
+/// error: it is reported as [`LanczosResult::converged`] being `false`
+/// so the caller keeps the best Ritz pair.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum LanczosError {
@@ -128,8 +128,8 @@ pub enum LanczosError {
 /// Returns [`LanczosError::NonFinite`] when the computed eigenvalue or
 /// residual is not finite (NaN/Inf) — see the overflow note below and
 /// the NaN-emitting-operator case. A finite but imprecise result is
-/// **not** an error: it returns `Ok` with [`LanczosResult::converged`]`
-/// == false`, leaving the best Ritz pair for the caller to judge.
+/// **not** an error: it returns `Ok` with [`LanczosResult::converged`]
+/// set to `false`, leaving the best Ritz pair for the caller to judge.
 ///
 /// # Panics
 ///
