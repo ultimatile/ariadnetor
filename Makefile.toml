@@ -11,7 +11,7 @@
 # `cargo mutants` pass) are listed in CONTRIBUTING.md rather than
 # registered here; composite QA loops with a canonical form
 # (external-types, public-api) and the feature-gated mutation passes
-# (mutants-arpack, mutants-naive — whose non-obvious, order-sensitive
+# (mutants-arpack, mutants-hptt — whose non-obvious, order-sensitive
 # flags must not drift) earn a task.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
@@ -192,9 +192,10 @@ done
 
 # Faithful mutation passes for code the shipped `cargo mutants` run cannot
 # reach. The shipped run (.cargo/mutants.toml, default features) builds
-# hptt ON and arpack OFF, so two regions never see a live mutant: the
-# ARPACK backend (never compiled) and the naive transpose fallback (masked
-# by hptt). These two passes restore them. Each writes to its own
+# hptt OFF and arpack OFF, so two regions never see a live mutant: the
+# ARPACK backend (never compiled) and the HPTT transpose kernels (not
+# compiled under the hptt-off default). These two passes restore them. Each
+# writes to its own
 # target/mutants-<pass> directory (set per task below); triage each pass's
 # output separately — a "missed" there means untested, same as the shipped
 # run's default mutants.out.
@@ -229,35 +230,36 @@ args = [
     "--output", "target/mutants-arpack",
 ]
 
-# Naive-transpose pass: naive / naive_sequential / naive_parallel /
-# new_to_old_idx / compute_strides in ariadnetor-native/src/transpose.rs are
-# #[cfg(not(feature = "hptt"))], unreachable under the default (hptt-on)
-# build. `--no-default-features` compiles them; `--file` + `--re` scope
-# mutation to exactly those fallback functions. The scope is REQUIRED for a
+# HPTT-kernel pass: to_hptt_order / to_hptt_num_threads / hptt_f64 / hptt_f32
+# / hptt_c64 / hptt_c32 in ariadnetor-native/src/transpose.rs are
+# #[cfg(feature = "hptt")], not compiled under the default (hptt-off)
+# build. `--features hptt` compiles them; `--file` + `--re` scope
+# mutation to exactly those gated kernels. The scope is REQUIRED for a
 # faithful result, not an optimization — without it the pass also mutates
-#   - the hptt-gated functions in the same file (cfg'd out here, so their
-#     mutants surface as false gaps), and
+#   - the naive fallback in the same file (cfg'd out under `--features hptt`,
+#     so its mutants surface as false gaps), and
 #   - the rest of the native crate (gemm/qr/svd/...), which the shipped run
 #     already audits; re-mutating it here is redundant, and under the
 #     package-scoped tests this pass uses (see --test-workspace below) any
 #     native mutant the shipped run kills only via a cross-crate test
 #     (test_workspace = true) would additionally surface as a false gap.
-# `--test-workspace false` is likewise REQUIRED: under a workspace test cargo
-# feature unification re-enables native/hptt through default-feature
-# consumers (algorithms, mps, the umbrella), recompiling native with hptt ON
-# so the naive path is compiled out and its mutants become unviable.
-# Package-scoped testing (native's only dev-dep is rstest) keeps hptt off and
-# runs tests/transpose.rs against the naive path. `--output` keeps this
-# pass's results out of the shipped run's default mutants.out.
-[tasks.mutants-naive]
-description = "Mutation pass over the naive transpose fallback masked by hptt (cargo mutants --no-default-features)"
+# `--test-workspace false` is an OPTIMIZATION here, not a correctness
+# requirement (the reverse of the naive pass it replaced): with `--features
+# hptt` selected on `-p ariadnetor-native`, feature unification keeps
+# native/hptt ON under a workspace test too, so the HPTT path is never
+# compiled out. Package-scoped testing (native's only dev-dep is rstest)
+# runs tests/transpose.rs against the HPTT path and trims cross-crate MISSED
+# noise. `--output` keeps this pass's results out of the shipped run's
+# default mutants.out.
+[tasks.mutants-hptt]
+description = "Mutation pass over the feature-gated HPTT transpose kernels (cargo mutants --features hptt)"
 command = "cargo"
 args = [
     "mutants",
     "-p", "ariadnetor-native",
-    "--no-default-features",
+    "--features", "hptt",
     "--file", "crates/ariadnetor-native/src/transpose.rs",
-    "--re", "naive|new_to_old_idx|compute_strides",
+    "--re", "hptt_f64|hptt_f32|hptt_c64|hptt_c32|to_hptt_order|to_hptt_num_threads",
     "--test-workspace", "false",
-    "--output", "target/mutants-naive",
+    "--output", "target/mutants-hptt",
 ]

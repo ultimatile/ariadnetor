@@ -57,32 +57,34 @@ nightly outpaces the tool's supported format, bump the tool or pin a
 compatible nightly.
 
 `cargo mutants` runs the shipped mutation pass with default features, so
-hptt is ON and arpack OFF. Two feature-gated regions fall outside that
-pass by construction — the ARPACK backend is never compiled, and the
-naive transpose fallback is masked by hptt — so each has a companion
-task and the faithful run is all three:
+hptt is OFF and arpack OFF. Two feature-gated regions fall outside that
+pass by construction — the ARPACK backend is never compiled, and the HPTT
+transpose kernels are not compiled (hptt off by default) — so each has a
+companion task and the faithful run is all three:
 
 ```bash
-cargo mutants              # shipped pass: default features (hptt on, arpack off)
+cargo mutants              # shipped pass: default features (hptt off, arpack off)
 cargo make mutants-arpack  # the #[cfg(feature = "arpack")] krylov backend
-cargo make mutants-naive   # the #[cfg(not(feature = "hptt"))] naive transpose fallback
+cargo make mutants-hptt    # the #[cfg(feature = "hptt")] HPTT transpose kernels
 ```
 
 `mutants-arpack` builds with `--features arpack`, compiling the ARPACK
 backend that the shipped pass (arpack off by default) never builds — which
 is why its mutants trivially pass the shipped run; the pass itself needs
-the system ARPACK library at build time. `mutants-naive` builds native with
-`--no-default-features` to unmask the fallback. Each pass scopes mutation
-with `--file` (and `--re` for the naive functions) to just its
+the system ARPACK library at build time. `mutants-hptt` builds native with
+`--features hptt` to compile the gated kernels (the naive fallback is
+already covered by the shipped default-features run). Each pass scopes
+mutation with `--file` (and `--re` for the kernel functions) to just its
 feature-gated region, so it audits what the shipped run cannot reach
 rather than re-mutating already-covered code — without that scope the
-naive pass would re-mutate the whole native crate and surface false gaps
-from the hptt-gated functions it compiles out. Both use
-`--test-workspace false`: for `mutants-naive` it is
-required, because a workspace test re-enables `native/hptt` through feature
-unification and compiles the naive path back out; for `mutants-arpack` it
-scopes testing to the only crate whose tests can kill the mutants. Each
-pass writes to its own `target/mutants-{arpack,naive}` directory so all
+hptt pass would re-mutate the whole native crate and surface false gaps
+from the naive functions it compiles out. Both use
+`--test-workspace false`: for `mutants-arpack` it scopes testing to the
+only crate whose tests can kill the mutants; for `mutants-hptt` it is an
+optimization — with `--features hptt`, feature unification keeps the HPTT
+path compiled under a workspace test too, so package-scoped testing only
+trims cross-crate noise rather than being required for correctness. Each
+pass writes to its own `target/mutants-{arpack,hptt}` directory so all
 three result sets coexist; triage each pass's `missed.txt` independently —
 there, as in the shipped run, "missed" means untested.
 

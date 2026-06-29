@@ -45,7 +45,8 @@ pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
     }
 }
 
-/// Native backend using faer for GEMM and HPTT for transpose.
+/// Native backend using faer for GEMM and, with the `hptt` feature, HPTT for
+/// transpose (a naive kernel otherwise).
 ///
 /// This is the sole owner of faer and hptt-rs dependencies in the workspace.
 /// Other crates access these capabilities through the `ComputeBackend` trait.

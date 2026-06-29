@@ -8,7 +8,7 @@
 //!   `ComputeBackend`, `EinsumExpr`). The `MemoryOrder` layout type
 //!   is intentionally *not* re-exported: the umbrella's public API
 //!   hides memory layout from end users.
-//! - [`arnet_native`] — `NativeBackend`: faer + hptt-rs.
+//! - [`arnet_native`] — `NativeBackend`: faer (+ optional hptt-rs transpose).
 //! - [`arnet_tensor`] — user-facing `Tensor`, `DenseTensor`,
 //!   `BlockSparseTensor`, `Sector`, `QNIndex`.
 //! - [`arnet_linalg`] — backend-agnostic linear algebra over

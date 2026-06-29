@@ -179,7 +179,7 @@ fn sentinel_thresholds_never_dispatch_parallel() {
 // * `hptt` build: HPTT's tiled sequential is fast enough that on laptop
 //   parallel never wins (sentinel `usize::MAX`); on workstation the
 //   crossover sits at 4_194_304 elements (= 2048²).
-// * `--no-default-features`: the naive fallback's simpler sequential
+// * default build (hptt off): the naive fallback's simpler sequential
 //   loses to its parallel kernel above 65_536 (laptop) and 262_144
 //   (workstation) elements.
 //
@@ -202,7 +202,7 @@ fn laptop_profile_transpose_stays_sequential() {
 #[test]
 fn laptop_profile_transpose_naive_threshold() {
     let b = NativeBackend::with_perf(PerformanceManager::new(ThresholdTable::laptop()));
-    // Under `--no-default-features`, the laptop naive transpose
+    // By default (hptt off), the laptop naive transpose
     // threshold is 65_536 — 16384 elements stay Sequential, 65_536
     // elements flip Parallel.
     assert_eq!(b.par_for_transpose(&[128, 128]), ExecPolicy::Sequential);
@@ -266,7 +266,7 @@ fn workstation_profile_transpose_hptt_threshold() {
 #[test]
 fn workstation_profile_transpose_naive_threshold() {
     let b = NativeBackend::with_perf(PerformanceManager::new(ThresholdTable::workstation()));
-    // Under `--no-default-features`, the workstation naive transpose
+    // By default (hptt off), the workstation naive transpose
     // threshold is 262_144 (= 512²). 256² stays Sequential, 512² flips
     // Parallel.
     assert_eq!(b.par_for_transpose(&[256, 256]), ExecPolicy::Sequential);
