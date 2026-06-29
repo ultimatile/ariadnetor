@@ -126,6 +126,12 @@ pub enum DmrgHeffError {
     /// front and never reaches this branch.
     #[error("linalg failure during two-site DMRG step")]
     Contract(#[from] LinalgError),
+    /// The native Lanczos local eigensolver produced a non-finite
+    /// result (NaN/Inf eigenpair). Forwarded without information loss
+    /// from [`crate::krylov::LanczosError`]. Always present, since
+    /// Lanczos is the default eigensolver and is not feature-gated.
+    #[error("Lanczos failure during two-site DMRG step")]
+    Lanczos(#[from] crate::krylov::LanczosError),
     /// The ARPACK-backed local eigensolver returned an upstream
     /// error (parameter validation, ARPACK info codes, max-iter
     /// without convergence, …). Forwarded without information loss
@@ -134,4 +140,36 @@ pub enum DmrgHeffError {
     #[cfg(feature = "arpack")]
     #[error("ARPACK failure during two-site DMRG step")]
     Arpack(#[from] ArpackError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::krylov::LanczosError;
+
+    // The `?` on the Lanczos arm of the DMRG step relies on
+    // `From<LanczosError>` routing to the `Lanczos` variant with the payload
+    // intact. Pin it so the conversion cannot silently decay to a different
+    // variant or drop a diagnostic field.
+    #[test]
+    fn from_lanczos_error_preserves_payload_in_lanczos_variant() {
+        let err: DmrgHeffError = LanczosError::NonFinite {
+            iters: 7,
+            eigenvalue: f64::NAN,
+            residual: f64::INFINITY,
+        }
+        .into();
+        match err {
+            DmrgHeffError::Lanczos(LanczosError::NonFinite {
+                iters,
+                eigenvalue,
+                residual,
+            }) => {
+                assert_eq!(iters, 7);
+                assert!(eigenvalue.is_nan());
+                assert_eq!(residual, f64::INFINITY);
+            }
+            other => panic!("expected DmrgHeffError::Lanczos(NonFinite), got {other:?}"),
+        }
+    }
 }

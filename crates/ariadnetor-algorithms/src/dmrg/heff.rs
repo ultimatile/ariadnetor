@@ -309,7 +309,7 @@ where
     // straight into the truncated SVD with no backend relabel.
     let (eigenvalue, eigenvector, iters, converged, residual) = match eigensolver {
         LocalEigensolverParams::Lanczos(p) => {
-            let lan = lanczos_smallest::<T, _>(&heff, dim, p);
+            let lan = lanczos_smallest::<T, _>(&heff, dim, p)?;
             (
                 lan.eigenvalue,
                 lan.eigenvector,

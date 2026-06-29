@@ -112,6 +112,13 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
 ///   input because every contract pair, MPO well-formedness
 ///   property, env-template-compatibility property, and identity-flux
 ///   precondition is validated up front.
+/// - [`DmrgHeffError::OrderMismatch`] — BlockSparse-specific: a
+///   contracted operand's layout order diverged from the host
+///   substrate's preferred order (surfaced when building the effective
+///   Hamiltonian).
+/// - [`DmrgHeffError::Lanczos`] — the native Lanczos local eigensolver
+///   produced a non-finite eigenpair. With the `arpack` feature, the
+///   ARPACK arm can instead return `DmrgHeffError::Arpack`.
 pub fn dmrg_2site_step_block_sparse<T, S>(
     envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     mps: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
@@ -161,7 +168,7 @@ where
     }
     let (eigenvalue, eigenvector, iters, converged, residual) = match eigensolver {
         LocalEigensolverParams::Lanczos(p) => {
-            let lan = lanczos_smallest::<T, _>(&heff, dim, p);
+            let lan = lanczos_smallest::<T, _>(&heff, dim, p)?;
             (
                 lan.eigenvalue,
                 lan.eigenvector,

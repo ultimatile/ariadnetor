@@ -14,9 +14,9 @@
 
 use approx::assert_abs_diff_eq;
 use arnet_algorithms::dmrg::{
-    DmrgEnvs, EffectiveHamiltonian2Site, LocalEigensolverParams, dmrg_2site_step,
+    DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2Site, LocalEigensolverParams, dmrg_2site_step,
 };
-use arnet_algorithms::krylov::{LanczosParams, LinearOp};
+use arnet_algorithms::krylov::{LanczosError, LanczosParams, LinearOp};
 use arnet_core::Scalar;
 use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh_with_backend};
 use arnet_mps::{Mpo, Mps};
@@ -444,7 +444,8 @@ fn heff_svd_reconstruction_round_trips() {
 
     let heff = make_heff(&envs, &mps, &mpo, site);
     let dim = heff.dim();
-    let lan = arnet_algorithms::krylov::lanczos_smallest::<f64, _>(&heff, dim, &lan_params);
+    let lan =
+        arnet_algorithms::krylov::lanczos_smallest::<f64, _>(&heff, dim, &lan_params).unwrap();
     let psi_4d =
         lan.eigenvector
             .reshape(vec![heff.chi_l(), heff.d_i(), heff.d_ip1(), heff.chi_r()]);
@@ -585,5 +586,70 @@ fn heff_matvec_matches_dense_apply_complex() {
     for i in 0..dim {
         assert_abs_diff_eq!(apply_data[i].re, dense_out[i].re, epsilon = 1e-9);
         assert_abs_diff_eq!(apply_data[i].im, dense_out[i].im, epsilon = 1e-9);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fallible-API contract: a non-finite local solve aborts the step
+// ---------------------------------------------------------------------------
+
+/// Identity-diagonal local MPO with a single NaN entry on `poison_site`,
+/// so the 2-site step covering that site builds a non-finite `H_eff`.
+/// Shapes / order stay valid (same `[1, d, d, 1]` blocks as
+/// [`identity_mpo`]), so the step's pre-validation passes — it checks
+/// shape / order, not value finiteness — and the NaN reaches the Lanczos
+/// matvec.
+fn nan_poisoned_mpo_f64(
+    n: usize,
+    d: usize,
+    poison_site: usize,
+) -> Mpo<DenseStorage<f64>, DenseLayout> {
+    let storages: Vec<DenseTensor<f64>> = (0..n)
+        .map(|site| {
+            let mut data = vec![0.0_f64; d * d];
+            for k in 0..d {
+                data[k + d * k] = 1.0;
+            }
+            if site == poison_site {
+                data[0] = f64::NAN;
+            }
+            Host::shared().dense(data, vec![1, d, d, 1])
+        })
+        .collect();
+    Mpo::from_sites(storages)
+}
+
+#[test]
+fn dmrg_step_surfaces_nonfinite_lanczos_as_error() {
+    let (n, d) = (4usize, 2usize);
+    let mps = product_state_mps(n, d);
+    // Poison site 1, which the step at site 1 contracts into H_eff.
+    let mpo = nan_poisoned_mpo_f64(n, d, 1);
+    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
+
+    // The non-finite H_eff drives the Lanczos local solve non-finite. The
+    // step must surface it as `DmrgHeffError::Lanczos(LanczosError::NonFinite)`
+    // — not panic, and not return a silently-NaN `Ok` result that would poison
+    // the sweep energy downstream.
+    let result = dmrg_2site_step(
+        &envs,
+        &mps,
+        &mpo,
+        1,
+        &LocalEigensolverParams::Lanczos(LanczosParams {
+            seed: Some(7),
+            ..LanczosParams::default()
+        }),
+        &TruncSvdParams {
+            chi_max: None,
+            target_trunc_err: None,
+        },
+    );
+
+    match result {
+        Err(DmrgHeffError::Lanczos(LanczosError::NonFinite { .. })) => {}
+        Err(other) => panic!("expected Lanczos(NonFinite), got a different error: {other:?}"),
+        Ok(_) => panic!("expected an error, got Ok — the NaN was not surfaced"),
     }
 }

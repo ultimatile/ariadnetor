@@ -17,7 +17,7 @@ mod lanczos_kernels;
 #[cfg(feature = "arpack")]
 mod arpack;
 
-pub use lanczos::{LanczosParams, LanczosResult, LinearOp, lanczos_smallest};
+pub use lanczos::{LanczosError, LanczosParams, LanczosResult, LinearOp, lanczos_smallest};
 
 #[cfg(feature = "arpack")]
 pub use arpack::{ArpackError, ArpackParams, ArpackResult, ArpackScalar, arpack_smallest};
