@@ -80,14 +80,14 @@ pub trait LinalgDecompose<T: Scalar>: Sealed {
     /// Output of [`lq`](Self::lq) / [`lq_with_policy`](Self::lq_with_policy).
     type LqOutput;
 
-    /// Thin SVD with the layout's auto-selected execution policy.
+    /// Thin SVD with the auto-selected execution policy.
     fn svd<B: OpsFor<Self::Storage>>(
         backend: &B,
         t: &Self,
         nrow: usize,
     ) -> Result<Self::SvdOutput, LinalgError>;
 
-    /// Truncated SVD with the layout's auto-selected execution policy.
+    /// Truncated SVD with the auto-selected execution policy.
     fn trunc_svd<B: OpsFor<Self::Storage>>(
         backend: &B,
         t: &Self,
@@ -95,14 +95,14 @@ pub trait LinalgDecompose<T: Scalar>: Sealed {
         params: &TruncSvdParams,
     ) -> Result<Self::TruncSvdOutput, LinalgError>;
 
-    /// Thin QR with the layout's auto-selected execution policy.
+    /// Thin QR with the auto-selected execution policy.
     fn qr<B: OpsFor<Self::Storage>>(
         backend: &B,
         t: &Self,
         nrow: usize,
     ) -> Result<Self::QrOutput, LinalgError>;
 
-    /// Thin LQ with the layout's auto-selected execution policy.
+    /// Thin LQ with the auto-selected execution policy.
     fn lq<B: OpsFor<Self::Storage>>(
         backend: &B,
         t: &Self,

@@ -25,7 +25,7 @@
 //!   joined-data form the dense ops here delegate to — not a re-alias.
 //!
 //! The four decompositions (`svd` / `trunc_svd` / `qr` / `lq`) and `contract`
-//! dispatch over layout via [`LinalgDecompose`] / [`LinalgContract`], so their
+//! dispatch over the tensor type via [`LinalgDecompose`] / [`LinalgContract`], so their
 //! `expert` forms serve both Dense and BlockSparse from one bare name. These are
 //! also the only public entries that pin an [`ExecPolicy`] on a block-sparse
 //! decomposition or contraction; the auto-policy crate-root forms keep
@@ -70,7 +70,7 @@ pub fn permute<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 /// is consulted. Output is returned in `backend.preferred_order()`, consistent
 /// with the decomposition functions.
 ///
-/// Dispatches over layout via [`LinalgContract`], so one bare name serves both
+/// Dispatches over the tensor type via [`LinalgContract`], so one bare name serves both
 /// Dense and BlockSparse — the policy-explicit counterpart of [`crate::contract`].
 pub fn contract<T, Tn, B>(
     backend: &B,
@@ -142,7 +142,7 @@ pub fn eig<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 /// Thin SVD of a tensor reshaped as a matrix, with a caller-specified
 /// execution policy.
 ///
-/// Dispatches over layout via [`LinalgDecompose`], so one call serves both
+/// Dispatches over the tensor type via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::svd`].
 pub fn svd<T, Tn, B>(
@@ -162,7 +162,7 @@ where
 /// Truncated SVD of a tensor reshaped as a matrix, with a caller-specified
 /// execution policy.
 ///
-/// Dispatches over layout via [`LinalgDecompose`], so one call serves both
+/// Dispatches over the tensor type via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::trunc_svd`].
 pub fn trunc_svd<T, Tn, B>(
@@ -183,7 +183,7 @@ where
 /// Thin QR of a tensor reshaped as a matrix, with a caller-specified execution
 /// policy.
 ///
-/// Dispatches over layout via [`LinalgDecompose`], so one call serves both
+/// Dispatches over the tensor type via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::qr`].
 pub fn qr<T, Tn, B>(
@@ -203,7 +203,7 @@ where
 /// Thin LQ of a tensor reshaped as a matrix, with a caller-specified execution
 /// policy.
 ///
-/// Dispatches over layout via [`LinalgDecompose`], so one call serves both
+/// Dispatches over the tensor type via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::lq`].
 pub fn lq<T, Tn, B>(

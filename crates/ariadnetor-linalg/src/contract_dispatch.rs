@@ -68,7 +68,7 @@ pub trait LinalgContract<T: Scalar>: Sealed + Sized {
     /// Storage type paired with this tensor.
     type Storage: Storage;
 
-    /// Contract `lhs` and `rhs` over the einsum `notation`, with the layout's
+    /// Contract `lhs` and `rhs` over the einsum `notation`, with the
     /// auto-selected execution policy.
     fn contract<B: OpsFor<Self::Storage>>(
         backend: &B,
@@ -89,7 +89,7 @@ pub trait LinalgContract<T: Scalar>: Sealed + Sized {
 
     /// Tensordot `lhs` and `rhs` over the given axis pairs, emitting the output
     /// legs in their natural order (free left legs then free right legs, each in
-    /// input axis order), with the layout's auto-selected execution policy.
+    /// input axis order), with the auto-selected execution policy.
     ///
     /// The axis-pair face of [`contract`](Self::contract). Both kernels are
     /// natively axis-based, so each implementation dispatches to its kernel
@@ -245,7 +245,7 @@ impl<T: Scalar, S: Sector> LinalgContract<T>
 // ---------------------------------------------------------------------------
 
 /// Two-operand contraction over the einsum `notation`, using the supplied
-/// backend and the layout's auto-selected execution policy.
+/// backend and the auto-selected execution policy.
 pub fn contract<T, Tn, B>(
     backend: &B,
     lhs: &Tn,
