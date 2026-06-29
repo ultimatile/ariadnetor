@@ -1,12 +1,22 @@
-//! Layout-keyed dispatch for the four tensor decompositions
+//! Tensor-keyed dispatch for the four tensor decompositions
 //! (SVD / truncated SVD / QR / LQ).
 //!
-//! [`LinalgDecompose`] is implemented on the concrete layout types
-//! ([`DenseLayout`] and [`BlockSparseLayout<S>`]); each implementation pairs a
-//! storage type via [`LinalgDecompose::Storage`] and routes to its
-//! storage-specific kernel. Callers parameterized over `L: LinalgDecompose<T>`
-//! issue one generic call that serves both flavors, mirroring the `MpsOps`
-//! pattern in `arnet-mps`.
+//! [`LinalgDecompose`] is implemented on the concrete tensor types
+//! ([`Tensor<DenseStorage<T>, DenseLayout>`](arnet_tensor::Tensor) and
+//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](arnet_tensor::Tensor));
+//! each implementation pairs a storage type via [`LinalgDecompose::Storage`] and
+//! routes to its storage-specific kernel. Callers parameterized over
+//! `Tn: LinalgDecompose<T>` issue one generic call that serves both flavors,
+//! mirroring the `MpsOps` pattern in `arnet-mps`.
+//!
+//! The trait is sealed through a crate-private [`Sealed`](crate::sealed::Sealed)
+//! supertrait, so it cannot be implemented downstream and projects no storage /
+//! layout taxonomy onto its public bound surface — `Storage` survives only as a
+//! sealed associated type. Methods are associated functions taking `t: &Self`
+//! (not `&self`) so they do not collide, under method-call resolution, with the
+//! identically-named `svd` / `qr` / `lq` / `trunc_svd` receiver methods on the
+//! [`DenseHostOps`](crate::DenseHostOps) /
+//! [`BlockSparseHostOps`](crate::BlockSparseHostOps) extension traits.
 //!
 //! # Auto-policy vs explicit policy
 //!
@@ -32,7 +42,7 @@ use arnet_core::Scalar;
 use arnet_core::backend::ExecPolicy;
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
-    StorageFor, Tensor, TensorLayout,
+    Tensor,
 };
 
 use crate::block_sparse_decomp::{
@@ -46,19 +56,20 @@ use crate::decomposition::{
     trunc_svd_with_policy_dense,
 };
 use crate::error::LinalgError;
+use crate::sealed::Sealed;
 use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 
-/// Layout-keyed dispatch trait for the four tensor decompositions.
+/// Sealed tensor-keyed dispatch trait for the four tensor decompositions.
 ///
-/// Implemented for [`DenseLayout`] and [`BlockSparseLayout<S>`], each pairing a
-/// storage type via [`Storage`](Self::Storage) and routing each operation to
-/// its storage-specific kernel. The structural difference between the dense
-/// `(U, S_flat, Vt)` SVD and the block-sparse `(U, BlockScalars, Vt)`
-/// form is absorbed by the associated output types; QR and LQ are structurally
-/// identical across layouts.
-pub trait LinalgDecompose<T: Scalar>: TensorLayout + Sized {
-    /// Storage type paired with this layout.
-    type Storage: Storage + StorageFor<Self>;
+/// Implemented for the concrete dense and block-sparse tensor types, each
+/// pairing a storage type via [`Storage`](Self::Storage) and routing each
+/// operation to its storage-specific kernel. The structural difference between
+/// the dense `(U, S_flat, Vt)` SVD and the block-sparse
+/// `(U, BlockScalars, Vt)` form is absorbed by the associated output types; QR
+/// and LQ are structurally identical across layouts.
+pub trait LinalgDecompose<T: Scalar>: Sealed {
+    /// Storage type paired with this tensor.
+    type Storage: Storage;
     /// Output of [`svd`](Self::svd) / [`svd_with_policy`](Self::svd_with_policy).
     type SvdOutput;
     /// Output of [`trunc_svd`](Self::trunc_svd) /
@@ -69,39 +80,39 @@ pub trait LinalgDecompose<T: Scalar>: TensorLayout + Sized {
     /// Output of [`lq`](Self::lq) / [`lq_with_policy`](Self::lq_with_policy).
     type LqOutput;
 
-    /// Thin SVD with the layout's auto-selected execution policy.
+    /// Thin SVD with the auto-selected execution policy.
     fn svd<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
     ) -> Result<Self::SvdOutput, LinalgError>;
 
-    /// Truncated SVD with the layout's auto-selected execution policy.
+    /// Truncated SVD with the auto-selected execution policy.
     fn trunc_svd<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
         params: &TruncSvdParams,
     ) -> Result<Self::TruncSvdOutput, LinalgError>;
 
-    /// Thin QR with the layout's auto-selected execution policy.
+    /// Thin QR with the auto-selected execution policy.
     fn qr<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
     ) -> Result<Self::QrOutput, LinalgError>;
 
-    /// Thin LQ with the layout's auto-selected execution policy.
+    /// Thin LQ with the auto-selected execution policy.
     fn lq<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
     ) -> Result<Self::LqOutput, LinalgError>;
 
     /// Thin SVD with a caller-specified execution policy.
     fn svd_with_policy<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<Self::SvdOutput, LinalgError>;
@@ -109,7 +120,7 @@ pub trait LinalgDecompose<T: Scalar>: TensorLayout + Sized {
     /// Truncated SVD with a caller-specified execution policy.
     fn trunc_svd_with_policy<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
         params: &TruncSvdParams,
         policy: ExecPolicy,
@@ -118,7 +129,7 @@ pub trait LinalgDecompose<T: Scalar>: TensorLayout + Sized {
     /// Thin QR with a caller-specified execution policy.
     fn qr_with_policy<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<Self::QrOutput, LinalgError>;
@@ -126,7 +137,7 @@ pub trait LinalgDecompose<T: Scalar>: TensorLayout + Sized {
     /// Thin LQ with a caller-specified execution policy.
     fn lq_with_policy<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<Self::LqOutput, LinalgError>;
@@ -136,7 +147,7 @@ pub trait LinalgDecompose<T: Scalar>: TensorLayout + Sized {
 // Dense implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
+impl<T: Scalar> LinalgDecompose<T> for Tensor<DenseStorage<T>, DenseLayout> {
     type Storage = DenseStorage<T>;
     type SvdOutput = SvdResult<T>;
     type TruncSvdOutput = TruncSvdResult<T>;
@@ -145,7 +156,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn svd<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
     ) -> Result<SvdResult<T>, LinalgError> {
         let (u, s, vt) = svd_dense(backend, t.data(), nrow)?;
@@ -158,7 +169,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn trunc_svd<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
         params: &TruncSvdParams,
     ) -> Result<TruncSvdResult<T>, LinalgError> {
@@ -173,7 +184,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn qr<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
     ) -> Result<QrResult<T>, LinalgError> {
         let (q, r) = qr_dense(backend, t.data(), nrow)?;
@@ -182,7 +193,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn lq<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
     ) -> Result<LqResult<T>, LinalgError> {
         let (l, q) = lq_dense(backend, t.data(), nrow)?;
@@ -191,7 +202,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn svd_with_policy<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<SvdResult<T>, LinalgError> {
@@ -205,7 +216,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn trunc_svd_with_policy<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
         params: &TruncSvdParams,
         policy: ExecPolicy,
@@ -221,7 +232,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn qr_with_policy<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<QrResult<T>, LinalgError> {
@@ -231,7 +242,7 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 
     fn lq_with_policy<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<LqResult<T>, LinalgError> {
@@ -244,7 +255,9 @@ impl<T: Scalar> LinalgDecompose<T> for DenseLayout {
 // BlockSparse implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
+impl<T: Scalar, S: Sector> LinalgDecompose<T>
+    for Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
+{
     type Storage = BlockSparseStorage<T>;
     type SvdOutput = BlockSparseSvdResult<T, S>;
     type TruncSvdOutput = BlockSparseTruncSvdResult<T, S>;
@@ -253,7 +266,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn svd<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
     ) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
         Self::svd_with_policy(backend, t, nrow, ExecPolicy::Sequential)
@@ -261,7 +274,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn trunc_svd<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
         params: &TruncSvdParams,
     ) -> Result<BlockSparseTruncSvdResult<T, S>, LinalgError> {
@@ -270,7 +283,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn qr<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
     ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
         Self::qr_with_policy(backend, t, nrow, ExecPolicy::Sequential)
@@ -278,7 +291,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn lq<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
     ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
         Self::lq_with_policy(backend, t, nrow, ExecPolicy::Sequential)
@@ -286,7 +299,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn svd_with_policy<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<BlockSparseSvdResult<T, S>, LinalgError> {
@@ -297,7 +310,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn trunc_svd_with_policy<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
         params: &TruncSvdParams,
         policy: ExecPolicy,
@@ -310,7 +323,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn qr_with_policy<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
@@ -321,7 +334,7 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 
     fn lq_with_policy<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         nrow: usize,
         policy: ExecPolicy,
     ) -> Result<BlockSparseQrResult<T, S>, LinalgError> {
@@ -332,65 +345,53 @@ impl<T: Scalar, S: Sector> LinalgDecompose<T> for BlockSparseLayout<S> {
 }
 
 // ---------------------------------------------------------------------------
-// Unified free functions — type-erase the layout into `L: LinalgDecompose<T>`
-// so callers write `svd(backend, &t, nrow)` without naming the storage. `L`
-// resolves from `Tensor`'s second argument and `T` through `L::Storage`, the
-// same inference the `MpsOps` free fns rely on.
+// Unified free functions — type-erase the tensor into `Tn: LinalgDecompose<T>`
+// so callers write `svd(backend, &t, nrow)` without naming the storage. `Tn`
+// resolves from the tensor argument and `T` through the impl, the same
+// inference the `MpsOps` free fns rely on.
 // ---------------------------------------------------------------------------
 
 /// Thin SVD of a tensor reshaped as a matrix, using the supplied backend.
-pub fn svd<T, L, B>(
-    backend: &B,
-    t: &Tensor<L::Storage, L>,
-    nrow: usize,
-) -> Result<L::SvdOutput, LinalgError>
+pub fn svd<T, Tn, B>(backend: &B, t: &Tn, nrow: usize) -> Result<Tn::SvdOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::svd(backend, t, nrow)
+    Tn::svd(backend, t, nrow)
 }
 
 /// Truncated SVD of a tensor reshaped as a matrix, using the supplied backend.
-pub fn trunc_svd<T, L, B>(
+pub fn trunc_svd<T, Tn, B>(
     backend: &B,
-    t: &Tensor<L::Storage, L>,
+    t: &Tn,
     nrow: usize,
     params: &TruncSvdParams,
-) -> Result<L::TruncSvdOutput, LinalgError>
+) -> Result<Tn::TruncSvdOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::trunc_svd(backend, t, nrow, params)
+    Tn::trunc_svd(backend, t, nrow, params)
 }
 
 /// Thin QR of a tensor reshaped as a matrix, using the supplied backend.
-pub fn qr<T, L, B>(
-    backend: &B,
-    t: &Tensor<L::Storage, L>,
-    nrow: usize,
-) -> Result<L::QrOutput, LinalgError>
+pub fn qr<T, Tn, B>(backend: &B, t: &Tn, nrow: usize) -> Result<Tn::QrOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::qr(backend, t, nrow)
+    Tn::qr(backend, t, nrow)
 }
 
 /// Thin LQ of a tensor reshaped as a matrix, using the supplied backend.
-pub fn lq<T, L, B>(
-    backend: &B,
-    t: &Tensor<L::Storage, L>,
-    nrow: usize,
-) -> Result<L::LqOutput, LinalgError>
+pub fn lq<T, Tn, B>(backend: &B, t: &Tn, nrow: usize) -> Result<Tn::LqOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::lq(backend, t, nrow)
+    Tn::lq(backend, t, nrow)
 }

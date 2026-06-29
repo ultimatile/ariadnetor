@@ -141,7 +141,7 @@ pub(crate) type BlockSparseEigResultBsp<T, S> = (
 // Public API -- SVD =======================================================
 
 /// Internal kernel for the block-sparse SVD on joined-form
-/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over layout:
+/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over the tensor type:
 /// the auto-policy [`svd`](crate::svd) pins `ExecPolicy::Sequential`, while
 /// [`expert::svd`](crate::expert::svd) forwards a caller-specified `policy`.
 pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
@@ -191,7 +191,7 @@ pub(crate) fn svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 }
 
 /// Internal kernel for the truncated block-sparse SVD on joined-form
-/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over layout:
+/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over the tensor type:
 /// the auto-policy [`trunc_svd`](crate::trunc_svd) pins `ExecPolicy::Sequential`,
 /// while [`expert::trunc_svd`](crate::expert::trunc_svd) forwards a
 /// caller-specified `policy`.
@@ -286,7 +286,7 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 // Public API -- QR / LQ ===================================================
 
 /// Internal kernel for the block-sparse QR on joined-form
-/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over layout:
+/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over the tensor type:
 /// the auto-policy [`qr`](crate::qr) pins `ExecPolicy::Sequential`, while
 /// [`expert::qr`](crate::expert::qr) forwards a caller-specified `policy`.
 pub(crate) fn qr_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
@@ -324,7 +324,7 @@ pub(crate) fn qr_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 }
 
 /// Internal kernel for the block-sparse LQ on joined-form
-/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over layout:
+/// [`BlockSparseTensorData<T, S>`]. The public entries dispatch over the tensor type:
 /// the auto-policy [`lq`](crate::lq) pins `ExecPolicy::Sequential`, while
 /// [`expert::lq`](crate::expert::lq) forwards a caller-specified `policy`.
 pub(crate) fn lq_block_sparse_with_policy_dense<T: Scalar, S: Sector>(

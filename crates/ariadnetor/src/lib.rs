@@ -73,7 +73,7 @@ pub use ops::{
     solve_with_backend, trace_with_backend,
 };
 
-// Layout-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
+// Tensor-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
 // (decomposition), `contract` / `tensordot`, and `diagonal_scale` free fns
 // serve both Dense and BlockSparse via [`LinalgDecompose`] / [`LinalgContract`]
 // / [`LinalgScale`], so one call site covers both flavors. The policy-explicit
@@ -101,8 +101,8 @@ pub use arnet_linalg::{BlockSparseHostOps, DenseHostOps};
 // Expert layer: the per-call `ExecPolicy` escape hatch over the auto-policy
 // default. Re-exported as the `arnet::expert` namespace so an umbrella-only
 // consumer can reach `expert::permute`, `expert::contract`,
-// `expert::svd`, … — the decomposition policy variants dispatch over layout,
-// so `expert::svd` serves both Dense and BlockSparse.
+// `expert::svd`, … — the decomposition policy variants dispatch over the
+// tensor type, so `expert::svd` serves both Dense and BlockSparse.
 pub use arnet_linalg::expert;
 
 // `flat_index` is intentionally not re-exported: it takes a `MemoryOrder`

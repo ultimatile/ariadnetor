@@ -507,7 +507,7 @@ fn diagonal_scale_matches_host() {
 }
 
 // ---------------------------------------------------------------------------
-// Layout-keyed dispatch: block-sparse policy routing through `expert::*`.
+// Tensor-keyed dispatch: block-sparse policy routing through `expert::*`.
 //
 // `expert::svd` / `qr` / `lq` / `trunc_svd` are the first public entries that
 // pin an `ExecPolicy` on a block-sparse decomposition — the auto-policy

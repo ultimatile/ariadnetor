@@ -14,7 +14,7 @@
 pub use arnet_linalg::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
 
 // ============================================================================
-// Layout-keyed dispatch — `svd` / `trunc_svd` / `qr` / `lq` (decomposition),
+// Tensor-keyed dispatch — `svd` / `trunc_svd` / `qr` / `lq` (decomposition),
 // `contract` / `tensordot`, and `diagonal_scale` serve both Dense and
 // BlockSparse via `LinalgDecompose` / `LinalgContract` / `LinalgScale`. The
 // backend is supplied at the call site; the policy-explicit forms live under

@@ -105,7 +105,7 @@ pub(crate) fn svd_dense<T: Scalar>(
 
 /// Internal kernel for the dense SVD with a caller-specified execution policy,
 /// on the joined [`DenseTensorData<T>`] form. The public entry is the
-/// layout-keyed [`expert::svd`](crate::expert::svd); the auto-policy entry
+/// tensor-keyed [`expert::svd`](crate::expert::svd); the auto-policy entry
 /// [`svd`](crate::svd) wraps [`svd_dense`], which consults `backend.par_for_svd`.
 pub(crate) fn svd_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
@@ -176,7 +176,7 @@ pub(crate) fn trunc_svd_dense<T: Scalar>(
 
 /// Internal kernel for the dense truncated SVD with a caller-specified
 /// execution policy, on the joined [`DenseTensorData<T>`] form. The public
-/// entry is the layout-keyed [`expert::trunc_svd`](crate::expert::trunc_svd);
+/// entry is the tensor-keyed [`expert::trunc_svd`](crate::expert::trunc_svd);
 /// the auto-policy entry [`trunc_svd`](crate::trunc_svd) wraps
 /// [`trunc_svd_dense`], which consults `backend.par_for_svd`.
 pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
@@ -317,7 +317,7 @@ pub(crate) fn qr_dense<T: Scalar>(
 
 /// Internal kernel for the dense QR with a caller-specified execution policy,
 /// on the joined [`DenseTensorData<T>`] form. The public entry is the
-/// layout-keyed [`expert::qr`](crate::expert::qr); the auto-policy entry
+/// tensor-keyed [`expert::qr`](crate::expert::qr); the auto-policy entry
 /// [`qr`](crate::qr) wraps [`qr_dense`], which consults `backend.par_for_qr`.
 pub(crate) fn qr_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,
