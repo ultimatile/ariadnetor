@@ -12,11 +12,11 @@
 //! Hamiltonian construction (H_eff lives in the local projected
 //! subspace).
 
+use super::{identity_mpo, product_state_mps};
+use crate::dmrg::heff::{EffectiveHamiltonian2Site, dmrg_2site_step};
+use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
+use crate::krylov::{LanczosError, LanczosParams, LinearOp};
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::dmrg::{
-    DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2Site, LocalEigensolverParams, dmrg_2site_step,
-};
-use arnet_algorithms::krylov::{LanczosError, LanczosParams, LinearOp};
 use arnet_core::Scalar;
 use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh_with_backend};
 use arnet_mps::{Mpo, Mps};
@@ -28,34 +28,9 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 // ---------------------------------------------------------------------------
-// Fixtures
+// Fixtures (`product_state_mps` / `identity_mpo` are shared from the parent
+// `tests` module)
 // ---------------------------------------------------------------------------
-
-/// Product state |0...0⟩ with bond dim 1 at every internal bond.
-fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|_| {
-            let mut data = vec![0.0_f64; d];
-            data[0] = 1.0;
-            Host::shared().dense(data, vec![1, d, 1])
-        })
-        .collect();
-    Mps::from_sites(storages)
-}
-
-/// Identity MPO at every site, bond dim 1.
-fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|_| {
-            let mut data = vec![0.0_f64; d * d];
-            for k in 0..d {
-                data[k + d * k] = 1.0;
-            }
-            Host::shared().dense(data, vec![1, d, d, 1])
-        })
-        .collect();
-    Mpo::from_sites(storages)
-}
 
 /// Random-but-seeded MPS with chi internal, d physical, n sites.
 fn random_mps_f64(
@@ -182,9 +157,10 @@ where
     Host::shared().dense(data, vec![dim, dim])
 }
 
-/// Construct an `EffectiveHamiltonian2Site` from a freshly built
-/// envs at the requested two-site index. Returns the operator plus
-/// the envs (kept alive so the borrowed references stay valid).
+/// Construct an `EffectiveHamiltonian2Site` borrowing a freshly built
+/// envs at the requested two-site index. The returned operator borrows
+/// the `envs` / `mps` / `mpo` arguments, which the caller keeps alive
+/// so the references stay valid.
 fn make_heff<'a, T>(
     envs: &'a DmrgEnvs<DenseStorage<T>, DenseLayout>,
     mps: &'a Mps<DenseStorage<T>, DenseLayout>,
@@ -444,11 +420,10 @@ fn heff_svd_reconstruction_round_trips() {
 
     let heff = make_heff(&envs, &mps, &mpo, site);
     let dim = heff.dim();
-    let lan =
-        arnet_algorithms::krylov::lanczos_smallest::<f64, _>(&heff, dim, &lan_params).unwrap();
-    let psi_4d =
-        lan.eigenvector
-            .reshape(vec![heff.chi_l(), heff.d_i(), heff.d_ip1(), heff.chi_r()]);
+    let lan = crate::krylov::lanczos_smallest::<f64, _>(&heff, dim, &lan_params).unwrap();
+    let psi_4d = lan
+        .eigenvector
+        .reshape(vec![heff.chi_l, heff.d_i, heff.d_ip1, heff.chi_r]);
 
     let psi_data = psi_4d.data_slice();
     let recon_data = recon.data_slice();

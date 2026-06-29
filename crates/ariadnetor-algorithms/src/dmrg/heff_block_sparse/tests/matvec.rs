@@ -2,11 +2,12 @@
 //! n=2 fixture (boundary envs) and the n=3 fixture (one extended
 //! env via `extend_right_step`).
 
-use arnet_algorithms::dmrg::{
-    DmrgEnvs, EffectiveHamiltonian2Site, EffectiveHamiltonian2SiteBlockSparse,
-    LocalEigensolverParams, dmrg_2site_step_block_sparse,
+use crate::dmrg::heff::EffectiveHamiltonian2Site;
+use crate::dmrg::heff_block_sparse::{
+    EffectiveHamiltonian2SiteBlockSparse, dmrg_2site_step_block_sparse,
 };
-use arnet_algorithms::krylov::{LanczosParams, LinearOp};
+use crate::dmrg::{DmrgEnvs, LocalEigensolverParams};
+use crate::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::{TruncSvdParams, eigh_with_backend};
 use arnet_mps::TensorChain;
 use arnet_native::NativeBackend;
@@ -14,9 +15,7 @@ use arnet_tensor::MemoryOrder;
 use arnet_tensor::{ComputeBackendTensorExt, Host};
 use arnet_tensor::{Sector, U1Sector};
 
-use super::fixtures::{
-    build_envs_n2_f64, make_n2_mpo_f64, make_n2_mps_f64, make_n3_mpo_f64, make_n3_mps_f64,
-};
+use super::fixtures::{make_n2_mpo_f64, make_n2_mps_f64, make_n3_mpo_f64, make_n3_mps_f64};
 use arnet_tensor::test_fixtures::{
     build_dense_psi_from_flat, dense_to_template_flat, densify_bsp_f64, template_block_offsets,
     template_from_mps_pair,
@@ -26,7 +25,7 @@ use arnet_tensor::test_fixtures::{
 fn bsp_heff_matvec_matches_dense_oracle() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo);
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
 
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left env"),
@@ -162,7 +161,7 @@ fn bsp_heff_matvec_matches_dense_oracle_n3_bulk() {
 fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo);
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left"),
         mpo.site(0),
@@ -232,7 +231,7 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
 fn bsp_heff_step_uvt_canonical_form() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo);
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
     let params = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
         tol: 1e-12,
@@ -293,7 +292,7 @@ fn bsp_heff_step_uvt_canonical_form() {
 fn bsp_heff_step_flux_propagation() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo);
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
 
     let psi_flux = mps.site(0).flux().fuse(mps.site(1).flux());
     assert_ne!(
@@ -325,7 +324,7 @@ fn bsp_heff_step_flux_propagation() {
 fn bsp_heff_step_n2_edge_case() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo);
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,

@@ -8,7 +8,6 @@
 //! overlapping. A complex variant of the n=2 fixture exercises the
 //! `Scalar = Complex<f64>` matvec path.
 
-use arnet_algorithms::dmrg::DmrgEnvs;
 use arnet_mps::{Mpo, Mps};
 use arnet_tensor::test_fixtures::legs;
 use arnet_tensor::{
@@ -96,14 +95,6 @@ pub fn make_n2_mpo_f64(j: f64) -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout
         .expect("S-")[0] = 1.0;
 
     Mpo::from_sites(vec![w0, w1])
-}
-
-/// Build the DMRG left/right environments for the `n = 2` fixture pair.
-pub fn build_envs_n2_f64(
-    mps: &Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
-    mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
-) -> DmrgEnvs<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
-    DmrgEnvs::build(mps, mpo).expect("envs build")
 }
 
 // ---------------------------------------------------------------------------

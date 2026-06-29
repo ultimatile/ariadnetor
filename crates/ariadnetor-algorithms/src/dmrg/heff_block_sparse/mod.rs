@@ -38,7 +38,10 @@
 mod operator;
 mod validation;
 
-pub use operator::EffectiveHamiltonian2SiteBlockSparse;
+#[cfg(test)]
+mod tests;
+
+pub(crate) use operator::EffectiveHamiltonian2SiteBlockSparse;
 
 use arnet_core::Scalar;
 use arnet_linalg::{BlockScalars, TruncSvdParams, trunc_svd};
@@ -119,7 +122,7 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
 /// - [`DmrgHeffError::Lanczos`] — the native Lanczos local eigensolver
 ///   produced a non-finite eigenpair. With the `arpack` feature, the
 ///   ARPACK arm can instead return `DmrgHeffError::Arpack`.
-pub fn dmrg_2site_step_block_sparse<T, S>(
+pub(crate) fn dmrg_2site_step_block_sparse<T, S>(
     envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     mps: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     mpo: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,

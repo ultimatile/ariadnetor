@@ -13,9 +13,10 @@ use arnet_linalg::LinalgError;
 use crate::krylov::ArpackError;
 
 /// Errors raised by the 2-site DMRG step entry points
-/// ([`super::heff::dmrg_2site_step`] for the Dense path, and
-/// [`super::heff_block_sparse::dmrg_2site_step_block_sparse`] for the
-/// BlockSparse / U(1) path). Most variants are produced by both; the
+/// (`dmrg_2site_step` for the Dense path, and
+/// `dmrg_2site_step_block_sparse` for the
+/// BlockSparse / U(1) path; both crate-internal). Most variants are
+/// produced by both; the
 /// [`DmrgHeffError::QnMismatch`] variant is BlockSparse-specific
 /// and only surfaces from the BlockSparse entry point's QN /
 /// Direction / sector / per-site-flux pre-validation.
@@ -101,7 +102,7 @@ pub enum DmrgHeffError {
     /// The layout `MemoryOrder` of one of the BlockSparse 2-site
     /// step's four contracted operands diverged from the host
     /// substrate's `preferred_order()`. Surfaced by
-    /// [`super::heff_block_sparse::EffectiveHamiltonian2SiteBlockSparse::new`]
+    /// `EffectiveHamiltonian2SiteBlockSparse::new`
     /// before any contract runs so the `apply` body's `.expect`
     /// calls cannot fire on a mixed-order operand set. `operand`
     /// names which of the four contracted operands (`"left_env"`,

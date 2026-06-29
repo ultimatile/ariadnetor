@@ -43,7 +43,7 @@ use super::solver::{
 /// `(i, i+1)`. Built once per local update and consumed by the
 /// selected local eigensolver via [`LinearOp`].
 #[derive(Debug, Clone)]
-pub struct EffectiveHamiltonian2Site<'a, T: Scalar> {
+pub(crate) struct EffectiveHamiltonian2Site<'a, T: Scalar> {
     left: &'a DenseTensor<T>,
     w_i: &'a DenseTensor<T>,
     w_ip1: &'a DenseTensor<T>,
@@ -58,7 +58,7 @@ impl<'a, T: Scalar> EffectiveHamiltonian2Site<'a, T> {
     /// Construct directly from env / MPO references plus the bond
     /// dimensions.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         left: &'a DenseTensor<T>,
         w_i: &'a DenseTensor<T>,
         w_ip1: &'a DenseTensor<T>,
@@ -104,28 +104,8 @@ impl<'a, T: Scalar> EffectiveHamiltonian2Site<'a, T> {
     }
 
     /// Linear-operator vector dimension.
-    pub fn dim(&self) -> usize {
+    pub(crate) fn dim(&self) -> usize {
         self.chi_l * self.d_i * self.d_ip1 * self.chi_r
-    }
-
-    /// Left bond dimension.
-    pub fn chi_l(&self) -> usize {
-        self.chi_l
-    }
-
-    /// Physical dimension of site `i`.
-    pub fn d_i(&self) -> usize {
-        self.d_i
-    }
-
-    /// Physical dimension of site `i + 1`.
-    pub fn d_ip1(&self) -> usize {
-        self.d_ip1
-    }
-
-    /// Right bond dimension.
-    pub fn chi_r(&self) -> usize {
-        self.chi_r
     }
 }
 
@@ -175,7 +155,7 @@ pub struct TwoSiteStepResult<T: Scalar> {
 }
 
 /// Run a single 2-site DMRG step at sites `(site, site+1)`.
-pub fn dmrg_2site_step<T>(
+pub(crate) fn dmrg_2site_step<T>(
     envs: &DmrgEnvs<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
     mps: &Mps<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
     mpo: &Mpo<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
@@ -354,3 +334,6 @@ where
         trunc_err,
     })
 }
+
+#[cfg(test)]
+mod tests;

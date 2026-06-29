@@ -1,37 +1,12 @@
-//! Error-path coverage for `dmrg_2site_step`, split out from
-//! `dmrg_heff.rs` to keep the per-test-file line cap. The fixtures
-//! mirror the ones in `dmrg_heff.rs` (product-state Dense MPS, identity
-//! MPO) so each integration-test binary is self-contained.
+//! Error-path coverage for the crate-internal `dmrg_2site_step`. Kept
+//! in its own module from `step.rs` to stay under the per-test-file
+//! line cap.
 
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams, dmrg_2site_step};
-use arnet_algorithms::krylov::LanczosParams;
+use super::{identity_mpo, product_state_mps};
+use crate::dmrg::heff::dmrg_2site_step;
+use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
+use crate::krylov::LanczosParams;
 use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps};
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
-
-fn product_state_mps(n: usize, d: usize) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let sites: Vec<DenseTensor<f64>> = (0..n)
-        .map(|_| {
-            let mut data = vec![0.0_f64; d];
-            data[0] = 1.0;
-            Host::shared().dense(data, vec![1, d, 1])
-        })
-        .collect();
-    Mps::from_sites(sites)
-}
-
-fn identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let sites: Vec<DenseTensor<f64>> = (0..n)
-        .map(|_| {
-            let mut data = vec![0.0_f64; d * d];
-            for k in 0..d {
-                data[k + d * k] = 1.0;
-            }
-            Host::shared().dense(data, vec![1, d, d, 1])
-        })
-        .collect();
-    Mpo::from_sites(sites)
-}
 
 #[test]
 fn heff_error_paths() {

@@ -2,18 +2,18 @@
 //!
 //! Exposes the environment-tensor data structure ([`DmrgEnvs`],
 //! generic over a [`DmrgEnvOps`]-implementing layout type so the
-//! same struct serves Dense and BlockSparse chains), the local
-//! 2-site update step in two parallel forms — [`dmrg_2site_step`]
-//! for the Dense path and [`dmrg_2site_step_block_sparse`] for the
-//! BlockSparse / U(1) path (effective Hamiltonian + local-eigensolver
-//! drive — Lanczos by default, ARPACK behind the `arpack` feature —
-//! via the Dense Krylov family through a flat-buffer adapter on
-//! the BlockSparse path, plus a truncated-SVD split) — and a single
+//! same struct serves Dense and BlockSparse chains) and a single
 //! layout-generic 2-site sweep driver [`sweep_2site`] dispatched
 //! over [`DmrgOps`] so one call site covers both the Dense and
-//! BlockSparse / U(1) paths. The driver shares `DmrgSweepParams`,
-//! `DmrgSweepError`, `DmrgResult`, `DmrgSweepRecord`,
-//! `DmrgStepRecord`, and `SweepDirection`.
+//! BlockSparse / U(1) paths. Internally the driver runs a local
+//! 2-site update step in two parallel forms (Dense and BlockSparse /
+//! U(1)) — effective Hamiltonian + local-eigensolver drive (Lanczos
+//! by default, ARPACK behind the `arpack` feature; the BlockSparse
+//! path reuses the Dense Krylov family through a flat-buffer adapter)
+//! plus a truncated-SVD split — but these per-step primitives are
+//! crate-internal, not part of the exposed surface. The driver shares
+//! `DmrgSweepParams`, `DmrgSweepError`, `DmrgResult`,
+//! `DmrgSweepRecord`, `DmrgStepRecord`, and `SweepDirection`.
 //!
 //! For non-expert callers, [`dmrg_2site`] wraps the low-level driver
 //! with defensive `psi0.clone()`, automatic canonicalization to
@@ -34,11 +34,8 @@ mod wrapper;
 
 pub use dispatch::{AbsorbedStep, DmrgOps, FullStepError};
 pub use env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
-pub use heff::{EffectiveHamiltonian2Site, TwoSiteStepResult, dmrg_2site_step};
-pub use heff_block_sparse::{
-    EffectiveHamiltonian2SiteBlockSparse, TwoSiteStepResultBlockSparse,
-    dmrg_2site_step_block_sparse,
-};
+pub use heff::TwoSiteStepResult;
+pub use heff_block_sparse::TwoSiteStepResultBlockSparse;
 pub use heff_error::DmrgHeffError;
 pub use solver::LocalEigensolverParams;
 pub use sweep::{
