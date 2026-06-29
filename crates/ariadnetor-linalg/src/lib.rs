@@ -12,7 +12,7 @@
 //!   site. Most ops use the `*_with_backend` form — e.g.
 //!   [`permute_with_backend`], [`trace_with_backend`], the block-sparse family
 //!   ([`permute_block_sparse_with_backend`], …). Contraction, the four
-//!   decompositions, and diagonal scaling instead dispatch over layout through
+//!   decompositions, and diagonal scaling instead dispatch over the tensor type through
 //!   the unified [`contract`], [`svd`] / [`trunc_svd`] / [`qr`] / [`lq`], and
 //!   [`diagonal_scale`] free fns ([`LinalgContract`] / [`LinalgDecompose`] /
 //!   [`LinalgScale`]), so one call serves both Dense and BlockSparse. The
@@ -92,7 +92,7 @@ pub use scale_dispatch::{LinalgScale, diagonal_scale};
 
 // Explicit-backend operation paths (backend supplied at the call site). The
 // decomposition, `contract`, and `diagonal_scale` ops are not here — they
-// dispatch over layout through the unified free fns above.
+// dispatch over the tensor type through the unified free fns above.
 pub use block_sparse_with_backend::{
     eig_block_sparse_with_backend, eigh_block_sparse_with_backend,
     eigvals_block_sparse_with_backend, eigvalsh_block_sparse_with_backend,
