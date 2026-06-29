@@ -3,7 +3,7 @@
 
 use arnet_core::Scalar;
 use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, Host, linear_combine};
-use num_traits::{Float, One, Zero};
+use num_traits::{Float, One, ToPrimitive, Zero};
 use rand::SeedableRng;
 use rand::rngs::{StdRng, SysRng};
 
@@ -82,12 +82,68 @@ pub struct LanczosResult<T: Scalar> {
     pub converged: bool,
 }
 
+/// Errors from the native Lanczos solver.
+///
+/// This carries only genuine runtime failures the caller can recover
+/// from. Caller-side invariant violations (`dim == 0`, `max_iter == 0`,
+/// a non-finite or negative `tol`) and operator-contract violations (an
+/// [`LinearOp::apply`] returning a tensor of shape other than `[dim]`)
+/// remain panics — they are programmer errors, not recoverable
+/// conditions. Failing to reach the requested `tol` is likewise not an
+/// error: it is reported as [`LanczosResult::converged`] being `false`
+/// so the caller keeps the best Ritz pair.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum LanczosError {
+    /// The computed eigenpair is not finite (NaN/Inf), typically
+    /// because the operator emitted a non-finite vector or the 2-norm
+    /// overflowed (see the overflow note on [`lanczos_smallest`]). A
+    /// non-finite result must not flow on as a normal `LanczosResult`,
+    /// where it would silently poison every downstream computation. The
+    /// diagnostics are carried as `f64` so the error type stays
+    /// non-generic.
+    #[error(
+        "Lanczos produced a non-finite result after {iters} iterations: \
+         eigenvalue = {eigenvalue}, residual = {residual}"
+    )]
+    NonFinite {
+        /// Lanczos iterations run before the non-finite result was detected.
+        iters: usize,
+        /// Computed eigenvalue (lossily cast to `f64`).
+        eigenvalue: f64,
+        /// True residual (lossily cast to `f64`).
+        residual: f64,
+    },
+}
+
 /// Compute the smallest eigenvalue and corresponding eigenvector of a
 /// Hermitian operator using Lanczos with full reorthogonalization.
 ///
 /// `dim` is the length of the flat vector the operator acts on. The
 /// initial Lanczos vector is drawn at random and normalized; pass
 /// [`LanczosParams::seed`] for reproducibility.
+///
+/// # Errors
+///
+/// Returns [`LanczosError::NonFinite`] when the computed eigenvalue or
+/// residual is not finite (NaN/Inf) — see the overflow note below and
+/// the NaN-emitting-operator case. A finite but imprecise result is
+/// **not** an error: it returns `Ok` with [`LanczosResult::converged`]
+/// set to `false`, leaving the best Ritz pair for the caller to judge.
+///
+/// # Panics
+///
+/// Panics on caller-side invariant violations: `dim == 0`,
+/// `params.max_iter == 0`, or a non-finite / negative `params.tol`.
+/// Panics if [`LinearOp::apply`] returns a tensor whose shape is not
+/// `[dim]`. These are programmer errors, kept as panics so the boundary
+/// between a programmer bug and a recoverable runtime condition stays
+/// principled.
+///
+/// Internal invariant assertions (the tridiagonal eigensolve, the basis
+/// recombination, OS RNG availability) are not part of this caller
+/// contract: they cannot fire for a valid operator and a panic there
+/// signals a bug in the solver itself, not caller misuse.
 ///
 /// # Numerical preconditions
 ///
@@ -98,9 +154,14 @@ pub struct LanczosResult<T: Scalar> {
 /// - The 2-norm used to compute β is the straightforward
 ///   `sum |x|^2 -> sqrt`. Operator outputs whose elements approach
 ///   `sqrt(T::Real::MAX)` (roughly `1e19` for `f32`, `1e154` for `f64`)
-///   may overflow during squaring. DMRG-scale Hermitians stay far below
-///   this in practice.
-pub fn lanczos_smallest<T, Op>(op: &Op, dim: usize, params: &LanczosParams) -> LanczosResult<T>
+///   may overflow during squaring, producing a non-finite result that is
+///   surfaced as [`LanczosError::NonFinite`]. DMRG-scale Hermitians stay
+///   far below this in practice.
+pub fn lanczos_smallest<T, Op>(
+    op: &Op,
+    dim: usize,
+    params: &LanczosParams,
+) -> Result<LanczosResult<T>, LanczosError>
 where
     T: Scalar,
     // The tridiagonal eigenproblem is real symmetric, so we run
@@ -268,17 +329,32 @@ where
         linear_combine(&[&h_psi, &psi], &[T::one(), neg_lambda]).expect("residual lc");
     let residual = residual_vec.norm();
 
+    // A non-finite eigenvalue or residual means the operator emitted NaN/Inf
+    // or the 2-norm overflowed; the eigenpair is meaningless. Surface it as an
+    // error instead of returning an `Ok` result whose `converged == false`
+    // would let the NaN flow on silently (e.g. into a DMRG sweep, poisoning the
+    // energy). `residual` is the norm of `H psi - lambda psi`, so it is itself
+    // non-finite whenever the eigenvector is — checking eigenvalue + residual
+    // covers every non-finite source.
+    if !converged_lambda.is_finite() || !residual.is_finite() {
+        return Err(LanczosError::NonFinite {
+            iters,
+            eigenvalue: converged_lambda.to_f64().unwrap_or(f64::NAN),
+            residual: residual.to_f64().unwrap_or(f64::NAN),
+        });
+    }
+
     // Set `converged` from the true residual rather than the Lanczos estimate,
     // so the flag is consistent with the residual the caller sees: the Ritz
     // estimate can claim convergence while the true residual still exceeds
     // `tol` (e.g. when the requested tolerance is below working precision).
     let converged = residual <= tol_real;
 
-    LanczosResult {
+    Ok(LanczosResult {
         eigenvalue: converged_lambda,
         eigenvector: psi,
         iters,
         residual,
         converged,
-    }
+    })
 }

@@ -5,7 +5,7 @@
 //! compare against `arnet_linalg::eigh` ground truth.
 
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::krylov::{LanczosParams, lanczos_smallest};
+use arnet_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
 use arnet_core::Scalar;
 use arnet_linalg::eigh_with_backend;
 use arnet_native::NativeBackend;
@@ -96,7 +96,8 @@ fn lanczos_diagonal_returns_min_eigenvalue() {
             tol: 1e-12,
             seed: Some(42),
         },
-    );
+    )
+    .unwrap();
 
     assert_abs_diff_eq!(result.eigenvalue, -3.0, epsilon = 1e-10);
     assert!(result.residual < 1e-9, "residual = {}", result.residual);
@@ -117,7 +118,8 @@ fn lanczos_random_symmetric_matches_eigh() {
                 tol: 1e-11,
                 seed: Some(7),
             },
-        );
+        )
+        .unwrap();
 
         let rel_err = (result.eigenvalue - lambda_ref).abs() / lambda_ref.abs().max(1.0);
         assert!(
@@ -152,7 +154,8 @@ fn lanczos_near_degenerate_cluster() {
             tol: 1e-12,
             seed: Some(11),
         },
-    );
+    )
+    .unwrap();
 
     assert!(
         result.eigenvalue.abs() < 1e-9,
@@ -183,7 +186,8 @@ fn lanczos_complex_hermitian_matches_eigh() {
             tol: 1e-11,
             seed: Some(99),
         },
-    );
+    )
+    .unwrap();
 
     let rel_err = (result.eigenvalue - lambda_ref).abs() / lambda_ref.abs().max(1.0);
     assert!(
@@ -210,7 +214,8 @@ fn lanczos_n1_returns_iters_one() {
             tol: 1e-12,
             seed: Some(0),
         },
-    );
+    )
+    .unwrap();
 
     assert_eq!(
         result.iters, 1,
@@ -218,4 +223,89 @@ fn lanczos_n1_returns_iters_one() {
     );
     assert_abs_diff_eq!(result.eigenvalue, 5.0, epsilon = 1e-12);
     assert!(result.converged, "expected converged = true");
+}
+
+// ---------------------------------------------------------------------------
+// Fallible-API contract: non-finite -> Err, finite-imprecise -> Ok
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lanczos_nonfinite_operator_returns_error() {
+    // An operator that emits a NaN vector of the correct shape drives the
+    // whole iteration non-finite. The solver must surface this as
+    // `LanczosError::NonFinite` rather than returning an `Ok` result whose
+    // NaN eigenpair would silently propagate downstream.
+    let n = 4;
+    let op = |v: &DenseTensor<f64>| -> DenseTensor<f64> {
+        let data: Vec<f64> = v.data_slice().iter().map(|_| f64::NAN).collect();
+        Host::shared().dense(data, vec![n])
+    };
+
+    let result = lanczos_smallest::<f64, _>(
+        &op,
+        n,
+        &LanczosParams {
+            max_iter: 50,
+            tol: 1e-10,
+            seed: Some(1),
+        },
+    );
+
+    // Bind the diagnostic fields, not just the variant: the solver populates
+    // them from its own computed values (`iters`, `eigenvalue`/`residual` via
+    // `to_f64`), so reading them here pins that population end to end. The
+    // NaN-driven run yields non-finite eigenvalue and residual after at least
+    // one iteration.
+    match result {
+        Err(LanczosError::NonFinite {
+            iters,
+            eigenvalue,
+            residual,
+        }) => {
+            assert!(iters >= 1, "expected at least one iteration, got {iters}");
+            assert!(
+                eigenvalue.is_nan(),
+                "expected NaN eigenvalue, got {eigenvalue}"
+            );
+            assert!(residual.is_nan(), "expected NaN residual, got {residual}");
+        }
+        other => panic!("expected Err(NonFinite), got {other:?}"),
+    }
+}
+
+#[test]
+fn lanczos_finite_unconverged_is_ok_not_error() {
+    // A non-trivial spectrum capped at a single iteration cannot reach `tol`,
+    // but the result is finite. The finiteness gate must NOT be mistaken for a
+    // convergence gate: this is a valid best-Ritz-pair result, reported as
+    // `Ok` with `converged == false`, not an error.
+    let n = 5;
+    let diag = [-3.0_f64, -1.0, 0.0, 2.0, 5.0];
+    let mut data = vec![0.0_f64; n * n];
+    for i in 0..n {
+        data[i + n * i] = diag[i];
+    }
+    let h = Host::shared().dense(data, vec![n, n]);
+
+    let result = lanczos_smallest::<f64, _>(
+        &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
+        n,
+        &LanczosParams {
+            max_iter: 1,
+            tol: 1e-12,
+            seed: Some(3),
+        },
+    )
+    .expect("a finite-but-imprecise run must return Ok, not Err");
+
+    assert!(
+        !result.converged,
+        "expected converged = false at max_iter = 1"
+    );
+    assert!(
+        result.eigenvalue.is_finite() && result.residual.is_finite(),
+        "eigenvalue and residual must be finite: lambda = {}, residual = {}",
+        result.eigenvalue,
+        result.residual
+    );
 }
