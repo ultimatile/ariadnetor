@@ -95,7 +95,7 @@ pub struct LanczosResult<T: Scalar> {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum LanczosError {
-    /// The converged eigenpair is not finite (NaN/Inf), typically
+    /// The computed eigenpair is not finite (NaN/Inf), typically
     /// because the operator emitted a non-finite vector or the 2-norm
     /// overflowed (see the overflow note on [`lanczos_smallest`]). A
     /// non-finite result must not flow on as a normal `LanczosResult`,
@@ -139,6 +139,11 @@ pub enum LanczosError {
 /// `[dim]`. These are programmer errors, kept as panics so the boundary
 /// between a programmer bug and a recoverable runtime condition stays
 /// principled.
+///
+/// Internal invariant assertions (the tridiagonal eigensolve, the basis
+/// recombination, OS RNG availability) are not part of this caller
+/// contract: they cannot fire for a valid operator and a panic there
+/// signals a bug in the solver itself, not caller misuse.
 ///
 /// # Numerical preconditions
 ///
