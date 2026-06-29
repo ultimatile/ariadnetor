@@ -1,11 +1,11 @@
 //! Error-path tests for `dmrg_2site_step_block_sparse` and a
 //! complex-storage smoke test.
 
-use arnet_algorithms::dmrg::{
-    DmrgEnvs, DmrgHeffError, EffectiveHamiltonian2SiteBlockSparse, LocalEigensolverParams,
-    dmrg_2site_step_block_sparse,
+use crate::dmrg::heff_block_sparse::{
+    EffectiveHamiltonian2SiteBlockSparse, dmrg_2site_step_block_sparse,
 };
-use arnet_algorithms::krylov::{LanczosParams, LinearOp};
+use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
+use crate::krylov::{LanczosParams, LinearOp};
 use arnet_linalg::TruncSvdParams;
 use arnet_mps::{Mpo, TensorChain};
 use arnet_tensor::test_fixtures::legs;
@@ -17,8 +17,8 @@ use num_complex::Complex;
 use arnet_mps::Mps;
 
 use super::fixtures::{
-    build_envs_n2_f64, make_n2_mpo_c64, make_n2_mpo_f64, make_n2_mps_c64, make_n2_mps_f64,
-    make_n3_mpo_f64, make_n3_mps_f64,
+    make_n2_mpo_c64, make_n2_mpo_f64, make_n2_mps_c64, make_n2_mps_f64, make_n3_mpo_f64,
+    make_n3_mps_f64,
 };
 use arnet_tensor::test_fixtures::densify_bsp_c64;
 
@@ -26,7 +26,7 @@ use arnet_tensor::test_fixtures::densify_bsp_c64;
 fn bsp_heff_step_error_paths_invalid_site() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo);
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
@@ -43,7 +43,7 @@ fn bsp_heff_step_error_paths_invalid_site() {
 fn bsp_heff_step_error_paths_invalid_eigensolver_params() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo);
+    let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -87,7 +87,7 @@ fn bsp_heff_step_error_paths_invalid_eigensolver_params() {
 fn bsp_heff_step_error_paths_qn_mismatch_mpo_flux() {
     let mps = make_n2_mps_f64();
     let mpo_good = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo_good);
+    let envs = DmrgEnvs::build(&mps, &mpo_good).expect("envs build");
 
     // Replace W[0] with a BlockSparse carrying non-identity flux.
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
@@ -222,7 +222,7 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_bra_ket() {
     );
     let mps = make_n2_mps_f64();
     let mpo_good = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps, &mpo_good);
+    let envs = DmrgEnvs::build(&mps, &mpo_good).expect("envs build");
     let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
@@ -242,7 +242,7 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_bra_ket() {
 fn bsp_heff_complex_path() {
     // Smoke + numerical agreement: build the complex BlockSparse
     // Heff and verify the matvec produces a Hermitian flat matrix
-    // and a sensible eigenvalue via the public step API.
+    // and a sensible eigenvalue via the crate-internal step entry point.
     let mps = make_n2_mps_c64();
     let mpo = make_n2_mpo_c64(1.5);
     let envs = DmrgEnvs::build(&mps, &mpo).expect("c64 envs");
@@ -308,7 +308,7 @@ fn bsp_heff_complex_path() {
 fn bsp_validate_inputs_asymmetric_length_mismatch() {
     let mps_n2 = make_n2_mps_f64();
     let mpo_n2 = make_n2_mpo_f64(1.5);
-    let envs_n2 = build_envs_n2_f64(&mps_n2, &mpo_n2);
+    let envs_n2 = DmrgEnvs::build(&mps_n2, &mpo_n2).expect("envs build");
     let mps_n3 = make_n3_mps_f64();
     let mpo_n3 = make_n3_mpo_f64(1.5);
 
@@ -396,7 +396,7 @@ fn bsp_validate_inputs_stale_right_index_pinpoint() {
 fn bsp_validate_inputs_qn_mismatch_contracted_axis_sectors() {
     let mps_envs = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = build_envs_n2_f64(&mps_envs, &mpo);
+    let envs = DmrgEnvs::build(&mps_envs, &mpo).expect("envs build");
 
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let alt_left = vec![(U1Sector(2), 1)];

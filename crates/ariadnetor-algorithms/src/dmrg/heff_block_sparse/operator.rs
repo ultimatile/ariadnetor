@@ -24,7 +24,7 @@ use crate::krylov::LinearOp;
 
 /// Effective Hamiltonian operator for the BlockSparse 2-site DMRG
 /// block at sites `(i, i+1)`.
-pub struct EffectiveHamiltonian2SiteBlockSparse<'a, T, S>
+pub(crate) struct EffectiveHamiltonian2SiteBlockSparse<'a, T, S>
 where
     T: Scalar,
     S: Sector,
@@ -74,7 +74,7 @@ where
     /// gives the caller a per-operand diagnostic before any matvec
     /// runs. The MPS sites (`mps_i`, `mps_ip1`) are used only to
     /// derive the psi template.
-    pub fn new(
+    pub(crate) fn new(
         left: &'a BlockSparseTensor<T, S>,
         w_i: &'a BlockSparseTensor<T, S>,
         w_ip1: &'a BlockSparseTensor<T, S>,
@@ -143,12 +143,12 @@ where
     }
 
     /// Length of the flat vector the matvec consumes / produces.
-    pub fn dim(&self) -> usize {
+    pub(crate) fn dim(&self) -> usize {
         self.dim
     }
 
     /// 2-site flux derived from `flux(MPS[i]) ⊕ flux(MPS[i+1])`.
-    pub fn psi_flux(&self) -> &S {
+    pub(crate) fn psi_flux(&self) -> &S {
         &self.psi_flux
     }
 }
