@@ -37,7 +37,7 @@ pub(crate) fn lq_dense<T: Scalar>(
 
 /// Internal kernel for the dense LQ with a caller-specified execution policy,
 /// on the joined [`DenseTensorData<T>`] form. The public entry is the
-/// layout-keyed [`expert::lq`](crate::expert::lq); the auto-policy entry
+/// tensor-keyed [`expert::lq`](crate::expert::lq); the auto-policy entry
 /// [`lq`](crate::lq) wraps [`lq_dense`], which consults `backend.par_for_lq`.
 pub(crate) fn lq_with_policy_dense<T: Scalar>(
     backend: &impl ComputeBackend,

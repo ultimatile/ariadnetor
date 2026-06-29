@@ -59,6 +59,7 @@ mod host_ops;
 mod perm;
 mod scalar_ops;
 mod scale_dispatch;
+mod sealed;
 mod solve;
 mod tensor_bridge;
 mod transpose;
@@ -79,10 +80,12 @@ pub use block_sparse_decomp::{
 pub use decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 pub use eigen::{EigResult, EighResult};
 
-// Layout-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
+// Tensor-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
 // (decomposition) and `contract` entry points serve both Dense and BlockSparse
-// via [`LinalgDecompose`] / [`LinalgContract`]. The policy-explicit forms are
-// published under bare names through [`expert`].
+// via [`LinalgDecompose`] / [`LinalgContract`]. Those traits are sealed (keyed
+// on the concrete `Tensor` types, with a crate-private supertrait), so they
+// project no storage / layout taxonomy and cannot be implemented downstream.
+// The policy-explicit forms are published under bare names through [`expert`].
 pub use contract_dispatch::{LinalgContract, contract, tensordot};
 pub use decompose_dispatch::{LinalgDecompose, lq, qr, svd, trunc_svd};
 pub use scale_dispatch::{LinalgScale, diagonal_scale};

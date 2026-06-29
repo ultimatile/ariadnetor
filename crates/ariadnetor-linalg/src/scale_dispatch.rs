@@ -1,11 +1,22 @@
-//! Layout-keyed dispatch for diagonal scaling (`diagonal_scale`).
+//! Tensor-keyed dispatch for diagonal scaling (`diagonal_scale`).
 //!
-//! [`LinalgScale`] is implemented on the concrete layout types
-//! ([`DenseLayout`] and [`BlockSparseLayout<S>`]); each implementation pairs a
-//! storage type via [`LinalgScale::Storage`], names its weight input type via
-//! [`LinalgScale::Weights`], and routes to its storage-specific kernel. Callers
-//! parameterized over `L: LinalgScale<T>` issue one generic call that serves
-//! both flavors, mirroring [`LinalgDecompose`](crate::LinalgDecompose).
+//! [`LinalgScale`] is implemented on the concrete tensor types
+//! ([`Tensor<DenseStorage<T>, DenseLayout>`](arnet_tensor::Tensor) and
+//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](arnet_tensor::Tensor));
+//! each implementation pairs a storage type via [`LinalgScale::Storage`], names
+//! its weight input type via [`LinalgScale::Weights`], and routes to its
+//! storage-specific kernel. Callers parameterized over `Tn: LinalgScale<T>`
+//! issue one generic call that serves both flavors, mirroring
+//! [`LinalgDecompose`](crate::LinalgDecompose).
+//!
+//! The trait is sealed through a crate-private [`Sealed`](crate::sealed::Sealed)
+//! supertrait, so it cannot be implemented downstream and projects no storage /
+//! layout taxonomy onto its public bound surface — `Storage` survives only as a
+//! sealed associated type. The method is an associated function taking
+//! `t: &Self` (not `&self`) so it does not collide, under method-call
+//! resolution, with the identically-named `diagonal_scale` receiver method on
+//! the [`DenseHostOps`](crate::DenseHostOps) /
+//! [`BlockSparseHostOps`](crate::BlockSparseHostOps) extension traits.
 //!
 //! # Weight type
 //!
@@ -31,25 +42,27 @@
 use arnet_core::Scalar;
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
-    StorageFor, Tensor, TensorLayout,
+    Tensor,
 };
 
 use crate::block_sparse_decomp::BlockScalars;
 use crate::block_sparse_scale::diagonal_scale_block_sparse_dense;
 use crate::error::LinalgError;
 use crate::scalar_ops::diagonal_scale_dense;
+use crate::sealed::Sealed;
 use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 
-/// Layout-keyed dispatch trait for diagonal scaling.
+/// Sealed tensor-keyed dispatch trait for diagonal scaling.
 ///
-/// Implemented for [`DenseLayout`] and [`BlockSparseLayout<S>`], each pairing a
-/// storage type via [`Storage`](Self::Storage) and a weight input type via
-/// [`Weights`](Self::Weights), and routing to its storage-specific kernel.
-pub trait LinalgScale<T: Scalar>: TensorLayout + Sized {
-    /// Storage type paired with this layout.
-    type Storage: Storage + StorageFor<Self>;
+/// Implemented for the concrete dense and block-sparse tensor types, each
+/// pairing a storage type via [`Storage`](Self::Storage) and a weight input
+/// type via [`Weights`](Self::Weights), and routing to its storage-specific
+/// kernel.
+pub trait LinalgScale<T: Scalar>: Sealed + Sized {
+    /// Storage type paired with this tensor.
+    type Storage: Storage;
     /// Weight input type for [`diagonal_scale`](Self::diagonal_scale). The
-    /// `where Self: 'a` bound lets layouts whose sector type is non-`'static`
+    /// `where Self: 'a` bound lets tensors whose sector type is non-`'static`
     /// borrow the weights for `'a`.
     type Weights<'a>
     where
@@ -58,26 +71,26 @@ pub trait LinalgScale<T: Scalar>: TensorLayout + Sized {
     /// Per-slice diagonal scaling along `axis`, using the supplied backend.
     fn diagonal_scale<B: OpsFor<Self::Storage>>(
         backend: &B,
-        t: &Tensor<Self::Storage, Self>,
+        t: &Self,
         weights: Self::Weights<'_>,
         axis: usize,
-    ) -> Result<Tensor<Self::Storage, Self>, LinalgError>;
+    ) -> Result<Self, LinalgError>;
 }
 
 // ---------------------------------------------------------------------------
 // Dense implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar> LinalgScale<T> for DenseLayout {
+impl<T: Scalar> LinalgScale<T> for Tensor<DenseStorage<T>, DenseLayout> {
     type Storage = DenseStorage<T>;
     type Weights<'a> = &'a [T::Real];
 
     fn diagonal_scale<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        t: &Tensor<DenseStorage<T>, DenseLayout>,
+        t: &Self,
         weights: &[T::Real],
         axis: usize,
-    ) -> Result<Tensor<DenseStorage<T>, DenseLayout>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         let result = diagonal_scale_dense(backend, t.data(), weights, axis)?;
         Ok(Tensor::from_data(result))
     }
@@ -87,7 +100,7 @@ impl<T: Scalar> LinalgScale<T> for DenseLayout {
 // BlockSparse implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar, S: Sector> LinalgScale<T> for BlockSparseLayout<S> {
+impl<T: Scalar, S: Sector> LinalgScale<T> for Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>> {
     type Storage = BlockSparseStorage<T>;
     type Weights<'a>
         = &'a BlockScalars<T::Real, S>
@@ -96,10 +109,10 @@ impl<T: Scalar, S: Sector> LinalgScale<T> for BlockSparseLayout<S> {
 
     fn diagonal_scale<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        t: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        t: &Self,
         weights: &BlockScalars<T::Real, S>,
         axis: usize,
-    ) -> Result<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         check_bsp_data_layout_order_matches(t.data(), backend, "diagonal_scale_block_sparse")?;
         let result = diagonal_scale_block_sparse_dense(backend, t.data(), weights, axis)?;
         Ok(Tensor::from_data(result))
@@ -107,23 +120,23 @@ impl<T: Scalar, S: Sector> LinalgScale<T> for BlockSparseLayout<S> {
 }
 
 // ---------------------------------------------------------------------------
-// Unified free function — type-erase the layout into `L: LinalgScale<T>` so
+// Unified free function — type-erase the tensor into `Tn: LinalgScale<T>` so
 // callers write `diagonal_scale(backend, &t, weights, axis)` without naming the
-// storage. `L` resolves from `Tensor`'s second argument and `T` through
-// `L::Storage`, the same inference the decomposition free fns rely on.
+// storage. `Tn` resolves from the tensor argument and `T` through the impl, the
+// same inference the decomposition free fns rely on.
 // ---------------------------------------------------------------------------
 
 /// Per-slice diagonal scaling along `axis`, using the supplied backend.
-pub fn diagonal_scale<T, L, B>(
+pub fn diagonal_scale<T, Tn, B>(
     backend: &B,
-    t: &Tensor<L::Storage, L>,
-    weights: L::Weights<'_>,
+    t: &Tn,
+    weights: Tn::Weights<'_>,
     axis: usize,
-) -> Result<Tensor<L::Storage, L>, LinalgError>
+) -> Result<Tn, LinalgError>
 where
     T: Scalar,
-    L: LinalgScale<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgScale<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::diagonal_scale(backend, t, weights, axis)
+    Tn::diagonal_scale(backend, t, weights, axis)
 }

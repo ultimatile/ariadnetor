@@ -353,7 +353,7 @@ fn diagonal_scale_matches_host() {
 }
 
 /// Dense counterpart of the block-sparse `expert::*` policy-forwarding tests:
-/// the layout-keyed `expert::svd` carries the caller's `ExecPolicy` through to
+/// the tensor-keyed `expert::svd` carries the caller's `ExecPolicy` through to
 /// the dense kernel descriptor. Pairs with
 /// `expert_svd_bsp_forwards_explicit_policy` so both public decomposition
 /// surfaces have explicit-policy forwarding coverage.

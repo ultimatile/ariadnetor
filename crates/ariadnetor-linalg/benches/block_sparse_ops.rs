@@ -93,7 +93,7 @@ fn bench_contract(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
-            |bench, (a, b)| {
+            |bench, &(a, b)| {
                 bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[1], &[0]).unwrap());
             },
         );
@@ -124,7 +124,7 @@ fn bench_contract_permuted(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
-            |bench, (a, b)| {
+            |bench, &(a, b)| {
                 bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[0], &[1]).unwrap());
             },
         );
@@ -155,7 +155,7 @@ fn bench_contract_rank3(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("bsp", &p.label),
             &(&a, &b),
-            |bench, (a, b)| {
+            |bench, &(a, b)| {
                 bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[2], &[0]).unwrap());
             },
         );
@@ -277,7 +277,7 @@ fn bench_singh_reference(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("matmul_bsp", &p.label),
             &(&a, &b),
-            |bench, (a, b)| {
+            |bench, &(a, b)| {
                 bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[1], &[0]).unwrap());
             },
         );

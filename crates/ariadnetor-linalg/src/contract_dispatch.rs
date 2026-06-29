@@ -1,12 +1,22 @@
-//! Layout-keyed dispatch for two-operand tensor contraction.
+//! Tensor-keyed dispatch for two-operand tensor contraction.
 //!
-//! [`LinalgContract`] is implemented on the concrete layout types
-//! ([`DenseLayout`] and [`BlockSparseLayout<S>`]) and pairs a storage type via
-//! [`LinalgContract::Storage`], routing to its storage-specific kernel. Callers
-//! parameterized over `L: LinalgContract<T>` issue one generic
-//! `contract(backend, &lhs, &rhs, notation)` call that serves both flavors,
-//! mirroring the [`LinalgDecompose`](crate::LinalgDecompose) pattern for the
-//! four decompositions.
+//! [`LinalgContract`] is implemented on the concrete tensor types
+//! ([`Tensor<DenseStorage<T>, DenseLayout>`](arnet_tensor::Tensor) and
+//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](arnet_tensor::Tensor))
+//! and pairs a storage type via [`LinalgContract::Storage`], routing to its
+//! storage-specific kernel. Callers parameterized over `Tn: LinalgContract<T>`
+//! issue one generic `contract(backend, &lhs, &rhs, notation)` call that serves
+//! both flavors, mirroring the [`LinalgDecompose`](crate::LinalgDecompose)
+//! pattern for the four decompositions.
+//!
+//! The trait is sealed through a crate-private [`Sealed`](crate::sealed::Sealed)
+//! supertrait, so it cannot be implemented downstream and projects no storage /
+//! layout taxonomy onto its public bound surface — `Storage` survives only as a
+//! sealed associated type. Methods are associated functions taking
+//! `lhs: &Self` (not `&self`) so they do not collide, under method-call
+//! resolution, with the identically-named `contract` receiver method on the
+//! [`DenseHostOps`](crate::DenseHostOps) /
+//! [`BlockSparseHostOps`](crate::BlockSparseHostOps) extension traits.
 //!
 //! Both layouts take the same `&str` einsum notation (two operands, free output
 //! ordering), parsed and validated by [`crate::contract_spec`]. The dense kernel
@@ -30,7 +40,7 @@ use arnet_core::backend::ExecPolicy;
 use arnet_core::compute_permutation;
 use arnet_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
-    StorageFor, Tensor, TensorLayout,
+    Tensor,
 };
 
 use crate::block_sparse_contract::contract_block_sparse_with_policy_dense;
@@ -38,38 +48,44 @@ use crate::block_sparse_permute::permute_block_sparse_dense;
 use crate::contract::{contract_axes_dense, contract_dense, contract_with_policy_dense};
 use crate::contract_spec::ContractSpec;
 use crate::error::LinalgError;
+use crate::sealed::Sealed;
 use crate::tensor_bridge::check_bsp_data_layout_order_matches;
 
-/// Layout-keyed dispatch trait for two-operand tensor contraction.
+/// Sealed tensor-keyed dispatch trait for two-operand tensor contraction.
 ///
-/// Implemented for [`DenseLayout`] and [`BlockSparseLayout<S>`], each pairing a
-/// storage type via [`Storage`](Self::Storage) and routing to its
-/// storage-specific kernel. The return is a uniform `Tensor<Self::Storage, Self>`
-/// — a full contraction yields a rank-0 tensor — so, unlike
+/// Implemented for the concrete dense and block-sparse tensor types, each
+/// pairing a storage type via [`Storage`](Self::Storage) and routing to its
+/// storage-specific kernel. The return is a uniform `Self` — a full contraction
+/// yields a rank-0 tensor — so, unlike
 /// [`LinalgDecompose`](crate::LinalgDecompose), no associated output type is
 /// needed.
-pub trait LinalgContract<T: Scalar>: TensorLayout + Sized {
-    /// Storage type paired with this layout.
-    type Storage: Storage + StorageFor<Self>;
+///
+/// The `Sized` supertrait is required because the methods return `Self` by
+/// value (as does [`LinalgScale`](crate::LinalgScale));
+/// [`LinalgDecompose`](crate::LinalgDecompose), whose methods only borrow
+/// `&Self` and return associated output types, omits it.
+pub trait LinalgContract<T: Scalar>: Sealed + Sized {
+    /// Storage type paired with this tensor.
+    type Storage: Storage;
 
     /// Contract `lhs` and `rhs` over the einsum `notation`, with the layout's
     /// auto-selected execution policy.
     fn contract<B: OpsFor<Self::Storage>>(
         backend: &B,
-        lhs: &Tensor<Self::Storage, Self>,
-        rhs: &Tensor<Self::Storage, Self>,
+        lhs: &Self,
+        rhs: &Self,
         notation: &str,
-    ) -> Result<Tensor<Self::Storage, Self>, LinalgError>;
+    ) -> Result<Self, LinalgError>;
 
     /// Contract `lhs` and `rhs` over the einsum `notation`, with a
     /// caller-specified execution policy.
     fn contract_with_policy<B: OpsFor<Self::Storage>>(
         backend: &B,
-        lhs: &Tensor<Self::Storage, Self>,
-        rhs: &Tensor<Self::Storage, Self>,
+        lhs: &Self,
+        rhs: &Self,
         notation: &str,
         policy: ExecPolicy,
-    ) -> Result<Tensor<Self::Storage, Self>, LinalgError>;
+    ) -> Result<Self, LinalgError>;
 
     /// Tensordot `lhs` and `rhs` over the given axis pairs, emitting the output
     /// legs in their natural order (free left legs then free right legs, each in
@@ -81,48 +97,48 @@ pub trait LinalgContract<T: Scalar>: TensorLayout + Sized {
     /// pass runs.
     fn tensordot<B: OpsFor<Self::Storage>>(
         backend: &B,
-        lhs: &Tensor<Self::Storage, Self>,
-        rhs: &Tensor<Self::Storage, Self>,
+        lhs: &Self,
+        rhs: &Self,
         axes_lhs: &[usize],
         axes_rhs: &[usize],
-    ) -> Result<Tensor<Self::Storage, Self>, LinalgError>;
+    ) -> Result<Self, LinalgError>;
 }
 
 // ---------------------------------------------------------------------------
 // Dense implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar> LinalgContract<T> for DenseLayout {
+impl<T: Scalar> LinalgContract<T> for Tensor<DenseStorage<T>, DenseLayout> {
     type Storage = DenseStorage<T>;
 
     fn contract<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        lhs: &Tensor<DenseStorage<T>, DenseLayout>,
-        rhs: &Tensor<DenseStorage<T>, DenseLayout>,
+        lhs: &Self,
+        rhs: &Self,
         notation: &str,
-    ) -> Result<Tensor<DenseStorage<T>, DenseLayout>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         let result = contract_dense(backend, lhs.data(), rhs.data(), notation)?;
         Ok(Tensor::from_data(result))
     }
 
     fn contract_with_policy<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        lhs: &Tensor<DenseStorage<T>, DenseLayout>,
-        rhs: &Tensor<DenseStorage<T>, DenseLayout>,
+        lhs: &Self,
+        rhs: &Self,
         notation: &str,
         policy: ExecPolicy,
-    ) -> Result<Tensor<DenseStorage<T>, DenseLayout>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         let result = contract_with_policy_dense(backend, lhs.data(), rhs.data(), notation, policy)?;
         Ok(Tensor::from_data(result))
     }
 
     fn tensordot<B: OpsFor<DenseStorage<T>>>(
         backend: &B,
-        lhs: &Tensor<DenseStorage<T>, DenseLayout>,
-        rhs: &Tensor<DenseStorage<T>, DenseLayout>,
+        lhs: &Self,
+        rhs: &Self,
         axes_lhs: &[usize],
         axes_rhs: &[usize],
-    ) -> Result<Tensor<DenseStorage<T>, DenseLayout>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         // The dense kernel is axis-native, so call it directly over the axis
         // pairs — no notation synthesis, and no leg-count cap from labels.
         let result = contract_axes_dense(backend, lhs.data(), rhs.data(), axes_lhs, axes_rhs)?;
@@ -134,25 +150,27 @@ impl<T: Scalar> LinalgContract<T> for DenseLayout {
 // BlockSparse implementation
 // ---------------------------------------------------------------------------
 
-impl<T: Scalar, S: Sector> LinalgContract<T> for BlockSparseLayout<S> {
+impl<T: Scalar, S: Sector> LinalgContract<T>
+    for Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>
+{
     type Storage = BlockSparseStorage<T>;
 
     fn contract<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        lhs: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
-        rhs: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        lhs: &Self,
+        rhs: &Self,
         notation: &str,
-    ) -> Result<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         Self::contract_with_policy(backend, lhs, rhs, notation, ExecPolicy::Sequential)
     }
 
     fn contract_with_policy<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        lhs: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
-        rhs: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        lhs: &Self,
+        rhs: &Self,
         notation: &str,
         policy: ExecPolicy,
-    ) -> Result<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         check_bsp_data_layout_order_matches(lhs.data(), backend, "contract_block_sparse: lhs")?;
         check_bsp_data_layout_order_matches(rhs.data(), backend, "contract_block_sparse: rhs")?;
 
@@ -196,11 +214,11 @@ impl<T: Scalar, S: Sector> LinalgContract<T> for BlockSparseLayout<S> {
 
     fn tensordot<B: OpsFor<BlockSparseStorage<T>>>(
         backend: &B,
-        lhs: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
-        rhs: &Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        lhs: &Self,
+        rhs: &Self,
         axes_lhs: &[usize],
         axes_rhs: &[usize],
-    ) -> Result<Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>, LinalgError> {
+    ) -> Result<Self, LinalgError> {
         // The block-sparse kernel is natively axis-based and emits natural order,
         // so call it directly — no notation round-trip, and the kernel's own
         // `validate_contraction_axes` covers axis range / duplication / QN
@@ -220,32 +238,32 @@ impl<T: Scalar, S: Sector> LinalgContract<T> for BlockSparseLayout<S> {
 }
 
 // ---------------------------------------------------------------------------
-// Unified free fns — type-erase the layout into `L: LinalgContract<T>` so
+// Unified free fns — type-erase the tensor into `Tn: LinalgContract<T>` so
 // callers write `contract(backend, &lhs, &rhs, notation)` without naming the
-// storage. `L` resolves from the `Tensor` arguments and `T` through
-// `L::Storage`, the same inference the unified decomposition fns rely on.
+// storage. `Tn` resolves from the tensor arguments and `T` through the impl,
+// the same inference the unified decomposition fns rely on.
 // ---------------------------------------------------------------------------
 
 /// Two-operand contraction over the einsum `notation`, using the supplied
 /// backend and the layout's auto-selected execution policy.
-pub fn contract<T, L, B>(
+pub fn contract<T, Tn, B>(
     backend: &B,
-    lhs: &Tensor<L::Storage, L>,
-    rhs: &Tensor<L::Storage, L>,
+    lhs: &Tn,
+    rhs: &Tn,
     notation: &str,
-) -> Result<Tensor<L::Storage, L>, LinalgError>
+) -> Result<Tn, LinalgError>
 where
     T: Scalar,
-    L: LinalgContract<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgContract<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::contract(backend, lhs, rhs, notation)
+    Tn::contract(backend, lhs, rhs, notation)
 }
 
 /// Tensordot: contract `lhs` and `rhs` over the given axis pairs, emitting the
 /// output legs in their natural order (free left legs then free right legs, each
 /// in input axis order). The axis-pair face of [`contract`], dispatched through
-/// the same layout-keyed trait, so it serves both Dense and BlockSparse and
+/// the same tensor-keyed trait, so it serves both Dense and BlockSparse and
 /// returns a uniform tensor (rank-0 for a full contraction).
 ///
 /// Use this for plain tensordot, where the operand ranks may be generic;
@@ -255,19 +273,19 @@ where
 ///
 /// `InvalidArgument` if `axes_lhs` and `axes_rhs` differ in length, an axis is
 /// out of range, or an axis repeats within either list.
-pub fn tensordot<T, L, B>(
+pub fn tensordot<T, Tn, B>(
     backend: &B,
-    lhs: &Tensor<L::Storage, L>,
-    rhs: &Tensor<L::Storage, L>,
+    lhs: &Tn,
+    rhs: &Tn,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
-) -> Result<Tensor<L::Storage, L>, LinalgError>
+) -> Result<Tn, LinalgError>
 where
     T: Scalar,
-    L: LinalgContract<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgContract<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::tensordot(backend, lhs, rhs, axes_lhs, axes_rhs)
+    Tn::tensordot(backend, lhs, rhs, axes_lhs, axes_rhs)
 }
 
 #[cfg(test)]

@@ -73,7 +73,7 @@ pub use ops::{
     solve_with_backend, trace_with_backend,
 };
 
-// Layout-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
+// Tensor-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
 // (decomposition), `contract` / `tensordot`, and `diagonal_scale` free fns
 // serve both Dense and BlockSparse via [`LinalgDecompose`] / [`LinalgContract`]
 // / [`LinalgScale`], so one call site covers both flavors. The policy-explicit

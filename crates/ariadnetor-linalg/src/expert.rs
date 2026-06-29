@@ -33,7 +33,7 @@
 
 use arnet_core::Scalar;
 use arnet_core::backend::ExecPolicy;
-use arnet_tensor::{DenseStorage, DenseTensor, OpsFor, Tensor};
+use arnet_tensor::{DenseStorage, DenseTensor, OpsFor};
 
 use crate::eigen::{EigResult, EighResult, eig_with_policy_dense, eigh_with_policy_dense};
 use crate::error::LinalgError;
@@ -72,19 +72,19 @@ pub fn permute<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 ///
 /// Dispatches over layout via [`LinalgContract`], so one bare name serves both
 /// Dense and BlockSparse — the policy-explicit counterpart of [`crate::contract`].
-pub fn contract<T, L, B>(
+pub fn contract<T, Tn, B>(
     backend: &B,
-    lhs: &Tensor<L::Storage, L>,
-    rhs: &Tensor<L::Storage, L>,
+    lhs: &Tn,
+    rhs: &Tn,
     notation: &str,
     policy: ExecPolicy,
-) -> Result<Tensor<L::Storage, L>, LinalgError>
+) -> Result<Tn, LinalgError>
 where
     T: Scalar,
-    L: LinalgContract<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgContract<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::contract_with_policy(backend, lhs, rhs, notation, policy)
+    Tn::contract_with_policy(backend, lhs, rhs, notation, policy)
 }
 
 /// Linear solve with an explicit backend and caller-specified execution
@@ -145,18 +145,18 @@ pub fn eig<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 /// Dispatches over layout via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::svd`].
-pub fn svd<T, L, B>(
+pub fn svd<T, Tn, B>(
     backend: &B,
-    t: &Tensor<L::Storage, L>,
+    t: &Tn,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<L::SvdOutput, LinalgError>
+) -> Result<Tn::SvdOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::svd_with_policy(backend, t, nrow, policy)
+    Tn::svd_with_policy(backend, t, nrow, policy)
 }
 
 /// Truncated SVD of a tensor reshaped as a matrix, with a caller-specified
@@ -165,19 +165,19 @@ where
 /// Dispatches over layout via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::trunc_svd`].
-pub fn trunc_svd<T, L, B>(
+pub fn trunc_svd<T, Tn, B>(
     backend: &B,
-    t: &Tensor<L::Storage, L>,
+    t: &Tn,
     nrow: usize,
     params: &TruncSvdParams,
     policy: ExecPolicy,
-) -> Result<L::TruncSvdOutput, LinalgError>
+) -> Result<Tn::TruncSvdOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::trunc_svd_with_policy(backend, t, nrow, params, policy)
+    Tn::trunc_svd_with_policy(backend, t, nrow, params, policy)
 }
 
 /// Thin QR of a tensor reshaped as a matrix, with a caller-specified execution
@@ -186,18 +186,18 @@ where
 /// Dispatches over layout via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::qr`].
-pub fn qr<T, L, B>(
+pub fn qr<T, Tn, B>(
     backend: &B,
-    t: &Tensor<L::Storage, L>,
+    t: &Tn,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<L::QrOutput, LinalgError>
+) -> Result<Tn::QrOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::qr_with_policy(backend, t, nrow, policy)
+    Tn::qr_with_policy(backend, t, nrow, policy)
 }
 
 /// Thin LQ of a tensor reshaped as a matrix, with a caller-specified execution
@@ -206,16 +206,16 @@ where
 /// Dispatches over layout via [`LinalgDecompose`], so one call serves both
 /// Dense and BlockSparse. Expert-layer counterpart of the auto-policy
 /// [`crate::lq`].
-pub fn lq<T, L, B>(
+pub fn lq<T, Tn, B>(
     backend: &B,
-    t: &Tensor<L::Storage, L>,
+    t: &Tn,
     nrow: usize,
     policy: ExecPolicy,
-) -> Result<L::LqOutput, LinalgError>
+) -> Result<Tn::LqOutput, LinalgError>
 where
     T: Scalar,
-    L: LinalgDecompose<T>,
-    B: OpsFor<L::Storage>,
+    Tn: LinalgDecompose<T>,
+    B: OpsFor<Tn::Storage>,
 {
-    L::lq_with_policy(backend, t, nrow, policy)
+    Tn::lq_with_policy(backend, t, nrow, policy)
 }
