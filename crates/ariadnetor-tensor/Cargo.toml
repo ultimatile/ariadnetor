@@ -3,7 +3,10 @@ name = "ariadnetor-tensor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Tensor library with support for dense and block-sparse tensors"
+keywords = ["tensor", "block-sparse", "tensor-network", "symmetry"]
+categories = ["science", "mathematics"]
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel (off by default
@@ -19,10 +22,10 @@ pluggability-litmus = []
 test-fixtures = []
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.1" }
 # Plain dependency: `ariadnetor-native` defaults to no `hptt`, so this stays
 # pure-Rust unless a consumer opts into this crate's `hptt` feature.
-ariadnetor-native = { path = "../ariadnetor-native" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.1" }
 aligned-vec = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }

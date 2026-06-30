@@ -3,7 +3,10 @@ name = "ariadnetor-linalg"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Backend-agnostic linear algebra API for ariadnetor"
+keywords = ["tensor", "linear-algebra", "svd", "tensor-network"]
+categories = ["science", "mathematics"]
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel through the
@@ -16,8 +19,8 @@ hptt = ["ariadnetor-tensor/hptt"]
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.1" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.1" }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 thiserror = { workspace = true }

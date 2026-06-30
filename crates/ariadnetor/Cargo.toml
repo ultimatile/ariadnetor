@@ -3,7 +3,10 @@ name = "ariadnetor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Tensor network library in Rust"
+keywords = ["tensor", "tensor-network", "linear-algebra", "physics", "mps"]
+categories = ["science", "mathematics"]
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel (off by default
@@ -14,10 +17,10 @@ hptt = ["ariadnetor-native/hptt"]
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor" }
-ariadnetor-linalg = { path = "../ariadnetor-linalg" }
-ariadnetor-native = { path = "../ariadnetor-native" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.1" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.1" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.1" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.1" }
 
 [dev-dependencies]
 # Enables `ariadnetor_tensor::test_fixtures` for this crate's integration tests.
