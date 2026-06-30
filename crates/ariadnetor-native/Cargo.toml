@@ -3,7 +3,7 @@ name = "ariadnetor-native"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Native backend for Ariadnetor (faer; optional HPTT transpose)"
+description = "Native backend for ariadnetor (faer; optional HPTT transpose)"
 
 [features]
 # `hptt` is opt-in: the HPTT transpose kernel pulls a C++/CMake build, so the

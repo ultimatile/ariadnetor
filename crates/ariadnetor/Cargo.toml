@@ -3,7 +3,7 @@ name = "ariadnetor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "High-performance tensor network framework in Pure Rust"
+description = "High-performance tensor network library in Pure Rust"
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel (off by default

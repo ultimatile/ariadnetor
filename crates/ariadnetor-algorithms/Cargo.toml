@@ -3,7 +3,7 @@ name = "ariadnetor-algorithms"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Tensor-network algorithms (DMRG, TEBD, ...) built on Ariadnetor"
+description = "Tensor-network algorithms built on ariadnetor"
 
 [features]
 default = []

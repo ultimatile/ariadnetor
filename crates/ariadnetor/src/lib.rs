@@ -1,4 +1,4 @@
-//! Ariadnetor: tensor network framework in Rust.
+//! ariadnetor: tensor network library in Rust.
 //!
 //! `arnet` is the umbrella tensor library; it re-exports types and
 //! functions from the layers listed below into its own namespace.

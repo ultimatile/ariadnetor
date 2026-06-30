@@ -1,4 +1,4 @@
-# cargo-make configuration for Ariadnetor
+# cargo-make configuration for ariadnetor
 # Usage: cargo make <task>
 # Install: cargo install cargo-make
 #

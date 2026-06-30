@@ -1,4 +1,4 @@
-//! Backend-agnostic linear algebra API for Ariadnetor
+//! Backend-agnostic linear algebra API for ariadnetor
 //!
 //! Provides high-level tensor operations that delegate to a [`ComputeBackend`]
 //! for the actual computation. This decouples tensor data from compute libraries

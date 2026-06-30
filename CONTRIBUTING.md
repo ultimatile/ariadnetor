@@ -1,4 +1,4 @@
-# Contributing to Ariadnetor
+# Contributing to ariadnetor
 
 This document captures the coding conventions you are expected to
 follow when adding or modifying code in this repository.

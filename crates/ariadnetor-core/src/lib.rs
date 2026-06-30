@@ -1,4 +1,4 @@
-//! Core traits and types for Ariadnetor tensor framework
+//! Core traits and types for ariadnetor tensor library
 //!
 //! This crate provides backend-agnostic abstractions:
 //! - `Scalar`: Element type trait (sealed to f32, f64, Complex<f32>, Complex<f64>)

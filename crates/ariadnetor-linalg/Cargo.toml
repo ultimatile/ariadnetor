@@ -3,7 +3,7 @@ name = "ariadnetor-linalg"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Backend-agnostic linear algebra API for Ariadnetor"
+description = "Backend-agnostic linear algebra API for ariadnetor"
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel through the

@@ -1,4 +1,4 @@
-//! CPU compute backend for Ariadnetor
+//! CPU compute backend for ariadnetor
 //!
 //! Provides [`NativeBackend`] implementing `ComputeBackend` via:
 //! - **GEMM**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
