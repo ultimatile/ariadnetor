@@ -1,5 +1,5 @@
-use arnet_linalg::DenseHostOps;
-use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
+use ariadnetor_linalg::DenseHostOps;
+use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Wrap a `DenseTensorData<T>` into a `DenseTensor<T>`. Tests build
 /// `DenseTensorData` directly (often with a specific `MemoryOrder` that is

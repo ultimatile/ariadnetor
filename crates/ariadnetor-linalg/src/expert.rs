@@ -31,9 +31,9 @@
 //! decomposition or contraction; the auto-policy crate-root forms keep
 //! block-sparse on `Sequential`.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ExecPolicy;
-use arnet_tensor::{DenseStorage, DenseTensor, OpsFor};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_tensor::{DenseStorage, DenseTensor, OpsFor};
 
 use crate::eigen::{EigResult, EighResult, eig_with_policy_dense, eigh_with_policy_dense};
 use crate::error::LinalgError;

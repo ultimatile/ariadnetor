@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 /// # Examples
 ///
 /// ```
-/// use arnet_core::EinsumExpr;
+/// use ariadnetor_core::EinsumExpr;
 ///
 /// // Matrix multiplication
 /// let expr = EinsumExpr::parse("ij,jk->ik").unwrap();
@@ -188,7 +188,7 @@ impl EinsumExpr {
     /// # Examples
     ///
     /// ```
-    /// # use arnet_core::EinsumExpr;
+    /// # use ariadnetor_core::EinsumExpr;
     /// let expr = EinsumExpr::parse("ijk,jkl->il").unwrap();
     /// assert_eq!(expr.contracted_indices(), vec![b'j', b'k']);
     /// ```
@@ -215,7 +215,7 @@ impl EinsumExpr {
     /// # Examples
     ///
     /// ```
-    /// # use arnet_core::EinsumExpr;
+    /// # use ariadnetor_core::EinsumExpr;
     /// assert!(EinsumExpr::parse("ij,jk->ik").unwrap().is_matrix_multiply());
     /// assert!(!EinsumExpr::parse("ijk,jkl->il").unwrap().is_matrix_multiply());
     /// ```
@@ -253,7 +253,7 @@ impl EinsumExpr {
     /// # Examples
     ///
     /// ```
-    /// # use arnet_core::EinsumExpr;
+    /// # use ariadnetor_core::EinsumExpr;
     /// let expr = EinsumExpr::parse("ij,jk->ik").unwrap();
     /// assert_eq!(expr.infer_output_shape(&[&[10, 20], &[20, 30]]).unwrap(), vec![10, 30]);
     /// ```

@@ -1,8 +1,8 @@
 //! Tensor-keyed dispatch for diagonal scaling (`diagonal_scale`).
 //!
 //! [`LinalgScale`] is implemented on the concrete tensor types
-//! ([`Tensor<DenseStorage<T>, DenseLayout>`](arnet_tensor::Tensor) and
-//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](arnet_tensor::Tensor));
+//! ([`Tensor<DenseStorage<T>, DenseLayout>`](ariadnetor_tensor::Tensor) and
+//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](ariadnetor_tensor::Tensor));
 //! each implementation pairs a storage type via [`LinalgScale::Storage`], names
 //! its weight input type via [`LinalgScale::Weights`], and routes to its
 //! storage-specific kernel. Callers parameterized over `Tn: LinalgScale<T>`
@@ -32,15 +32,15 @@
 //! # Operation authority
 //!
 //! The method takes its compute backend explicitly at the call site, bound by
-//! [`OpsFor<Self::Storage>`](arnet_tensor::OpsFor) — the same capability gate
+//! [`OpsFor<Self::Storage>`](ariadnetor_tensor::OpsFor) — the same capability gate
 //! the rest of the linalg surface enforces. `diagonal_scale` is an
 //! allocation-only op (the backend drives no counted kernel), so there is no
 //! policy-explicit variant. Block-sparse dispatch enforces the layout-order
 //! invariant against the supplied backend before the per-sector work; the dense
 //! path self-normalizes via the backend's preferred order.
 
-use arnet_core::Scalar;
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
     Tensor,
 };

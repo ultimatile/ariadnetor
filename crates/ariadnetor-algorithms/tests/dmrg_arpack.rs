@@ -17,9 +17,9 @@
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
-use arnet_algorithms::krylov::{ArpackParams, LanczosParams};
-use arnet_linalg::TruncSvdParams;
+use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
+use ariadnetor_algorithms::krylov::{ArpackParams, LanczosParams};
+use ariadnetor_linalg::TruncSvdParams;
 
 // ---------------------------------------------------------------------------
 // Happy path: ARPACK and Lanczos must agree on the converged energy.

@@ -1,10 +1,10 @@
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::DenseTensorData;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_tensor::DenseTensorData;
 use std::ops::Mul;
 
 use crate::error::LinalgError;
-use arnet_tensor::{flat_index, normalize_to_data};
+use ariadnetor_tensor::{flat_index, normalize_to_data};
 
 /// Validate trace pair indices and return the per-axis "is traced" mask.
 ///
@@ -332,7 +332,7 @@ where
 #[cfg(test)]
 mod diagonal_scale_tests {
     use super::*;
-    use arnet_tensor::{MemoryOrder, reorder_data};
+    use ariadnetor_tensor::{MemoryOrder, reorder_data};
 
     /// RM/CM invariance: the same logical tensor, laid out in RM and CM,
     /// should produce logically identical results.

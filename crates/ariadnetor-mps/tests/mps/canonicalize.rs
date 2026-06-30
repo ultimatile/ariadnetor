@@ -1,8 +1,8 @@
 //! Canonicalization tests.
 
-use arnet_mps::{CanonicalForm, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, Host};
+use ariadnetor_mps::{CanonicalForm, Mps, TensorChain};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, Host};
 
 use super::helpers::{is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense};
 

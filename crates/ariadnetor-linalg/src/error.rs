@@ -1,7 +1,7 @@
 //! Error types for the linalg layer.
 
-use arnet_core::backend::BackendError;
-use arnet_tensor::TensorError;
+use ariadnetor_core::backend::BackendError;
+use ariadnetor_tensor::TensorError;
 
 /// Error from a linalg operation.
 ///
@@ -24,7 +24,7 @@ pub enum LinalgError {
     #[error(transparent)]
     Backend(#[from] BackendError),
 
-    /// An error raised by an underlying `arnet-tensor` operation.
+    /// An error raised by an underlying `ariadnetor-tensor` operation.
     #[error(transparent)]
     Tensor(#[from] TensorError),
 }

@@ -1,9 +1,9 @@
-use arnet_native::NativeBackend;
-use arnet_tensor::U1Sector;
-use arnet_tensor::test_fixtures::{legs, square_legs};
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::U1Sector;
+use ariadnetor_tensor::test_fixtures::{legs, square_legs};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction};
 
-use arnet_core::backend::{ExecPolicy, MemoryOrder};
+use ariadnetor_core::backend::{ExecPolicy, MemoryOrder};
 
 use crate::TruncSvdParams;
 use crate::block_sparse_contract::contract_block_sparse_with_policy_dense;

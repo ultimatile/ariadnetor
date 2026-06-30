@@ -5,9 +5,9 @@
 
 use std::collections::HashMap;
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex, Sector};
 
 use crate::block_sparse_decomp::fused_sector::enumerate_fused_tuples;
 use crate::error::LinalgError;

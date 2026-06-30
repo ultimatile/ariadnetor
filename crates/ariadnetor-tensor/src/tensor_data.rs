@@ -90,7 +90,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use arnet_core::backend::MemoryOrder;
+    use ariadnetor_core::backend::MemoryOrder;
 
     use crate::{DenseLayout, DenseStorage, TensorData};
 

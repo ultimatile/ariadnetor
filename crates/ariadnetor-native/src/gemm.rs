@@ -1,6 +1,6 @@
 //! GEMM implementations via faer for all supported scalar types
 
-use arnet_core::backend::{BackendError, GemmDescriptor, MemoryOrder};
+use ariadnetor_core::backend::{BackendError, GemmDescriptor, MemoryOrder};
 use faer::linalg::matmul::matmul;
 use faer::{Accum, MatMut, MatRef};
 use num_complex::Complex;

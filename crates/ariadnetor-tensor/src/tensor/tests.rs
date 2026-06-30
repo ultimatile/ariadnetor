@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::Mul;
 
-use arnet_core::Scalar;
+use ariadnetor_core::Scalar;
 
 use super::*;
 // `Direction` / `U1Sector` are not surfaced by `use super::*` (the module's
@@ -188,8 +188,8 @@ fn block_sparse_tensor_alias_resolves_and_basics_work() {
 
 #[test]
 fn dense_tensor_zeros_pins_order_to_host_preferred() {
-    use arnet_core::backend::ComputeBackend;
-    use arnet_native::NativeBackend;
+    use ariadnetor_core::backend::ComputeBackend;
+    use ariadnetor_native::NativeBackend;
 
     let expected_order = NativeBackend::shared().preferred_order();
     let t = DenseTensor::<f64>::zeros(vec![2, 3]);
@@ -201,8 +201,8 @@ fn dense_tensor_zeros_pins_order_to_host_preferred() {
 
 #[test]
 fn block_sparse_tensor_zeros_pins_order_to_host_preferred() {
-    use arnet_core::backend::ComputeBackend;
-    use arnet_native::NativeBackend;
+    use ariadnetor_core::backend::ComputeBackend;
+    use ariadnetor_native::NativeBackend;
 
     let expected_order = NativeBackend::shared().preferred_order();
     let t = u1_square_tensor::<f64>(vec![(U1Sector(0), 2), (U1Sector(1), 1)], U1Sector(0));

@@ -1,11 +1,11 @@
 //! Inner product and norm tests for block-sparse MPS.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, inner};
-use arnet_native::NativeBackend;
-use arnet_tensor::U1Sector;
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket, inner};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::U1Sector;
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction,
 };
 

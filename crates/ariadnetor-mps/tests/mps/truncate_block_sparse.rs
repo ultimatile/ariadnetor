@@ -5,10 +5,10 @@
 //! invariants (per-sector isometry, flux preservation, block-level
 //! state comparison).
 
-use arnet_mps::{CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_mps::{CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, U1Sector,
 };
 

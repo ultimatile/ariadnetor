@@ -17,11 +17,11 @@ use crate::dmrg::heff::{EffectiveHamiltonian2Site, dmrg_2site_step};
 use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::{LanczosError, LanczosParams, LinearOp};
 use approx::assert_abs_diff_eq;
-use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, diagonal_scale, eigh_with_backend};
-use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{TruncSvdParams, contract, diagonal_scale, eigh_with_backend};
+use ariadnetor_mps::{Mpo, Mps};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use num_complex::Complex;
 use rand::RngExt;
 use rand::SeedableRng;
@@ -171,7 +171,7 @@ where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
 {
-    use arnet_mps::TensorChain;
+    use ariadnetor_mps::TensorChain;
     let left = envs.left(site).expect("left(site)");
     let right = envs.right(site + 2).expect("right(site+2)");
     let w_i = mpo.site(site);

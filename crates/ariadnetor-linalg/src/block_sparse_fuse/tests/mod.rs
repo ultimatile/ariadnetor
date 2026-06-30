@@ -1,7 +1,7 @@
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector, Z2Sector};
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector, Z2Sector};
 
 use super::copy_fused_block;
 use crate::block_sparse_contract::contract_block_sparse_with_policy_dense;
@@ -347,7 +347,7 @@ fn apply_scenario_multi_sector() {
         &a,
         &[1],
         &[1],
-        arnet_core::backend::ExecPolicy::Sequential,
+        ariadnetor_core::backend::ExecPolicy::Sequential,
     )
     .unwrap();
     assert_eq!(result.rank(), 5); // [w_L, d_bra, w_R, chi_L, chi_R]

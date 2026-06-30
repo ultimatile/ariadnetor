@@ -8,9 +8,9 @@
 //! overlapping. A complex variant of the n=2 fixture exercises the
 //! `Scalar = Complex<f64>` matvec path.
 
-use arnet_mps::{Mpo, Mps};
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_mps::{Mpo, Mps};
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, Sector,
     U1Sector,
 };

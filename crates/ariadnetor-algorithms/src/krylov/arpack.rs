@@ -15,8 +15,8 @@
 //! cost — they will be eliminated once `LinearOp` grows a
 //! slice-in-place variant.
 
-use arnet_core::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, Host, linear_combine};
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host, linear_combine};
 use num_complex::{Complex32, Complex64};
 use num_traits::{NumCast, One, Zero};
 

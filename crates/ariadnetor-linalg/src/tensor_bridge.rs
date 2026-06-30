@@ -1,7 +1,7 @@
 //! Cross-crate kernel-entry invariant helpers.
 
-use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockSparseTensorData, Sector};
+use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_tensor::{BlockSparseTensorData, Sector};
 
 use crate::error::LinalgError;
 

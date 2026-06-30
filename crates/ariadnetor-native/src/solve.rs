@@ -1,6 +1,6 @@
 //! Linear solve implementations via faer LU with partial pivoting for all supported scalar types
 
-use arnet_core::backend::{BackendError, SolveDescriptor};
+use ariadnetor_core::backend::{BackendError, SolveDescriptor};
 use faer::dyn_stack::{MemBuffer, MemStack};
 use faer::linalg::lu::partial_pivoting::{
     factor::{PartialPivLuParams, lu_in_place, lu_in_place_scratch},

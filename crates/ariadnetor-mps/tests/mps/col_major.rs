@@ -8,8 +8,8 @@
 //! column-major chain.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{self as mps, CanonicalForm, TensorChain, TruncSvdParams, TruncateParams};
-use arnet_native::NativeBackend;
+use ariadnetor_mps::{self as mps, CanonicalForm, TensorChain, TruncSvdParams, TruncateParams};
+use ariadnetor_native::NativeBackend;
 
 use super::helpers::{make_4site_mps, make_identity_mpo, mps_to_dense};
 

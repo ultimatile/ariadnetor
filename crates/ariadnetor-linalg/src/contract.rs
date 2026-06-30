@@ -1,12 +1,12 @@
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
-use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
+use ariadnetor_core::{ContractionPlan, EinsumExpr, compute_permutation};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
 use crate::contract_spec::{validate_contract_notation, validate_contraction_axes_pair};
 use crate::error::LinalgError;
 use crate::transpose::transpose_dense;
-use arnet_tensor::{normalize_to_data, reorder_data};
+use ariadnetor_tensor::{normalize_to_data, reorder_data};
 
 /// Internal kernel for the pure tensor contraction on the joined
 /// [`DenseTensorData<T>`] form.

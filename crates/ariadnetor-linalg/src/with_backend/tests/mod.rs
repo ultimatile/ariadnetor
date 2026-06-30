@@ -14,10 +14,10 @@
 //! checked; the behaviorally-distinct routing proof is the Stage C
 //! pluggability litmus.
 
-use arnet_core::backend::ExecPolicy;
-use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
-use arnet_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::DenseTensor;
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 
 use crate::test_util::RecordingBackend;
 use crate::*;
@@ -62,9 +62,9 @@ fn approx_eq(a: &[f64], b: &[f64]) {
 /// Compare two complex eigenvalue multisets order-insensitively: the backend
 /// contract promises no eigenvalue ordering, so sort both by `(re, im)` before
 /// the element-wise tolerance check.
-fn eigvals_eq(a: &[arnet_core::Complex<f64>], b: &[arnet_core::Complex<f64>]) {
+fn eigvals_eq(a: &[ariadnetor_core::Complex<f64>], b: &[ariadnetor_core::Complex<f64>]) {
     assert_eq!(a.len(), b.len(), "length mismatch");
-    let key = |z: &arnet_core::Complex<f64>| (z.re, z.im);
+    let key = |z: &ariadnetor_core::Complex<f64>| (z.re, z.im);
     let mut a: Vec<_> = a.to_vec();
     let mut b: Vec<_> = b.to_vec();
     a.sort_by(|x, y| key(x).partial_cmp(&key(y)).unwrap());
@@ -290,7 +290,7 @@ fn expm_hermitian_routes_to_passed_backend() {
 
 #[test]
 fn expm_antihermitian_routes_to_passed_backend() {
-    use arnet_core::Complex;
+    use ariadnetor_core::Complex;
     let rec = RecordingBackend::new();
     let host = NativeBackend::new();
     // expm_antihermitian requires a complex element type; a real anti-symmetric

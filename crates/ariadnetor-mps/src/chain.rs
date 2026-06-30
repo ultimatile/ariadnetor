@@ -1,6 +1,6 @@
 //! TensorChain trait — common operations for MPS/MPO tensor chains.
 
-use arnet_tensor::{Storage, StorageFor, Tensor, TensorLayout};
+use ariadnetor_tensor::{Storage, StorageFor, Tensor, TensorLayout};
 
 use super::types::{CanonicalForm, Mpo, Mps};
 

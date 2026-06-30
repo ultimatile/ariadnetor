@@ -1,10 +1,10 @@
-use arnet_linalg::DenseHostOps;
-use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
+use ariadnetor_linalg::DenseHostOps;
+use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Create Dense from row-major data, converted to column-major for NativeBackend.
 fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
-    let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
+    let cm = ariadnetor_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
     DenseTensor::from_data(cm)
 }
 

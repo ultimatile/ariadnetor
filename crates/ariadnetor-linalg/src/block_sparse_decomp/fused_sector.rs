@@ -7,10 +7,10 @@
 
 use std::collections::BTreeMap;
 
-use arnet_core::Scalar;
-use arnet_core::backend::MemoryOrder;
-use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::MemoryOrder;
+use ariadnetor_tensor::Sector;
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction, QNIndex};
 
 use crate::error::LinalgError;
 

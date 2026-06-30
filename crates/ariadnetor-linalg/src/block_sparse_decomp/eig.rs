@@ -23,9 +23,9 @@
 //! within each sector, eigenvector column `i` corresponds to eigenvalue `i` in
 //! the order the dense kernel returns.
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy};
-use arnet_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy};
+use ariadnetor_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::eigen::eig_with_policy_dense;
 use crate::error::LinalgError;

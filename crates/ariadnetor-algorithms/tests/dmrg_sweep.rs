@@ -9,14 +9,14 @@
 
 use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::dmrg::{
+use ariadnetor_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh_with_backend};
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use num_complex::Complex;
 use rand::RngExt;
 use rand::SeedableRng;

@@ -5,8 +5,8 @@
 //! the layout's memory order), so they carry no assumption about the host
 //! substrate's preferred memory order.
 
-use arnet_core::Scalar;
-use arnet_tensor::DenseTensor;
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::DenseTensor;
 use num_traits::{NumCast, Zero};
 
 /// Trait for site-local operator dictionaries.

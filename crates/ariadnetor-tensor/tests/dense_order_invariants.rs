@@ -7,7 +7,7 @@
 //! `backend.preferred_order()` model that motivated the original
 //! boundary-contract bug.
 
-use arnet_tensor::{DenseTensorData, MemoryOrder, normalize_to_data, reorder_data};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder, normalize_to_data, reorder_data};
 use num_complex::Complex;
 use std::borrow::Cow;
 

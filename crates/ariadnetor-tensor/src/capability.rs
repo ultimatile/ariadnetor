@@ -10,9 +10,9 @@
 //! substrate through one stable alias instead of spelling the concrete
 //! backend type; repointing the substrate is then a one-line change.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_native::NativeBackend;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_native::NativeBackend;
 
 use crate::{BlockSparseStorage, DenseStorage};
 
@@ -60,13 +60,13 @@ mod alt_host {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, OnceLock};
 
-    use arnet_core::Scalar;
-    use arnet_core::backend::{
+    use ariadnetor_core::Scalar;
+    use ariadnetor_core::backend::{
         BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
         GemmDescriptor, LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor,
         TransposeDescriptor,
     };
-    use arnet_native::NativeBackend;
+    use ariadnetor_native::NativeBackend;
 
     use crate::{BlockSparseStorage, DenseStorage, OpsFor};
 

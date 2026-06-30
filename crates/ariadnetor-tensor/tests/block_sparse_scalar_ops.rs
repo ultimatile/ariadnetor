@@ -1,6 +1,6 @@
-use arnet_tensor::test_fixtures::{out_in_legs, square_legs};
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, MemoryOrder};
-use arnet_tensor::{U1Sector, Z2Sector};
+use ariadnetor_tensor::test_fixtures::{out_in_legs, square_legs};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, MemoryOrder};
+use ariadnetor_tensor::{U1Sector, Z2Sector};
 use num_complex::Complex;
 
 /// Helper: rank-2 U1 tensor with flux=0, blocks (0,0):2×2 and (1,1):3×3.

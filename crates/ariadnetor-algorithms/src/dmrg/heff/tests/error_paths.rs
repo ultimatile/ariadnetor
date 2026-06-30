@@ -6,7 +6,7 @@ use super::{identity_mpo, product_state_mps};
 use crate::dmrg::heff::dmrg_2site_step;
 use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
+use ariadnetor_linalg::TruncSvdParams;
 
 #[test]
 fn heff_error_paths() {

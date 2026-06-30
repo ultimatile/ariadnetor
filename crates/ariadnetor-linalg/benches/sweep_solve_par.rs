@@ -3,7 +3,7 @@
 //!
 //! Goal: find the matrix size at which parallel `solve` starts to beat
 //! sequential. The crossover is the threshold to use for per-call
-//! `ExecPolicy` dispatch in `arnet-native` (currently `usize::MAX` on
+//! `ExecPolicy` dispatch in `ariadnetor-native` (currently `usize::MAX` on
 //! laptop — unmeasured per ADR-0008).
 //!
 //! Each measurement uses `expert::solve(.., nrow_a=1, ..)` with a
@@ -17,10 +17,10 @@ use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 
-use arnet_core::backend::ExecPolicy;
-use arnet_linalg::expert::solve;
-use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_linalg::expert::solve;
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::DenseTensor;
 
 fn random_square(n: usize, seed: u64) -> DenseTensor<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);

@@ -1,6 +1,6 @@
 //! Tests for replace_slice operations.
 
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 
 #[test]
 fn test_replace_slice_column_major() {

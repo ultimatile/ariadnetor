@@ -1,6 +1,6 @@
 //! Tests for expand operations.
 
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 
 #[test]
 fn test_expand_column_major() {

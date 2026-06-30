@@ -1,5 +1,5 @@
-use arnet_linalg::DenseHostOps;
-use arnet_tensor::DenseTensor;
+use ariadnetor_linalg::DenseHostOps;
+use ariadnetor_tensor::DenseTensor;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 

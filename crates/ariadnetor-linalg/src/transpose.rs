@@ -1,6 +1,6 @@
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
-use arnet_tensor::{DenseTensorData, normalize_to_data};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
+use ariadnetor_tensor::{DenseTensorData, normalize_to_data};
 
 use crate::error::LinalgError;
 use crate::perm::validate_perm;

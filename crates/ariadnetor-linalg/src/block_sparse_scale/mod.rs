@@ -6,10 +6,10 @@
 
 use std::collections::HashMap;
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::BlockSparseTensorData;
-use arnet_tensor::Sector;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_tensor::BlockSparseTensorData;
+use ariadnetor_tensor::Sector;
 
 use crate::block_sparse_decomp::BlockScalars;
 use crate::error::LinalgError;

@@ -1,6 +1,6 @@
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
-use arnet_native::NativeBackend;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
+use ariadnetor_native::NativeBackend;
 use num_complex::Complex;
 use rstest::rstest;
 

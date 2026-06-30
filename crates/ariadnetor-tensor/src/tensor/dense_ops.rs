@@ -6,7 +6,7 @@
 
 use std::ops::{Mul, MulAssign};
 
-use arnet_core::Scalar;
+use ariadnetor_core::Scalar;
 use num_traits::{One, Zero};
 
 use super::Tensor;
@@ -54,7 +54,7 @@ impl<S> Tensor<DenseStorage<S>, DenseLayout> {
 
 impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout> {
     /// Memory order this tensor's flat data is laid out in.
-    pub fn order(&self) -> arnet_core::backend::MemoryOrder {
+    pub fn order(&self) -> ariadnetor_core::backend::MemoryOrder {
         self.data.layout().order()
     }
 
@@ -271,7 +271,7 @@ where
     /// End users should never need to choose a `MemoryOrder`; as an inherent
     /// method on a re-exported type it cannot be hidden from umbrella users,
     /// hence this note.
-    pub fn reordered(&self, to: arnet_core::backend::MemoryOrder) -> Self {
+    pub fn reordered(&self, to: ariadnetor_core::backend::MemoryOrder) -> Self {
         let reordered = crate::reorder::reorder_data(&self.data, to);
         Self { data: reordered }
     }
@@ -300,7 +300,7 @@ where
     /// tensor's, via [`reshape`].
     pub fn reshape_logical(&self, new_shape: Vec<usize>) -> Self {
         let orig_order = self.order();
-        self.reordered(arnet_core::backend::MemoryOrder::RowMajor)
+        self.reordered(ariadnetor_core::backend::MemoryOrder::RowMajor)
             .reshape(new_shape)
             .reordered(orig_order)
     }

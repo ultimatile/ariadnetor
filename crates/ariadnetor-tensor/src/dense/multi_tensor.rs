@@ -1,7 +1,7 @@
 //! Multi-tensor operations on `DenseTensorData<T>`: concatenate and stack.
 
 use crate::DenseTensorData;
-use arnet_core::MemoryOrder;
+use ariadnetor_core::MemoryOrder;
 
 impl<T> DenseTensorData<T>
 where

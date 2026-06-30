@@ -9,9 +9,9 @@
 //! Every caller validates the contraction's preconditions at its entry
 //! point, so the internal `expect` failures are unreachable in practice.
 
-use arnet_core::Scalar;
-use arnet_linalg::{contract, tensordot};
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{contract, tensordot};
+use ariadnetor_tensor::{
     BlockSparseStorage, BlockSparseTensor, DenseStorage, DenseTensor, OpsFor, Sector,
 };
 

@@ -1,8 +1,8 @@
 //! Host-defaulting method forms of the block-sparse explicit-backend
 //! operations. See the parent module for the authority semantics.
 
-use arnet_core::Scalar;
-use arnet_tensor::{BlockSparseTensor, Direction, Host, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{BlockSparseTensor, Direction, Host, Sector};
 
 use crate::block_sparse_decomp::{
     BlockScalars, BlockSparseEigResult, BlockSparseEighResult, BlockSparseQrResult,

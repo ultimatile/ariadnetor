@@ -32,9 +32,9 @@
 
 use std::any::TypeId;
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::block_sparse_decomp::fused_sector::{
     assemble_sector_matrix, build_square_tensor, compute_fused_sector_groups,

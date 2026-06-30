@@ -164,7 +164,7 @@ where
 
 impl<T> DenseStorage<T>
 where
-    T: arnet_core::Scalar,
+    T: ariadnetor_core::Scalar,
 {
     /// Squared Frobenius norm: Σ |element|².
     fn norm_squared(&self) -> T::Real {

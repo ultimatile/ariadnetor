@@ -1,4 +1,4 @@
-# `arnet_linalg` benches
+# `ariadnetor_linalg` benches
 
 Two classes of bench live here, distinguished by filename:
 

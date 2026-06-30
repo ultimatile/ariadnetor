@@ -1,4 +1,4 @@
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 use num_complex::Complex;
 
 #[test]
@@ -608,7 +608,7 @@ fn test_iter_empty() {
 }
 
 mod random_tests {
-    use arnet_tensor::{DenseTensorData, MemoryOrder};
+    use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
     use rand::SeedableRng;
 
     #[test]

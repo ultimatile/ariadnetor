@@ -31,10 +31,10 @@
 //! `energy_tol`, every step's local eigensolver converged, and
 //! `n_sweeps >= min_sweeps`.
 
-use arnet_core::Scalar;
-use arnet_linalg::LinalgError;
-use arnet_mps::{CanonicalForm, Mpo, Mps, MpsOps, TensorChain, braket};
-use arnet_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::LinalgError;
+use ariadnetor_mps::{CanonicalForm, Mpo, Mps, MpsOps, TensorChain, braket};
+use ariadnetor_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
 
 use crate::numeric::try_real_from_f64;
 
@@ -85,7 +85,7 @@ pub struct DmrgSweepParams {
     /// Truncated-SVD parameters, forwarded to the per-step driver
     /// (Dense `dmrg_2site_step` or BlockSparse
     /// `dmrg_2site_step_block_sparse`).
-    pub trunc: arnet_linalg::TruncSvdParams,
+    pub trunc: ariadnetor_linalg::TruncSvdParams,
 }
 
 /// Per-step diagnostics record.
@@ -231,7 +231,7 @@ pub enum DmrgSweepError {
         #[source]
         source: DmrgEnvError,
     },
-    /// The post-step S-absorb (`arnet_linalg::diagonal_scale`, which
+    /// The post-step S-absorb (`ariadnetor_linalg::diagonal_scale`, which
     /// dispatches over layout for both Dense and BlockSparse) failed.
     /// Carries the same `(sweep, direction, site)`
     /// breadcrumbs as `Step` / `Env` so the caller can pin down

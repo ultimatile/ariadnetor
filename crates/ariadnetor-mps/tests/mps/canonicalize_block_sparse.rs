@@ -6,9 +6,9 @@
 //! (multi-element sector blocks), which is essential for catching mutants in
 //! the per-sector sweep logic.
 
-use arnet_mps::{CanonicalForm, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, U1Sector};
+use ariadnetor_mps::{CanonicalForm, Mps, TensorChain};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, U1Sector};
 
 use super::helpers::{
     assert_block_sparse_close, bsp_mps_contract_full, is_left_canonical_bsp,
@@ -177,8 +177,8 @@ fn canonicalize_bsp_zero_flux_chain_stays_identity_flux() {
 /// the contract that charged input is not silently rejected.
 #[test]
 fn canonicalize_bsp_accepts_charged_single_site() {
-    use arnet_tensor::test_fixtures::legs;
-    use arnet_tensor::{BlockCoord, Direction};
+    use ariadnetor_tensor::test_fixtures::legs;
+    use ariadnetor_tensor::{BlockCoord, Direction};
 
     let backend = NativeBackend::new();
 

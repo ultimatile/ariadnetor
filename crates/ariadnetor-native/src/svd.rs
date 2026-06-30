@@ -1,6 +1,6 @@
 //! SVD implementations via faer for all supported scalar types
 
-use arnet_core::backend::{BackendError, SvdDescriptor};
+use ariadnetor_core::backend::{BackendError, SvdDescriptor};
 use faer::diag::Diag;
 use faer::dyn_stack::{MemBuffer, MemStack};
 use faer::linalg::svd::{ComputeSvdVectors, SvdParams, svd, svd_scratch};

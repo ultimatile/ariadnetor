@@ -13,9 +13,9 @@
 
 use std::sync::Arc;
 
-use arnet_core::{ComputeBackend, Scalar};
-use arnet_linalg::tensordot;
-use arnet_tensor::{
+use ariadnetor_core::{ComputeBackend, Scalar};
+use ariadnetor_linalg::tensordot;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensor, ComputeBackendTensorExt, DenseTensor, Host, Sector,
 };
 

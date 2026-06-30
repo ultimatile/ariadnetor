@@ -22,7 +22,7 @@
 //! Every operation takes its compute backend explicitly at the call site
 //! and dispatches all kernels through that handle via the explicit-backend
 //! (`*_with_backend`) linalg paths. The backend is bound by
-//! [`OpsFor<Self::Storage>`](arnet_tensor::OpsFor) — the same capability
+//! [`OpsFor<Self::Storage>`](ariadnetor_tensor::OpsFor) — the same capability
 //! gate the linalg surface enforces — so only a backend that has declared
 //! it operates on this chain's storage can be supplied. The chain itself
 //! carries no backend, so there is a single, unambiguous authority per
@@ -33,8 +33,8 @@
 
 use std::num::NonZeroUsize;
 
-use arnet_core::Scalar;
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
     StorageFor, TensorLayout,
 };
@@ -42,8 +42,10 @@ use arnet_tensor::{
 use super::types::{ApplyMethod, Mpo, Mps, TruncResult, TruncateParams};
 
 mod sealed {
-    use arnet_core::Scalar;
-    use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector};
+    use ariadnetor_core::Scalar;
+    use ariadnetor_tensor::{
+        BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector,
+    };
 
     use crate::types::Mps;
 

@@ -1,9 +1,9 @@
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
 use crate::error::LinalgError;
-use arnet_tensor::reorder_data;
+use ariadnetor_tensor::reorder_data;
 
 /// Internal kernel for the linear solve on the joined
 /// [`DenseTensorData<T>`] form.

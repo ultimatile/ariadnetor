@@ -5,15 +5,15 @@
 # allowed by glob. Non-workspace re-exports are EXACT exceptions:
 #   - NativeBackend: the intended Host backend, re-exported both directly and
 #     via the `Host` alias.
-#   - Complex: re-exported through arnet_core's own `pub use num_complex::Complex`.
+#   - Complex: re-exported through ariadnetor_core's own `pub use num_complex::Complex`.
 # A glob does NOT cover a foreign re-export — cargo-check-external-types
 # resolves it to its defining crate — so any other native or foreign type
 # leaking directly into the umbrella is flagged. A lower-layer type laundered
 # through a workspace-crate alias is caught instead at that crate's own gate.
 allowed_external_types = [
-    "arnet_core::*",
-    "arnet_tensor::*",
-    "arnet_linalg::*",
-    "arnet_native::NativeBackend",
+    "ariadnetor_core::*",
+    "ariadnetor_tensor::*",
+    "ariadnetor_linalg::*",
+    "ariadnetor_native::NativeBackend",
     "num_complex::Complex",
 ]

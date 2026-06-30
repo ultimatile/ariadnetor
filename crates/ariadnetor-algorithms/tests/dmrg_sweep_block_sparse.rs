@@ -16,15 +16,15 @@
 
 use algorithms_fixtures::fixtures;
 
-use arnet_algorithms::dmrg::{
+use ariadnetor_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain, braket};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, Sector,
     U1Sector,
 };

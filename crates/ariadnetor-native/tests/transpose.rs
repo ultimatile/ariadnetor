@@ -1,7 +1,7 @@
-use arnet_core::backend::{
+use ariadnetor_core::backend::{
     ComputeBackend, DeviceType, ExecPolicy, MemoryOrder, TransposeDescriptor,
 };
-use arnet_native::NativeBackend;
+use ariadnetor_native::NativeBackend;
 use num_complex::Complex;
 
 #[test]

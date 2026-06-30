@@ -1,18 +1,18 @@
 //! Shared test helpers for MPS tests.
 
-use arnet_linalg::{contract, permute_with_backend, tensordot};
-use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::MemoryOrder;
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_linalg::{contract, permute_with_backend, tensordot};
+use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::MemoryOrder;
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensor, DenseLayout, DenseStorage, DenseTensor, Direction, U1Sector,
 };
-use arnet_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 
 /// Build a `DenseTensor<f64>` from data already laid out in the active
 /// backend's preferred order (NativeBackend → ColumnMajor).
-pub(crate) fn cm_dense_tensor<T: arnet_core::Scalar>(
+pub(crate) fn cm_dense_tensor<T: ariadnetor_core::Scalar>(
     data: Vec<T>,
     shape: Vec<usize>,
 ) -> DenseTensor<T> {
@@ -100,7 +100,7 @@ pub(crate) fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet_tensor::flat_index(&[i, j], qtq.shape(), order);
+            let idx = ariadnetor_tensor::flat_index(&[i, j], qtq.shape(), order);
             if (qtq.data_slice()[idx] - expected).abs() > tol {
                 return false;
             }
@@ -124,7 +124,7 @@ pub(crate) fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     for i in 0..k {
         for j in 0..k {
             let expected = if i == j { 1.0 } else { 0.0 };
-            let idx = arnet_tensor::flat_index(&[i, j], qqt.shape(), order);
+            let idx = ariadnetor_tensor::flat_index(&[i, j], qqt.shape(), order);
             if (qqt.data_slice()[idx] - expected).abs() > tol {
                 return false;
             }
@@ -238,7 +238,7 @@ fn make_u1_site(
 /// `make_4site_u1_mps`) collapse forward and backward SVDs into the same
 /// matrix, hiding the cap's effect.
 pub(crate) fn make_3site_u1_mps_multipath_middle()
--> Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
+-> Mps<ariadnetor_tensor::BlockSparseStorage<f64>, ariadnetor_tensor::BlockSparseLayout<U1Sector>> {
     let mut counter: f64 = 0.1;
 
     let site0 = make_u1_site(
@@ -271,7 +271,7 @@ pub(crate) fn make_3site_u1_mps_multipath_middle()
 
 /// Build a 4-site U(1)-symmetric MPS with `f64` storage and per-site flux 0.
 pub(crate) fn make_4site_u1_mps()
--> Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
+-> Mps<ariadnetor_tensor::BlockSparseStorage<f64>, ariadnetor_tensor::BlockSparseLayout<U1Sector>> {
     let mut counter: f64 = 0.1;
 
     let site0 = make_u1_site(
@@ -388,7 +388,10 @@ pub(crate) fn is_right_canonical_bsp(site: &BlockSparseTensor<f64, U1Sector>, to
 
 /// Contract an entire block-sparse MPS into a single tensor.
 pub(crate) fn bsp_mps_contract_full(
-    mps: &Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>>,
+    mps: &Mps<
+        ariadnetor_tensor::BlockSparseStorage<f64>,
+        ariadnetor_tensor::BlockSparseLayout<U1Sector>,
+    >,
 ) -> BlockSparseTensor<f64, U1Sector> {
     let n = mps.len();
     assert!(n > 0, "cannot contract an empty MPS");
@@ -469,7 +472,7 @@ pub(crate) fn assert_block_sparse_close(
 
 /// Build a 2-site U(1)-symmetric MPS in the total-charge-1 sector.
 pub(crate) fn make_2site_entangled_u1_mps()
--> Mps<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
+-> Mps<ariadnetor_tensor::BlockSparseStorage<f64>, ariadnetor_tensor::BlockSparseLayout<U1Sector>> {
     let mut site0 = BlockSparseTensor::<f64, U1Sector>::zeros(
         legs([
             (vec![(U1Sector(0), 1)], Direction::Out),
@@ -510,7 +513,8 @@ pub(crate) fn make_2site_entangled_u1_mps()
 /// Build a U(1) total-particle-number MPO `N = Σ_j n_j` over `n` sites.
 pub(crate) fn make_total_n_u1_mpo(
     n: usize,
-) -> Mpo<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
+) -> Mpo<ariadnetor_tensor::BlockSparseStorage<f64>, ariadnetor_tensor::BlockSparseLayout<U1Sector>>
+{
     assert!(n >= 1, "need at least one site");
     let mut sites = Vec::with_capacity(n);
     for j in 0..n {
@@ -582,7 +586,8 @@ pub(crate) fn make_total_n_u1_mpo(
 /// Build a U(1) identity MPO for the given number of sites.
 pub(crate) fn make_identity_u1_mpo(
     n: usize,
-) -> Mpo<arnet_tensor::BlockSparseStorage<f64>, arnet_tensor::BlockSparseLayout<U1Sector>> {
+) -> Mpo<ariadnetor_tensor::BlockSparseStorage<f64>, ariadnetor_tensor::BlockSparseLayout<U1Sector>>
+{
     let sites = (0..n)
         .map(|_| {
             let mut site = BlockSparseTensor::<f64, U1Sector>::zeros(

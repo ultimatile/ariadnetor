@@ -8,12 +8,12 @@
 use algorithms_fixtures::dense_fixtures::{
     build_mpo_site_f64, heisenberg_mpo_f64, op_id, op_sz, random_mps_center_zero_f64,
 };
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh_with_backend};
-use arnet_mps::{CanonicalForm, Mpo, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_mps::{CanonicalForm, Mpo, TensorChain};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
 // ---------------------------------------------------------------------------
 // Pauli matrix elements in computational basis (|0⟩=up, |1⟩=down).

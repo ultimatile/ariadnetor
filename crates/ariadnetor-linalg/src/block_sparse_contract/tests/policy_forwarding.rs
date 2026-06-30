@@ -6,9 +6,9 @@
 //! to each per-sector GEMM. The multi-sector fixture produces two block
 //! pairs so per-sector forwarding is observable, not just the first hit.
 
-use arnet_core::backend::{ComputeBackend, ExecPolicy};
-use arnet_tensor::test_fixtures::square_legs;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, U1Sector};
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy};
+use ariadnetor_tensor::test_fixtures::square_legs;
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, U1Sector};
 
 use super::super::contract_block_sparse_with_policy_dense;
 use super::to_order;

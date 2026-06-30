@@ -5,10 +5,10 @@
 //! flux, so each fixture's allowed-block set and expected trace are computed
 //! directly from that predicate.
 
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector};
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector};
 
 use super::trace_block_sparse_dense;
 

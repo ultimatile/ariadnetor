@@ -5,9 +5,9 @@
 //! the per-file line cap. The helpers themselves are
 //! crate-private — only the lanczos kernel needs them.
 
-use arnet_core::Scalar;
-use arnet_linalg::eigh_with_backend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::eigh_with_backend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_traits::{One, Zero};
 use rand::RngExt;
 use rand::rngs::StdRng;

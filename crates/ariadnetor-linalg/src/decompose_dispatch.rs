@@ -2,12 +2,12 @@
 //! (SVD / truncated SVD / QR / LQ).
 //!
 //! [`LinalgDecompose`] is implemented on the concrete tensor types
-//! ([`Tensor<DenseStorage<T>, DenseLayout>`](arnet_tensor::Tensor) and
-//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](arnet_tensor::Tensor));
+//! ([`Tensor<DenseStorage<T>, DenseLayout>`](ariadnetor_tensor::Tensor) and
+//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](ariadnetor_tensor::Tensor));
 //! each implementation pairs a storage type via [`LinalgDecompose::Storage`] and
 //! routes to its storage-specific kernel. Callers parameterized over
 //! `Tn: LinalgDecompose<T>` issue one generic call that serves both flavors,
-//! mirroring the `MpsOps` pattern in `arnet-mps`.
+//! mirroring the `MpsOps` pattern in `ariadnetor-mps`.
 //!
 //! The trait is sealed through a crate-private [`Sealed`](crate::sealed::Sealed)
 //! supertrait, so it cannot be implemented downstream and projects no storage /
@@ -32,15 +32,15 @@
 //! # Operation authority
 //!
 //! Every method takes its compute backend explicitly at the call site, bound
-//! by [`OpsFor<Self::Storage>`](arnet_tensor::OpsFor) — the same capability
+//! by [`OpsFor<Self::Storage>`](ariadnetor_tensor::OpsFor) — the same capability
 //! gate the rest of the linalg surface enforces. The tensor carries no
 //! backend, so there is a single, unambiguous authority per call. Block-sparse
 //! methods enforce the layout-order invariant against the supplied backend
 //! before dispatching; dense paths self-normalize.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ExecPolicy;
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
     Tensor,
 };

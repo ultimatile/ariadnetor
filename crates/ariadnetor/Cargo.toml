@@ -20,11 +20,11 @@ ariadnetor-linalg = { path = "../ariadnetor-linalg" }
 ariadnetor-native = { path = "../ariadnetor-native" }
 
 [dev-dependencies]
-# Enables `arnet_tensor::test_fixtures` for this crate's integration tests.
+# Enables `ariadnetor_tensor::test_fixtures` for this crate's integration tests.
 ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"] }
 
 [lib]
-name = "arnet"
+name = "ariadnetor"
 path = "src/lib.rs"
 
 [lints]

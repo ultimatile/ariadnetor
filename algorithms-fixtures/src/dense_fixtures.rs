@@ -9,9 +9,9 @@
 //! keeps the two test surfaces directly comparable when that follow-up
 //! lands.
 
-use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_mps::{Mpo, Mps};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

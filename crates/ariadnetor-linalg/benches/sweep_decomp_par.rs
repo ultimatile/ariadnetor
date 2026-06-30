@@ -3,7 +3,7 @@
 //!
 //! Goal: find the matrix size at which parallel decomposition starts
 //! to beat sequential. The crossover is the threshold to use for
-//! per-call `ExecPolicy` dispatch in `arnet-native`.
+//! per-call `ExecPolicy` dispatch in `ariadnetor-native`.
 //!
 //! Each op is measured through its policy-explicit expert-layer entry
 //! point (`expert::svd` / `expert::qr` / `expert::lq` / `expert::eigh` /
@@ -12,15 +12,15 @@
 //! (`faer::set_global_parallelism`) is not consulted by the per-call
 //! path and is intentionally not touched here.
 
-use arnet_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 
-use arnet_core::backend::ExecPolicy;
-use arnet_linalg::expert::{eig, eigh, lq, qr, svd};
-use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_linalg::expert::{eig, eigh, lq, qr, svd};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::DenseTensor;
 
 fn random_dense(n: usize) -> DenseTensor<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);

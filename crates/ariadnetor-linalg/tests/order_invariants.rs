@@ -6,10 +6,10 @@
 //! as the equivalent `ColumnMajor` Dense, demonstrating that op-entry
 //! normalization is wired up).
 
-use arnet_core::Scalar;
-use arnet_linalg::{DenseHostOps, TruncSvdParams, einsum_with_backend};
-use arnet_native::NativeBackend;
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{DenseHostOps, TruncSvdParams, einsum_with_backend};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{
     ComputeBackend, ComputeBackendTensorExt, DenseTensor, DenseTensorData, MemoryOrder,
     linear_combine, reorder_data,
 };

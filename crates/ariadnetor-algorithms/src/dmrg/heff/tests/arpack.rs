@@ -9,12 +9,12 @@
 use std::error::Error;
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
-use arnet_native::NativeBackend;
+use ariadnetor_native::NativeBackend;
 
 use crate::dmrg::heff::dmrg_2site_step;
 use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::{ArpackError, ArpackParams};
-use arnet_linalg::TruncSvdParams;
+use ariadnetor_linalg::TruncSvdParams;
 
 // ---------------------------------------------------------------------------
 // Error path: ARPACK upstream `MaxIterReached` must round-trip through

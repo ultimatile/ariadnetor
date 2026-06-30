@@ -1,5 +1,7 @@
-use arnet_core::backend::{BackendError, ComputeBackend, ExecPolicy, MemoryOrder, SvdDescriptor};
-use arnet_native::NativeBackend;
+use ariadnetor_core::backend::{
+    BackendError, ComputeBackend, ExecPolicy, MemoryOrder, SvdDescriptor,
+};
+use ariadnetor_native::NativeBackend;
 use num_complex::Complex;
 
 /// Convert a logical matrix (given in row-major order) to column-major layout.

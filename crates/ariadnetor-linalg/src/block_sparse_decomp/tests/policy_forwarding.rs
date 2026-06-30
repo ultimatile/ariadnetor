@@ -6,14 +6,14 @@
 //! multi-sector fixture (`sample_u1_rank2`) produces two sectors so forwarding
 //! is observed per-sector, not just once.
 
-use arnet_core::backend::ExecPolicy;
+use ariadnetor_core::backend::ExecPolicy;
 
 use super::*;
 use crate::test_util::RecordingBackend;
 
 // A multi-sector rank-2 tensor: sectors (0,0) 2×2 and (1,1) 3×3 both
 // yield non-trivial per-sector SVD/QR/LQ work — two entries per recorded list.
-fn multi_sector() -> arnet_tensor::BlockSparseTensorData<f64, arnet_tensor::U1Sector> {
+fn multi_sector() -> ariadnetor_tensor::BlockSparseTensorData<f64, ariadnetor_tensor::U1Sector> {
     super::sample_u1_rank2()
 }
 

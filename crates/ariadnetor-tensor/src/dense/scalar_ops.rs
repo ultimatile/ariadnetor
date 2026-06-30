@@ -9,7 +9,7 @@ use crate::DenseTensorData;
 
 impl<T> DenseTensorData<T>
 where
-    T: arnet_core::Scalar,
+    T: ariadnetor_core::Scalar,
 {
     /// Element-wise complex conjugate.
     pub fn conj(&self) -> Self {

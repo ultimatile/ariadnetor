@@ -1,10 +1,12 @@
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, QrDescriptor, SvdDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{
+    ComputeBackend, ExecPolicy, MemoryOrder, QrDescriptor, SvdDescriptor,
+};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
-use arnet_tensor::reorder_data;
+use ariadnetor_tensor::reorder_data;
 
 /// Result of a thin SVD decomposition: `(U, S, Vt)`.
 ///

@@ -5,7 +5,7 @@
 //! entry of operations that require a specific input layout.
 
 use crate::DenseTensorData;
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 use std::borrow::Cow;
 
 /// Reorder a `DenseTensorData<T>` to the requested memory layout.

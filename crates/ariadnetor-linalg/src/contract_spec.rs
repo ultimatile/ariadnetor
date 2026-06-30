@@ -19,7 +19,7 @@
 
 use std::collections::HashSet;
 
-use arnet_core::EinsumExpr;
+use ariadnetor_core::EinsumExpr;
 
 use crate::error::LinalgError;
 

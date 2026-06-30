@@ -31,9 +31,9 @@
 //! correct. Mirroring is validated, not trusted: a non-mirrored operator would
 //! silently mislabel the output's legs and break the downstream contraction.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockSparseTensorData, DenseTensorData, QNIndex, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_tensor::{BlockSparseTensorData, DenseTensorData, QNIndex, Sector};
 
 use crate::block_sparse_decomp::fused_sector::{
     assemble_sector_matrix, build_square_tensor, compute_fused_sector_groups,

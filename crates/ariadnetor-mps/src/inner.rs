@@ -1,8 +1,8 @@
 //! Inner product, norm, and expectation value for MPS.
 
-use arnet_core::Scalar;
-use arnet_linalg::{contract, tensordot};
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{contract, tensordot};
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
     DenseStorage, DenseTensor, Direction, OpsFor, QNIndex, Sector,
 };

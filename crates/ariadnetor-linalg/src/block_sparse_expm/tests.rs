@@ -1,9 +1,9 @@
-use arnet_core::Complex;
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
-use arnet_tensor::{
+use ariadnetor_core::Complex;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensorData, DenseTensorData, Direction, Sector, U1Sector,
 };
 

@@ -1,8 +1,8 @@
 use std::any::TypeId;
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::contract::contract_dense;
@@ -11,7 +11,7 @@ use crate::error::LinalgError;
 use crate::scalar_ops::diagonal_scale_dense;
 use crate::solve::solve_dense;
 use crate::transpose::conjugate_transpose_dense;
-use arnet_tensor::reorder_data;
+use ariadnetor_tensor::reorder_data;
 
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
 ///

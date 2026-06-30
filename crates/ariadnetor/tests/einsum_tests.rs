@@ -1,9 +1,9 @@
-//! Integration tests for unified EinsumExpr (re-exported from arnet_core)
+//! Integration tests for unified EinsumExpr (re-exported from ariadnetor_core)
 //!
 //! These tests verify the EinsumExpr API from a user perspective,
 //! testing the public interface as it would be used in real code.
 
-use arnet::EinsumExpr;
+use ariadnetor::EinsumExpr;
 
 #[test]
 fn test_matrix_multiplication_end_to_end() {

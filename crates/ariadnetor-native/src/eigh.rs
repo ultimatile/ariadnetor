@@ -1,6 +1,6 @@
 //! Self-adjoint eigenvalue decomposition implementations via faer for all supported scalar types
 
-use arnet_core::backend::{BackendError, EighDescriptor};
+use ariadnetor_core::backend::{BackendError, EighDescriptor};
 use faer::diag::Diag;
 use faer::dyn_stack::{MemBuffer, MemStack};
 use faer::linalg::evd::{

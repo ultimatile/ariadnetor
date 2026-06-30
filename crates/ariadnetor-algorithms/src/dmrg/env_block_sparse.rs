@@ -1,6 +1,6 @@
 //! BlockSparse implementation of [`super::env::DmrgEnvOps`].
 //!
-//! Mirrors the boundary convention used by `arnet_mps::inner::braket_bsp`
+//! Mirrors the boundary convention used by `ariadnetor_mps::inner::braket_bsp`
 //! (the canonical BlockSparse braket reference): the env tensor's
 //! axis 0 (top-bra-bond) carries the same `Direction` as the MPS edge
 //! bond, axis 1 (W-bond) is flipped relative to the MPO edge, axis 2
@@ -14,9 +14,9 @@
 //! dim-1 / single-sector contract or whose chosen edge sectors fail
 //! to fuse to identity flux.
 
-use arnet_core::Scalar;
-use arnet_linalg::{LinalgError, permute_block_sparse_with_backend, tensordot};
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{LinalgError, permute_block_sparse_with_backend, tensordot};
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, Host, QNIndex,
     Sector,
 };
@@ -133,7 +133,7 @@ where
     }
 
     /// Per-site left extension. Mirror of the
-    /// `arnet_mps::inner::braket_bsp` loop body.
+    /// `ariadnetor_mps::inner::braket_bsp` loop body.
     fn extend_left_step(
         env: &BlockSparseTensor<T, S>,
         site: &BlockSparseTensor<T, S>,

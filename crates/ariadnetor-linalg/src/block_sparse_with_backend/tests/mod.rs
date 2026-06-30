@@ -15,11 +15,13 @@
 //! check by fabricating a tensor whose layout disagrees with the supplied
 //! backend's preferred order.
 
-use arnet_core::Complex;
-use arnet_core::backend::{ExecPolicy, MemoryOrder};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::square_legs;
-use arnet_tensor::{BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, U1Sector};
+use ariadnetor_core::Complex;
+use ariadnetor_core::backend::{ExecPolicy, MemoryOrder};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::square_legs;
+use ariadnetor_tensor::{
+    BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, U1Sector,
+};
 
 use crate::test_util::RecordingBackend;
 use crate::*;

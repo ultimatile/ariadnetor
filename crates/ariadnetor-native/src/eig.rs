@@ -1,6 +1,6 @@
 //! General eigenvalue decomposition implementations via faer for all supported scalar types
 
-use arnet_core::backend::{BackendError, EigDescriptor};
+use ariadnetor_core::backend::{BackendError, EigDescriptor};
 use faer::diag::Diag;
 use faer::dyn_stack::{MemBuffer, MemStack};
 use faer::linalg::evd::{ComputeEigenvectors, EvdParams, evd_cplx, evd_real, evd_scratch};

@@ -9,14 +9,14 @@
 //!   `Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`
 //!
 //! The tensor carries no compute backend: operations take the backend
-//! explicitly at the call site (see `arnet-linalg`). Convenience
+//! explicitly at the call site (see `ariadnetor-linalg`). Convenience
 //! constructors that need a memory order read it from the host substrate
 //! ([`Host`](crate::Host)) without binding the tensor to any backend.
 
 use std::fmt;
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
 use num_traits::Zero;
 use rand::RngExt;
 
@@ -52,7 +52,7 @@ fn host_order() -> MemoryOrder {
 /// # Examples
 ///
 /// ```
-/// use arnet_tensor::DenseTensor;
+/// use ariadnetor_tensor::DenseTensor;
 ///
 /// let a = DenseTensor::<f64>::zeros(vec![2, 2]);
 /// assert_eq!(a.shape(), &[2, 2]);
@@ -120,8 +120,8 @@ where
     /// Internal escape hatch: reference to the joined [`TensorData`]
     /// bundle.
     ///
-    /// Intended for cross-crate kernel-access paths inside `arnet-linalg`
-    /// and `arnet-mps`; user code should reach for the inherent methods
+    /// Intended for cross-crate kernel-access paths inside `ariadnetor-linalg`
+    /// and `ariadnetor-mps`; user code should reach for the inherent methods
     /// on [`DenseTensor`] / [`BlockSparseTensor`] instead.
     pub fn data(&self) -> &TensorData<St, L> {
         &self.data

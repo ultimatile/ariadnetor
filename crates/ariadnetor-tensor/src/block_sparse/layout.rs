@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 
 use super::{BlockCoord, BlockMeta, Direction, QNIndex};
 use crate::{Sector, TensorLayout};

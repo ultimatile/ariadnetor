@@ -1,9 +1,9 @@
-use arnet_core::Complex;
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
-use arnet_tensor::{
+use ariadnetor_core::Complex;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, Sector, U1Sector,
 };
 
@@ -130,8 +130,8 @@ fn verify_solve<T: Scalar<Real = f64>, S: Sector>(
         let b_q = assemble_sector_matrix(b, b_group, order);
         let expected = solve_dense(
             &backend(),
-            &arnet_tensor::DenseTensorData::from_raw_parts(a_q, vec![m, m], order),
-            &arnet_tensor::DenseTensorData::from_raw_parts(b_q, vec![m, nrhs], order),
+            &ariadnetor_tensor::DenseTensorData::from_raw_parts(a_q, vec![m, m], order),
+            &ariadnetor_tensor::DenseTensorData::from_raw_parts(b_q, vec![m, nrhs], order),
             1,
         )
         .unwrap();
@@ -156,7 +156,7 @@ fn verify_inverse<T: Scalar<Real = f64>, S: Sector>(
         let a_q = assemble_sector_matrix(a, group, order);
         let expected = inverse_dense(
             &backend(),
-            &arnet_tensor::DenseTensorData::from_raw_parts(a_q, vec![m, m], order),
+            &ariadnetor_tensor::DenseTensorData::from_raw_parts(a_q, vec![m, m], order),
             1,
         )
         .unwrap();

@@ -7,16 +7,16 @@
 
 use std::collections::{HashMap, HashSet};
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_core::{ContractionPlan, EinsumExpr, compute_permutation};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensorData, normalize_to_data};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_core::{ContractionPlan, EinsumExpr, compute_permutation};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData, normalize_to_data};
 
 use crate::contract::contract_dense;
 use crate::error::LinalgError;
 use crate::scalar_ops::trace_dense;
 use crate::transpose::transpose_dense;
-use arnet_tensor::reorder_data;
+use ariadnetor_tensor::reorder_data;
 
 /// Internal kernel for the N-input einsum on joined [`DenseTensorData<T>`]
 /// slices. The public entry point is [`crate::einsum_with_backend`].

@@ -8,7 +8,7 @@
 //! `PerformanceManager` pairs a table with the comparison logic that
 //! `NativeBackend::par_for_*` methods call.
 
-use arnet_core::backend::ExecPolicy;
+use ariadnetor_core::backend::ExecPolicy;
 
 /// Per-op parallelism thresholds.
 ///

@@ -29,7 +29,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
-# Enables `arnet_tensor::test_fixtures` for this crate's tests; resolver v2
+# Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
 # keeps the test-only feature out of normal builds. See ariadnetor-tensor's
 # `test-fixtures` feature.
 ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"] }
@@ -39,7 +39,7 @@ rand = { workspace = true }
 algorithms-fixtures = { path = "../../algorithms-fixtures" }
 
 [lib]
-name = "arnet_algorithms"
+name = "ariadnetor_algorithms"
 path = "src/lib.rs"
 
 [[bench]]

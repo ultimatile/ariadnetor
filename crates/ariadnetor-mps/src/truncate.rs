@@ -1,8 +1,8 @@
 //! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps.
 
-use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, diagonal_scale, trunc_svd};
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{TruncSvdParams, diagonal_scale, trunc_svd};
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, OpsFor, Sector,
 };
 use num_traits::{Float, Zero};

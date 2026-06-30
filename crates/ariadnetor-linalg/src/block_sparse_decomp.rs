@@ -17,9 +17,9 @@ pub(crate) mod fused_sector;
 pub(crate) use eig::eig_block_sparse_with_policy_dense;
 pub(crate) use eigh::eigh_block_sparse_with_policy_dense;
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
+use ariadnetor_tensor::{
     BlockSparseTensor, BlockSparseTensorData, DenseTensorData, Sector, reorder_data,
 };
 use num_traits::{Float, ToPrimitive, Zero};

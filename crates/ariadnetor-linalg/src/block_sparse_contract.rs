@@ -6,10 +6,10 @@
 
 use std::collections::HashMap;
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
-use arnet_tensor::Sector;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, QNIndex};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
+use ariadnetor_tensor::Sector;
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, QNIndex};
 
 use crate::contract_spec::validate_contraction_axes_pair;
 use crate::error::LinalgError;

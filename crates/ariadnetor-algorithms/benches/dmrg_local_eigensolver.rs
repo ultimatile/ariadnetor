@@ -13,11 +13,11 @@
 //! solver-comparison fixture matches what the correctness tests pin down.
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
-use arnet_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
+use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
 #[cfg(feature = "arpack")]
-use arnet_algorithms::krylov::ArpackParams;
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
+use ariadnetor_algorithms::krylov::ArpackParams;
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_linalg::TruncSvdParams;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 // ---------------------------------------------------------------------------
