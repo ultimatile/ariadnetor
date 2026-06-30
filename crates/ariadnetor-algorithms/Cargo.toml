@@ -8,6 +8,9 @@ description = "Tensor-network algorithms (DMRG, TEBD, ...) built on Ariadnetor"
 [features]
 default = []
 arpack = ["dep:arpack", "dep:num-complex"]
+# Opt-in passthrough enabling the native HPTT transpose kernel (off by default
+# -> pure-Rust). See `ariadnetor-native`'s `hptt`.
+hptt = ["ariadnetor-native/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
@@ -16,10 +19,6 @@ pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
 ariadnetor-core = { path = "../ariadnetor-core" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor" }
 ariadnetor-linalg = { path = "../ariadnetor-linalg" }
-# Default features (hptt) kept on: unlike the tensor / linalg leaves
-# (which inherit hptt from a higher crate), this consumer crate tops its
-# own standalone build graph, so it enables the native transpose kernel
-# directly. `default-features = false` here would drop hptt from `-p` builds.
 ariadnetor-native = { path = "../ariadnetor-native" }
 ariadnetor-mps = { path = "../ariadnetor-mps" }
 num-traits = { workspace = true }

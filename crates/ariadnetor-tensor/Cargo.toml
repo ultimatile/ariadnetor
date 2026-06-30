@@ -6,6 +6,9 @@ license.workspace = true
 description = "Pure Rust tensor library with support for dense, sparse, and block-sparse tensors"
 
 [features]
+# Opt-in passthrough enabling the native HPTT transpose kernel (off by default
+# -> pure-Rust). See `ariadnetor-native`'s `hptt`.
+hptt = ["ariadnetor-native/hptt"]
 # Swaps the `Host` substrate alias to a distinct stateful backend so the
 # host-pinned surface is proven to hold against a non-native substrate.
 # Run via the standalone `cargo make litmus` task, not the default gate.
@@ -17,11 +20,9 @@ test-fixtures = []
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core" }
-# Default features off so dependents (arnet-linalg etc.) building with
-# `--no-default-features` reach the no-HPTT path through this crate's
-# transitive `arnet-native`. The constructors here only touch
-# `NativeBackend::{shared, preferred_order}` and do not require `hptt`.
-ariadnetor-native = { path = "../ariadnetor-native", default-features = false }
+# Plain dependency: `ariadnetor-native` defaults to no `hptt`, so this stays
+# pure-Rust unless a consumer opts into this crate's `hptt` feature.
+ariadnetor-native = { path = "../ariadnetor-native" }
 aligned-vec = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }

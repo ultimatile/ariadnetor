@@ -8,8 +8,9 @@ Two classes of bench live here, distinguished by filename:
 - **Threshold-sweep instruments** (`sweep_*`) — plain `fn main()` binaries that sweep
   matrix size comparing `ExecPolicy::Sequential` against `ExecPolicy::Parallel(0)` to
   locate the crossover that feeds per-call `ExecPolicy` dispatch in `ariadnetor-native`.
-  Run individually on demand, e.g. `cargo bench --bench sweep_decomp_par`. Pass
-  `--no-default-features` to exercise the naive transpose fallback.
+  Run individually on demand, e.g. `cargo bench --bench sweep_decomp_par`. They
+  build the naive transpose fallback by default; pass `--features hptt` to
+  exercise the HPTT kernel instead.
 
 `cargo make bench` runs only the criterion regression benches; the threshold sweeps
 are excluded from it because each is an expensive matrix-size sweep. A bare

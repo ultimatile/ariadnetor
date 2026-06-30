@@ -119,8 +119,8 @@ fn test_transpose_complex_f64_2d() {
 // same output as the sequential reference for every input. They are
 // intentionally written feature-flag-agnostic: under `--features hptt`
 // f64 routes through HPTT and these tests cover the HPTT parallel path;
-// under `--no-default-features` f64 routes through `naive_parallel` and
-// the same assertions cover the new Rayon kernel.
+// by default (hptt off) f64 routes through `naive_parallel` and
+// the same assertions cover the Rayon kernel.
 
 fn run_transpose_f64(
     backend: &NativeBackend,

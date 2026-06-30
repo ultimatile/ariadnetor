@@ -52,7 +52,7 @@ impl ThresholdTable {
     /// `transpose` is calibrated per backend at compile time. Under the
     /// `hptt` feature the sweep showed no regime where Rayon-style
     /// parallel can beat HPTT's tiled sequential on laptop, so the
-    /// sentinel `usize::MAX` is retained. Under `--no-default-features`
+    /// sentinel `usize::MAX` is retained. Without it (the default build),
     /// the naive fallback's simpler sequential loses to the parallel
     /// kernel above ~65k total elements.
     pub fn laptop() -> Self {
@@ -83,7 +83,7 @@ impl ThresholdTable {
     ///
     /// `transpose` is calibrated per backend at compile time. Under
     /// `hptt` the tiled kernel only crosses over at total element count
-    /// ≥ 4_194_304. Under `--no-default-features` the naive fallback
+    /// ≥ 4_194_304. Without it (the default build), the naive fallback
     /// crosses over much earlier — its parallel kernel beats its own
     /// sequential above ~262_144 total elements. Calibration was
     /// performed on 2D `[n, n]` inputs; the dispatch key is total
