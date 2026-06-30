@@ -22,10 +22,10 @@ pluggability-litmus = []
 test-fixtures = []
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.1" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.2" }
 # Plain dependency: `ariadnetor-native` defaults to no `hptt`, so this stays
 # pure-Rust unless a consumer opts into this crate's `hptt` feature.
-ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.1" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.2" }
 aligned-vec = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
