@@ -2,14 +2,14 @@
 //!
 //! Strategy: hand-chosen analytical inputs (small dim, identity MPO,
 //! product-state MPS or random-but-seeded). The env contract is
-//! pinned via cross-check against `arnet_mps::braket` ground truth.
+//! pinned via cross-check against `ariadnetor_mps::braket` ground truth.
 
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use arnet_linalg::contract;
-use arnet_mps::{Mpo, Mps, TensorChain, braket};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
+use ariadnetor_linalg::contract;
+use ariadnetor_mps::{Mpo, Mps, TensorChain, braket};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -381,7 +381,7 @@ fn env_invalid_site_rejected() {
 fn env_length_mismatch_surfaces_as_error() {
     // Build mismatch: MPS has 3 sites, MPO has 4. Surfaces from
     // build's own length check (the upstream contract failure that
-    // would otherwise come through `arnet_linalg::contract` as
+    // would otherwise come through `ariadnetor_linalg::contract` as
     // `LinalgError`).
     let mps = product_state_mps(3);
     let mpo = identity_mpo(4, 2);

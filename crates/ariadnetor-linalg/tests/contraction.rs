@@ -1,22 +1,22 @@
-//! Contraction tests using arnet_linalg::contract with NativeBackend
+//! Contraction tests using ariadnetor_linalg::contract with NativeBackend
 //!
 //! Migrated from ariadnetor-tensor integration tests after moving
 //! contraction logic to the linalg crate.
 
-use arnet_linalg::{DenseHostOps, einsum_with_backend};
-use arnet_native::NativeBackend;
-use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
+use ariadnetor_linalg::{DenseHostOps, einsum_with_backend};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
     let rm = DenseTensorData::from_raw_parts(data, shape, MemoryOrder::RowMajor);
-    let cm = arnet_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
+    let cm = ariadnetor_tensor::reorder_data(&rm, MemoryOrder::ColumnMajor);
     DenseTensor::from_data(cm)
 }
 
 /// Reorder a `DenseTensor` back to row-major for index-by-index assertions.
 fn to_rm(tensor: &DenseTensor<f64>) -> DenseTensor<f64> {
-    let rm = arnet_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
+    let rm = ariadnetor_tensor::reorder_data(tensor.data(), MemoryOrder::RowMajor);
     DenseTensor::from_data(rm)
 }
 

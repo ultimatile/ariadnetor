@@ -17,10 +17,10 @@
 //!   [`diagonal_scale`] free fns ([`LinalgContract`] / [`LinalgDecompose`] /
 //!   [`LinalgScale`]), so one call serves both Dense and BlockSparse. The
 //!   `*_with_policy` variants add an explicit
-//!   [`ExecPolicy`](arnet_core::backend::ExecPolicy); they are published under
+//!   [`ExecPolicy`](ariadnetor_core::backend::ExecPolicy); they are published under
 //!   bare names through the [`expert`] module (`expert::permute`,
 //!   `expert::contract`, `expert::svd`, …).
-//! - An ergonomic method form on tensors over the default [`Host`](arnet_tensor::Host)
+//! - An ergonomic method form on tensors over the default [`Host`](ariadnetor_tensor::Host)
 //!   substrate via the [`DenseHostOps`] / [`BlockSparseHostOps`] extension
 //!   traits (`t.svd(nrow)` instead of `svd(&backend, &t, nrow)`).
 //!
@@ -70,7 +70,7 @@ pub(crate) mod test_util;
 
 pub mod expert;
 
-pub use arnet_core::backend::ComputeBackend;
+pub use ariadnetor_core::backend::ComputeBackend;
 pub use error::LinalgError;
 
 pub use block_sparse_decomp::{

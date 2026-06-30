@@ -1,7 +1,7 @@
 //! Shared algorithms-level fixtures for DMRG integration tests: U(1)
 //! MPS / MPO chains (`fixtures`) and Dense Heisenberg / random-MPS
 //! builders (`dense_fixtures`). The tensor-layer densify / leg helpers
-//! live in `arnet_tensor::test_fixtures`.
+//! live in `ariadnetor_tensor::test_fixtures`.
 //!
 //! These modules live in a library crate so their `pub` API is rooted
 //! and reachable, letting `dead_code = "forbid"` apply workspace-wide

@@ -11,14 +11,14 @@
 //! returning [`LinalgError`] on mismatch.
 //!
 //! The backend is bound by
-//! [`OpsFor<BlockSparseStorage<T>>`](arnet_tensor::OpsFor): this public surface
+//! [`OpsFor<BlockSparseStorage<T>>`](ariadnetor_tensor::OpsFor): this public surface
 //! is the capability gate, so a backend that has not declared it operates on
 //! block-sparse storage cannot be passed here. Internal kernels stay
 //! `ComputeBackend`-bound; they are reachable only through this gate.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ExecPolicy;
-use arnet_tensor::{BlockSparseStorage, BlockSparseTensor, Direction, OpsFor, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_tensor::{BlockSparseStorage, BlockSparseTensor, Direction, OpsFor, Sector};
 
 use crate::block_sparse_decomp::{
     BlockScalars, BlockSparseEigResult, BlockSparseEighResult, eig_block_sparse_with_policy_dense,

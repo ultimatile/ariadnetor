@@ -33,7 +33,7 @@ EXCLUDED_NAMES = {"tests.rs", "test_util.rs"}
 LITERAL = re.compile(r"MemoryOrder::(?:ColumnMajor|RowMajor)")
 DISPATCH_ARM = re.compile(r"\s*=>")
 # A `reordered(...)` argument, allowing a qualified path before the literal,
-# e.g. `self.reordered(arnet_core::backend::MemoryOrder::RowMajor)`. The 96-char
+# e.g. `self.reordered(ariadnetor_core::backend::MemoryOrder::RowMajor)`. The 96-char
 # look-back below comfortably spans such a prefix.
 REORDERED_ARG = re.compile(r"\.reordered\(\s*(?:\w+\s*::\s*)*$")
 

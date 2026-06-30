@@ -26,9 +26,9 @@
 //! self-adjoint and is trusted away, exactly as dense `eigh` trusts a square
 //! matrix to be Hermitian.
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy};
-use arnet_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy};
+use ariadnetor_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::eigen::eigh_with_policy_dense;
 use crate::error::LinalgError;

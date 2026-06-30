@@ -1,4 +1,4 @@
-use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder, linear_combine};
+use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder, linear_combine};
 
 /// Wrap a `DenseTensorData<T>` into the joined `DenseTensor<T>` surface.
 /// Tests build `DenseTensorData` directly (often with a specific

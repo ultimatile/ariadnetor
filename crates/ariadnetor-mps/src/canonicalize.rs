@@ -1,9 +1,9 @@
 //! Canonicalize: move the orthogonality center of a tensor chain via
 //! QR / LQ sweeps.
 
-use arnet_core::Scalar;
-use arnet_linalg::{lq, qr};
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{lq, qr};
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector,
 };
 

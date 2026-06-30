@@ -24,7 +24,7 @@ rayon = { workspace = true }
 rstest = { workspace = true }
 
 [lib]
-name = "arnet_native"
+name = "ariadnetor_native"
 path = "src/lib.rs"
 
 [lints]

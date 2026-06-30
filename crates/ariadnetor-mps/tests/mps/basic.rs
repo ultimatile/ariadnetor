@@ -1,7 +1,7 @@
 //! MPS/MPO construction, accessors, canonical form, and edge case tests.
 
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
-use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 /// Build a simple 3-site MPS with shapes (1,2,4), (4,2,4), (4,2,1).
 fn make_3site_mps() -> Mps<DenseStorage<f64>, DenseLayout> {

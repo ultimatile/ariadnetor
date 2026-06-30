@@ -4,8 +4,8 @@
 //! preserved, total-element-count panic surface owned by
 //! `TensorData::new`.
 
-use arnet_tensor::{ComputeBackendTensorExt, Host};
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_tensor::{DenseTensor, MemoryOrder};
 
 fn build_2x3_row_major() -> DenseTensor<f64> {
     // The public constructor pins to the preferred (column-major) order, so

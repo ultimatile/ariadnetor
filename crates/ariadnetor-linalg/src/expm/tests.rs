@@ -1,6 +1,6 @@
 use super::{compute_scaling_decision, validate_expm_nrow};
-use arnet_core::backend::MemoryOrder;
-use arnet_tensor::DenseTensorData;
+use ariadnetor_core::backend::MemoryOrder;
+use ariadnetor_tensor::DenseTensorData;
 
 #[test]
 fn validate_expm_nrow_rejects_zero() {

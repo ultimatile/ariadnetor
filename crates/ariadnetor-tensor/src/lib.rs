@@ -27,7 +27,7 @@ mod tensor_data;
 pub mod test_fixtures;
 
 // Re-export from ariadnetor-core
-pub use arnet_core::{
+pub use ariadnetor_core::{
     Complex, ComputeBackend, ContractionError, ContractionPlan, EinsumExpr, MemoryOrder, Scalar,
     compute_permutation,
 };
@@ -47,10 +47,10 @@ pub use storage::Storage;
 pub use tensor::{BlockSparseTensor, DenseTensor, Tensor};
 pub use tensor_data::TensorData;
 
-// Re-export the native backend so users importing arnet_tensor for
+// Re-export the native backend so users importing ariadnetor_tensor for
 // `DenseTensor` / `BlockSparseTensor` constructors get its default
 // backend without a separate crate import.
-pub use arnet_native::NativeBackend;
+pub use ariadnetor_native::NativeBackend;
 
 /// Extension trait for backend-aware tensor construction.
 ///

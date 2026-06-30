@@ -18,8 +18,8 @@
 //!    match the psi template derived from the MPS sites at
 //!    `(site, site+1)`.
 //! 2. **Contract** through the env / W tensors using
-//!    [`arnet_linalg::tensordot`] in four steps. The
-//!    axis convention mirrors `arnet_mps::inner::braket_bsp` and
+//!    [`ariadnetor_linalg::tensordot`] in four steps. The
+//!    axis convention mirrors `ariadnetor_mps::inner::braket_bsp` and
 //!    the Phase 6.1 `extend_*_step` kernels; the natural output
 //!    order `lhs_free | rhs_free` ends in
 //!    `[chi_l, d_i, d_{i+1}, chi_r]`, matching the input shape with
@@ -43,10 +43,10 @@ mod tests;
 
 pub(crate) use operator::EffectiveHamiltonian2SiteBlockSparse;
 
-use arnet_core::Scalar;
-use arnet_linalg::{BlockScalars, TruncSvdParams, trunc_svd};
-use arnet_mps::{Mpo, Mps};
-use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Host, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{BlockScalars, TruncSvdParams, trunc_svd};
+use ariadnetor_mps::{Mpo, Mps};
+use ariadnetor_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Host, Sector};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;

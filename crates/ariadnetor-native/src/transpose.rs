@@ -8,9 +8,9 @@
 //! the `hptt` feature, so the naive kernel is compiled only when HPTT is absent.
 
 #[cfg(not(feature = "hptt"))]
-use arnet_core::Scalar;
-use arnet_core::backend::ExecPolicy;
-use arnet_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
 #[cfg(not(feature = "hptt"))]
 use rayon::prelude::*;
 

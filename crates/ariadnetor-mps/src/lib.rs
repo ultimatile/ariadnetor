@@ -1,7 +1,7 @@
 //! Matrix Product State (MPS) and Matrix Product Operator (MPO) crate.
 //!
-//! Builds on [`arnet_tensor`] for tensor storage and [`arnet_linalg`]
-//! for linear algebra. Consumed by `arnet_algorithms`.
+//! Builds on [`ariadnetor_tensor`] for tensor storage and [`ariadnetor_linalg`]
+//! for linear algebra. Consumed by `ariadnetor_algorithms`.
 //!
 //! # Index convention
 //!
@@ -34,4 +34,4 @@ pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use types::{ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
 
 // Re-export TruncSvdParams for convenience
-pub use arnet_linalg::TruncSvdParams;
+pub use ariadnetor_linalg::TruncSvdParams;

@@ -121,7 +121,7 @@ where
 
 impl<T> BlockSparseStorage<T>
 where
-    T: arnet_core::Scalar,
+    T: ariadnetor_core::Scalar,
 {
     /// Total number of stored elements across all blocks (= length of
     /// the flat packed buffer).

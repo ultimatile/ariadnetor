@@ -7,11 +7,11 @@
 //! through it.
 //!
 //! [`super::DmrgOps`] is sealed separately — transitively — through its
-//! `arnet_mps::MpsOps` supertrait, which is itself sealed, so it needs no
+//! `ariadnetor_mps::MpsOps` supertrait, which is itself sealed, so it needs no
 //! impl here.
 
-use arnet_core::Scalar;
-use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector};
 
 use super::env::DmrgEnvs;
 

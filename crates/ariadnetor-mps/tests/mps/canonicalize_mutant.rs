@@ -5,8 +5,8 @@
 //! properties and state preservation with exact assertions.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{self as mps, CanonicalForm, Mps, TensorChain};
-use arnet_native::NativeBackend;
+use ariadnetor_mps::{self as mps, CanonicalForm, Mps, TensorChain};
+use ariadnetor_native::NativeBackend;
 
 use super::helpers::{
     cm_dense_tensor, is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense,

@@ -1,6 +1,6 @@
 //! Tests for concatenate and stack operations.
 
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 
 #[test]
 fn test_concatenate_column_major_axis0() {

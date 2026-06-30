@@ -1,4 +1,4 @@
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 

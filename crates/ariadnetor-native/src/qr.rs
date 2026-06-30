@@ -1,6 +1,6 @@
 //! QR decomposition implementations via faer for all supported scalar types
 
-use arnet_core::backend::{BackendError, QrDescriptor};
+use ariadnetor_core::backend::{BackendError, QrDescriptor};
 use faer::dyn_stack::{MemBuffer, MemStack};
 use faer::linalg::householder::{
     apply_block_householder_sequence_on_the_left_in_place_scratch,

@@ -4,7 +4,7 @@
 //! - norm: Frobenius norm (sqrt(sum|element|^2))
 //! - normalize: Divide by norm and return the norm value
 
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 use num_complex::Complex;
 
 const EPSILON: f64 = 1e-10;

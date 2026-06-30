@@ -13,14 +13,14 @@
 //! tests plus the BlockSparse `sweep_2site` validation suite.
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
-use arnet_algorithms::dmrg::{
+use ariadnetor_algorithms::dmrg::{
     DmrgEnvs, DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
 };
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::{DenseLayout, DenseStorage};
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{DenseLayout, DenseStorage};
 
 fn small_params(seed: u64) -> DmrgSweepParams {
     DmrgSweepParams {

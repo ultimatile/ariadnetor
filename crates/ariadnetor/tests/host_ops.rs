@@ -1,14 +1,14 @@
 //! Umbrella-surface test for the Host-defaulting method traits.
 //!
-//! Verifies the User-API path end to end: both traits import from `arnet`
+//! Verifies the User-API path end to end: both traits import from `ariadnetor`
 //! and their methods resolve on tensors built through the umbrella types,
 //! with no backend handle at the call site.
 
-use arnet::{
+use ariadnetor::{
     BlockCoord, BlockSparseHostOps, BlockSparseSvdResult, BlockSparseTensor, DenseHostOps,
     DenseTensor, U1Sector,
 };
-use arnet_tensor::test_fixtures::square_legs;
+use ariadnetor_tensor::test_fixtures::square_legs;
 
 #[test]
 fn dense_methods_resolve_through_umbrella() {
@@ -41,7 +41,7 @@ fn block_sparse_methods_resolve_through_umbrella() {
     assert_eq!(out.shape(), t.shape());
 
     // `BlockSparseHostOps::svd` returns the `(U, S, Vt)` alias; binding it with
-    // an explicit `arnet::`-qualified type is the load-bearing assertion here —
+    // an explicit `ariadnetor::`-qualified type is the load-bearing assertion here —
     // it fails to compile unless the result alias is re-exported. This alias is
     // the part newly re-exported by this change (the dense aliases already
     // were). The shape check below is only a smoke test that the call ran.

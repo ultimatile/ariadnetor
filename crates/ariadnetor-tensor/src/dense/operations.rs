@@ -4,7 +4,7 @@ use num_traits::Zero;
 use std::ops::{Add, Mul, MulAssign};
 
 use crate::{DenseLayout, DenseTensorData, TensorData, TensorError};
-use arnet_core::MemoryOrder;
+use ariadnetor_core::MemoryOrder;
 
 impl<T> DenseTensorData<T>
 where

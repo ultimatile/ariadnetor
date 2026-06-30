@@ -46,7 +46,7 @@ name = "dense_tensor_scalar_ops"
 harness = false
 
 [lib]
-name = "arnet_tensor"
+name = "ariadnetor_tensor"
 path = "src/lib.rs"
 
 [lints]

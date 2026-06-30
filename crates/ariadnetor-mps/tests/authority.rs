@@ -18,22 +18,22 @@
 //! (the MPO-MPS contraction) — are the load-bearing cases and are the
 //! ones exercised below.
 
-use arnet_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use arnet_core::backend::{
+use ariadnetor_core::backend::{
     BackendError, DeviceType, EigDescriptor, EighDescriptor, GemmDescriptor, LqDescriptor,
     MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor, TransposeDescriptor,
 };
-use arnet_core::{ComputeBackend, Scalar};
-use arnet_linalg::TruncSvdParams;
-use arnet_mps::{
+use ariadnetor_core::{ComputeBackend, Scalar};
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::{
     ApplyMethod, CanonicalForm, Mpo, Mps, TensorChain, TruncateParams, apply, apply_with_method,
 };
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
     DenseStorage, DenseTensor, Direction, OpsFor, U1Sector,
 };

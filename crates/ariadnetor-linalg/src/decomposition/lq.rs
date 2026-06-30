@@ -1,8 +1,8 @@
 //! LQ decomposition pub fns + crate-internal `DenseTensorData<T>` kernels.
 
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, ExecPolicy, LqDescriptor};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, LqDescriptor};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 
 use super::reshape_for_backend;
 use crate::error::LinalgError;

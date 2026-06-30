@@ -2,7 +2,7 @@
 //!
 //! Each env slot carries a rank-3 tensor of shape `(top-bra-bond,
 //! W-bond, bot-ket-bond)` matching the axis convention used by the
-//! `arnet_mps::inner` braket family. Boundary slots (`left[0]` and
+//! `ariadnetor_mps::inner` braket family. Boundary slots (`left[0]` and
 //! `right[N]`) hold the trivial 1×1×1 identity tensor; for the
 //! BlockSparse variant they additionally carry QNIndex / direction /
 //! flux metadata (`flux = S::identity()`).
@@ -22,10 +22,12 @@
 //! by the BlockSparse boundary; for the Dense path the helpers always
 //! succeed.
 
-use arnet_core::Scalar;
-use arnet_linalg::{LinalgError, contract};
-use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_tensor::{DenseLayout, DenseStorage, Host, Storage, StorageFor, Tensor, TensorLayout};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{LinalgError, contract};
+use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_tensor::{
+    DenseLayout, DenseStorage, Host, Storage, StorageFor, Tensor, TensorLayout,
+};
 
 /// Errors raised by [`DmrgEnvs`] construction and advance operations.
 #[derive(Debug, thiserror::Error)]
@@ -64,7 +66,7 @@ pub enum DmrgEnvError {
         /// Index of the stale (`None`) env slot.
         index: usize,
     },
-    /// An underlying `arnet_linalg::contract` call failed. The
+    /// An underlying `ariadnetor_linalg::contract` call failed. The
     /// source is preserved so callers see the real cause (dimension
     /// mismatch, backend failure, etc.) rather than a panic.
     #[error("contract failure during DMRG environment update")]
@@ -121,7 +123,7 @@ pub trait DmrgEnvOps<T: Scalar>: super::sealed::Sealed {
     /// Layout type paired with this env chain.
     type Layout: TensorLayout;
     /// Storage type paired with this env chain (mirrors the
-    /// `arnet_mps::MpsOps::Storage` association).
+    /// `ariadnetor_mps::MpsOps::Storage` association).
     type Storage: Storage + StorageFor<Self::Layout>;
 
     /// Build the trivial L boundary tensor sitting just left of site 0.
@@ -177,7 +179,7 @@ impl<T: Scalar> DmrgEnvOps<T> for DmrgEnvs<DenseStorage<T>, DenseLayout> {
     }
 
     /// Per-site left extension for the Dense chain. Mirrors the loop
-    /// body of `arnet_mps::inner::braket_dense`: bra = `site.conj()`,
+    /// body of `ariadnetor_mps::inner::braket_dense`: bra = `site.conj()`,
     /// then a 3-step contraction `(env, bra) → (·, mpo) → (·, site)`.
     fn extend_left_step(
         env: &Tensor<Self::Storage, Self::Layout>,
@@ -209,7 +211,7 @@ fn make_dense_one<T>() -> Tensor<DenseStorage<T>, DenseLayout>
 where
     T: Scalar,
 {
-    arnet_tensor::DenseTensor::<T>::ones(vec![1, 1, 1])
+    ariadnetor_tensor::DenseTensor::<T>::ones(vec![1, 1, 1])
 }
 
 // ============================================================================

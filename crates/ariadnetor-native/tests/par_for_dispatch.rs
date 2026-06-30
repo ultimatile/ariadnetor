@@ -6,8 +6,8 @@
 //! block verifies that sentinel (`usize::MAX`) thresholds always resolve
 //! to Sequential regardless of input size.
 
-use arnet_core::backend::{ComputeBackend, ExecPolicy};
-use arnet_native::{NativeBackend, PerformanceManager, ThresholdTable};
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy};
+use ariadnetor_native::{NativeBackend, PerformanceManager, ThresholdTable};
 
 /// Construct a backend whose every threshold is pinned to a known value,
 /// so each `par_for_*` boundary is individually testable.

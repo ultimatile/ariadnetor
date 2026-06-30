@@ -5,10 +5,10 @@
 //! error accumulation arithmetic, and isometry verification.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{
+use ariadnetor_mps::{
     self as mps, CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams,
 };
-use arnet_native::NativeBackend;
+use ariadnetor_native::NativeBackend;
 
 use super::helpers::{
     cm_dense_tensor, is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense,

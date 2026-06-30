@@ -4,26 +4,26 @@
 # EXACT paths, no globs: any widening of the public surface — an added type,
 # a leak, or a new alias laundering a lower-layer type — surfaces as a diff
 # here. ariadnetor-native is a dev-dependency only, so no native type may
-# appear; the absence of any arnet_native entry is the enforced invariant.
+# appear; the absence of any ariadnetor_native entry is the enforced invariant.
 allowed_external_types = [
-    "arnet_core::backend::BackendError",
-    "arnet_core::backend::ComputeBackend",
-    "arnet_core::backend::ExecPolicy",
-    "arnet_core::scalar::Scalar",
-    "arnet_tensor::block_sparse::Direction",
-    "arnet_tensor::block_sparse::storage::BlockSparseStorage",
-    "arnet_tensor::capability::OpsFor",
-    "arnet_tensor::dense::storage::DenseStorage",
-    "arnet_tensor::error::TensorError",
-    "arnet_tensor::sector::Sector",
+    "ariadnetor_core::backend::BackendError",
+    "ariadnetor_core::backend::ComputeBackend",
+    "ariadnetor_core::backend::ExecPolicy",
+    "ariadnetor_core::scalar::Scalar",
+    "ariadnetor_tensor::block_sparse::Direction",
+    "ariadnetor_tensor::block_sparse::storage::BlockSparseStorage",
+    "ariadnetor_tensor::capability::OpsFor",
+    "ariadnetor_tensor::dense::storage::DenseStorage",
+    "ariadnetor_tensor::error::TensorError",
+    "ariadnetor_tensor::sector::Sector",
     # The sealed dispatch traits keep `type Storage: Storage`, exposing this
-    # arnet_tensor storage trait (same layer; mirrors the `MpsOps` bound shape).
-    "arnet_tensor::storage::Storage",
+    # ariadnetor_tensor storage trait (same layer; mirrors the `MpsOps` bound shape).
+    "ariadnetor_tensor::storage::Storage",
     # The tensor-keyed dispatch traits (svd / trunc_svd / qr / lq / contract /
     # diagonal_scale) take `&Self` and return `Tensor` outputs, so the generic
     # form of the already-allowed `DenseTensor` / `BlockSparseTensor` aliases
     # appears in the public API.
-    "arnet_tensor::tensor::Tensor",
-    "arnet_tensor::tensor::BlockSparseTensor",
-    "arnet_tensor::tensor::DenseTensor",
+    "ariadnetor_tensor::tensor::Tensor",
+    "ariadnetor_tensor::tensor::BlockSparseTensor",
+    "ariadnetor_tensor::tensor::DenseTensor",
 ]

@@ -8,8 +8,8 @@
 //! `product_state_mps` / `identity_mpo` are the minimal fixtures shared
 //! across the submodules; richer per-test builders stay local to each.
 
-use arnet_mps::{Mpo, Mps};
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_mps::{Mpo, Mps};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
 mod error_paths;
 mod predicate_coverage;

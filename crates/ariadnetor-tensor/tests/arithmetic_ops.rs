@@ -4,7 +4,7 @@
 //! - scale: scalar multiplication
 //! - linear_combine: linear combination of tensors
 
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 use num_complex::Complex;
 
 // ============================================================================

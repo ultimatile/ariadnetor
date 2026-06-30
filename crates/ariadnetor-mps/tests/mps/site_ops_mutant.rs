@@ -4,9 +4,9 @@
 //! SpinHalf::dim, SpinHalf::sz negation, and Qubit y/z/h sign patterns.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{Qubit, SiteOps, SpinHalf};
-use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use ariadnetor_mps::{Qubit, SiteOps, SpinHalf};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::DenseTensor;
 
 // --------------------------------------------------------------------------
 // SpinHalf::dim — catch mutant replacing 2 with 0 or 1
@@ -80,7 +80,7 @@ fn test_qubit_y_f64_sign_pattern() {
 
 #[test]
 fn test_qubit_y_complex_signs() {
-    use arnet_core::Complex;
+    use ariadnetor_core::Complex;
     let y = Qubit.y::<Complex<f64>>();
     // (0,0) = 0
     assert_abs_diff_eq!(cm_get(&y, 0, 0).re, 0.0, epsilon = 1e-15);
@@ -107,9 +107,9 @@ fn test_qubit_y_complex_signs() {
 #[test]
 fn test_qubit_y_squared_is_identity_complex() {
     // Y^2 = I — catches sign-flip mutants in both (0,1) and (1,0)
-    use arnet_core::Complex;
+    use ariadnetor_core::Complex;
     let y = Qubit.y::<Complex<f64>>();
-    let y2 = arnet_linalg::contract(&NativeBackend::new(), &y, &y, "ij,jk->ik").unwrap();
+    let y2 = ariadnetor_linalg::contract(&NativeBackend::new(), &y, &y, "ij,jk->ik").unwrap();
     let id = Qubit.id::<Complex<f64>>();
     for i in 0..2 {
         for j in 0..2 {
@@ -141,7 +141,7 @@ fn test_qubit_z_exact_diagonal() {
 fn test_qubit_z_squared_is_identity() {
     // Z^2 = I — catches sign flip on (1,1)
     let z = Qubit.z::<f64>();
-    let z2 = arnet_linalg::contract(&NativeBackend::new(), &z, &z, "ij,jk->ik").unwrap();
+    let z2 = ariadnetor_linalg::contract(&NativeBackend::new(), &z, &z, "ij,jk->ik").unwrap();
     let id = Qubit.id::<f64>();
     for i in 0..2 {
         for j in 0..2 {
@@ -175,7 +175,7 @@ fn test_qubit_h_exact_signs() {
 fn test_qubit_h_is_unitary() {
     // H^T H = I for real Hadamard — catches any wrong sign
     let h = Qubit.h::<f64>();
-    let hth = arnet_linalg::contract(&NativeBackend::new(), &h, &h, "ab,ac->bc").unwrap();
+    let hth = ariadnetor_linalg::contract(&NativeBackend::new(), &h, &h, "ab,ac->bc").unwrap();
     for i in 0..2 {
         for j in 0..2 {
             let expected = if i == j { 1.0 } else { 0.0 };

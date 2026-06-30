@@ -11,10 +11,10 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 
-use arnet_linalg::{DenseHostOps, TruncSvdParams, lq, qr, svd, tensordot, trunc_svd};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::{legs, square_legs};
-use arnet_tensor::{BlockSparseTensor, DenseTensor, Direction, U1Sector};
+use ariadnetor_linalg::{DenseHostOps, TruncSvdParams, lq, qr, svd, tensordot, trunc_svd};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::{legs, square_legs};
+use ariadnetor_tensor::{BlockSparseTensor, DenseTensor, Direction, U1Sector};
 
 // ---------------------------------------------------------------------------
 // Helpers

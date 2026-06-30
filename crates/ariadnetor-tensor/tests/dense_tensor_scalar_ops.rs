@@ -2,7 +2,7 @@
 //! `DenseTensor` surface (`scaled`, `norm`, `normalized`). The
 //! `DenseTensorData::*` form is covered separately in `normalize_ops.rs`.
 
-use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Wrap a `DenseTensorData<T>` (built with a specific `MemoryOrder`
 /// distinct from the host preferred order in some tests) into the joined

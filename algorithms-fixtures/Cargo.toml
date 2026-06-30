@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 ariadnetor-core = { path = "../crates/ariadnetor-core" }
-# `test-fixtures` exposes `arnet_tensor::test_fixtures::legs`, which
+# `test-fixtures` exposes `ariadnetor_tensor::test_fixtures::legs`, which
 # `fixtures.rs` builds its MPS / MPO legs onto.
 ariadnetor-tensor = { path = "../crates/ariadnetor-tensor", features = ["test-fixtures"] }
 ariadnetor-native = { path = "../crates/ariadnetor-native" }

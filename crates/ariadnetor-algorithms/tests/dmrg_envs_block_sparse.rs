@@ -7,10 +7,10 @@
 //! malformed right edge, flux-disallowed boundary block, length
 //! mismatch, empty chain).
 
-use arnet_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
+use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
     DenseLayout, DenseStorage, DenseTensor, Direction, Host, Sector, U1Sector,
 };
@@ -102,8 +102,8 @@ fn densify_bsp(bsp: &BlockSparseTensor<f64, U1Sector>) -> DenseTensor<f64> {
 
 // ---------------------------------------------------------------------------
 // Synthetic 4-site U(1) MPS with deterministic per-block distinct values.
-// Bond structure mirrors arnet-mps's private make_4site_u1_mps fixture but
-// is inlined here (the helper is not exposed by arnet_mps's public API).
+// Bond structure mirrors ariadnetor-mps's private make_4site_u1_mps fixture but
+// is inlined here (the helper is not exposed by ariadnetor_mps's public API).
 // ---------------------------------------------------------------------------
 
 fn make_u1_mps_site(

@@ -3,12 +3,12 @@
 
 use std::num::NonZeroUsize;
 
-use arnet_core::Scalar;
-use arnet_linalg::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{
     TruncSvdParams, contract, diagonal_scale, fuse_legs_block_sparse_with_backend,
     permute_block_sparse_with_backend, qr, tensordot, trunc_svd,
 };
-use arnet_tensor::{
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
     DenseTensor, Direction, OpsFor, Sector,
 };

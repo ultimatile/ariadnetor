@@ -1,6 +1,6 @@
 //! LQ decomposition implementations via adjoint -> QR -> adjoint for all supported scalar types
 
-use arnet_core::backend::{BackendError, LqDescriptor};
+use ariadnetor_core::backend::{BackendError, LqDescriptor};
 use faer::dyn_stack::{MemBuffer, MemStack};
 use faer::linalg::householder::{
     apply_block_householder_sequence_on_the_left_in_place_scratch,

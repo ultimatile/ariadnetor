@@ -1,7 +1,7 @@
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::{legs, square_legs};
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector, Z2Sector};
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::{legs, square_legs};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction, U1Sector, Z2Sector};
 
 use super::permute_block_sparse_dense;
 

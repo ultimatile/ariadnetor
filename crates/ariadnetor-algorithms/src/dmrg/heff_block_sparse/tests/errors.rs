@@ -6,21 +6,21 @@ use crate::dmrg::heff_block_sparse::{
 };
 use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::{LanczosParams, LinearOp};
-use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, TensorChain};
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::{Mpo, TensorChain};
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensor, ComputeBackendTensorExt, Direction, Host, Sector, U1Sector,
 };
 use num_complex::Complex;
 
-use arnet_mps::Mps;
+use ariadnetor_mps::Mps;
 
 use super::fixtures::{
     make_n2_mpo_c64, make_n2_mpo_f64, make_n2_mps_c64, make_n2_mps_f64, make_n3_mpo_f64,
     make_n3_mps_f64,
 };
-use arnet_tensor::test_fixtures::densify_bsp_c64;
+use ariadnetor_tensor::test_fixtures::densify_bsp_c64;
 
 #[test]
 fn bsp_heff_step_error_paths_invalid_site() {
@@ -161,7 +161,7 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
         U1Sector(2),
     );
 
-    let mps = arnet_mps::Mps::from_sites(vec![mps0, mps1]);
+    let mps = ariadnetor_mps::Mps::from_sites(vec![mps0, mps1]);
 
     // Minimal MPO with dim-1 / single-sector edge bonds satisfying
     // the Phase 6.1 boundary contract. Identity propagator on the
@@ -186,7 +186,7 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
         U1Sector::identity(),
     );
     w1.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
-    let mpo = arnet_mps::Mpo::from_sites(vec![w0, w1]);
+    let mpo = ariadnetor_mps::Mpo::from_sites(vec![w0, w1]);
 
     let envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
 

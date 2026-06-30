@@ -16,15 +16,15 @@
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_center_zero_f64};
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::dmrg::{
+use ariadnetor_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_core::Scalar;
-use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps, braket};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::{Mpo, Mps, braket};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

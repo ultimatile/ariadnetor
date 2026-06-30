@@ -1,10 +1,12 @@
-use arnet_core::Scalar;
-use arnet_core::backend::{ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder};
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{
+    ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder,
+};
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
-use arnet_tensor::reorder_data;
+use ariadnetor_tensor::reorder_data;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///

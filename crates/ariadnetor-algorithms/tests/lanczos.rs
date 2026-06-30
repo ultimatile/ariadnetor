@@ -2,14 +2,14 @@
 //!
 //! Validation strategy: build a small dense Hermitian matrix, drive
 //! the solver via a closure that does a matrix-vector product, and
-//! compare against `arnet_linalg::eigh` ground truth.
+//! compare against `ariadnetor_linalg::eigh` ground truth.
 
 use approx::assert_abs_diff_eq;
-use arnet_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
-use arnet_core::Scalar;
-use arnet_linalg::eigh_with_backend;
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
+use ariadnetor_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::eigh_with_backend;
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

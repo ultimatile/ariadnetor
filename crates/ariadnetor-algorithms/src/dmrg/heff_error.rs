@@ -7,7 +7,7 @@
 //! Dense `heff.rs` under the per-file size cap as the operator + the
 //! ARPACK arm grow.
 
-use arnet_linalg::LinalgError;
+use ariadnetor_linalg::LinalgError;
 
 #[cfg(feature = "arpack")]
 use crate::krylov::ArpackError;
@@ -122,7 +122,7 @@ pub enum DmrgHeffError {
         /// Human-readable summary of the offending vs expected layout order.
         detail: String,
     },
-    /// An underlying `arnet` linalg call (currently the truncated
+    /// An underlying `ariadnetor` linalg call (currently the truncated
     /// SVD) failed. The matvec body itself is shape-validated up
     /// front and never reaches this branch.
     #[error("linalg failure during two-site DMRG step")]

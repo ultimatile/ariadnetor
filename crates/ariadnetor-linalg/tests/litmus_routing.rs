@@ -11,10 +11,10 @@
 //! When the feature is off the whole file compiles to nothing.
 #![cfg(feature = "pluggability-litmus")]
 
-use arnet_core::backend::ComputeBackend;
-use arnet_linalg::DenseHostOps;
-use arnet_tensor::ComputeBackendTensorExt;
-use arnet_tensor::{DenseTensor, Host};
+use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_linalg::DenseHostOps;
+use ariadnetor_tensor::ComputeBackendTensorExt;
+use ariadnetor_tensor::{DenseTensor, Host};
 
 #[test]
 fn host_ergonomic_op_routes_through_aliased_substrate() {

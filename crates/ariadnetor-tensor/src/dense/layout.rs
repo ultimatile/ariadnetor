@@ -5,7 +5,7 @@
 //! [`DenseTensorData<T>`](crate::DenseTensorData) joins the two with a
 //! length-consistency check.
 
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 
 use crate::TensorLayout;
 

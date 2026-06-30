@@ -1,8 +1,8 @@
 //! Lanczos iteration for the smallest eigenvalue / eigenvector
 //! of a Hermitian linear operator, with full reorthogonalization.
 
-use arnet_core::Scalar;
-use arnet_tensor::{ComputeBackendTensorExt, DenseTensor, Host, linear_combine};
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host, linear_combine};
 use num_traits::{Float, One, ToPrimitive, Zero};
 use rand::SeedableRng;
 use rand::rngs::{StdRng, SysRng};

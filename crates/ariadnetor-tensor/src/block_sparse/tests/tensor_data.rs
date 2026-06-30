@@ -2,7 +2,7 @@
 //! split: constructor surface visibility, logical-vs-storage extent
 //! distinction, and scalar-only storage operations placement.
 
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 
 use crate::block_sparse::{BlockCoord, BlockSparseLayout, BlockSparseTensorData, Direction};
 use crate::sector::U1Sector;

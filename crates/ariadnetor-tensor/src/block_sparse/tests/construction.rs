@@ -3,7 +3,7 @@
 //! `random` constructors, basic accessors, and CoW semantics on
 //! `block_data_mut`.
 
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 use rand::SeedableRng;
 
 use crate::block_sparse::*;

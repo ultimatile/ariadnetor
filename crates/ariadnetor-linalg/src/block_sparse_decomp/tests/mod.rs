@@ -1,8 +1,8 @@
-use arnet_core::backend::{ComputeBackend, MemoryOrder};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::{legs, out_in_legs, square_legs};
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Direction};
-use arnet_tensor::{U1Sector, Z2Sector};
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::{legs, out_in_legs, square_legs};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction};
+use ariadnetor_tensor::{U1Sector, Z2Sector};
 
 use super::*;
 

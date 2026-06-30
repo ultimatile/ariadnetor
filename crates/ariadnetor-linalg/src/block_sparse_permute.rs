@@ -3,9 +3,9 @@
 //! Permutes the leg order of a `BlockSparseTensor<T, S>` tensor by
 //! reordering indices, block coordinates, and transposing each block's data.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Sector};
 
 use crate::block_sparse_contract::transpose_block_data;
 use crate::error::LinalgError;

@@ -13,14 +13,14 @@
 //! contract promises no eigenvalue ordering), with eigenvectors verified by
 //! residual.
 
-use arnet_core::Complex;
-use arnet_core::backend::MemoryOrder;
-use arnet_tensor::test_fixtures::square_legs;
-use arnet_tensor::{
+use ariadnetor_core::Complex;
+use ariadnetor_core::backend::MemoryOrder;
+use ariadnetor_tensor::test_fixtures::square_legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensor, BlockSparseTensorData, DenseTensor, Direction, NativeBackend,
     U1Sector,
 };
-use arnet_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 
 use crate::*;
 

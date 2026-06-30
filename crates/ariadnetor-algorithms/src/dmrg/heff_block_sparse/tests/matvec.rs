@@ -8,15 +8,15 @@ use crate::dmrg::heff_block_sparse::{
 };
 use crate::dmrg::{DmrgEnvs, LocalEigensolverParams};
 use crate::krylov::{LanczosParams, LinearOp};
-use arnet_linalg::{TruncSvdParams, eigh_with_backend};
-use arnet_mps::TensorChain;
-use arnet_native::NativeBackend;
-use arnet_tensor::MemoryOrder;
-use arnet_tensor::{ComputeBackendTensorExt, Host};
-use arnet_tensor::{Sector, U1Sector};
+use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_mps::TensorChain;
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::MemoryOrder;
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_tensor::{Sector, U1Sector};
 
 use super::fixtures::{make_n2_mpo_f64, make_n2_mps_f64, make_n3_mpo_f64, make_n3_mps_f64};
-use arnet_tensor::test_fixtures::{
+use ariadnetor_tensor::test_fixtures::{
     build_dense_psi_from_flat, dense_to_template_flat, densify_bsp_f64, template_block_offsets,
     template_from_mps_pair,
 };

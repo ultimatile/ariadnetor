@@ -7,7 +7,7 @@
 use num_traits::Zero;
 
 use crate::DenseTensorData;
-use arnet_core::MemoryOrder;
+use ariadnetor_core::MemoryOrder;
 
 use super::{compute_strides_column_usize, compute_strides_usize};
 

@@ -15,8 +15,8 @@
 //! order than its `DenseTensorData::order()` claims — surfaces as a numerical
 //! mismatch rather than silently propagating downstream.
 
-use arnet_linalg::DenseHostOps;
-use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder, reorder_data};
+use ariadnetor_linalg::DenseHostOps;
+use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder, reorder_data};
 
 /// Build a `DenseTensor` from conceptual row-major data, reordered to CM.
 fn cm(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {

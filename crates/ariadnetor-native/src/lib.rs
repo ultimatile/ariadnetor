@@ -19,8 +19,8 @@ mod transpose;
 
 use std::sync::{Arc, OnceLock};
 
-use arnet_core::Scalar;
-use arnet_core::backend::{
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{
     BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
     GemmDescriptor, LqDescriptor, MemoryOrder, OpDesc, QrDescriptor, ScalarKernels,
     SolveDescriptor, SvdDescriptor, TransposeDescriptor,

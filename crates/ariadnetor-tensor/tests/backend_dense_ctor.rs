@@ -3,7 +3,7 @@
 //! the preferred-order tagging so the convenience constructor cannot
 //! drift from the explicit two-step it replaces.
 
-use arnet_tensor::{ComputeBackend, ComputeBackendTensorExt, DenseTensor, Host};
+use ariadnetor_tensor::{ComputeBackend, ComputeBackendTensorExt, DenseTensor, Host};
 
 #[test]
 fn dense_matches_explicit_from_data_make_tensor() {

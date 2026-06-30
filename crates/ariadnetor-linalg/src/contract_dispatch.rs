@@ -1,8 +1,8 @@
 //! Tensor-keyed dispatch for two-operand tensor contraction.
 //!
 //! [`LinalgContract`] is implemented on the concrete tensor types
-//! ([`Tensor<DenseStorage<T>, DenseLayout>`](arnet_tensor::Tensor) and
-//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](arnet_tensor::Tensor))
+//! ([`Tensor<DenseStorage<T>, DenseLayout>`](ariadnetor_tensor::Tensor) and
+//! [`Tensor<BlockSparseStorage<T>, BlockSparseLayout<S>>`](ariadnetor_tensor::Tensor))
 //! and pairs a storage type via [`LinalgContract::Storage`], routing to its
 //! storage-specific kernel. Callers parameterized over `Tn: LinalgContract<T>`
 //! issue one generic `contract(backend, &lhs, &rhs, notation)` call that serves
@@ -35,10 +35,10 @@
 //! and the policy-explicit form is published under a bare name through
 //! [`crate::expert`].
 
-use arnet_core::Scalar;
-use arnet_core::backend::ExecPolicy;
-use arnet_core::compute_permutation;
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_core::compute_permutation;
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
     Tensor,
 };

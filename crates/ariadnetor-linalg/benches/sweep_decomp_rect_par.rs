@@ -22,10 +22,10 @@ use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 
-use arnet_core::backend::ExecPolicy;
-use arnet_linalg::expert::{lq, qr, svd};
-use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_linalg::expert::{lq, qr, svd};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::DenseTensor;
 
 fn random_rect(m: usize, n: usize, seed: u64) -> DenseTensor<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);

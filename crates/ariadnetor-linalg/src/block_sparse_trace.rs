@@ -24,9 +24,9 @@
 //! accumulated into its free-leg sub-coordinate, so several traced sectors fold
 //! into one output block.
 
-use arnet_core::Scalar;
-use arnet_core::backend::ComputeBackend;
-use arnet_tensor::{BlockCoord, BlockSparseTensorData, DenseTensorData, Sector, reorder_data};
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, DenseTensorData, Sector, reorder_data};
 
 use crate::error::LinalgError;
 use crate::scalar_ops::{trace_dense, validate_trace_pairs};

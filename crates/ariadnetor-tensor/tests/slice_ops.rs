@@ -1,6 +1,6 @@
 //! Tests for slice operations.
 
-use arnet_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
 
 #[test]
 fn test_slice_column_major() {

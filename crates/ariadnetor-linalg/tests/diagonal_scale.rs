@@ -1,7 +1,7 @@
 //! Tests for diagonal_scale.
 
-use arnet_linalg::DenseHostOps;
-use arnet_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
+use ariadnetor_linalg::DenseHostOps;
+use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Wrap a `DenseTensorData<f64>` into a `DenseTensor` so the new pub API accepts it.
 fn t(d: DenseTensorData<f64>) -> DenseTensor<f64> {

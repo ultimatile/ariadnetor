@@ -6,14 +6,14 @@
 //! backend, so no owned handle is needed.
 //!
 //! The dense operation surface is gated by
-//! [`OpsFor<DenseStorage<T>>`](arnet_tensor::OpsFor): a backend that has not
+//! [`OpsFor<DenseStorage<T>>`](ariadnetor_tensor::OpsFor): a backend that has not
 //! declared it operates on dense storage cannot be passed here. Internal
 //! kernels stay `ComputeBackend`-bound; they are reachable only through this
 //! gate. `diagonal_scale` dispatches over the tensor type via
 //! [`LinalgScale`](crate::LinalgScale) and lives in `scale_dispatch`, not here.
 
-use arnet_core::Scalar;
-use arnet_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor};
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
 use crate::eigen::{EigResult, EighResult, eig_dense, eigh_dense};
 use crate::einsum::einsum_dense;

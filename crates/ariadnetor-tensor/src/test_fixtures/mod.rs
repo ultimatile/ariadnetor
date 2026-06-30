@@ -5,7 +5,7 @@
 //! crate's own in-lib unit tests reach it as `crate::test_fixtures` under
 //! `cfg(test)`, while every other crate's tests enable the `test-fixtures`
 //! feature in their dev-dependencies and reach it as
-//! `arnet_tensor::test_fixtures`. A separate fixture crate cannot serve the
+//! `ariadnetor_tensor::test_fixtures`. A separate fixture crate cannot serve the
 //! in-lib unit tests: a dev-dependency cycle would link the non-test build of
 //! this crate, whose `Sector` / `QNIndex` types are a distinct instance from
 //! the `cfg(test)` build under test.

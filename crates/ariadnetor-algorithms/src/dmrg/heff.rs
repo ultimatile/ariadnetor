@@ -6,7 +6,7 @@
 //! right-canonical pair via truncated SVD.
 //!
 //! Axis convention (consistent with [`super::env`] and the
-//! `arnet_mps::inner` braket family):
+//! `ariadnetor_mps::inner` braket family):
 //!
 //! - Env tensor `(top-bra-bond, W-bond, bot-ket-bond)` with bra = ket
 //!   = psi for ground-state DMRG.
@@ -24,10 +24,10 @@
 //! the operator carries no backend and obtains one from [`Host::shared`]
 //! per `apply`.
 
-use arnet_core::Scalar;
-use arnet_linalg::{TruncSvdParams, contract, trunc_svd};
-use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_tensor::{DenseTensor, Host};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{TruncSvdParams, contract, trunc_svd};
+use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_tensor::{DenseTensor, Host};
 
 #[cfg(feature = "arpack")]
 use crate::krylov::arpack_smallest;
@@ -156,9 +156,9 @@ pub struct TwoSiteStepResult<T: Scalar> {
 
 /// Run a single 2-site DMRG step at sites `(site, site+1)`.
 pub(crate) fn dmrg_2site_step<T>(
-    envs: &DmrgEnvs<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
-    mps: &Mps<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
-    mpo: &Mpo<arnet_tensor::DenseStorage<T>, arnet_tensor::DenseLayout>,
+    envs: &DmrgEnvs<ariadnetor_tensor::DenseStorage<T>, ariadnetor_tensor::DenseLayout>,
+    mps: &Mps<ariadnetor_tensor::DenseStorage<T>, ariadnetor_tensor::DenseLayout>,
+    mpo: &Mpo<ariadnetor_tensor::DenseStorage<T>, ariadnetor_tensor::DenseLayout>,
     site: usize,
     eigensolver: &LocalEigensolverParams,
     trunc: &TruncSvdParams,

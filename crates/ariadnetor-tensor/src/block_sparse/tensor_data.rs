@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use aligned_vec::{AVec, ConstAlign};
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 use num_traits::Zero;
 use rand::RngExt;
 
@@ -21,7 +21,7 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     /// Cross-crate: the user-facing constructor is
     /// [`BlockSparseTensor::zeros`](crate::BlockSparseTensor::zeros),
     /// which pins memory order to the active backend. Direct callers
-    /// (notably `arnet-linalg` BSp kernel output-construction sites)
+    /// (notably `ariadnetor-linalg` BSp kernel output-construction sites)
     /// that need an explicit `order` go through this helper or build
     /// `TensorData::new(storage, layout)` directly.
     pub fn zeros(indices: Vec<QNIndex<S>>, flux: S, order: MemoryOrder) -> Self
@@ -156,7 +156,7 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
     }
 
     /// Memory order the paired storage is laid out in. Forwards to the layout.
-    pub fn order(&self) -> arnet_core::backend::MemoryOrder {
+    pub fn order(&self) -> ariadnetor_core::backend::MemoryOrder {
         self.layout().order()
     }
 
@@ -178,7 +178,7 @@ impl<T, S: Sector> BlockSparseTensorData<T, S> {
 
 impl<T, S: Sector> BlockSparseTensorData<T, S>
 where
-    T: arnet_core::Scalar,
+    T: ariadnetor_core::Scalar,
 {
     /// Hermitian adjoint: element-wise conjugation of the data, flip
     /// of every QNIndex direction (Out↔In), and dualization of the

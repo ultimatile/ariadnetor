@@ -10,7 +10,7 @@
 
 use std::ops::Mul;
 
-use arnet_core::Scalar;
+use ariadnetor_core::Scalar;
 use num_traits::Float;
 
 use super::Tensor;
@@ -25,7 +25,7 @@ where
     /// Mirror of `DenseTensor::order` — saves block-sparse callers
     /// from reaching through `.data().layout().order()` for a basic
     /// layout property.
-    pub fn order(&self) -> arnet_core::backend::MemoryOrder {
+    pub fn order(&self) -> ariadnetor_core::backend::MemoryOrder {
         self.data.layout().order()
     }
 

@@ -1,17 +1,17 @@
-//! Re-exports of the `arnet_linalg` Tensor-typed free-fn surface.
+//! Re-exports of the `ariadnetor_linalg` Tensor-typed free-fn surface.
 //!
-//! `arnet_linalg` accepts `&DenseTensor<T>` and returns `DenseTensor<T>`, so the
+//! `ariadnetor_linalg` accepts `&DenseTensor<T>` and returns `DenseTensor<T>`, so the
 //! umbrella re-exports each call site directly without copy bridges. Every
 //! operation takes its backend explicitly; the single-backend ergonomic call
-//! site is the [`DenseHostOps`](arnet_linalg::DenseHostOps) /
-//! [`BlockSparseHostOps`](arnet_linalg::BlockSparseHostOps) extension trait,
+//! site is the [`DenseHostOps`](ariadnetor_linalg::DenseHostOps) /
+//! [`BlockSparseHostOps`](ariadnetor_linalg::BlockSparseHostOps) extension trait,
 //! re-exported from the crate root.
 
 // ============================================================================
-// Result type aliases — re-exported from arnet_linalg
+// Result type aliases — re-exported from ariadnetor_linalg
 // ============================================================================
 
-pub use arnet_linalg::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
+pub use ariadnetor_linalg::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
 
 // ============================================================================
 // Tensor-keyed dispatch — `svd` / `trunc_svd` / `qr` / `lq` (decomposition),
@@ -21,7 +21,7 @@ pub use arnet_linalg::{EigResult, EighResult, LqResult, QrResult, SvdResult, Tru
 // `expert`.
 // ============================================================================
 
-pub use arnet_linalg::{
+pub use ariadnetor_linalg::{
     LinalgContract, LinalgDecompose, LinalgScale, contract, diagonal_scale, lq, qr, svd, tensordot,
     trunc_svd,
 };
@@ -30,7 +30,7 @@ pub use arnet_linalg::{
 // Explicit-backend free fns — backend supplied at the call site
 // ============================================================================
 
-pub use arnet_linalg::{
+pub use ariadnetor_linalg::{
     diag_with_backend, eig_with_backend, eigh_with_backend, eigvals_with_backend,
     eigvalsh_with_backend, einsum_with_backend, expm_antihermitian_with_backend,
     expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,

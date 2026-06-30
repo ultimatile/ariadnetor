@@ -5,7 +5,7 @@
 //! `*_in_order` suffix names the explicit-order signature shape.
 
 use aligned_vec::{AVec, ConstAlign};
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 use num_traits::{One, Zero};
 use rand::RngExt;
 

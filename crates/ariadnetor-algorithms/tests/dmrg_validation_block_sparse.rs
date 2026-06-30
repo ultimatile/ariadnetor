@@ -18,13 +18,13 @@
 //!
 //! Test-internal helpers; no public API additions.
 
-use arnet_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::{TruncSvdParams, eigh_with_backend};
-use arnet_mps::{CanonicalForm, Mpo, Mps, TensorChain};
-use arnet_native::NativeBackend;
-use arnet_tensor::test_fixtures::legs;
-use arnet_tensor::{
+use ariadnetor_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
     DenseTensor, Direction, Host, Sector, U1Sector,
 };

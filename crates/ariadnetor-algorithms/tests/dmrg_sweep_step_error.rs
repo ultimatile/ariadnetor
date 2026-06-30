@@ -2,14 +2,14 @@
 //! `dmrg_sweep.rs` to keep the per-test-file line cap.
 
 use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
-use arnet_algorithms::dmrg::{
+use ariadnetor_algorithms::dmrg::{
     DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
-use arnet_algorithms::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
-use arnet_mps::{Mpo, Mps};
-use arnet_native::NativeBackend;
-use arnet_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::{Mpo, Mps};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
 fn standard_params_f64(seed: u64) -> DmrgSweepParams {
     DmrgSweepParams {

@@ -1,20 +1,20 @@
 # Layer-leak allow-list for ariadnetor-tensor's public API
 # (cargo-check-external-types; see CONTRIBUTING.md "Ad-hoc QA tools").
 #
-# EXACT paths, no globs. `arnet_native::NativeBackend` is the one permitted
+# EXACT paths, no globs. `ariadnetor_native::NativeBackend` is the one permitted
 # native type: the default `Host` backend, surfaced via the `Host` alias
 # (`pub type Host = NativeBackend`) and a direct re-export. It is allowed by
-# type path (not by use site), so any OTHER arnet_native type reaching the
+# type path (not by use site), so any OTHER ariadnetor_native type reaching the
 # public API is flagged as a layer leak to fix, not to whitelist.
 allowed_external_types = [
-    "arnet_core::backend::ComputeBackend",
-    "arnet_core::backend::MemoryOrder",
-    "arnet_core::contraction_error::ContractionError",
-    "arnet_core::einsum::compute_permutation",
-    "arnet_core::einsum::ContractionPlan",
-    "arnet_core::einsum::EinsumExpr",
-    "arnet_core::scalar::Scalar",
-    "arnet_native::NativeBackend",
+    "ariadnetor_core::backend::ComputeBackend",
+    "ariadnetor_core::backend::MemoryOrder",
+    "ariadnetor_core::contraction_error::ContractionError",
+    "ariadnetor_core::einsum::compute_permutation",
+    "ariadnetor_core::einsum::ContractionPlan",
+    "ariadnetor_core::einsum::EinsumExpr",
+    "ariadnetor_core::scalar::Scalar",
+    "ariadnetor_native::NativeBackend",
     "num_complex::Complex",
     "num_traits::identities::One",
     "num_traits::identities::Zero",

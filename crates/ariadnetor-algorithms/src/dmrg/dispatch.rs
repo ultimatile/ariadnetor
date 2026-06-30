@@ -15,10 +15,10 @@
 //! (solve, project diagnostics, absorb `S`) in one call, keeping the step
 //! result an impl-internal local and returning only public types.
 
-use arnet_core::Scalar;
-use arnet_linalg::{LinalgError, TruncSvdParams, diagonal_scale};
-use arnet_mps::{Mpo, Mps, MpsOps};
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::{LinalgError, TruncSvdParams, diagonal_scale};
+use ariadnetor_mps::{Mpo, Mps, MpsOps};
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Host, Sector, Storage,
     StorageFor, Tensor, TensorLayout,
 };

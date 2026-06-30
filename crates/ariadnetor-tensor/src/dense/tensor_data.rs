@@ -1,6 +1,6 @@
 //! Convenience constructors and accessors for `DenseTensorData<T>`.
 
-use arnet_core::backend::MemoryOrder;
+use ariadnetor_core::backend::MemoryOrder;
 
 use crate::{DenseLayout, DenseStorage, TensorData};
 

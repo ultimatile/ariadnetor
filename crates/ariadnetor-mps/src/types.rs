@@ -5,9 +5,9 @@
 //! backend explicitly at its call site (the call-site-supply design), so
 //! the chain types are backend-agnostic data containers.
 
-use arnet_core::Scalar;
-use arnet_linalg::TruncSvdParams;
-use arnet_tensor::{Storage, StorageFor, Tensor, TensorLayout};
+use ariadnetor_core::Scalar;
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_tensor::{Storage, StorageFor, Tensor, TensorLayout};
 
 /// Canonical form of a tensor chain.
 #[derive(Debug, Clone, PartialEq, Eq)]

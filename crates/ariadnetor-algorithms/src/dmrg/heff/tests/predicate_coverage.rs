@@ -9,8 +9,8 @@ use super::{identity_mpo, product_state_mps};
 use crate::dmrg::heff::dmrg_2site_step;
 use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::LanczosParams;
-use arnet_linalg::TruncSvdParams;
-use arnet_tensor::{DenseLayout, DenseStorage};
+use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_tensor::{DenseLayout, DenseStorage};
 
 #[test]
 fn heff_2site_step_asymmetric_length_and_zero_tol() {

@@ -10,9 +10,11 @@
 //! local eigensolver's parameter sanity (Lanczos by default, ARPACK
 //! behind the `arpack` feature).
 
-use arnet_core::Scalar;
-use arnet_mps::{Mpo, Mps, TensorChain};
-use arnet_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, QNIndex, Sector};
+use ariadnetor_core::Scalar;
+use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_tensor::{
+    BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, QNIndex, Sector,
+};
 
 use super::super::env::DmrgEnvs;
 use super::super::heff_error::DmrgHeffError;

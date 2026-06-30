@@ -11,8 +11,8 @@
 //! by — the shared `Host` substrate, spelled through the [`Host`] alias rather
 //! than a concrete backend type.
 
-use arnet_core::Scalar;
-use arnet_tensor::{DenseTensor, Host};
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{DenseTensor, Host};
 
 use crate::contract_dispatch::contract;
 use crate::decompose_dispatch::{lq, qr, svd, trunc_svd};

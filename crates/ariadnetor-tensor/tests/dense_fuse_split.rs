@@ -7,8 +7,8 @@
 //! implementation degrades to a raw `reshape` (which would leak the
 //! physical layout into the logical grouping).
 
-use arnet_tensor::{ComputeBackendTensorExt, Host};
-use arnet_tensor::{DenseTensor, MemoryOrder};
+use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
+use ariadnetor_tensor::{DenseTensor, MemoryOrder};
 
 /// Logical `[[1,2,3],[4,5,6]]` stored row-major. The public constructor
 /// pins to the preferred (column-major) order, so the row-major-tagged

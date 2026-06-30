@@ -1,7 +1,7 @@
 //! Benchmarks for the inherent unary scalar ops on the joined
 //! `DenseTensor` surface (`scaled`, `norm`, `normalized`).
 
-use arnet_tensor::DenseTensor;
+use ariadnetor_tensor::DenseTensor;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::rng;
 

@@ -10,8 +10,8 @@
 //! it: their `Storage` associated type survives only behind this un-nameable
 //! seal.
 
-use arnet_core::Scalar;
-use arnet_tensor::{
+use ariadnetor_core::Scalar;
+use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector, Tensor,
 };
 

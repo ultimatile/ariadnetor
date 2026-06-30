@@ -24,7 +24,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 ariadnetor-native = { path = "../ariadnetor-native" }
-# Enables `arnet_tensor::test_fixtures` for this crate's tests; resolver v2
+# Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
 # keeps the test-only feature out of normal builds. See ariadnetor-tensor's
 # `test-fixtures` feature.
 ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"] }
@@ -64,7 +64,7 @@ name = "sweep_transpose_par"
 harness = false
 
 [lib]
-name = "arnet_linalg"
+name = "ariadnetor_linalg"
 path = "src/lib.rs"
 
 [lints]

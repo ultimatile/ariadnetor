@@ -1,7 +1,7 @@
 use crate::error::LinalgError;
 use crate::{contract, tensordot};
-use arnet_native::NativeBackend;
-use arnet_tensor::DenseTensor;
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::DenseTensor;
 
 /// Dense tensor of the given shape with distinct, non-degenerate entries
 /// (`1, 2, 3, …` over the flat buffer) so a contraction result depends on every

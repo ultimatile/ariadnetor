@@ -1,12 +1,12 @@
 //! MPO-MPS apply operation tests.
 
 use approx::assert_abs_diff_eq;
-use arnet_mps::{
+use ariadnetor_mps::{
     self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
     TruncateParams,
 };
-use arnet_native::NativeBackend;
-use arnet_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 use super::helpers::{
     cm_dense_tensor, dense_basis_site, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo,

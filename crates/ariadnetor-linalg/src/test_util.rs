@@ -7,14 +7,14 @@
 
 use std::sync::Mutex;
 
-use arnet_core::Scalar;
-use arnet_core::backend::{
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{
     BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
     GemmDescriptor, LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor,
     TransposeDescriptor,
 };
-use arnet_native::NativeBackend;
-use arnet_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
 
 /// Compute backend that records the `policy` field of every descriptor it
 /// receives, then delegates to an inner `NativeBackend`.

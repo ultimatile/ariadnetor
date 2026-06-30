@@ -35,7 +35,7 @@
 //! by the wrapper itself before the lower layers can panic or repeat
 //! the check:
 //!
-//! - [`DmrgError::EmptyMps`] — `arnet_mps::canonicalize` asserts
+//! - [`DmrgError::EmptyMps`] — `ariadnetor_mps::canonicalize` asserts
 //!   `center < n` and would panic on an empty chain.
 //! - [`DmrgError::LengthMismatch`] — surfaced eagerly so callers see
 //!   one failure mode for the same bug regardless of whether the
@@ -49,9 +49,9 @@
 //! [`DmrgSweepError`] are unreachable through the wrapper but kept
 //! visible as defense-in-depth.
 
-use arnet_core::Scalar;
-use arnet_mps::{Mpo, Mps, MpsOps, TensorChain};
-use arnet_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
+use ariadnetor_core::Scalar;
+use ariadnetor_mps::{Mpo, Mps, MpsOps, TensorChain};
+use ariadnetor_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
 
 use super::dispatch::DmrgOps;
 use super::env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};

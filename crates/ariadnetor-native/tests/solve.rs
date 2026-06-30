@@ -1,8 +1,10 @@
 //! Linear solve tests for all scalar types
 
-use arnet_core::Scalar;
-use arnet_core::backend::{BackendError, ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor};
-use arnet_native::NativeBackend;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{
+    BackendError, ComputeBackend, ExecPolicy, MemoryOrder, SolveDescriptor,
+};
+use ariadnetor_native::NativeBackend;
 use num_complex::Complex;
 
 /// Verify solve for any Scalar: A * X ≈ B (column-major layout)
