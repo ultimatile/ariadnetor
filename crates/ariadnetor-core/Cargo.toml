@@ -3,7 +3,10 @@ name = "ariadnetor-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Core traits and types for ariadnetor tensor library"
+keywords = ["tensor", "tensor-network", "backend", "traits"]
+categories = ["science", "mathematics"]
 
 [dependencies]
 num-complex = { workspace = true }

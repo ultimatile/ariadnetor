@@ -3,7 +3,10 @@ name = "ariadnetor-algorithms"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Tensor-network algorithms built on ariadnetor"
+keywords = ["tensor-network", "dmrg", "mps", "physics"]
+categories = ["science", "mathematics"]
 
 [features]
 default = []
@@ -16,11 +19,11 @@ hptt = ["ariadnetor-native/hptt"]
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor" }
-ariadnetor-linalg = { path = "../ariadnetor-linalg" }
-ariadnetor-native = { path = "../ariadnetor-native" }
-ariadnetor-mps = { path = "../ariadnetor-mps" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.1" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.1" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.1" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.1" }
+ariadnetor-mps = { path = "../ariadnetor-mps", version = "0.0.1" }
 num-traits = { workspace = true }
 num-complex = { workspace = true, optional = true }
 rand = { workspace = true }
