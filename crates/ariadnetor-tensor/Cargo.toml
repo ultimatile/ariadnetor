@@ -3,7 +3,7 @@ name = "ariadnetor-tensor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Pure Rust tensor library with support for dense, sparse, and block-sparse tensors"
+description = "Tensor library with support for dense and block-sparse tensors"
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel (off by default
