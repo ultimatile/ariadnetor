@@ -7,8 +7,8 @@
 
 <p align="center">
   <a href="https://crates.io/crates/ariadnetor"><img src="https://img.shields.io/crates/v/ariadnetor.svg" alt="crates.io"></a>
-  <a href="https://docs.rs/ariadnetor"><img src="https://docs.rs/ariadnetor/badge.svg" alt="docs.rs"></a>
-  <img src="https://img.shields.io/crates/l/ariadnetor.svg" alt="license">
+  <a href="https://docs.rs/ariadnetor"><img src="https://img.shields.io/docsrs/ariadnetor" alt="docs.rs"></a>
+  <img src="https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue" alt="license">
 </p>
 
 > [!WARNING]
