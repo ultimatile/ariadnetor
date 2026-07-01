@@ -109,6 +109,19 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
     where
         Self: Sized;
 
+    /// Apply an MPO to an MPS via the Stoudenmire-White zip-up algorithm:
+    /// right-canonicalize `psi`, then a single forward sweep with per-site
+    /// SVD truncated directly to `chi_max` (from `params.svd`) and no
+    /// backward pass. `params = None` keeps full rank (lossless).
+    fn apply_zipup_k<B: OpsFor<Self::Storage>>(
+        backend: &B,
+        op: &Mpo<Self::Storage, Self::Layout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+    ) -> Self
+    where
+        Self: Sized;
+
     /// Position the orthogonality center at `center`.
     fn canon_k<B: OpsFor<Self::Storage>>(backend: &B, chain: &mut Self, center: usize);
 
@@ -153,6 +166,15 @@ impl<T: Scalar> MpsOps<T> for Mps<DenseStorage<T>, DenseLayout> {
         forward_cap: Option<NonZeroUsize>,
     ) -> Self {
         super::apply::apply_streaming_naive_dense(backend, op, psi, params, forward_cap)
+    }
+
+    fn apply_zipup_k<B: OpsFor<DenseStorage<T>>>(
+        backend: &B,
+        op: &Mpo<DenseStorage<T>, DenseLayout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+    ) -> Self {
+        super::apply::apply_zipup_dense(backend, op, psi, params)
     }
 
     fn canon_k<B: OpsFor<DenseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -201,6 +223,15 @@ impl<T: Scalar, S: Sector> MpsOps<T> for Mps<BlockSparseStorage<T>, BlockSparseL
         forward_cap: Option<NonZeroUsize>,
     ) -> Self {
         super::apply::apply_streaming_naive_bsp(backend, op, psi, params, forward_cap)
+    }
+
+    fn apply_zipup_k<B: OpsFor<BlockSparseStorage<T>>>(
+        backend: &B,
+        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+    ) -> Self {
+        super::apply::apply_zipup_bsp(backend, op, psi, params)
     }
 
     fn canon_k<B: OpsFor<BlockSparseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -310,9 +341,9 @@ where
 
 /// Apply an MPO to an MPS using the requested algorithm.
 ///
-/// `ApplyMethod::ZipUp` is reserved for the literature Stoudenmire-White
-/// single-pass interleaved-truncation algorithm and is not yet
-/// implemented; calling with that variant panics.
+/// `ApplyMethod::ZipUp` selects the Stoudenmire-White single-pass
+/// zip-up algorithm (right-canonicalize, then one forward sweep with
+/// per-site truncation to `chi_max` and no backward pass).
 pub fn apply_with_method<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -331,11 +362,6 @@ where
         ApplyMethod::StreamingNaive { forward_cap } => {
             <Mps<St, L> as MpsOps<T>>::apply_k(backend, op, psi, params, forward_cap)
         }
-        ApplyMethod::ZipUp => unimplemented!(
-            "ApplyMethod::ZipUp is reserved for the literature Stoudenmire-White \
-             single-pass interleaved-truncation algorithm and is not yet \
-             implemented; use ApplyMethod::StreamingNaive for the streaming \
-             naive variant",
-        ),
+        ApplyMethod::ZipUp => <Mps<St, L> as MpsOps<T>>::apply_zipup_k(backend, op, psi, params),
     }
 }
