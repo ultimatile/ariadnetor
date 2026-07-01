@@ -538,3 +538,55 @@ fn streaming_naive_forward_cap_observably_changes_output() {
          the contracted outputs matched within 1e-8"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Zip-up algorithm tests
+// ---------------------------------------------------------------------------
+
+/// With no truncation, the zip-up sweep is a lossless refactoring of the
+/// exact MPO·MPS product, so its contracted state matches the lossless
+/// streaming-naive baseline.
+#[test]
+fn zipup_lossless_matches_streaming_naive() {
+    let backend = NativeBackend::new();
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+
+    let phi_zipup = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::ZipUp);
+    let phi_baseline = mps::apply(&backend, &op, &psi, None);
+
+    let v_zipup = bsp_mps_contract_full(&phi_zipup);
+    let v_baseline = bsp_mps_contract_full(&phi_baseline);
+    assert_block_sparse_close(&v_zipup, &v_baseline, 1e-10);
+}
+
+/// A `chi_max` cap bounds every bond of the zip-up result. The thick-middle
+/// fixture has a sector of dim 3, so `chi_max = 2` genuinely truncates.
+#[test]
+fn zipup_truncates_bond_dim() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_u1_mps_multipath_middle();
+    let op = make_identity_u1_mpo(3);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+
+    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+
+    for d in phi.bond_dims() {
+        assert!(d <= 2, "bond {d} exceeds chi_max=2");
+    }
+}
+
+/// Zip-up ends its forward sweep left-canonical, parking the center at the
+/// last site.
+#[test]
+fn zipup_canonical_form() {
+    let backend = NativeBackend::new();
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+
+    let phi = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::ZipUp);
+    assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 3 });
+}

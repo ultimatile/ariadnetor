@@ -95,11 +95,14 @@ pub enum ApplyMethod {
         /// once the natural rank exceeds `k * chi_max`.
         forward_cap: Option<std::num::NonZeroUsize>,
     },
-    /// Reserved for the literature Stoudenmire-White single-pass
-    /// interleaved-truncation algorithm — a forward sweep where the SVD bond
-    /// is bounded by `chi_max` at each site, with no separate backward
-    /// truncation pass. Not yet implemented; selecting this variant panics
-    /// at dispatch time. Distinct from
+    /// Stoudenmire-White single-pass zip-up algorithm: right-canonicalize
+    /// the input, then a forward sweep where each site's SVD bond is
+    /// truncated directly to `chi_max`, with no separate backward
+    /// truncation pass. Consumes `params.svd` (`chi_max`,
+    /// `target_trunc_err`); `params = None` keeps full SVD rank at every
+    /// bond (lossless). `params.absorb` and `params.center` are not
+    /// consulted, because zip-up intrinsically carries the singular values
+    /// rightward and ends left-canonical at the last site. Distinct from
     /// [`StreamingNaive`](ApplyMethod::StreamingNaive), which keeps a full
     /// `chi_max` backward sweep.
     ZipUp,
