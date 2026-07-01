@@ -588,3 +588,24 @@ fn test_apply_zipup_canonical_form() {
         CanonicalForm::Mixed { center: 2 }
     );
 }
+
+/// `params.center` is documented as not consulted by zip-up. Passing an
+/// explicit center must not move the result's orthogonality center off the
+/// last site.
+#[test]
+fn test_apply_zipup_ignores_params_center() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(2),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::default(),
+        center: Some(0),
+    };
+    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+    assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 2 });
+}

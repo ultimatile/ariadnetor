@@ -158,12 +158,13 @@ where
 /// rather than variationally optimal, since applying the MPO breaks exact
 /// right-isometry; there is no separate backward pass.
 ///
-/// `params = None` (or a `chi_max` / cutoff of `None`) keeps the full SVD
-/// rank at every bond, making the sweep lossless: the result then matches
-/// the exact MPO-MPS product up to gauge and floating-point roundoff. The
-/// result is left in `Mixed { center: n - 1 }`. `params.absorb` and
-/// `params.center` are not consulted: zip-up intrinsically carries `S·Vt`
-/// rightward and ends left-canonical at the last site.
+/// `params = None` (or both `chi_max` and `target_trunc_err` set to `None`)
+/// keeps the full SVD rank at every bond, making the sweep lossless: the
+/// result then matches the exact MPO-MPS product up to gauge and
+/// floating-point roundoff. The result is left in `Mixed { center: n - 1 }`.
+/// `params.absorb` and `params.center` are not consulted: zip-up
+/// intrinsically carries `S·Vt` rightward and ends with the orthogonality
+/// center at the last site.
 ///
 /// # Panics
 ///

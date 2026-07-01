@@ -102,7 +102,8 @@ pub enum ApplyMethod {
     /// `target_trunc_err`); `params = None` keeps full SVD rank at every
     /// bond (lossless). `params.absorb` and `params.center` are not
     /// consulted, because zip-up intrinsically carries the singular values
-    /// rightward and ends left-canonical at the last site. Distinct from
+    /// rightward and ends with the orthogonality center at the last site.
+    /// Distinct from
     /// [`StreamingNaive`](ApplyMethod::StreamingNaive), which keeps a full
     /// `chi_max` backward sweep.
     ZipUp,
