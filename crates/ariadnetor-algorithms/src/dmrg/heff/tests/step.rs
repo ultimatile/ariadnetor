@@ -14,11 +14,12 @@
 
 use super::{identity_mpo, product_state_mps};
 use crate::dmrg::heff::{EffectiveHamiltonian2Site, dmrg_2site_step};
-use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
+use crate::dmrg::{DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::{LanczosError, LanczosParams, LinearOp};
 use approx::assert_abs_diff_eq;
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{TruncSvdParams, contract, diagonal_scale, eigh_with_backend};
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{Mpo, Mps};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
@@ -162,7 +163,7 @@ where
 /// the `envs` / `mps` / `mpo` arguments, which the caller keeps alive
 /// so the references stay valid.
 fn make_heff<'a, T>(
-    envs: &'a DmrgEnvs<DenseStorage<T>, DenseLayout>,
+    envs: &'a BraketEnvs<DenseStorage<T>, DenseLayout>,
     mps: &'a Mps<DenseStorage<T>, DenseLayout>,
     mpo: &'a Mpo<DenseStorage<T>, DenseLayout>,
     site: usize,
@@ -195,7 +196,7 @@ fn heff_identity_smoke() {
     let n = 4;
     let mps = product_state_mps(n, 2);
     let mpo = identity_mpo(n, 2);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs = BraketEnvs::build(&mps, &mpo).expect("build");
     // Walk left envs up to site=1 so left(1) exists.
     envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
 
@@ -229,7 +230,7 @@ fn heff_matvec_matches_dense_apply() {
     let chi = 2;
     let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs = BraketEnvs::build(&mps, &mpo).expect("build");
     envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
 
     let site = 1;
@@ -277,7 +278,7 @@ fn heff_lanczos_eigvalue_matches_eigh() {
     let chi = 2;
     let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs = BraketEnvs::build(&mps, &mpo).expect("build");
     envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
 
     let site = 1;
@@ -318,7 +319,7 @@ fn heff_svd_split_is_canonical() {
     let chi = 2;
     let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs = BraketEnvs::build(&mps, &mpo).expect("build");
     envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
 
     let result = dmrg_2site_step(
@@ -375,7 +376,7 @@ fn heff_svd_reconstruction_round_trips() {
     let chi = 2;
     let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs = BraketEnvs::build(&mps, &mpo).expect("build");
     envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
 
     let site = 1;
@@ -467,7 +468,7 @@ fn heff_edge_sites_succeed() {
 
     // site = 0 → left(0) trivial 1x1x1 boundary, chi_l = 1.
     // No advance needed; build seeds left(0) and right(2..=N).
-    let envs0 = DmrgEnvs::build(&mps, &mpo).expect("build site=0");
+    let envs0 = BraketEnvs::build(&mps, &mpo).expect("build site=0");
     let r0 = dmrg_2site_step(
         &envs0,
         &mps,
@@ -488,7 +489,7 @@ fn heff_edge_sites_succeed() {
 
     // site = n - 2 → right(n) trivial boundary, chi_r = 1.
     // Need left(n-2) populated, so walk advance_left up to n-3.
-    let mut envs1 = DmrgEnvs::build(&mps, &mpo).expect("build site=n-2");
+    let mut envs1 = BraketEnvs::build(&mps, &mpo).expect("build site=n-2");
     for k in 0..(n - 2) {
         envs1.advance_left(&mps, &mpo, k).expect("advance_left");
     }
@@ -522,7 +523,7 @@ fn heff_matvec_matches_dense_apply_complex() {
     let chi = 2;
     let mps = random_mps_c64(n, d, chi, 0x1357_9BDF);
     let mpo = hermitian_local_mpo_c64(n, d, 0x2468_ACE0);
-    let envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let envs = BraketEnvs::build(&mps, &mpo).expect("build");
 
     let site = 0;
     let heff = make_heff(&envs, &mps, &mpo, site);
@@ -600,7 +601,7 @@ fn dmrg_step_surfaces_nonfinite_lanczos_as_error() {
     let mps = product_state_mps(n, d);
     // Poison site 1, which the step at site 1 contracts into H_eff.
     let mpo = nan_poisoned_mpo_f64(n, d, 1);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs = BraketEnvs::build(&mps, &mpo).expect("build");
     envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
 
     // The non-finite H_eff drives the Lanczos local solve non-finite. The

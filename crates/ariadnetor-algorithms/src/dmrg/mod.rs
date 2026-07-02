@@ -1,8 +1,8 @@
 //! DMRG (Density Matrix Renormalization Group) algorithm primitives.
 //!
-//! Exposes the environment-tensor data structure ([`DmrgEnvs`],
-//! generic over a [`DmrgEnvOps`]-implementing layout type so the
-//! same struct serves Dense and BlockSparse chains) and a single
+//! Builds on the [`ariadnetor_mps::BraketEnvs`] environment primitive
+//! (the three-layer ⟨bra|W|ket⟩ tensor chain, consumed here with
+//! bra = ket) and exposes a single
 //! layout-generic 2-site sweep driver [`sweep_2site`] dispatched
 //! over [`DmrgOps`] so one call site covers both the Dense and
 //! BlockSparse / U(1) paths. Internally the driver runs a local
@@ -17,23 +17,19 @@
 //!
 //! For non-expert callers, [`dmrg_2site`] wraps the low-level driver
 //! with defensive `psi0.clone()`, automatic canonicalization to
-//! `Mixed { center: 0 }`, and a fresh [`DmrgEnvs::build`], reporting
+//! `Mixed { center: 0 }`, and a fresh [`ariadnetor_mps::BraketEnvs::build`], reporting
 //! its own [`DmrgError`] that subsumes empty / length-mismatch input
 //! and forwards underlying env / sweep failures.
 
 mod dispatch;
-mod env;
-mod env_block_sparse;
 mod heff;
 mod heff_block_sparse;
 mod heff_error;
-mod sealed;
 mod solver;
 mod sweep;
 mod wrapper;
 
 pub use dispatch::{AbsorbedStep, DmrgOps, FullStepError};
-pub use env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
 pub use heff::TwoSiteStepResult;
 pub use heff_block_sparse::TwoSiteStepResultBlockSparse;
 pub use heff_error::DmrgHeffError;

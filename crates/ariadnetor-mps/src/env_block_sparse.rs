@@ -1,4 +1,4 @@
-//! BlockSparse implementation of [`super::env::DmrgEnvOps`].
+//! BlockSparse implementation of [`super::env::BraketEnvOps`].
 //!
 //! Mirrors the boundary convention used by `ariadnetor_mps::inner::braket_bsp`
 //! (the canonical BlockSparse braket reference): the env tensor's
@@ -21,7 +21,7 @@ use ariadnetor_tensor::{
     Sector,
 };
 
-use super::env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
+use super::env::{BraketEnvError, BraketEnvOps, BraketEnvs};
 
 fn flip(d: Direction) -> Direction {
     match d {
@@ -58,11 +58,11 @@ where
 fn check_dim1_single_sector<S: Sector>(
     idx: &QNIndex<S>,
     leg: &'static str,
-) -> Result<(), DmrgEnvError> {
+) -> Result<(), BraketEnvError> {
     if idx.num_blocks() == 1 && idx.block_dim(0) == 1 {
         Ok(())
     } else {
-        Err(DmrgEnvError::MalformedEdgeBond { leg })
+        Err(BraketEnvError::MalformedEdgeBond { leg })
     }
 }
 
@@ -73,7 +73,7 @@ fn build_boundary<T, S>(
     mpo_edge: &QNIndex<S>,
     mps_leg_name: &'static str,
     mpo_leg_name: &'static str,
-) -> Result<BlockSparseTensor<T, S>, DmrgEnvError>
+) -> Result<BlockSparseTensor<T, S>, BraketEnvError>
 where
     T: Scalar,
     S: Sector,
@@ -96,11 +96,11 @@ where
         // The MPS contributions cancel by construction; if the chosen
         // edge sectors do not fuse to identity it is attributable to
         // the MPO leg.
-        None => Err(DmrgEnvError::MalformedEdgeBond { leg: mpo_leg_name }),
+        None => Err(BraketEnvError::MalformedEdgeBond { leg: mpo_leg_name }),
     }
 }
 
-impl<T, S> DmrgEnvOps<T> for DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>
+impl<T, S> BraketEnvOps<T> for BraketEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>
 where
     T: Scalar,
     S: Sector,
@@ -111,7 +111,7 @@ where
     fn trivial_left_boundary(
         mps_left_edge: &BlockSparseTensor<T, S>,
         mpo_left_edge: &BlockSparseTensor<T, S>,
-    ) -> Result<BlockSparseTensor<T, S>, DmrgEnvError> {
+    ) -> Result<BlockSparseTensor<T, S>, BraketEnvError> {
         build_boundary(
             &mps_left_edge.indices()[0],
             &mpo_left_edge.indices()[0],
@@ -123,7 +123,7 @@ where
     fn trivial_right_boundary(
         mps_right_edge: &BlockSparseTensor<T, S>,
         mpo_right_edge: &BlockSparseTensor<T, S>,
-    ) -> Result<BlockSparseTensor<T, S>, DmrgEnvError> {
+    ) -> Result<BlockSparseTensor<T, S>, BraketEnvError> {
         build_boundary(
             &mps_right_edge.indices()[2],
             &mpo_right_edge.indices()[3],

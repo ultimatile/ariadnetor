@@ -1,8 +1,11 @@
-//! DMRG L/R environment tensors and their incremental update.
+//! Three-layer ⟨bra|W|ket⟩ environment tensors and their incremental
+//! update — the per-bond partial contraction of an MPO `W` sandwiched
+//! between two MPS, stored so a sweep can advance it one site at a time.
+//! DMRG consumes it with bra = ket; the primitive itself is generic.
 //!
 //! Each env slot carries a rank-3 tensor of shape `(top-bra-bond,
 //! W-bond, bot-ket-bond)` matching the axis convention used by the
-//! `ariadnetor_mps::inner` braket family. Boundary slots (`left[0]` and
+//! `crate::inner` braket family. Boundary slots (`left[0]` and
 //! `right[N]`) hold the trivial 1×1×1 identity tensor; for the
 //! BlockSparse variant they additionally carry QNIndex / direction /
 //! flux metadata (`flux = S::identity()`).
@@ -10,29 +13,30 @@
 //! Index convention is **boundary-indexed**: `left(i)` is the L
 //! tensor at the boundary just left of site `i` (sites `0..i` already
 //! folded in), `right(j)` is the R tensor at the boundary just left
-//! of site `j` (sites `j..N` folded from the right). A 2-site DMRG
+//! of site `j` (sites `j..N` folded from the right). A 2-site sweep
 //! step at sites `(i, i+1)` consumes `left(i)`, `W[i]`, `W[i+1]`, and
 //! `right(i+2)`.
 //!
-//! Storage-specific dispatch is provided by [`DmrgEnvOps`], which is
-//! implemented for the Dense `DmrgEnvs` chain in this module and for the
+//! Storage-specific dispatch is provided by [`BraketEnvOps`], which is
+//! implemented for the Dense `BraketEnvs` chain in this module and for the
 //! BlockSparse chain in a sibling module. The two boundary
-//! helpers fail loudly with [`DmrgEnvError::MalformedEdgeBond`] when a
+//! helpers fail loudly with [`BraketEnvError::MalformedEdgeBond`] when a
 //! chain's edge bonds violate the dim-1 single-sector contract required
 //! by the BlockSparse boundary; for the Dense path the helpers always
 //! succeed.
 
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{LinalgError, contract};
-use ariadnetor_mps::{Mpo, Mps, TensorChain};
+
+use crate::{Mpo, Mps, TensorChain};
 use ariadnetor_tensor::{
     DenseLayout, DenseStorage, Host, Storage, StorageFor, Tensor, TensorLayout,
 };
 
-/// Errors raised by [`DmrgEnvs`] construction and advance operations.
+/// Errors raised by [`BraketEnvs`] construction and advance operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum DmrgEnvError {
+pub enum BraketEnvError {
     /// MPS / MPO had zero sites.
     #[error("MPS / MPO has zero sites")]
     EmptyChain,
@@ -86,7 +90,7 @@ pub enum DmrgEnvError {
 }
 
 /// Per-edge well-formedness requirement rendered in
-/// [`DmrgEnvError::MalformedEdgeBond`]'s message. MPS edges only need
+/// [`BraketEnvError::MalformedEdgeBond`]'s message. MPS edges only need
 /// dim-1 / single-sector (any charge is OK because `env_leg0` and
 /// `env_leg2` carry the same MPS sector with opposite directions and
 /// cancel). MPO edges additionally require an identity-fusing sector
@@ -101,15 +105,34 @@ fn edge_bond_detail(leg: &str) -> &'static str {
     }
 }
 
-/// Chain-keyed dispatch for DMRG env construction and per-site
+/// Crate-private seal for the chain-keyed [`BraketEnvOps`] dispatch
+/// trait. Living in a private module, [`Sealed`](sealed::Sealed)'s name
+/// is not reachable downstream, so [`BraketEnvOps`] cannot be
+/// implemented outside this crate. It carries no associated surface, so
+/// the public trait projects no storage / layout taxonomy through it.
+mod sealed {
+    use ariadnetor_core::Scalar;
+    use ariadnetor_tensor::{
+        BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, Sector,
+    };
+
+    use super::BraketEnvs;
+
+    pub trait Sealed {}
+
+    impl<T: Scalar> Sealed for BraketEnvs<DenseStorage<T>, DenseLayout> {}
+    impl<T: Scalar, S: Sector> Sealed for BraketEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>> {}
+}
+
+/// Chain-keyed dispatch for BraKet env construction and per-site
 /// updates.
 ///
-/// Keyed on the [`DmrgEnvs<St, L>`](DmrgEnvs) chain and sealed (its
+/// Keyed on the [`BraketEnvs<St, L>`](BraketEnvs) chain and sealed (its
 /// `sealed::Sealed` supertrait is crate-private), so the
 /// storage / layout taxa are reachable only as the sealed associated types
 /// rather than as free bounds on a public surface. The four trait methods
 /// are the only points at which storage type matters; everything else in
-/// [`DmrgEnvs`] is dispatched generically. Boundary helpers receive the
+/// [`BraketEnvs`] is dispatched generically. Boundary helpers receive the
 /// chain's edge site tensors (rather than just the backend) so the
 /// BlockSparse implementation can extract QNIndex / direction / flux
 /// metadata; the Dense implementation ignores the site arguments and
@@ -119,7 +142,7 @@ fn edge_bond_detail(leg: &str) -> &'static str {
 /// in the CPU-only Stage B scope — so the concrete impls obtain the
 /// backend from [`Host::shared`] rather than receiving one through the
 /// call site.
-pub trait DmrgEnvOps<T: Scalar>: super::sealed::Sealed {
+pub trait BraketEnvOps<T: Scalar>: sealed::Sealed {
     /// Layout type paired with this env chain.
     type Layout: TensorLayout;
     /// Storage type paired with this env chain (mirrors the
@@ -130,14 +153,14 @@ pub trait DmrgEnvOps<T: Scalar>: super::sealed::Sealed {
     fn trivial_left_boundary(
         mps_left_edge: &Tensor<Self::Storage, Self::Layout>,
         mpo_left_edge: &Tensor<Self::Storage, Self::Layout>,
-    ) -> Result<Tensor<Self::Storage, Self::Layout>, DmrgEnvError>;
+    ) -> Result<Tensor<Self::Storage, Self::Layout>, BraketEnvError>;
 
     /// Build the trivial R boundary tensor sitting just right of site
     /// `n_sites - 1`.
     fn trivial_right_boundary(
         mps_right_edge: &Tensor<Self::Storage, Self::Layout>,
         mpo_right_edge: &Tensor<Self::Storage, Self::Layout>,
-    ) -> Result<Tensor<Self::Storage, Self::Layout>, DmrgEnvError>;
+    ) -> Result<Tensor<Self::Storage, Self::Layout>, BraketEnvError>;
 
     /// Absorb one site into the L environment, advancing it by one
     /// step to the right.
@@ -157,24 +180,24 @@ pub trait DmrgEnvOps<T: Scalar>: super::sealed::Sealed {
 }
 
 // ============================================================================
-// Dense (DmrgEnvs<DenseStorage<T>, DenseLayout>) implementation
+// Dense (BraketEnvs<DenseStorage<T>, DenseLayout>) implementation
 // ============================================================================
 
-impl<T: Scalar> DmrgEnvOps<T> for DmrgEnvs<DenseStorage<T>, DenseLayout> {
+impl<T: Scalar> BraketEnvOps<T> for BraketEnvs<DenseStorage<T>, DenseLayout> {
     type Layout = DenseLayout;
     type Storage = DenseStorage<T>;
 
     fn trivial_left_boundary(
         _mps_left_edge: &Tensor<Self::Storage, Self::Layout>,
         _mpo_left_edge: &Tensor<Self::Storage, Self::Layout>,
-    ) -> Result<Tensor<Self::Storage, Self::Layout>, DmrgEnvError> {
+    ) -> Result<Tensor<Self::Storage, Self::Layout>, BraketEnvError> {
         Ok(make_dense_one())
     }
 
     fn trivial_right_boundary(
         _mps_right_edge: &Tensor<Self::Storage, Self::Layout>,
         _mpo_right_edge: &Tensor<Self::Storage, Self::Layout>,
-    ) -> Result<Tensor<Self::Storage, Self::Layout>, DmrgEnvError> {
+    ) -> Result<Tensor<Self::Storage, Self::Layout>, BraketEnvError> {
         Ok(make_dense_one())
     }
 
@@ -215,20 +238,20 @@ where
 }
 
 // ============================================================================
-// DmrgEnvs<St, L>
+// BraketEnvs<St, L>
 // ============================================================================
 
 /// L/R environment tensors for 2-site DMRG, with incremental update
 /// operations for left-to-right and right-to-left sweeps.
 ///
 /// Generic over the storage / layout pair, which the
-/// [`DmrgEnvOps<T>`] trait pins together via its `type Storage`
+/// [`BraketEnvOps<T>`] trait pins together via its `type Storage`
 /// association. The struct itself is layout-agnostic; per-site
 /// extension and boundary-tensor construction route through the trait.
 ///
 /// See the module-level docs for the index convention.
 #[derive(Debug, Clone)]
-pub struct DmrgEnvs<St, L>
+pub struct BraketEnvs<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
@@ -245,7 +268,7 @@ where
     n_sites: usize,
 }
 
-impl<St, L> DmrgEnvs<St, L>
+impl<St, L> BraketEnvs<St, L>
 where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
@@ -253,17 +276,17 @@ where
     /// Initial right-sweep build. Computes `right[N-1..=1]` from the
     /// trivial right boundary down through the chain, leaving only
     /// `left[0]` populated.
-    pub fn build<T>(mps: &Mps<St, L>, mpo: &Mpo<St, L>) -> Result<Self, DmrgEnvError>
+    pub fn build<T>(mps: &Mps<St, L>, mpo: &Mpo<St, L>) -> Result<Self, BraketEnvError>
     where
         T: Scalar,
-        Self: DmrgEnvOps<T, Storage = St, Layout = L>,
+        Self: BraketEnvOps<T, Storage = St, Layout = L>,
     {
         let n_sites = mps.len();
         if n_sites == 0 {
-            return Err(DmrgEnvError::EmptyChain);
+            return Err(BraketEnvError::EmptyChain);
         }
         if mpo.len() != n_sites {
-            return Err(DmrgEnvError::LengthMismatch {
+            return Err(BraketEnvError::LengthMismatch {
                 mps: n_sites,
                 mpo: mpo.len(),
             });
@@ -275,11 +298,11 @@ where
         // Trivial boundary tensors at the chain edges. For Dense these
         // are constant 1×1×1 ones; for BlockSparse they additionally
         // validate the dim-1 / single-sector edge-bond contract.
-        left[0] = Some(<Self as DmrgEnvOps<T>>::trivial_left_boundary(
+        left[0] = Some(<Self as BraketEnvOps<T>>::trivial_left_boundary(
             mps.site(0),
             mpo.site(0),
         )?);
-        right[n_sites] = Some(<Self as DmrgEnvOps<T>>::trivial_right_boundary(
+        right[n_sites] = Some(<Self as BraketEnvOps<T>>::trivial_right_boundary(
             mps.site(n_sites - 1),
             mpo.site(n_sites - 1),
         )?);
@@ -297,8 +320,11 @@ where
                 break;
             }
             let prev = right[j].as_ref().expect("just initialized or computed");
-            let new =
-                <Self as DmrgEnvOps<T>>::extend_right_step(prev, mps.site(j - 1), mpo.site(j - 1))?;
+            let new = <Self as BraketEnvOps<T>>::extend_right_step(
+                prev,
+                mps.site(j - 1),
+                mpo.site(j - 1),
+            )?;
             right[j - 1] = Some(new);
         }
 
@@ -331,19 +357,19 @@ where
         mps: &Mps<St, L>,
         mpo: &Mpo<St, L>,
         i: usize,
-    ) -> Result<(), DmrgEnvError>
+    ) -> Result<(), BraketEnvError>
     where
         T: Scalar,
-        Self: DmrgEnvOps<T, Storage = St, Layout = L>,
+        Self: BraketEnvOps<T, Storage = St, Layout = L>,
     {
         if i >= self.n_sites {
-            return Err(DmrgEnvError::InvalidSite {
+            return Err(BraketEnvError::InvalidSite {
                 index: i,
                 n_sites: self.n_sites,
             });
         }
         if mpo.len() != self.n_sites || mps.len() != self.n_sites {
-            return Err(DmrgEnvError::LengthMismatch {
+            return Err(BraketEnvError::LengthMismatch {
                 mps: mps.len(),
                 mpo: mpo.len(),
             });
@@ -351,13 +377,13 @@ where
         let prev = match &self.left[i] {
             Some(t) => t,
             None => {
-                return Err(DmrgEnvError::StaleNeighbor {
+                return Err(BraketEnvError::StaleNeighbor {
                     side: "left",
                     index: i,
                 });
             }
         };
-        let new = <Self as DmrgEnvOps<T>>::extend_left_step(prev, mps.site(i), mpo.site(i))?;
+        let new = <Self as BraketEnvOps<T>>::extend_left_step(prev, mps.site(i), mpo.site(i))?;
         self.left[i + 1] = Some(new);
         if i + 1 < self.n_sites {
             self.right[i + 1] = None;
@@ -371,19 +397,19 @@ where
         mps: &Mps<St, L>,
         mpo: &Mpo<St, L>,
         j: usize,
-    ) -> Result<(), DmrgEnvError>
+    ) -> Result<(), BraketEnvError>
     where
         T: Scalar,
-        Self: DmrgEnvOps<T, Storage = St, Layout = L>,
+        Self: BraketEnvOps<T, Storage = St, Layout = L>,
     {
         if j >= self.n_sites {
-            return Err(DmrgEnvError::InvalidSite {
+            return Err(BraketEnvError::InvalidSite {
                 index: j,
                 n_sites: self.n_sites,
             });
         }
         if mpo.len() != self.n_sites || mps.len() != self.n_sites {
-            return Err(DmrgEnvError::LengthMismatch {
+            return Err(BraketEnvError::LengthMismatch {
                 mps: mps.len(),
                 mpo: mpo.len(),
             });
@@ -391,13 +417,13 @@ where
         let prev = match &self.right[j + 1] {
             Some(t) => t,
             None => {
-                return Err(DmrgEnvError::StaleNeighbor {
+                return Err(BraketEnvError::StaleNeighbor {
                     side: "right",
                     index: j + 1,
                 });
             }
         };
-        let new = <Self as DmrgEnvOps<T>>::extend_right_step(prev, mps.site(j), mpo.site(j))?;
+        let new = <Self as BraketEnvOps<T>>::extend_right_step(prev, mps.site(j), mpo.site(j))?;
         self.right[j] = Some(new);
         if j > 0 {
             self.left[j] = None;
@@ -415,10 +441,10 @@ mod tests {
         // The mpo arm of `edge_bond_detail` adds the identity-flux clause that
         // the mps / wildcard text omits; rendering an mpo edge must surface it,
         // so deleting that arm (collapsing to the wildcard) is observable.
-        let mpo = DmrgEnvError::MalformedEdgeBond { leg: "mpo_left" }.to_string();
+        let mpo = BraketEnvError::MalformedEdgeBond { leg: "mpo_left" }.to_string();
         assert!(mpo.contains("fusing to identity flux"));
 
-        let mps = DmrgEnvError::MalformedEdgeBond { leg: "mps_left" }.to_string();
+        let mps = BraketEnvError::MalformedEdgeBond { leg: "mps_left" }.to_string();
         assert!(!mps.contains("fusing to identity flux"));
     }
 }

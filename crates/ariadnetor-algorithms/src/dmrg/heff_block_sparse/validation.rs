@@ -16,9 +16,9 @@ use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, QNIndex, Sector,
 };
 
-use super::super::env::DmrgEnvs;
 use super::super::heff_error::DmrgHeffError;
 use super::super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eigensolver_params};
+use ariadnetor_mps::BraketEnvs;
 
 /// Validated input handles + derived dims, returned to the caller
 /// (the entry point in `mod.rs`) so it can build the Heff and drive
@@ -33,7 +33,7 @@ pub(super) struct ValidatedInputs<'a, T: Scalar, S: Sector> {
 }
 
 pub(super) fn validate_inputs<'a, T, S>(
-    envs: &'a DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+    envs: &'a BraketEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     mps: &'a Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     mpo: &'a Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     site: usize,

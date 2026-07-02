@@ -5,7 +5,7 @@
 //! optimized two-site block back into a left-canonical /
 //! right-canonical pair via truncated SVD.
 //!
-//! Axis convention (consistent with [`super::env`] and the
+//! Axis convention (consistent with [`BraketEnvs`] and the
 //! `ariadnetor_mps::inner` braket family):
 //!
 //! - Env tensor `(top-bra-bond, W-bond, bot-ket-bond)` with bra = ket
@@ -33,11 +33,11 @@ use ariadnetor_tensor::{DenseTensor, Host};
 use crate::krylov::arpack_smallest;
 use crate::krylov::{LinearOp, lanczos_smallest};
 
-use super::env::DmrgEnvs;
 use super::heff_error::DmrgHeffError;
 use super::solver::{
     DmrgScalar, LocalEigensolverParams, eigensolver_tol, validate_eigensolver_params,
 };
+use ariadnetor_mps::BraketEnvs;
 
 /// Effective Hamiltonian operator for the 2-site DMRG block at sites
 /// `(i, i+1)`. Built once per local update and consumed by the
@@ -156,7 +156,7 @@ pub struct TwoSiteStepResult<T: Scalar> {
 
 /// Run a single 2-site DMRG step at sites `(site, site+1)`.
 pub(crate) fn dmrg_2site_step<T>(
-    envs: &DmrgEnvs<ariadnetor_tensor::DenseStorage<T>, ariadnetor_tensor::DenseLayout>,
+    envs: &BraketEnvs<ariadnetor_tensor::DenseStorage<T>, ariadnetor_tensor::DenseLayout>,
     mps: &Mps<ariadnetor_tensor::DenseStorage<T>, ariadnetor_tensor::DenseLayout>,
     mpo: &Mpo<ariadnetor_tensor::DenseStorage<T>, ariadnetor_tensor::DenseLayout>,
     site: usize,

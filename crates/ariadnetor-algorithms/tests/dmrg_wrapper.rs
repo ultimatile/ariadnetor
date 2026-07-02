@@ -14,10 +14,11 @@
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use ariadnetor_algorithms::dmrg::{
-    DmrgEnvs, DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
+    DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
 use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage};
@@ -53,7 +54,7 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
     // Manual composition (mirroring the wrapper body).
     let mut psi_manual = psi0.clone();
     psi_manual.canonicalize(&NativeBackend::new(), 0);
-    let mut envs_manual = DmrgEnvs::build(&psi_manual, &mpo).expect("manual envs build");
+    let mut envs_manual = BraketEnvs::build(&psi_manual, &mpo).expect("manual envs build");
     let result_manual =
         sweep_2site(&mut envs_manual, &mut psi_manual, &mpo, &params).expect("manual sweep");
 

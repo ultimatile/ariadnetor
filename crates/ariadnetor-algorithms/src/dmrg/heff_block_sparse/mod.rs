@@ -52,9 +52,9 @@ use ariadnetor_tensor::{BlockSparseLayout, BlockSparseStorage, BlockSparseTensor
 use crate::krylov::arpack_smallest;
 use crate::krylov::lanczos_smallest;
 
-use super::env::DmrgEnvs;
 use super::heff_error::DmrgHeffError;
 use super::solver::{DmrgScalar, LocalEigensolverParams};
+use ariadnetor_mps::BraketEnvs;
 
 /// Result of a single BlockSparse 2-site DMRG step: smallest local
 /// eigenpair plus the truncated-SVD split of its eigenvector.
@@ -123,7 +123,7 @@ pub struct TwoSiteStepResultBlockSparse<T: Scalar, S: Sector> {
 ///   produced a non-finite eigenpair. With the `arpack` feature, the
 ///   ARPACK arm can instead return `DmrgHeffError::Arpack`.
 pub(crate) fn dmrg_2site_step_block_sparse<T, S>(
-    envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+    envs: &BraketEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     mps: &Mps<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     mpo: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
     site: usize,

@@ -1,13 +1,13 @@
 //! High-level 2-site DMRG entry point.
 //!
-//! [`dmrg_2site`] hides [`DmrgEnvs`] construction and canonical-form
+//! [`dmrg_2site`] hides [`BraketEnvs`] construction and canonical-form
 //! management from non-expert callers, layered on top of the
 //! layout-generic low-level driver [`super::sweep_2site`]. The
 //! low-level driver intentionally rejects MPS not in `Right` or
 //! `Mixed { center: 0 }` form so that a caller-supplied env is never
 //! silently invalidated by an internal canonicalize; this wrapper
 //! defensively clones the input MPS, canonicalizes the clone to
-//! `Mixed { center: 0 }`, builds a fresh [`DmrgEnvs`] against it, and
+//! `Mixed { center: 0 }`, builds a fresh [`BraketEnvs`] against it, and
 //! then invokes the driver. The caller's `psi0` is left untouched.
 //!
 //! Naming convention: `dmrg_2site` is the pure 2-site entry point.
@@ -41,7 +41,7 @@
 //!   one failure mode for the same bug regardless of whether the
 //!   build or the sweep would have caught it.
 //!
-//! Underlying [`DmrgEnvError`] (e.g. BlockSparse edge-bond validation)
+//! Underlying [`BraketEnvError`] (e.g. BlockSparse edge-bond validation)
 //! and [`DmrgSweepError`] (param validation, local-eigensolver / SVD
 //! failure, `TooFewSites`, etc.) are forwarded as
 //! [`DmrgError::Env`] / [`DmrgError::Sweep`] respectively; the
@@ -54,8 +54,8 @@ use ariadnetor_mps::{Mpo, Mps, MpsOps, TensorChain};
 use ariadnetor_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
 
 use super::dispatch::DmrgOps;
-use super::env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
 use super::sweep::{DmrgResult, DmrgSweepError, DmrgSweepParams, sweep_2site};
+use ariadnetor_mps::{BraketEnvError, BraketEnvOps, BraketEnvs};
 
 /// Errors raised by [`dmrg_2site`].
 #[derive(Debug, thiserror::Error)]
@@ -74,10 +74,10 @@ pub enum DmrgError {
         /// Site count reported by the MPO.
         mpo: usize,
     },
-    /// `DmrgEnvs::build` failed (e.g. BlockSparse edge-bond
+    /// `BraketEnvs::build` failed (e.g. BlockSparse edge-bond
     /// validation).
     #[error("DMRG environment build failed")]
-    Env(#[from] DmrgEnvError),
+    Env(#[from] BraketEnvError),
     /// The underlying low-level sweep driver returned an error.
     #[error("DMRG sweep driver failed")]
     Sweep(#[from] DmrgSweepError),
@@ -92,7 +92,7 @@ type Dmrg2SiteOutput<R, St, L> = Result<(DmrgResult<R>, Mps<St, L>), DmrgError>;
 ///
 /// The caller's `psi0` is **defensively cloned**; the input MPS is
 /// not mutated regardless of outcome. The clone is canonicalized to
-/// `Mixed { center: 0 }`, paired with a freshly built [`DmrgEnvs`],
+/// `Mixed { center: 0 }`, paired with a freshly built [`BraketEnvs`],
 /// and handed to [`super::sweep_2site`]. The optimized MPS is
 /// returned alongside the diagnostic [`DmrgResult`].
 ///
@@ -117,7 +117,7 @@ where
     St: Storage + StorageFor<L> + Clone,
     L: TensorLayout + Clone,
     Mps<St, L>: DmrgOps<T> + MpsOps<T, Storage = St, Layout = L>,
-    DmrgEnvs<St, L>: DmrgEnvOps<T, Storage = St, Layout = L>,
+    BraketEnvs<St, L>: BraketEnvOps<T, Storage = St, Layout = L>,
     // Host-pinned: the host backend supplies every kernel, so it must declare
     // capability for this chain's storage (satisfied by Dense / BlockSparse).
     Host: OpsFor<St>,
@@ -134,7 +134,7 @@ where
 
     let mut psi = psi0.clone();
     psi.canonicalize(Host::shared().as_ref(), 0);
-    let mut envs = DmrgEnvs::<St, L>::build::<T>(&psi, mpo)?;
+    let mut envs = BraketEnvs::<St, L>::build::<T>(&psi, mpo)?;
     let result = sweep_2site::<T, St, L>(&mut envs, &mut psi, mpo, params)?;
     Ok((result, psi))
 }

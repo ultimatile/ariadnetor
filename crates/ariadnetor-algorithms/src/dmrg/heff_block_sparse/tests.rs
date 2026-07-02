@@ -10,7 +10,7 @@
 //! `H = J (S+_a S-_{a+1} + S-_a S+_{a+1})`. The chain builders
 //! (`make_n2_*` / `make_n3_*`) come from the `algorithms-fixtures`
 //! crate and return `ariadnetor_mps` types; the environments are built
-//! in-test via `DmrgEnvs::build`.
+//! in-test via `BraketEnvs::build`.
 
 use algorithms_fixtures::fixtures;
 

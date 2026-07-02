@@ -12,9 +12,10 @@ use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown
 use ariadnetor_native::NativeBackend;
 
 use crate::dmrg::heff::dmrg_2site_step;
-use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
+use crate::dmrg::{DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::{ArpackError, ArpackParams};
 use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::BraketEnvs;
 
 // ---------------------------------------------------------------------------
 // Error path: ARPACK upstream `MaxIterReached` must round-trip through
@@ -28,7 +29,7 @@ fn dmrg_arpack_max_iter_one_returns_arpack_error() {
     let mut psi = random_mps_unknown_f64(n, 2, chi, 0xCAFEBABE);
     psi.canonicalize(&NativeBackend::new(), 0);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs = DmrgEnvs::build(&psi, &mpo).expect("envs build");
+    let mut envs = BraketEnvs::build(&psi, &mpo).expect("envs build");
     // Walk the left env up so left(1) is populated for site=1.
     envs.advance_left(&psi, &mpo, 0).expect("advance_left(0)");
 
