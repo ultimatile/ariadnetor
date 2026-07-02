@@ -62,7 +62,7 @@ fn t6_step_error_propagated() {
     }
     let env_mpo = Mpo::from_sites(env_mpo_storages);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&env_mps, &env_mpo).expect("build");
+        BraketEnvs::build(&env_mps, &env_mpo, &env_mps).expect("build");
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &standard_params_f64(0xB2))
         .expect_err("step shape mismatch");
     assert!(matches!(

@@ -72,7 +72,7 @@ fn t10_post_sweep_envs_have_no_stale_some_slots() {
         let mut mps = random_mps_center_zero_f64(n, d, 2, 0xF0 ^ n as u64);
         let mpo = psd_local_mpo_f64(n, d, 0xF1 ^ n as u64);
         let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-            BraketEnvs::build(&mps, &mpo).expect("build");
+            BraketEnvs::build(&mps, &mpo, &mps).expect("build");
         let params = DmrgSweepParams {
             max_sweeps: 1,
             min_sweeps: 1,
@@ -89,7 +89,7 @@ fn t10_post_sweep_envs_have_no_stale_some_slots() {
         };
         sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
         let fresh: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-            BraketEnvs::build(&mps, &mpo).expect("rebuild");
+            BraketEnvs::build(&mps, &mpo, &mps).expect("rebuild");
         for j in 0..=n {
             check("left", j, n, envs.left(j), fresh.left(j));
             check("right", j, n, envs.right(j), fresh.right(j));

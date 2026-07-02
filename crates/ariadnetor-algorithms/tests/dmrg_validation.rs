@@ -202,7 +202,7 @@ fn run_validation(
 ) {
     let n = mpo.len();
     let mut mps = random_mps_center_zero_f64(n, D, 4, init_seed);
-    let mut envs = BraketEnvs::build(&mps, &mpo).expect("envs build");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
     let params = validation_params(chi_max, lanczos_seed);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params)

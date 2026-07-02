@@ -362,7 +362,7 @@ where
             // the last L→R step; the next R→L step at the same
             // `site` consumes `left(site)` which is still valid.
             if site < n_sites - 2 {
-                envs.advance_left::<T>(mps, mpo, site)
+                envs.advance_left::<T>(mps, mpo, mps, site)
                     .map_err(|source| DmrgSweepError::Env {
                         sweep: sweep_idx,
                         direction: SweepDirection::LeftToRight,
@@ -397,7 +397,7 @@ where
             // they do not affect the next sweep iteration's
             // numerics, which overwrites `left[1]` via
             // `advance_left(0)` before consumption.
-            envs.advance_right::<T>(mps, mpo, site + 1)
+            envs.advance_right::<T>(mps, mpo, mps, site + 1)
                 .map_err(|source| DmrgSweepError::Env {
                     sweep: sweep_idx,
                     direction: SweepDirection::RightToLeft,

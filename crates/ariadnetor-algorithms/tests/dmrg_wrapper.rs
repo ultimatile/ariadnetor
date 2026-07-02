@@ -54,7 +54,8 @@ fn wrapper_dense_heisenberg_n4_matches_manual() {
     // Manual composition (mirroring the wrapper body).
     let mut psi_manual = psi0.clone();
     psi_manual.canonicalize(&NativeBackend::new(), 0);
-    let mut envs_manual = BraketEnvs::build(&psi_manual, &mpo).expect("manual envs build");
+    let mut envs_manual =
+        BraketEnvs::build(&psi_manual, &mpo, &psi_manual).expect("manual envs build");
     let result_manual =
         sweep_2site(&mut envs_manual, &mut psi_manual, &mpo, &params).expect("manual sweep");
 

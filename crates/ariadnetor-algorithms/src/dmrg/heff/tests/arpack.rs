@@ -29,9 +29,10 @@ fn dmrg_arpack_max_iter_one_returns_arpack_error() {
     let mut psi = random_mps_unknown_f64(n, 2, chi, 0xCAFEBABE);
     psi.canonicalize(&NativeBackend::new(), 0);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs = BraketEnvs::build(&psi, &mpo).expect("envs build");
+    let mut envs = BraketEnvs::build(&psi, &mpo, &psi).expect("envs build");
     // Walk the left env up so left(1) is populated for site=1.
-    envs.advance_left(&psi, &mpo, 0).expect("advance_left(0)");
+    envs.advance_left(&psi, &mpo, &psi, 0)
+        .expect("advance_left(0)");
 
     // max_iter=1 with a tight relative tol is structurally
     // insufficient for a Heisenberg local Heff of dim ≥ 16 — ARPACK

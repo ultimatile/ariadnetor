@@ -2,17 +2,20 @@
 //!
 //! Mirrors the boundary convention used by `ariadnetor_mps::inner::braket_bsp`
 //! (the canonical BlockSparse braket reference): the env tensor's
-//! axis 0 (top-bra-bond) carries the same `Direction` as the MPS edge
+//! axis 0 (top-bra-bond) carries the same `Direction` as the bra edge
 //! bond, axis 1 (W-bond) is flipped relative to the MPO edge, axis 2
-//! (bot-ket-bond) is flipped relative to the MPS edge, and the env's
+//! (bot-ket-bond) is flipped relative to the ket edge, and the env's
 //! flux is `S::identity()`. The bra is built via
 //! [`BlockSparseTensor::dagger`] (which flips QN directions, conjugates
 //! values, and duals the flux), so flux is preserved through one
-//! extend step regardless of per-site MPS charge.
+//! extend step regardless of per-site charge.
 //!
 //! Boundary helpers reject inputs whose edge bonds violate the
 //! dim-1 / single-sector contract or whose chosen edge sectors fail
-//! to fuse to identity flux.
+//! to fuse to identity flux. Under the common-sector requirement (bra
+//! and ket share their edge sector) the bra / ket legs cancel; a
+//! cross-sector bra / ket pair is out of scope and rejected the same
+//! way.
 
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{LinalgError, permute_block_sparse_with_backend, tensordot};
@@ -68,22 +71,33 @@ fn check_dim1_single_sector<S: Sector>(
 
 /// Build the rank-3 boundary env tensor used by both
 /// `trivial_left_boundary` and `trivial_right_boundary`.
+///
+/// Axis 0 carries the bra edge sector, axis 2 the (flipped) ket edge
+/// sector. The `(0, 0, 0)` identity-flux block exists only when the
+/// three edges fuse to identity. When bra and ket share their edge
+/// sector — the common-sector requirement (see the `env` module docs) —
+/// the two MPS legs cancel and an absent block is attributable to the
+/// MPO edge; cross-sector bra / ket (a legitimately zero overlap) is
+/// out of scope and also surfaces here as `MalformedEdgeBond`.
 fn build_boundary<T, S>(
-    mps_edge: &QNIndex<S>,
+    bra_edge: &QNIndex<S>,
     mpo_edge: &QNIndex<S>,
-    mps_leg_name: &'static str,
+    ket_edge: &QNIndex<S>,
+    bra_leg_name: &'static str,
     mpo_leg_name: &'static str,
+    ket_leg_name: &'static str,
 ) -> Result<BlockSparseTensor<T, S>, BraketEnvError>
 where
     T: Scalar,
     S: Sector,
 {
-    check_dim1_single_sector(mps_edge, mps_leg_name)?;
+    check_dim1_single_sector(bra_edge, bra_leg_name)?;
     check_dim1_single_sector(mpo_edge, mpo_leg_name)?;
+    check_dim1_single_sector(ket_edge, ket_leg_name)?;
 
-    let env_leg0 = QNIndex::new(mps_edge.blocks().to_vec(), mps_edge.direction());
+    let env_leg0 = QNIndex::new(bra_edge.blocks().to_vec(), bra_edge.direction());
     let env_leg1 = QNIndex::new(mpo_edge.blocks().to_vec(), flip(mpo_edge.direction()));
-    let env_leg2 = QNIndex::new(mps_edge.blocks().to_vec(), flip(mps_edge.direction()));
+    let env_leg2 = QNIndex::new(ket_edge.blocks().to_vec(), flip(ket_edge.direction()));
 
     let mut env =
         BlockSparseTensor::<T, S>::zeros(vec![env_leg0, env_leg1, env_leg2], S::identity());
@@ -93,9 +107,9 @@ where
             slot[0] = T::one();
             Ok(env)
         }
-        // The MPS contributions cancel by construction; if the chosen
-        // edge sectors do not fuse to identity it is attributable to
-        // the MPO leg.
+        // Under the common-sector requirement the bra / ket legs cancel,
+        // so an absent identity-flux block is attributable to the MPO
+        // edge not fusing to identity.
         None => Err(BraketEnvError::MalformedEdgeBond { leg: mpo_leg_name }),
     }
 }
@@ -109,38 +123,46 @@ where
     type Storage = BlockSparseStorage<T>;
 
     fn trivial_left_boundary(
-        mps_left_edge: &BlockSparseTensor<T, S>,
+        bra_left_edge: &BlockSparseTensor<T, S>,
         mpo_left_edge: &BlockSparseTensor<T, S>,
+        ket_left_edge: &BlockSparseTensor<T, S>,
     ) -> Result<BlockSparseTensor<T, S>, BraketEnvError> {
         build_boundary(
-            &mps_left_edge.indices()[0],
+            &bra_left_edge.indices()[0],
             &mpo_left_edge.indices()[0],
-            "mps_left",
+            &ket_left_edge.indices()[0],
+            "bra_left",
             "mpo_left",
+            "ket_left",
         )
     }
 
     fn trivial_right_boundary(
-        mps_right_edge: &BlockSparseTensor<T, S>,
+        bra_right_edge: &BlockSparseTensor<T, S>,
         mpo_right_edge: &BlockSparseTensor<T, S>,
+        ket_right_edge: &BlockSparseTensor<T, S>,
     ) -> Result<BlockSparseTensor<T, S>, BraketEnvError> {
         build_boundary(
-            &mps_right_edge.indices()[2],
+            &bra_right_edge.indices()[2],
             &mpo_right_edge.indices()[3],
-            "mps_right",
+            &ket_right_edge.indices()[2],
+            "bra_right",
             "mpo_right",
+            "ket_right",
         )
     }
 
     /// Per-site left extension. Mirror of the
-    /// `ariadnetor_mps::inner::braket_bsp` loop body.
+    /// `ariadnetor_mps::inner::braket_bsp` loop body: bra =
+    /// `bra_site.dagger()`, ket leg contracted last.
     fn extend_left_step(
         env: &BlockSparseTensor<T, S>,
-        site: &BlockSparseTensor<T, S>,
+        bra_site: &BlockSparseTensor<T, S>,
         mpo_site: &BlockSparseTensor<T, S>,
+        ket_site: &BlockSparseTensor<T, S>,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
         let backend = Host::shared();
-        let bra = site.dagger();
+        let bra = bra_site.dagger();
 
         // env(a,b,c) × bra(a,d,e) → t1(b,c,d,e)
         let t1 = tensordot(backend.as_ref(), env, &bra, &[0], &[0])?;
@@ -148,8 +170,8 @@ where
         // t1(b,c,d,e) × W(b,f,d,g) → t2(c,e,f,g)
         let t2 = tensordot(backend.as_ref(), &t1, mpo_site, &[0, 2], &[0, 2])?;
 
-        // t2(c,e,f,g) × site(c,f,h) → env'(e,g,h)
-        let env_new = tensordot(backend.as_ref(), &t2, site, &[0, 2], &[0, 1])?;
+        // t2(c,e,f,g) × ket(c,f,h) → env'(e,g,h)
+        let env_new = tensordot(backend.as_ref(), &t2, ket_site, &[0, 2], &[0, 1])?;
 
         Ok(env_new)
     }
@@ -157,14 +179,15 @@ where
     /// Per-site right extension.
     fn extend_right_step(
         env: &BlockSparseTensor<T, S>,
-        site: &BlockSparseTensor<T, S>,
+        bra_site: &BlockSparseTensor<T, S>,
         mpo_site: &BlockSparseTensor<T, S>,
+        ket_site: &BlockSparseTensor<T, S>,
     ) -> Result<BlockSparseTensor<T, S>, LinalgError> {
         let backend = Host::shared();
-        let bra = site.dagger();
+        let bra = bra_site.dagger();
 
-        // env(e,g,h) × site(c,f,h) → t1(e,g,c,f)
-        let t1 = tensordot(backend.as_ref(), env, site, &[2], &[2])?;
+        // env(e,g,h) × ket(c,f,h) → t1(e,g,c,f)
+        let t1 = tensordot(backend.as_ref(), env, ket_site, &[2], &[2])?;
 
         // t1(e,g,c,f) × W(b,f,d,g) → t2(e,c,b,d)
         let t2 = tensordot(backend.as_ref(), &t1, mpo_site, &[1, 3], &[3, 1])?;

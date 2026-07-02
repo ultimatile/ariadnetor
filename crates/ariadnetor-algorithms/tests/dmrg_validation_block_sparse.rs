@@ -404,7 +404,7 @@ fn run_validation_bsp(
 ) {
     let n = mpo.len();
     let mut mps = random_mps_bsp_center_zero_f64(n, chi_internal, total_charge, init_seed);
-    let mut envs = BraketEnvs::build(&mps, &mpo).expect("envs build");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
     let params = validation_params_bsp(chi_max, lanczos_seed);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params)

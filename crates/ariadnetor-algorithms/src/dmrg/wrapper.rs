@@ -134,7 +134,7 @@ where
 
     let mut psi = psi0.clone();
     psi.canonicalize(Host::shared().as_ref(), 0);
-    let mut envs = BraketEnvs::<St, L>::build::<T>(&psi, mpo)?;
+    let mut envs = BraketEnvs::<St, L>::build::<T>(&psi, mpo, &psi)?;
     let result = sweep_2site::<T, St, L>(&mut envs, &mut psi, mpo, params)?;
     Ok((result, psi))
 }

@@ -130,7 +130,7 @@ fn env_boundaries_are_trivial() {
     let mps = product_state_mps(n);
     let mpo = identity_mpo(n, 2);
 
-    let env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 
     let l0 = env.left(0).expect("left(0)");
     let rn = env.right(n).expect("right(N)");
@@ -154,12 +154,54 @@ fn env_build_consistency_with_braket() {
     let mps = random_mps_f64(n, d, chi, 0xDEAD_BEEF);
     let mpo = random_mpo_f64(n, d, w, 0xC0FFEE);
 
-    let env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let l0 = env.left(0).expect("left(0)");
     let folded = fold_left_to_scalar(&mps, &mpo, l0);
 
     let reference = braket(&NativeBackend::new(), &mps, &mpo, &mps);
     assert_abs_diff_eq!(folded, reference, epsilon = 1e-9);
+}
+
+// ---------------------------------------------------------------------------
+// Test 2b — distinct bra != ket: the fully-folded env equals the
+// three-argument braket <bra|W|ket>. This exercises the generalized
+// bra / ket path in-phase (DMRG only ever passes bra = ket), so the
+// distinct-argument API is verified here and not left dead until a
+// variational consumer materializes. Folding is done through the env's
+// own advance_left across every site, so left[N] is the global scalar.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn env_build_distinct_bra_ket_matches_braket() {
+    let n = 6;
+    let d = 2;
+    let chi = 3;
+    let w = 2;
+    // Same shapes, different seeds -> genuinely distinct bra and ket.
+    let bra = random_mps_f64(n, d, chi, 0x1111_2222);
+    let ket = random_mps_f64(n, d, chi, 0x3333_4444);
+    let mpo = random_mpo_f64(n, d, w, 0xC0FF_EE00);
+
+    let mut env = BraketEnvs::build(&bra, &mpo, &ket).expect("build");
+    for i in 0..n {
+        env.advance_left(&bra, &mpo, &ket, i)
+            .expect("advance_left folds one site");
+    }
+    let ln = env.left(n).expect("left(N) is the full fold");
+    assert_eq!(ln.shape(), &[1, 1, 1]);
+    let folded = ln.data_slice()[0];
+
+    let backend = NativeBackend::new();
+    let reference = braket(&backend, &bra, &mpo, &ket);
+    assert_abs_diff_eq!(folded, reference, epsilon = 1e-9);
+
+    // The distinct case must genuinely differ from either self-overlap,
+    // otherwise the test would pass even if ket were silently ignored.
+    let self_bra = braket(&backend, &bra, &mpo, &bra);
+    assert!(
+        (reference - self_bra).abs() > 1e-6,
+        "distinct <bra|W|ket> should differ from <bra|W|bra>"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +224,7 @@ fn env_decomposition_holds_at_every_interior_boundary() {
     let mps = random_mps_f64(n, d, chi, 0xDEAD_BEEF);
     let mpo = random_mpo_f64(n, d, w, 0xC0FFEE);
 
-    let env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let l0 = env.left(0).expect("left(0)");
     let reference = braket(&NativeBackend::new(), &mps, &mpo, &mps);
 
@@ -215,7 +257,7 @@ fn env_advance_left_invalidates_right_interior() {
     let n = 4;
     let mps = product_state_mps(n);
     let mpo = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let mut env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 
     // Right slot at index 2 is interior (2 < N = 4) and must be Some
     // after build.
@@ -226,9 +268,9 @@ fn env_advance_left_invalidates_right_interior() {
 
     // Walk the left envs forward so left[1] exists, then advance at
     // i = 1 (interior; i + 1 = 2 < 4).
-    env.advance_left(&mps, &mpo, 0)
+    env.advance_left(&mps, &mpo, &mps, 0)
         .expect("advance_left(0) seeds left[1]");
-    env.advance_left(&mps, &mpo, 1)
+    env.advance_left(&mps, &mpo, &mps, 1)
         .expect("advance_left interior");
 
     assert!(
@@ -250,16 +292,16 @@ fn env_advance_left_at_right_edge_preserves_boundary() {
     let n = 4;
     let mps = product_state_mps(n);
     let mpo = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let mut env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 
     // Walk left envs all the way to N-1 so we can call advance_left(N-1).
     for i in 0..(n - 1) {
-        env.advance_left(&mps, &mpo, i)
+        env.advance_left(&mps, &mpo, &mps, i)
             .expect("advance_left interior");
     }
 
     let rn_before = env.right(n).expect("right(N) before edge advance").clone();
-    env.advance_left(&mps, &mpo, n - 1)
+    env.advance_left(&mps, &mpo, &mps, n - 1)
         .expect("advance_left at right edge");
 
     let rn_after = env
@@ -282,12 +324,12 @@ fn env_advance_right_at_left_edge_preserves_boundary() {
     let n = 4;
     let mps = product_state_mps(n);
     let mpo = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let mut env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 
     // After build, right[1..=N] are populated (right[0] is None by
     // construction); we can directly call advance_right(0).
     let l0_before = env.left(0).expect("left(0) before edge advance").clone();
-    env.advance_right(&mps, &mpo, 0)
+    env.advance_right(&mps, &mpo, &mps, 0)
         .expect("advance_right at left edge");
 
     let l0_after = env
@@ -310,11 +352,11 @@ fn env_round_trip_sweep() {
     let n = 5;
     let mps = product_state_mps(n);
     let mpo = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let mut env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 
     // Full L→R sweep: absorb sites 0..N-1 into left.
     for i in 0..n {
-        env.advance_left(&mps, &mpo, i).expect("L→R");
+        env.advance_left(&mps, &mpo, &mps, i).expect("L→R");
     }
 
     // After the L→R sweep, all left slots are populated, all
@@ -332,7 +374,7 @@ fn env_round_trip_sweep() {
 
     // Now reverse: R→L sweep absorbing sites N-1..0 into right.
     for j in (0..n).rev() {
-        env.advance_right(&mps, &mpo, j).expect("R→L");
+        env.advance_right(&mps, &mpo, &mps, j).expect("R→L");
     }
 
     // After the R→L sweep, all right slots are populated except
@@ -361,15 +403,15 @@ fn env_invalid_site_rejected() {
     let n = 3;
     let mps = product_state_mps(n);
     let mpo = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let mut env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 
-    let result = env.advance_left(&mps, &mpo, n);
+    let result = env.advance_left(&mps, &mpo, &mps, n);
     assert!(matches!(
         result,
         Err(BraketEnvError::InvalidSite { index, n_sites }) if index == n && n_sites == n
     ));
 
-    let result = env.advance_right(&mps, &mpo, n + 5);
+    let result = env.advance_right(&mps, &mpo, &mps, n + 5);
     assert!(matches!(result, Err(BraketEnvError::InvalidSite { .. })));
 }
 
@@ -386,10 +428,14 @@ fn env_length_mismatch_surfaces_as_error() {
     let mps = product_state_mps(3);
     let mpo = identity_mpo(4, 2);
 
-    let result = BraketEnvs::build(&mps, &mpo);
+    let result = BraketEnvs::build(&mps, &mpo, &mps);
     assert!(matches!(
         result,
-        Err(BraketEnvError::LengthMismatch { mps: 3, mpo: 4 })
+        Err(BraketEnvError::LengthMismatch {
+            bra: 3,
+            mpo: 4,
+            ket: 3
+        })
     ));
 }
 
@@ -402,11 +448,11 @@ fn env_stale_neighbor_surfaces_as_error() {
     let n = 4;
     let mps = product_state_mps(n);
     let mpo = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps, &mpo).expect("build");
+    let mut env = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 
     // After build, only left[0] is populated. advance_left(2) needs
     // left[2], which is None → StaleNeighbor("left", 2).
-    let result = env.advance_left(&mps, &mpo, 2);
+    let result = env.advance_left(&mps, &mpo, &mps, 2);
     assert!(matches!(
         result,
         Err(BraketEnvError::StaleNeighbor {
@@ -419,11 +465,11 @@ fn env_stale_neighbor_surfaces_as_error() {
     // stale, then attempt advance_right at an interior site. Walk
     // L→R first so interior right slots get invalidated.
     for i in 0..n {
-        env.advance_left(&mps, &mpo, i).expect("L→R sweep");
+        env.advance_left(&mps, &mpo, &mps, i).expect("L→R sweep");
     }
     // Now right[1..n] are None (only right[n] survives). advance_right(0)
     // needs right[1] → StaleNeighbor("right", 1).
-    let result = env.advance_right(&mps, &mpo, 0);
+    let result = env.advance_right(&mps, &mpo, &mps, 0);
     assert!(matches!(
         result,
         Err(BraketEnvError::StaleNeighbor {
@@ -451,29 +497,37 @@ fn env_advance_left_asymmetric_length_mismatch() {
     let n = 4;
     let mps_4 = product_state_mps(n);
     let mpo_4 = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps_4, &mpo_4).expect("build");
+    let mut env = BraketEnvs::build(&mps_4, &mpo_4, &mps_4).expect("build");
 
     let mps_3 = product_state_mps(3);
     let mpo_3 = identity_mpo(3, 2);
 
     // mpo matches n_sites = 4, mps does not (3).
-    let result = env.advance_left(&mps_3, &mpo_4, 0);
+    let result = env.advance_left(&mps_3, &mpo_4, &mps_3, 0);
     assert!(
         matches!(
             result,
-            Err(BraketEnvError::LengthMismatch { mps: 3, mpo: 4 })
+            Err(BraketEnvError::LengthMismatch {
+                bra: 3,
+                mpo: 4,
+                ket: 3
+            })
         ),
-        "expected LengthMismatch {{ mps: 3, mpo: 4 }}, got {result:?}",
+        "expected LengthMismatch {{ bra: 3, mpo: 4, ket: 3 }}, got {result:?}",
     );
 
     // mps matches n_sites = 4, mpo does not (3).
-    let result = env.advance_left(&mps_4, &mpo_3, 0);
+    let result = env.advance_left(&mps_4, &mpo_3, &mps_4, 0);
     assert!(
         matches!(
             result,
-            Err(BraketEnvError::LengthMismatch { mps: 4, mpo: 3 })
+            Err(BraketEnvError::LengthMismatch {
+                bra: 4,
+                mpo: 3,
+                ket: 4
+            })
         ),
-        "expected LengthMismatch {{ mps: 4, mpo: 3 }}, got {result:?}",
+        "expected LengthMismatch {{ bra: 4, mpo: 3, ket: 4 }}, got {result:?}",
     );
 }
 
@@ -482,28 +536,36 @@ fn env_advance_right_asymmetric_length_mismatch() {
     let n = 4;
     let mps_4 = product_state_mps(n);
     let mpo_4 = identity_mpo(n, 2);
-    let mut env = BraketEnvs::build(&mps_4, &mpo_4).expect("build");
+    let mut env = BraketEnvs::build(&mps_4, &mpo_4, &mps_4).expect("build");
 
     let mps_3 = product_state_mps(3);
     let mpo_3 = identity_mpo(3, 2);
 
     // advance_right targets `right[j+1]`. Use j = 0 so the read of
     // right[1] never happens (length check fires first).
-    let result = env.advance_right(&mps_3, &mpo_4, 0);
+    let result = env.advance_right(&mps_3, &mpo_4, &mps_3, 0);
     assert!(
         matches!(
             result,
-            Err(BraketEnvError::LengthMismatch { mps: 3, mpo: 4 })
+            Err(BraketEnvError::LengthMismatch {
+                bra: 3,
+                mpo: 4,
+                ket: 3
+            })
         ),
-        "expected LengthMismatch {{ mps: 3, mpo: 4 }}, got {result:?}",
+        "expected LengthMismatch {{ bra: 3, mpo: 4, ket: 3 }}, got {result:?}",
     );
 
-    let result = env.advance_right(&mps_4, &mpo_3, 0);
+    let result = env.advance_right(&mps_4, &mpo_3, &mps_4, 0);
     assert!(
         matches!(
             result,
-            Err(BraketEnvError::LengthMismatch { mps: 4, mpo: 3 })
+            Err(BraketEnvError::LengthMismatch {
+                bra: 4,
+                mpo: 3,
+                ket: 4
+            })
         ),
-        "expected LengthMismatch {{ mps: 4, mpo: 3 }}, got {result:?}",
+        "expected LengthMismatch {{ bra: 4, mpo: 3, ket: 4 }}, got {result:?}",
     );
 }

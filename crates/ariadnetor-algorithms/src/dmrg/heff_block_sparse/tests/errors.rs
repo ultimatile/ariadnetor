@@ -27,7 +27,7 @@ use ariadnetor_tensor::test_fixtures::densify_bsp_c64;
 fn bsp_heff_step_error_paths_invalid_site() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = BraketEnvs::build(&mps, &mpo).expect("envs build");
+    let envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
@@ -44,7 +44,7 @@ fn bsp_heff_step_error_paths_invalid_site() {
 fn bsp_heff_step_error_paths_invalid_eigensolver_params() {
     let mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = BraketEnvs::build(&mps, &mpo).expect("envs build");
+    let envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
     let trunc = TruncSvdParams {
         chi_max: None,
         target_trunc_err: None,
@@ -88,7 +88,7 @@ fn bsp_heff_step_error_paths_invalid_eigensolver_params() {
 fn bsp_heff_step_error_paths_qn_mismatch_mpo_flux() {
     let mps = make_n2_mps_f64();
     let mpo_good = make_n2_mpo_f64(1.5);
-    let envs = BraketEnvs::build(&mps, &mpo_good).expect("envs build");
+    let envs = BraketEnvs::build(&mps, &mpo_good, &mps).expect("envs build");
 
     // Replace W[0] with a BlockSparse carrying non-identity flux.
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
@@ -189,7 +189,7 @@ fn bsp_heff_step_error_paths_empty_psi_template() {
     w1.block_data_mut(&BlockCoord(vec![0, 0, 0, 0])).expect("I")[0] = 1.0;
     let mpo = ariadnetor_mps::Mpo::from_sites(vec![w0, w1]);
 
-    let envs = BraketEnvs::build(&mps, &mpo).expect("envs build");
+    let envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
@@ -223,7 +223,7 @@ fn bsp_heff_step_error_paths_qn_mismatch_mpo_bra_ket() {
     );
     let mps = make_n2_mps_f64();
     let mpo_good = make_n2_mpo_f64(1.5);
-    let envs = BraketEnvs::build(&mps, &mpo_good).expect("envs build");
+    let envs = BraketEnvs::build(&mps, &mpo_good, &mps).expect("envs build");
     let bad_mpo = Mpo::from_sites(vec![bad_w0, mpo_good.site(1).clone()]);
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
@@ -246,7 +246,7 @@ fn bsp_heff_complex_path() {
     // and a sensible eigenvalue via the crate-internal step entry point.
     let mps = make_n2_mps_c64();
     let mpo = make_n2_mpo_c64(1.5);
-    let envs = BraketEnvs::build(&mps, &mpo).expect("c64 envs");
+    let envs = BraketEnvs::build(&mps, &mpo, &mps).expect("c64 envs");
     let bsp_heff = EffectiveHamiltonian2SiteBlockSparse::new(
         envs.left(0).expect("left"),
         mpo.site(0),
@@ -309,7 +309,7 @@ fn bsp_heff_complex_path() {
 fn bsp_validate_inputs_asymmetric_length_mismatch() {
     let mps_n2 = make_n2_mps_f64();
     let mpo_n2 = make_n2_mpo_f64(1.5);
-    let envs_n2 = BraketEnvs::build(&mps_n2, &mpo_n2).expect("envs build");
+    let envs_n2 = BraketEnvs::build(&mps_n2, &mpo_n2, &mps_n2).expect("envs build");
     let mps_n3 = make_n3_mps_f64();
     let mpo_n3 = make_n3_mpo_f64(1.5);
 
@@ -358,10 +358,12 @@ fn bsp_validate_inputs_asymmetric_length_mismatch() {
 fn bsp_validate_inputs_stale_right_index_pinpoint() {
     let mps = make_n3_mps_f64();
     let mpo = make_n3_mpo_f64(1.5);
-    let mut envs = BraketEnvs::build(&mps, &mpo).expect("envs build n=3");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build n=3");
 
-    envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
-    envs.advance_left(&mps, &mpo, 1).expect("advance_left(1)");
+    envs.advance_left(&mps, &mpo, &mps, 0)
+        .expect("advance_left(0)");
+    envs.advance_left(&mps, &mpo, &mps, 1)
+        .expect("advance_left(1)");
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
@@ -397,7 +399,7 @@ fn bsp_validate_inputs_stale_right_index_pinpoint() {
 fn bsp_validate_inputs_qn_mismatch_contracted_axis_sectors() {
     let mps_envs = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.5);
-    let envs = BraketEnvs::build(&mps_envs, &mpo).expect("envs build");
+    let envs = BraketEnvs::build(&mps_envs, &mpo, &mps_envs).expect("envs build");
 
     let phys = vec![(U1Sector(0), 1), (U1Sector(1), 1)];
     let alt_left = vec![(U1Sector(2), 1)];

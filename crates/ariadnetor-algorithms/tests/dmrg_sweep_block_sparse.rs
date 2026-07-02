@@ -66,7 +66,7 @@ fn setup_f64(
     mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
 ) -> BraketEnvs<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     mps.canonicalize(&NativeBackend::new(), 0);
-    BraketEnvs::build(mps, mpo).expect("envs build")
+    BraketEnvs::build(mps, mpo, mps).expect("envs build")
 }
 
 fn setup_c64(
@@ -74,7 +74,7 @@ fn setup_c64(
     mpo: &Mpo<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>>,
 ) -> BraketEnvs<BlockSparseStorage<Complex<f64>>, BlockSparseLayout<U1Sector>> {
     mps.canonicalize(&NativeBackend::new(), 0);
-    BraketEnvs::build(mps, mpo).expect("envs build")
+    BraketEnvs::build(mps, mpo, mps).expect("envs build")
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ fn bsp_sweep_envs_equivalent_to_fresh_rebuild_after_sweep() {
     let mut mps_a = mps.clone();
     let mut envs_a = envs.clone();
     let mut mps_b = mps.clone();
-    let mut envs_b = BraketEnvs::build(&mps_b, &mpo).expect("rebuild");
+    let mut envs_b = BraketEnvs::build(&mps_b, &mpo, &mps_b).expect("rebuild");
 
     let cmp_params = DmrgSweepParams {
         max_sweeps: 1,
@@ -328,7 +328,7 @@ fn bsp_sweep_error_invalid_params_energy_tol_nan() {
 fn bsp_sweep_error_canonical_form_unknown_rejected() {
     let mut mps = make_n2_mps_f64();
     let mpo = make_n2_mpo_f64(1.0);
-    let mut envs = BraketEnvs::build(&mps, &mpo).expect("envs build");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
     // Skip canonicalize → form stays Unknown.
     let params = standard_params(0);
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect_err("err");
@@ -457,7 +457,7 @@ fn make_n1_trivial_f64() -> (BspMpsF64, BspMpoF64) {
 #[test]
 fn bsp_sweep_error_too_few_sites() {
     let (mut mps, mpo) = make_n1_trivial_f64();
-    let mut envs = BraketEnvs::build(&mps, &mpo).expect("build n=1");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("build n=1");
     let params = standard_params(0);
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect_err("err");
     assert!(matches!(err, DmrgSweepError::TooFewSites { n_sites: 1 }));
@@ -562,7 +562,7 @@ fn bsp_sweep_post_sweep_envs_have_no_stale_some_slots() {
             ..standard_params(0xF2)
         };
         sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep");
-        let fresh = BraketEnvs::build(&mps, &mpo).expect("rebuild");
+        let fresh = BraketEnvs::build(&mps, &mpo, &mps).expect("rebuild");
         let n = mps.len();
         for j in 0..=n {
             if let Some(maintained) = envs.left(j) {

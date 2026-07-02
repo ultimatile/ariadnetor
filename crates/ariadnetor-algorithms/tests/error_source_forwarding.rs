@@ -70,7 +70,7 @@ fn dmrg_env_error_contract_forwards_to_source() {
     let err = BraketEnvError::Contract(child);
     assert_forwards(
         &err,
-        "contract failure during DMRG environment update",
+        "contract failure during braket environment update",
         &child_display,
     );
 }

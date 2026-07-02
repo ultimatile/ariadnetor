@@ -194,7 +194,7 @@ fn t1_psd_product_converges_to_product_of_min_eigs_f64() {
     let mut mps = random_mps_center_zero_f64(n, d, 4, 0xA1A1);
     let (mpo, hs) = psd_local_mpo_f64(n, d, 0x1234);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = standard_params_f64(0xB00B);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
@@ -221,7 +221,7 @@ fn t2_energy_monotone_nonincreasing_across_sweeps() {
     let mut mps = random_mps_center_zero_f64(n, d, 4, 0xC0DE);
     let mpo = hermitian_local_mpo_f64(n, d, 0xF00D);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 10,
         min_sweeps: 10, // force all sweeps to run for a full energy trace.
@@ -262,7 +262,7 @@ fn t3_boundary_sites_covered_each_sweep() {
     let mut mps = random_mps_center_zero_f64(n, d, 3, 0x33);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x44);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 3,
         min_sweeps: 3,
@@ -309,7 +309,7 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
     let mut mps = random_mps_center_zero_f64(n, d, 3, 0x4444);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x5555);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     // First, run one full cycle.
     let prep_params = DmrgSweepParams {
         max_sweeps: 1,
@@ -334,7 +334,7 @@ fn t4_envs_functionally_equivalent_to_fresh_rebuild() {
     let mut envs_a = envs.clone();
     let mut mps_b = mps.clone();
     let mut envs_b: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps_b, &mpo).expect("rebuild");
+        BraketEnvs::build(&mps_b, &mpo, &mps_b).expect("rebuild");
 
     let cmp_params = DmrgSweepParams {
         max_sweeps: 1,
@@ -385,7 +385,7 @@ fn t5_n_sites_two_edge_case() {
     let mut mps = random_mps_center_zero_f64(n, d, 2, 0x77);
     let (mpo, hs) = psd_local_mpo_f64(n, d, 0x88);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = standard_params_f64(0x99);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
@@ -411,7 +411,7 @@ fn t6_length_mismatch_mps_vs_envs() {
     let mut mps_a = random_mps_center_zero_f64(n_a, d, 2, 0x10);
     let (mpo_a, _) = psd_local_mpo_f64(n_a, d, 0x11);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps_a, &mpo_a).expect("build");
+        BraketEnvs::build(&mps_a, &mpo_a, &mps_a).expect("build");
     let mut mps_b = random_mps_center_zero_f64(n_b, d, 2, 0x12);
     // We still need an MPO of *some* length; the function checks both
     // mps and mpo against envs.n_sites.
@@ -446,7 +446,7 @@ fn t6_too_few_sites() {
         Host::shared().dense(vec![1.0_f64, 0.0, 0.0, 1.0], vec![1, d, d, 1]),
     ]);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let mut mps2 = mps.clone();
     let err = sweep_2site(&mut envs, &mut mps2, &mpo, &standard_params_f64(0x20))
         .expect_err("n=1 should fail");
@@ -460,7 +460,7 @@ fn t6_invalid_params_max_sweeps_zero() {
     let mps = random_mps_center_zero_f64(n, d, 2, 0x21);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x22);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x23);
     p.max_sweeps = 0;
@@ -475,7 +475,7 @@ fn t6_invalid_params_min_exceeds_max() {
     let mps = random_mps_center_zero_f64(n, d, 2, 0x24);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x25);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x26);
     p.min_sweeps = 10;
@@ -491,7 +491,7 @@ fn t6_invalid_params_chi_max_zero() {
     let mps = random_mps_center_zero_f64(n, d, 2, 0x27);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x28);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x29);
     p.trunc.chi_max = Some(0);
@@ -506,7 +506,7 @@ fn t6_invalid_params_energy_tol_negative() {
     let mps = random_mps_center_zero_f64(n, d, 2, 0x2A);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x2B);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let mut mps2 = mps.clone();
     let mut p = standard_params_f64(0x2C);
     p.energy_tol = -1e-10;
@@ -521,7 +521,7 @@ fn t6_canonical_form_left_rejected() {
     let mut mps = random_mps_center_zero_f64(n, d, 2, 0x2D);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x2E);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     // Move center to N-1 (i.e., left-canonical at sites 0..N-1) — not
     // allowed for the sweep entry point.
     mps.canonicalize(&NativeBackend::new(), n - 1);
@@ -537,7 +537,7 @@ fn t6_canonical_form_unknown_rejected() {
     let mps_init = random_mps_center_zero_f64(n, d, 2, 0x30);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0x31);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps_init, &mpo).expect("build");
+        BraketEnvs::build(&mps_init, &mpo, &mps_init).expect("build");
     // Construct a fresh MPS with `from_storages` (which sets
     // `Unknown`), then pass it without canonicalizing.
     let mut mps_unk = Mps::from_sites(mps_init.sites().to_vec());
@@ -557,7 +557,7 @@ fn t7_c64_psd_product_converges() {
     let mut mps = random_mps_center_zero_c64(n, d, 3, 0xC1);
     let (mpo, hs) = psd_local_mpo_c64(n, d, 0xC2);
     let mut envs: BraketEnvs<DenseStorage<Complex<f64>>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 20,
         min_sweeps: 1,
@@ -589,7 +589,7 @@ fn t8_lanczos_nonconvergence_blocks_dmrg_convergence() {
     let mut mps = random_mps_center_zero_f64(n, d, 2, 0xE1);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0xE2);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     // Force Lanczos to fail convergence with max_iter=1 and an
     // unreasonably tight tolerance.
     let params = DmrgSweepParams {
@@ -631,7 +631,7 @@ fn t9_diagnostics_fields_consistent() {
     let mut mps = random_mps_center_zero_f64(n, d, 3, 0xD0);
     let (mpo, _) = psd_local_mpo_f64(n, d, 0xD1);
     let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
-        BraketEnvs::build(&mps, &mpo).expect("build");
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 3,
         min_sweeps: 3,
