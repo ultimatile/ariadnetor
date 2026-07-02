@@ -1,5 +1,11 @@
 //! MPO-MPS application: apply an MPO to an MPS via the streaming-naive
-//! algorithm or the Stoudenmire-White zip-up algorithm.
+//! algorithm, the Stoudenmire-White zip-up algorithm, or the density-matrix
+//! algorithm. The density-matrix kernels live in the [`density_matrix`]
+//! submodule and reuse this module's per-site `local_product_*` helpers.
+
+mod density_matrix;
+
+pub(crate) use density_matrix::{apply_density_matrix_bsp, apply_density_matrix_dense};
 
 use std::num::NonZeroUsize;
 

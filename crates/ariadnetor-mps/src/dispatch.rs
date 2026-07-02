@@ -122,6 +122,20 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
     where
         Self: Sized;
 
+    /// Apply an MPO to an MPS via the density-matrix algorithm: materialize
+    /// the untruncated product, accumulate the `⟨φ|φ⟩` right environment, then
+    /// a single forward sweep truncating each bond's reduced density matrix to
+    /// `chi_max` (from `params.svd`) via its dominant eigenvectors. `params =
+    /// None` keeps full rank (lossless).
+    fn apply_density_matrix_k<B: OpsFor<Self::Storage>>(
+        backend: &B,
+        op: &Mpo<Self::Storage, Self::Layout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+    ) -> Self
+    where
+        Self: Sized;
+
     /// Position the orthogonality center at `center`.
     fn canon_k<B: OpsFor<Self::Storage>>(backend: &B, chain: &mut Self, center: usize);
 
@@ -175,6 +189,15 @@ impl<T: Scalar> MpsOps<T> for Mps<DenseStorage<T>, DenseLayout> {
         params: Option<&TruncateParams>,
     ) -> Self {
         super::apply::apply_zipup_dense(backend, op, psi, params)
+    }
+
+    fn apply_density_matrix_k<B: OpsFor<DenseStorage<T>>>(
+        backend: &B,
+        op: &Mpo<DenseStorage<T>, DenseLayout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+    ) -> Self {
+        super::apply::apply_density_matrix_dense(backend, op, psi, params)
     }
 
     fn canon_k<B: OpsFor<DenseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -232,6 +255,15 @@ impl<T: Scalar, S: Sector> MpsOps<T> for Mps<BlockSparseStorage<T>, BlockSparseL
         params: Option<&TruncateParams>,
     ) -> Self {
         super::apply::apply_zipup_bsp(backend, op, psi, params)
+    }
+
+    fn apply_density_matrix_k<B: OpsFor<BlockSparseStorage<T>>>(
+        backend: &B,
+        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+    ) -> Self {
+        super::apply::apply_density_matrix_bsp(backend, op, psi, params)
     }
 
     fn canon_k<B: OpsFor<BlockSparseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -341,9 +373,15 @@ where
 
 /// Apply an MPO to an MPS using the requested algorithm.
 ///
-/// `ApplyMethod::ZipUp` selects the Stoudenmire-White single-pass
-/// zip-up algorithm (right-canonicalize, then one forward sweep with
-/// per-site truncation to `chi_max` and no backward pass).
+/// - `ApplyMethod::StreamingNaive` runs the per-site product with a streaming
+///   forward QR/SVD sweep followed by an optional `canonicalize` + `truncate`.
+/// - `ApplyMethod::ZipUp` selects the Stoudenmire-White single-pass zip-up
+///   algorithm (right-canonicalize, then one forward sweep with per-site
+///   truncation to `chi_max` and no backward pass).
+/// - `ApplyMethod::DensityMatrix` materializes the untruncated product,
+///   accumulates the `⟨φ|φ⟩` right environment, then a single forward sweep
+///   truncating each bond's reduced density matrix to `chi_max` via its
+///   dominant eigenvectors.
 pub fn apply_with_method<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -363,5 +401,8 @@ where
             <Mps<St, L> as MpsOps<T>>::apply_k(backend, op, psi, params, forward_cap)
         }
         ApplyMethod::ZipUp => <Mps<St, L> as MpsOps<T>>::apply_zipup_k(backend, op, psi, params),
+        ApplyMethod::DensityMatrix => {
+            <Mps<St, L> as MpsOps<T>>::apply_density_matrix_k(backend, op, psi, params)
+        }
     }
 }
