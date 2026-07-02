@@ -15,6 +15,8 @@ mod apply;
 mod canonicalize;
 mod chain;
 mod dispatch;
+mod env;
+mod env_block_sparse;
 mod inner;
 mod site_ops;
 mod truncate;
@@ -28,6 +30,11 @@ pub use dispatch::MpsOps;
 // operations `canonicalize` / `truncate` / `norm` are inherent methods on
 // `Mps` rather than free functions.
 pub use dispatch::{apply, apply_with_method, braket, inner};
+
+// Three-layer ⟨bra|W|ket⟩ environment primitive (Dense / BlockSparse),
+// consumed by DMRG (bra = ket) and, later, variational fitting (distinct
+// bra / ket). Its dispatch trait is sealed (not downstream-implementable).
+pub use env::{BraketEnvError, BraketEnvOps, BraketEnvs};
 
 pub use chain::TensorChain;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};

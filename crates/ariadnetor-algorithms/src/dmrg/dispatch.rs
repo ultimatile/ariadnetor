@@ -23,12 +23,12 @@ use ariadnetor_tensor::{
     StorageFor, Tensor, TensorLayout,
 };
 
-use super::env::DmrgEnvs;
 use super::heff::dmrg_2site_step;
 use super::heff_block_sparse::dmrg_2site_step_block_sparse;
 use super::heff_error::DmrgHeffError;
 use super::solver::{DmrgScalar, LocalEigensolverParams};
 use super::sweep::SweepDirection;
+use ariadnetor_mps::BraketEnvs;
 
 /// Post-absorb site tensors + new bond dimension returned by
 /// [`DmrgOps::full_step_k`], paired there with the diagnostic scalars.
@@ -79,8 +79,8 @@ pub enum FullStepError {
 /// Keyed on the [`Mps`] chain with [`MpsOps<T>`] as supertrait (same
 /// `Self`), so the storage / layout taxa are the chain's own via
 /// [`MpsOps::Storage`] / [`MpsOps::Layout`]. The env subsystem shares that
-/// storage flavor; the sweep driver binds [`super::env::DmrgEnvOps`] on
-/// the matching [`DmrgEnvs`] chain at its call site, so the
+/// storage flavor; the sweep driver binds [`ariadnetor_mps::BraketEnvOps`] on
+/// the matching [`BraketEnvs`] chain at its call site, so the
 /// storage-coincidence the former layout-keyed super-bound expressed is
 /// now carried by the two chains sharing `(St, L)`.
 pub trait DmrgOps<T: Scalar>: MpsOps<T> {
@@ -95,7 +95,7 @@ pub trait DmrgOps<T: Scalar>: MpsOps<T> {
     /// DMRG is host-pinned in the CPU-only Stage B scope.
     fn full_step_k(
         &self,
-        envs: &DmrgEnvs<<Self as MpsOps<T>>::Storage, <Self as MpsOps<T>>::Layout>,
+        envs: &BraketEnvs<<Self as MpsOps<T>>::Storage, <Self as MpsOps<T>>::Layout>,
         mpo: &Mpo<<Self as MpsOps<T>>::Storage, <Self as MpsOps<T>>::Layout>,
         site: usize,
         eigensolver: &LocalEigensolverParams,
@@ -115,7 +115,7 @@ where
 {
     fn full_step_k(
         &self,
-        envs: &DmrgEnvs<DenseStorage<T>, DenseLayout>,
+        envs: &BraketEnvs<DenseStorage<T>, DenseLayout>,
         mpo: &Mpo<DenseStorage<T>, DenseLayout>,
         site: usize,
         eigensolver: &LocalEigensolverParams,
@@ -169,7 +169,7 @@ where
 {
     fn full_step_k(
         &self,
-        envs: &DmrgEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        envs: &BraketEnvs<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         mpo: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
         site: usize,
         eigensolver: &LocalEigensolverParams,

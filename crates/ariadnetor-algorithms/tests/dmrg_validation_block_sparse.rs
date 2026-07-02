@@ -18,9 +18,10 @@
 //!
 //! Test-internal helpers; no public API additions.
 
-use ariadnetor_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
+use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
 use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::legs;
@@ -403,7 +404,7 @@ fn run_validation_bsp(
 ) {
     let n = mpo.len();
     let mut mps = random_mps_bsp_center_zero_f64(n, chi_internal, total_charge, init_seed);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
     let params = validation_params_bsp(chi_max, lanczos_seed);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params)

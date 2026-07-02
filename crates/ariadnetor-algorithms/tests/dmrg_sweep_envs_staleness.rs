@@ -1,13 +1,14 @@
-//! Post-sweep DmrgEnvs staleness contract (t10), split out from
+//! Post-sweep BraketEnvs staleness contract (t10), split out from
 //! `dmrg_sweep.rs` to keep the per-test-file line cap. Pins the n=2
 //! boundary case codex flagged: every populated slot must match a
-//! fresh `DmrgEnvs::build` against the post-sweep MPS.
+//! fresh `BraketEnvs::build` against the post-sweep MPS.
 
 use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use approx::assert_abs_diff_eq;
-use ariadnetor_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
+use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
 use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::Mpo;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
@@ -70,8 +71,8 @@ fn t10_post_sweep_envs_have_no_stale_some_slots() {
         let d = 2;
         let mut mps = random_mps_center_zero_f64(n, d, 2, 0xF0 ^ n as u64);
         let mpo = psd_local_mpo_f64(n, d, 0xF1 ^ n as u64);
-        let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
-            DmrgEnvs::build(&mps, &mpo).expect("build");
+        let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
+            BraketEnvs::build(&mps, &mpo, &mps).expect("build");
         let params = DmrgSweepParams {
             max_sweeps: 1,
             min_sweeps: 1,
@@ -87,8 +88,8 @@ fn t10_post_sweep_envs_have_no_stale_some_slots() {
             },
         };
         sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
-        let fresh: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
-            DmrgEnvs::build(&mps, &mpo).expect("rebuild");
+        let fresh: BraketEnvs<DenseStorage<f64>, DenseLayout> =
+            BraketEnvs::build(&mps, &mpo, &mps).expect("rebuild");
         for j in 0..=n {
             check("left", j, n, envs.left(j), fresh.left(j));
             check("right", j, n, envs.right(j), fresh.right(j));

@@ -7,9 +7,10 @@
 
 use super::{identity_mpo, product_state_mps};
 use crate::dmrg::heff::dmrg_2site_step;
-use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
+use crate::dmrg::{DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::LanczosParams;
 use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_tensor::{DenseLayout, DenseStorage};
 
 #[test]
@@ -18,7 +19,7 @@ fn heff_2site_step_asymmetric_length_and_zero_tol() {
     let d = 2;
     let mps_4 = product_state_mps(n, d);
     let mpo_4 = identity_mpo(n, d);
-    let envs_4 = DmrgEnvs::<DenseStorage<f64>, DenseLayout>::build::<f64>(&mps_4, &mpo_4)
+    let envs_4 = BraketEnvs::<DenseStorage<f64>, DenseLayout>::build::<f64>(&mps_4, &mpo_4, &mps_4)
         .expect("build envs n=4");
 
     let mps_3 = product_state_mps(3, d);

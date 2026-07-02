@@ -8,9 +8,10 @@
 use algorithms_fixtures::dense_fixtures::{
     build_mpo_site_f64, heisenberg_mpo_f64, op_id, op_sz, random_mps_center_zero_f64,
 };
-use ariadnetor_algorithms::dmrg::{DmrgEnvs, DmrgSweepParams, LocalEigensolverParams, sweep_2site};
+use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
 use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, TensorChain};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
@@ -201,7 +202,7 @@ fn run_validation(
 ) {
     let n = mpo.len();
     let mut mps = random_mps_center_zero_f64(n, D, 4, init_seed);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("envs build");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("envs build");
     let params = validation_params(chi_max, lanczos_seed);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params)

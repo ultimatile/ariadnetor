@@ -3,8 +3,8 @@
 //! Runs alternating L→R / R→L half-sweeps over a [`super::DmrgOps`]
 //! chain, dispatching the storage-specific local solve and
 //! S-absorb through the trait. Mutates the MPS site tensors and the
-//! [`DmrgEnvs`] in place. Caller supplies a right-canonical (or
-//! `Mixed { center: 0 }`) MPS plus a freshly-built `DmrgEnvs`; the
+//! [`BraketEnvs`] in place. Caller supplies a right-canonical (or
+//! `Mixed { center: 0 }`) MPS plus a freshly-built `BraketEnvs`; the
 //! driver does **not** auto-canonicalize because doing so would
 //! silently invalidate the caller-supplied envs.
 //!
@@ -39,9 +39,9 @@ use ariadnetor_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
 use crate::numeric::try_real_from_f64;
 
 use super::dispatch::{DmrgOps, FullStepError};
-use super::env::{DmrgEnvError, DmrgEnvOps, DmrgEnvs};
 use super::heff_error::DmrgHeffError;
 use super::solver::{LocalEigensolverParams, eigensolver_tol, validate_eigensolver_params};
+use ariadnetor_mps::{BraketEnvError, BraketEnvOps, BraketEnvs};
 
 /// Direction of a half-sweep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,7 +167,7 @@ pub struct DmrgResult<R> {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DmrgSweepError {
-    /// MPS, MPO, and `DmrgEnvs` disagree on `n_sites`.
+    /// MPS, MPO, and `BraketEnvs` disagree on `n_sites`.
     #[error("chain length mismatch: mps = {mps}, mpo = {mpo}, envs = {envs}")]
     LengthMismatch {
         /// `n_sites` reported by the MPS.
@@ -213,13 +213,13 @@ pub enum DmrgSweepError {
         #[source]
         source: DmrgHeffError,
     },
-    /// `DmrgEnvs::advance_left/right` returned an error during a
+    /// `BraketEnvs::advance_left/right` returned an error during a
     /// post-step env update. Surfaced separately from `Step` so
     /// the caller can distinguish "local solve failed" from "env
     /// state became inconsistent". Defense-in-depth — under the
     /// driver's own advance ordering, this branch should never
     /// fire from the public API.
-    #[error("DmrgEnvs advance failed at sweep {sweep}, {direction:?}, site {site}")]
+    #[error("BraketEnvs advance failed at sweep {sweep}, {direction:?}, site {site}")]
     Env {
         /// Sweep cycle where the failure occurred.
         sweep: usize,
@@ -229,7 +229,7 @@ pub enum DmrgSweepError {
         site: usize,
         /// The underlying environment-advance error.
         #[source]
-        source: DmrgEnvError,
+        source: BraketEnvError,
     },
     /// The post-step S-absorb (`ariadnetor_linalg::diagonal_scale`, which
     /// dispatches over layout for both Dense and BlockSparse) failed.
@@ -270,7 +270,7 @@ pub enum DmrgSweepError {
 /// See the module-level rustdoc for the canonical-form contract on
 /// the input MPS and for the convergence criterion.
 pub fn sweep_2site<T, St, L>(
-    envs: &mut DmrgEnvs<St, L>,
+    envs: &mut BraketEnvs<St, L>,
     mps: &mut Mps<St, L>,
     mpo: &Mpo<St, L>,
     params: &DmrgSweepParams,
@@ -281,7 +281,7 @@ where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
     Mps<St, L>: DmrgOps<T> + MpsOps<T, Storage = St, Layout = L>,
-    DmrgEnvs<St, L>: DmrgEnvOps<T, Storage = St, Layout = L>,
+    BraketEnvs<St, L>: BraketEnvOps<T, Storage = St, Layout = L>,
     // Host-pinned: the host backend supplies every kernel, so it must declare
     // capability for this chain's storage (satisfied by Dense / BlockSparse).
     Host: OpsFor<St>,
@@ -362,7 +362,7 @@ where
             // the last L→R step; the next R→L step at the same
             // `site` consumes `left(site)` which is still valid.
             if site < n_sites - 2 {
-                envs.advance_left::<T>(mps, mpo, site)
+                envs.advance_left::<T>(mps, mpo, mps, site)
                     .map_err(|source| DmrgSweepError::Env {
                         sweep: sweep_idx,
                         direction: SweepDirection::LeftToRight,
@@ -388,16 +388,16 @@ where
             // Always advance, including at the trailing `site == 0`
             // boundary. Skipping the boundary advance would leave
             // `right[1]` stale-but-`Some` (it would still hold the
-            // pre-sweep `DmrgEnvs::build` value, computed against
+            // pre-sweep `BraketEnvs::build` value, computed against
             // the original MPS site 1) and `left[1]` stale-but-
             // `Some` (it would still hold the L→R-time value, even
             // though R→L has further mutated MPS site 0). Both are
             // contract violations against
-            // `DmrgEnvs`'s "stale = None" convention even though
+            // `BraketEnvs`'s "stale = None" convention even though
             // they do not affect the next sweep iteration's
             // numerics, which overwrites `left[1]` via
             // `advance_left(0)` before consumption.
-            envs.advance_right::<T>(mps, mpo, site + 1)
+            envs.advance_right::<T>(mps, mpo, mps, site + 1)
                 .map_err(|source| DmrgSweepError::Env {
                     sweep: sweep_idx,
                     direction: SweepDirection::RightToLeft,
@@ -481,7 +481,7 @@ where
 /// for advancing the env afterwards (or skipping the advance at the
 /// trailing boundary of a half-sweep).
 fn run_step<T, St, L>(
-    envs: &DmrgEnvs<St, L>,
+    envs: &BraketEnvs<St, L>,
     mps: &mut Mps<St, L>,
     mpo: &Mpo<St, L>,
     site: usize,
@@ -495,7 +495,7 @@ where
     St: Storage + StorageFor<L>,
     L: TensorLayout,
     Mps<St, L>: DmrgOps<T> + MpsOps<T, Storage = St, Layout = L>,
-    DmrgEnvs<St, L>: DmrgEnvOps<T, Storage = St, Layout = L>,
+    BraketEnvs<St, L>: BraketEnvOps<T, Storage = St, Layout = L>,
     // Host-pinned: the host backend supplies every kernel, so it must declare
     // capability for this chain's storage (satisfied by Dense / BlockSparse).
     Host: OpsFor<St>,

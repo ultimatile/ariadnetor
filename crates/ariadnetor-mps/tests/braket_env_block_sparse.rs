@@ -1,4 +1,4 @@
-//! BlockSparse DmrgEnvs integration tests.
+//! BlockSparse BraketEnvs integration tests.
 //!
 //! Covers value correctness via densify-and-compare against the Dense
 //! oracle, structural metadata (QNIndex / direction / flux), advance
@@ -7,23 +7,23 @@
 //! malformed right edge, flux-disallowed boundary block, length
 //! mismatch, empty chain).
 
-use ariadnetor_algorithms::dmrg::{DmrgEnvError, DmrgEnvs};
-use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_mps::{BraketEnvError, BraketEnvs};
+use ariadnetor_mps::{Mpo, Mps, TensorChain, braket};
 use ariadnetor_tensor::test_fixtures::legs;
 use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
     DenseLayout, DenseStorage, DenseTensor, Direction, Host, Sector, U1Sector,
 };
 
-/// Run `DmrgEnvs::build` and assert it returns an error. Equivalent to
+/// Run `BraketEnvs::build` and assert it returns an error. Equivalent to
 /// `Result::expect_err`, but doesn't require `BlockSparse: Debug`
 /// (which is not derived upstream).
 fn expect_build_err(
     mps: &Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
     mpo: &Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>,
-) -> DmrgEnvError {
-    match DmrgEnvs::build(mps, mpo) {
-        Ok(_) => panic!("expected DmrgEnvs::build to error"),
+) -> BraketEnvError {
+    match BraketEnvs::build(mps, mpo, mps) {
+        Ok(_) => panic!("expected BraketEnvs::build to error"),
         Err(e) => e,
     }
 }
@@ -132,7 +132,17 @@ fn make_u1_mps_site(
 }
 
 fn make_4site_u1_mps_local() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
-    let mut counter: f64 = 0.1;
+    make_4site_u1_mps_local_from(0.1)
+}
+
+/// Same bond / QN structure as [`make_4site_u1_mps_local`] but with the
+/// per-block value counter starting at `start`, so two calls with
+/// different starts yield distinct MPS sharing the same edge sectors —
+/// the fixture for the distinct bra / ket cross-check.
+fn make_4site_u1_mps_local_from(
+    start: f64,
+) -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
+    let mut counter: f64 = start;
     let site0 = make_u1_mps_site(
         vec![(U1Sector(0), 1)],
         vec![(U1Sector(0), 1), (U1Sector(1), 1)],
@@ -219,7 +229,7 @@ fn make_4site_u1_mpo_local() -> Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U
 
 // ---------------------------------------------------------------------------
 // Densify a Mps<BlockSparse> / Mpo<BlockSparse> into Dense counterparts so
-// the same DmrgEnvs::build call exercises the Dense oracle path.
+// the same BraketEnvs::build call exercises the Dense oracle path.
 // ---------------------------------------------------------------------------
 
 fn densify_mps(
@@ -262,8 +272,8 @@ fn bsp_envs_match_dense_via_densify() {
     let mps_dense = densify_mps(&mps_bsp);
     let mpo_dense = densify_mpo(&mpo_bsp);
 
-    let envs_bsp = DmrgEnvs::build(&mps_bsp, &mpo_bsp).expect("build BS");
-    let envs_dense = DmrgEnvs::build(&mps_dense, &mpo_dense).expect("build Dense");
+    let envs_bsp = BraketEnvs::build(&mps_bsp, &mpo_bsp, &mps_bsp).expect("build BS");
+    let envs_dense = BraketEnvs::build(&mps_dense, &mpo_dense, &mps_dense).expect("build Dense");
 
     let n = envs_bsp.n_sites();
     // After build: left[0] populated; right[1..=n] populated; right[0] None.
@@ -293,16 +303,17 @@ fn bsp_advance_left_consistency_vs_dense() {
     let mps_dense = densify_mps(&mps_bsp);
     let mpo_dense = densify_mpo(&mpo_bsp);
 
-    let mut envs_bsp = DmrgEnvs::build(&mps_bsp, &mpo_bsp).expect("build BS");
-    let mut envs_dense = DmrgEnvs::build(&mps_dense, &mpo_dense).expect("build Dense");
+    let mut envs_bsp = BraketEnvs::build(&mps_bsp, &mpo_bsp, &mps_bsp).expect("build BS");
+    let mut envs_dense =
+        BraketEnvs::build(&mps_dense, &mpo_dense, &mps_dense).expect("build Dense");
 
     let n = envs_bsp.n_sites();
     for i in 0..(n - 1) {
         envs_bsp
-            .advance_left(&mps_bsp, &mpo_bsp, i)
+            .advance_left(&mps_bsp, &mpo_bsp, &mps_bsp, i)
             .expect("advance_left BS");
         envs_dense
-            .advance_left(&mps_dense, &mpo_dense, i)
+            .advance_left(&mps_dense, &mpo_dense, &mps_dense, i)
             .expect("advance_left Dense");
         let bs_dense = densify_bsp(envs_bsp.left(i + 1).expect("left[i+1] BS"));
         assert_dense_close(
@@ -314,6 +325,55 @@ fn bsp_advance_left_consistency_vs_dense() {
     }
 }
 
+// Distinct bra != ket for the BlockSparse chain: fold the whole env via
+// advance_left and compare left[N] against the Dense env folded the same
+// way (the Dense contract / conj kernel is an independent oracle for the
+// BlockSparse tensordot / dagger kernel). This verifies the generalized
+// bra / ket path on the U(1) chain in-phase; DMRG only passes bra = ket.
+#[test]
+fn bsp_build_distinct_bra_ket_matches_dense() {
+    let bra_bsp = make_4site_u1_mps_local_from(0.1);
+    let ket_bsp = make_4site_u1_mps_local_from(0.7);
+    let mpo_bsp = make_4site_u1_mpo_local();
+
+    let bra_d = densify_mps(&bra_bsp);
+    let ket_d = densify_mps(&ket_bsp);
+    let mpo_d = densify_mpo(&mpo_bsp);
+
+    let mut env_bsp = BraketEnvs::build(&bra_bsp, &mpo_bsp, &ket_bsp).expect("build bsp");
+    let mut env_d = BraketEnvs::build(&bra_d, &mpo_d, &ket_d).expect("build dense");
+    let n = env_bsp.n_sites();
+    for i in 0..n {
+        env_bsp
+            .advance_left(&bra_bsp, &mpo_bsp, &ket_bsp, i)
+            .expect("advance_left bsp");
+        env_d
+            .advance_left(&bra_d, &mpo_d, &ket_d, i)
+            .expect("advance_left dense");
+    }
+    let bsp_scalar = densify_bsp(env_bsp.left(n).expect("left[N] bsp"));
+    let dense_scalar = env_d.left(n).expect("left[N] dense");
+    assert_eq!(bsp_scalar.shape(), &[1, 1, 1]);
+    assert_dense_close(
+        &bsp_scalar,
+        dense_scalar,
+        1e-9,
+        "distinct bra/ket full fold",
+    );
+
+    // Distinctness sanity: <bra|W|ket> must differ from the bra = ket
+    // self-overlap, else the test would pass even if ket were silently
+    // ignored. Use braket as an independent oracle rather than re-driving
+    // the env kernel under test to produce the witness value.
+    let backend = Host::shared();
+    let distinct = braket(backend.as_ref(), &bra_d, &mpo_d, &ket_d);
+    let self_overlap = braket(backend.as_ref(), &bra_d, &mpo_d, &bra_d);
+    assert!(
+        (distinct - self_overlap).abs() > 1e-6,
+        "distinct <bra|W|ket> should differ from <bra|W|bra>"
+    );
+}
+
 #[test]
 fn bsp_advance_right_consistency_vs_dense() {
     let mps_bsp = make_4site_u1_mps_local();
@@ -321,17 +381,18 @@ fn bsp_advance_right_consistency_vs_dense() {
     let mps_dense = densify_mps(&mps_bsp);
     let mpo_dense = densify_mpo(&mpo_bsp);
 
-    let mut envs_bsp = DmrgEnvs::build(&mps_bsp, &mpo_bsp).expect("build BS");
-    let mut envs_dense = DmrgEnvs::build(&mps_dense, &mpo_dense).expect("build Dense");
+    let mut envs_bsp = BraketEnvs::build(&mps_bsp, &mpo_bsp, &mps_bsp).expect("build BS");
+    let mut envs_dense =
+        BraketEnvs::build(&mps_dense, &mpo_dense, &mps_dense).expect("build Dense");
 
     let n = envs_bsp.n_sites();
     // Cover an interior site: advance_right at j = n-1 reproduces right[n-1].
     let j = n - 1;
     envs_bsp
-        .advance_right(&mps_bsp, &mpo_bsp, j)
+        .advance_right(&mps_bsp, &mpo_bsp, &mps_bsp, j)
         .expect("advance_right BS");
     envs_dense
-        .advance_right(&mps_dense, &mpo_dense, j)
+        .advance_right(&mps_dense, &mpo_dense, &mps_dense, j)
         .expect("advance_right Dense");
     let bs_dense = densify_bsp(envs_bsp.right(j).expect("right[j] BS"));
     assert_dense_close(
@@ -379,8 +440,9 @@ fn bsp_envs_n2_edge_case() {
     let mps_dense = densify_mps(&mps_bsp);
     let mpo_dense = densify_mpo(&mpo_bsp);
 
-    let envs_bsp = DmrgEnvs::build(&mps_bsp, &mpo_bsp).expect("build BS N=2");
-    let envs_dense = DmrgEnvs::build(&mps_dense, &mpo_dense).expect("build Dense N=2");
+    let envs_bsp = BraketEnvs::build(&mps_bsp, &mpo_bsp, &mps_bsp).expect("build BS N=2");
+    let envs_dense =
+        BraketEnvs::build(&mps_dense, &mpo_dense, &mps_dense).expect("build Dense N=2");
 
     assert_eq!(envs_bsp.n_sites(), 2);
     let left_0 = densify_bsp(envs_bsp.left(0).expect("left[0]"));
@@ -410,7 +472,7 @@ fn bsp_envs_n2_edge_case() {
 fn bsp_envs_structural_metadata() {
     let mps_bsp = make_4site_u1_mps_local();
     let mpo_bsp = make_4site_u1_mpo_local();
-    let envs = DmrgEnvs::build(&mps_bsp, &mpo_bsp).expect("build");
+    let envs = BraketEnvs::build(&mps_bsp, &mpo_bsp, &mps_bsp).expect("build");
 
     // Boundary at left[0]: dim-1 single-sector all three legs, flux=0.
     let l0 = envs.left(0).expect("left[0]");
@@ -474,7 +536,7 @@ fn bsp_envs_error_paths_qn_mismatch() {
 
     let err = expect_build_err(&mps, &mpo);
     assert!(
-        matches!(err, DmrgEnvError::Contract(_)),
+        matches!(err, BraketEnvError::Contract(_)),
         "expected Contract error wrapping LinalgError, got {err:?}"
     );
 }
@@ -529,7 +591,7 @@ fn bsp_envs_error_paths_direction_mismatch() {
 
     let err = expect_build_err(&mps, &mpo);
     assert!(
-        matches!(err, DmrgEnvError::Contract(_)),
+        matches!(err, BraketEnvError::Contract(_)),
         "expected Contract error wrapping LinalgError direction failure, got {err:?}"
     );
 }
@@ -561,8 +623,31 @@ fn bsp_envs_error_paths_malformed_left_edge() {
 
     let err = expect_build_err(&mps, &mpo);
     match err {
-        DmrgEnvError::MalformedEdgeBond { leg } => assert_eq!(leg, "mps_left"),
-        other => panic!("expected MalformedEdgeBond {{ leg: \"mps_left\" }}, got {other:?}"),
+        BraketEnvError::MalformedEdgeBond { leg } => assert_eq!(leg, "bra_left"),
+        other => panic!("expected MalformedEdgeBond {{ leg: \"bra_left\" }}, got {other:?}"),
+    }
+
+    // The bra edge is checked before the ket edge, so the "ket_left" leg
+    // name is only reachable with distinct bra / ket: pair a well-formed
+    // bra with the same malformed edge now placed on the ket. (On the
+    // bra = ket DMRG path the bra check always fires first.)
+    let mut c = 0.3_f64;
+    let mut good = || {
+        make_u1_mps_site(
+            vec![(U1Sector(0), 1)],
+            vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+            vec![(U1Sector(0), 1)],
+            &mut c,
+        )
+    };
+    let bra: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![good(), good()]);
+    // Match without printing the Ok payload: BraketEnvs<BlockSparse> is
+    // not Debug (hence the `expect_build_err` helper).
+    match BraketEnvs::build(&bra, &mpo, &mps) {
+        Ok(_) => panic!("expected MalformedEdgeBond {{ leg: \"ket_left\" }} on the ket edge"),
+        Err(BraketEnvError::MalformedEdgeBond { leg }) => assert_eq!(leg, "ket_left"),
+        Err(other) => panic!("expected MalformedEdgeBond {{ leg: \"ket_left\" }}, got {other:?}"),
     }
 }
 
@@ -598,7 +683,7 @@ fn bsp_envs_error_paths_malformed_right_edge() {
 
     let err = expect_build_err(&mps, &mpo);
     match err {
-        DmrgEnvError::MalformedEdgeBond { leg } => assert_eq!(leg, "mpo_right"),
+        BraketEnvError::MalformedEdgeBond { leg } => assert_eq!(leg, "mpo_right"),
         other => panic!("expected MalformedEdgeBond {{ leg: \"mpo_right\" }}, got {other:?}"),
     }
 }
@@ -645,7 +730,7 @@ fn bsp_envs_error_paths_flux_disallowed_boundary() {
 
     let err = expect_build_err(&mps, &mpo);
     match err {
-        DmrgEnvError::MalformedEdgeBond { leg } => assert_eq!(leg, "mpo_left"),
+        BraketEnvError::MalformedEdgeBond { leg } => assert_eq!(leg, "mpo_left"),
         other => {
             panic!("expected MalformedEdgeBond on flux-disallowed boundary, got {other:?}")
         }
@@ -680,9 +765,14 @@ fn bsp_envs_error_paths_length() {
 
     let err = expect_build_err(&mps, &mpo);
     match err {
-        DmrgEnvError::LengthMismatch { mps: m, mpo: o } => {
-            assert_eq!(m, 2);
+        BraketEnvError::LengthMismatch {
+            bra: b,
+            mpo: o,
+            ket: k,
+        } => {
+            assert_eq!(b, 2);
             assert_eq!(o, 3);
+            assert_eq!(k, 2);
         }
         other => panic!("expected LengthMismatch, got {other:?}"),
     }
@@ -695,7 +785,7 @@ fn bsp_envs_error_paths_empty_chain() {
     let mpo: Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> = Mpo::empty();
     let err = expect_build_err(&mps, &mpo);
     assert!(
-        matches!(err, DmrgEnvError::EmptyChain),
+        matches!(err, BraketEnvError::EmptyChain),
         "expected EmptyChain, got {err:?}"
     );
 }

@@ -3,10 +3,11 @@
 
 use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use ariadnetor_algorithms::dmrg::{
-    DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
+    DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
 use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{Mpo, Mps};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
@@ -60,8 +61,8 @@ fn t6_step_error_propagated() {
         env_mpo_storages.push(Host::shared().dense(m, vec![1, d_mpo, d_mpo, 1]));
     }
     let env_mpo = Mpo::from_sites(env_mpo_storages);
-    let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
-        DmrgEnvs::build(&env_mps, &env_mpo).expect("build");
+    let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
+        BraketEnvs::build(&env_mps, &env_mpo, &env_mps).expect("build");
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &standard_params_f64(0xB2))
         .expect_err("step shape mismatch");
     assert!(matches!(

@@ -4,9 +4,10 @@
 
 use super::{identity_mpo, product_state_mps};
 use crate::dmrg::heff::dmrg_2site_step;
-use crate::dmrg::{DmrgEnvs, DmrgHeffError, LocalEigensolverParams};
+use crate::dmrg::{DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::LanczosParams;
 use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::BraketEnvs;
 
 #[test]
 fn heff_error_paths() {
@@ -14,7 +15,7 @@ fn heff_error_paths() {
     let d = 2;
     let mps = product_state_mps(n, d);
     let mpo = identity_mpo(n, d);
-    let mut envs = DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let eigensolver = LocalEigensolverParams::Lanczos(LanczosParams::default());
     let trunc = TruncSvdParams {
         chi_max: None,
@@ -29,8 +30,10 @@ fn heff_error_paths() {
     );
 
     // Stale right env: advance_left twice so right[2] is invalidated.
-    envs.advance_left(&mps, &mpo, 0).expect("advance_left(0)");
-    envs.advance_left(&mps, &mpo, 1).expect("advance_left(1)");
+    envs.advance_left(&mps, &mpo, &mps, 0)
+        .expect("advance_left(0)");
+    envs.advance_left(&mps, &mpo, &mps, 1)
+        .expect("advance_left(1)");
     let stale = dmrg_2site_step(&envs, &mps, &mpo, 0, &eigensolver, &trunc);
     assert!(
         matches!(
@@ -45,7 +48,8 @@ fn heff_error_paths() {
     );
 
     // LengthMismatch.
-    let envs_4 = DmrgEnvs::build(&product_state_mps(n, d), &identity_mpo(n, d)).expect("build");
+    let mps_4 = product_state_mps(n, d);
+    let envs_4 = BraketEnvs::build(&mps_4, &identity_mpo(n, d), &mps_4).expect("build");
     let mps_3 = product_state_mps(3, d);
     let mpo_3 = identity_mpo(3, d);
     let mismatch = dmrg_2site_step(&envs_4, &mps_3, &mpo_3, 0, &eigensolver, &trunc);
@@ -66,7 +70,7 @@ fn heff_error_paths() {
     // the MPS the envs were built against.
     let mps_d2 = product_state_mps(n, 2);
     let mpo_d2 = identity_mpo(n, 2);
-    let envs_d2 = DmrgEnvs::build(&mps_d2, &mpo_d2).expect("build envs(d=2)");
+    let envs_d2 = BraketEnvs::build(&mps_d2, &mpo_d2, &mps_d2).expect("build envs(d=2)");
     let mpo_d3 = identity_mpo(n, 3);
     let bad_shape = dmrg_2site_step(&envs_d2, &mps_d2, &mpo_d3, 0, &eigensolver, &trunc);
     assert!(
@@ -143,7 +147,7 @@ fn heff_error_paths() {
     );
 
     // Contract: trunc_svd rejects `chi_max = Some(0)`.
-    let envs_fresh = DmrgEnvs::build(&mps, &mpo).expect("fresh build");
+    let envs_fresh = BraketEnvs::build(&mps, &mpo, &mps).expect("fresh build");
     let bad_trunc = TruncSvdParams {
         chi_max: Some(0),
         target_trunc_err: None,

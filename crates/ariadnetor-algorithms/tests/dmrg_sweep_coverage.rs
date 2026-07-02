@@ -17,11 +17,12 @@
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_center_zero_f64};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::dmrg::{
-    DmrgEnvs, DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
+    DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{Mpo, Mps, braket};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
@@ -88,8 +89,8 @@ fn sweep_energy_renormalizes_post_truncation() {
     let n = 2;
     let mut mps = random_mps_center_zero_f64(n, D, 2, 0xA1A1);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
-        DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = base_params(Some(1), 0xB00B);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
@@ -123,8 +124,8 @@ fn n_sweeps_reaches_max_when_min_locked() {
     let n = 4;
     let mut mps = random_mps_center_zero_f64(n, D, 3, 0xC0DE);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
-        DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 3,
         min_sweeps: 3,
@@ -162,8 +163,8 @@ fn no_premature_convergence_on_tight_tol() {
     let n = 4;
     let mut mps = random_mps_center_zero_f64(n, D, 3, 0xD0D0);
     let mpo = heisenberg_mpo_f64(n, 1.0);
-    let mut envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
-        DmrgEnvs::build(&mps, &mpo).expect("build");
+    let mut envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let params = DmrgSweepParams {
         max_sweeps: 5,
         min_sweeps: 2,
@@ -204,7 +205,7 @@ fn no_premature_convergence_on_tight_tol() {
 // ---------------------------------------------------------------------------
 
 type ValidationFixture = (
-    DmrgEnvs<DenseStorage<f64>, DenseLayout>,
+    BraketEnvs<DenseStorage<f64>, DenseLayout>,
     Mps<DenseStorage<f64>, DenseLayout>,
     Mpo<DenseStorage<f64>, DenseLayout>,
     DmrgSweepParams,
@@ -214,8 +215,8 @@ fn small_validation_setup(target_trunc_err: Option<f64>) -> ValidationFixture {
     let n = 2;
     let mps = random_mps_center_zero_f64(n, D, 2, 0xE1E1);
     let mpo = psd_local_mpo_f64(n, 0xE2E2);
-    let envs: DmrgEnvs<DenseStorage<f64>, DenseLayout> =
-        DmrgEnvs::build(&mps, &mpo).expect("build");
+    let envs: BraketEnvs<DenseStorage<f64>, DenseLayout> =
+        BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     let mut params = base_params(Some(1), 0xE3E3);
     params.trunc.target_trunc_err = target_trunc_err;
     (envs, mps, mpo, params)

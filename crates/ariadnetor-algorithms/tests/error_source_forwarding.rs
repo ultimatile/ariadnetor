@@ -11,10 +11,9 @@
 
 use std::error::Error;
 
-use ariadnetor_algorithms::dmrg::{
-    DmrgEnvError, DmrgError, DmrgHeffError, DmrgSweepError, SweepDirection,
-};
+use ariadnetor_algorithms::dmrg::{DmrgError, DmrgHeffError, DmrgSweepError, SweepDirection};
 use ariadnetor_linalg::LinalgError;
+use ariadnetor_mps::BraketEnvError;
 
 /// A `LinalgError` carrying a distinctive marker token, so a
 /// "wrapper Display does not contain the child message" assertion
@@ -50,7 +49,7 @@ fn assert_forwards(err: &dyn Error, expected_self_layer: &str, child_display: &s
 
 #[test]
 fn dmrg_error_env_forwards_to_source() {
-    let child = DmrgEnvError::EmptyChain;
+    let child = BraketEnvError::EmptyChain;
     let child_display = child.to_string();
     let err = DmrgError::Env(child);
     assert_forwards(&err, "DMRG environment build failed", &child_display);
@@ -68,10 +67,10 @@ fn dmrg_error_sweep_forwards_to_source() {
 fn dmrg_env_error_contract_forwards_to_source() {
     let child = marker_linalg_error();
     let child_display = child.to_string();
-    let err = DmrgEnvError::Contract(child);
+    let err = BraketEnvError::Contract(child);
     assert_forwards(
         &err,
-        "contract failure during DMRG environment update",
+        "contract failure during braket environment update",
         &child_display,
     );
 }
@@ -110,7 +109,7 @@ fn dmrg_sweep_error_step_forwards_to_source() {
 
 #[test]
 fn dmrg_sweep_error_env_forwards_to_source() {
-    let child = DmrgEnvError::EmptyChain;
+    let child = BraketEnvError::EmptyChain;
     let child_display = child.to_string();
     let err = DmrgSweepError::Env {
         sweep: 1,
@@ -120,7 +119,7 @@ fn dmrg_sweep_error_env_forwards_to_source() {
     };
     assert_forwards(
         &err,
-        "DmrgEnvs advance failed at sweep 1, RightToLeft, site 2",
+        "BraketEnvs advance failed at sweep 1, RightToLeft, site 2",
         &child_display,
     );
 }

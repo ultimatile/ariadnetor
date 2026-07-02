@@ -22,9 +22,11 @@ ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.3" }
 ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.3" }
 ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.3" }
 num-traits = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
+rand = { workspace = true }
 # Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
 # keeps the test-only feature out of normal builds. See ariadnetor-tensor's
 # `test-fixtures` feature.
