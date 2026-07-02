@@ -38,7 +38,9 @@ pub use env::{BraketEnvError, BraketEnvOps, BraketEnvs};
 
 pub use chain::TensorChain;
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
-pub use types::{ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams};
+pub use types::{
+    ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams, VariationalInit,
+};
 
 // Re-export TruncSvdParams for convenience
 pub use ariadnetor_linalg::TruncSvdParams;

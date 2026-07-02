@@ -39,7 +39,7 @@ use ariadnetor_tensor::{
     StorageFor, TensorLayout,
 };
 
-use super::types::{ApplyMethod, Mpo, Mps, TruncResult, TruncateParams};
+use super::types::{ApplyMethod, Mpo, Mps, TruncResult, TruncateParams, VariationalInit};
 
 mod sealed {
     use ariadnetor_core::Scalar;
@@ -136,6 +136,26 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
     where
         Self: Sized;
 
+    /// Apply an MPO to an MPS via single-site variational fitting: seed from
+    /// zip-up or density-matrix (`init`, truncated to `params.svd.chi_max`),
+    /// then DMRG-style single-site sweeps whose local update is the `⟨φ|W|ψ⟩`
+    /// environment projection, iterated until the center overlap's relative
+    /// change is at or below `tol` or `max_sweeps` cycles run.
+    ///
+    /// Host-pinned: builds on the host-resident `BraketEnvs` primitive, so
+    /// `backend` is not consulted (the concrete impls run on `Host`).
+    fn apply_variational_k<B: OpsFor<Self::Storage>>(
+        backend: &B,
+        op: &Mpo<Self::Storage, Self::Layout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+        init: VariationalInit,
+        max_sweeps: usize,
+        tol: f64,
+    ) -> Self
+    where
+        Self: Sized;
+
     /// Position the orthogonality center at `center`.
     fn canon_k<B: OpsFor<Self::Storage>>(backend: &B, chain: &mut Self, center: usize);
 
@@ -198,6 +218,20 @@ impl<T: Scalar> MpsOps<T> for Mps<DenseStorage<T>, DenseLayout> {
         params: Option<&TruncateParams>,
     ) -> Self {
         super::apply::apply_density_matrix_dense(backend, op, psi, params)
+    }
+
+    // Host-pinned: `_backend` is ignored — the kernel runs on `Host` (see
+    // `ApplyMethod::Variational`).
+    fn apply_variational_k<B: OpsFor<DenseStorage<T>>>(
+        _backend: &B,
+        op: &Mpo<DenseStorage<T>, DenseLayout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+        init: VariationalInit,
+        max_sweeps: usize,
+        tol: f64,
+    ) -> Self {
+        super::apply::apply_variational_dense(op, psi, params, init, max_sweeps, tol)
     }
 
     fn canon_k<B: OpsFor<DenseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -264,6 +298,20 @@ impl<T: Scalar, S: Sector> MpsOps<T> for Mps<BlockSparseStorage<T>, BlockSparseL
         params: Option<&TruncateParams>,
     ) -> Self {
         super::apply::apply_density_matrix_bsp(backend, op, psi, params)
+    }
+
+    // Host-pinned: `_backend` is ignored — the kernel runs on `Host` (see
+    // `ApplyMethod::Variational`).
+    fn apply_variational_k<B: OpsFor<BlockSparseStorage<T>>>(
+        _backend: &B,
+        op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+        init: VariationalInit,
+        max_sweeps: usize,
+        tol: f64,
+    ) -> Self {
+        super::apply::apply_variational_bsp(op, psi, params, init, max_sweeps, tol)
     }
 
     fn canon_k<B: OpsFor<BlockSparseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -382,6 +430,10 @@ where
 ///   accumulates the `⟨φ|φ⟩` right environment, then a single forward sweep
 ///   truncating each bond's reduced density matrix to `chi_max` via its
 ///   dominant eigenvectors.
+/// - `ApplyMethod::Variational` seeds from zip-up or density-matrix and refines
+///   the fit at the fixed seed bond via single-site DMRG-style sweeps. This
+///   method is **host-pinned**: it builds on the host-resident `BraketEnvs`
+///   primitive, so `backend` is not consulted for it.
 pub fn apply_with_method<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -404,5 +456,12 @@ where
         ApplyMethod::DensityMatrix => {
             <Mps<St, L> as MpsOps<T>>::apply_density_matrix_k(backend, op, psi, params)
         }
+        ApplyMethod::Variational {
+            init,
+            max_sweeps,
+            tol,
+        } => <Mps<St, L> as MpsOps<T>>::apply_variational_k(
+            backend, op, psi, params, init, max_sweeps, tol,
+        ),
     }
 }
