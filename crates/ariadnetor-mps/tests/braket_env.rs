@@ -1,4 +1,5 @@
-//! Tests for DMRG L/R environment management (`BraketEnvs`).
+//! Tests for the ⟨bra|W|ket⟩ L/R environment primitive (`BraketEnvs`),
+//! covering both the self-overlap (bra = ket) and distinct bra / ket paths.
 //!
 //! Strategy: hand-chosen analytical inputs (small dim, identity MPO,
 //! product-state MPS or random-but-seeded). The env contract is

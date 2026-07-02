@@ -8,7 +8,7 @@
 //! mismatch, empty chain).
 
 use ariadnetor_mps::{BraketEnvError, BraketEnvs};
-use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_mps::{Mpo, Mps, TensorChain, braket};
 use ariadnetor_tensor::test_fixtures::legs;
 use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, ComputeBackendTensorExt,
@@ -361,19 +361,15 @@ fn bsp_build_distinct_bra_ket_matches_dense() {
         "distinct bra/ket full fold",
     );
 
-    // Distinctness sanity: the bra != ket overlap must differ from the
-    // bra = ket self-overlap, else the test would pass even if ket were
-    // silently ignored.
-    let mut env_self = BraketEnvs::build(&bra_d, &mpo_d, &bra_d).expect("build self");
-    for i in 0..n {
-        env_self
-            .advance_left(&bra_d, &mpo_d, &bra_d, i)
-            .expect("advance_left self");
-    }
-    let self_scalar = env_self.left(n).expect("left[N] self").data_slice()[0];
-    let distinct_scalar = dense_scalar.data_slice()[0];
+    // Distinctness sanity: <bra|W|ket> must differ from the bra = ket
+    // self-overlap, else the test would pass even if ket were silently
+    // ignored. Use braket as an independent oracle rather than re-driving
+    // the env kernel under test to produce the witness value.
+    let backend = Host::shared();
+    let distinct = braket(backend.as_ref(), &bra_d, &mpo_d, &ket_d);
+    let self_overlap = braket(backend.as_ref(), &bra_d, &mpo_d, &bra_d);
     assert!(
-        (distinct_scalar - self_scalar).abs() > 1e-6,
+        (distinct - self_overlap).abs() > 1e-6,
         "distinct <bra|W|ket> should differ from <bra|W|bra>"
     );
 }
@@ -628,7 +624,30 @@ fn bsp_envs_error_paths_malformed_left_edge() {
     let err = expect_build_err(&mps, &mpo);
     match err {
         BraketEnvError::MalformedEdgeBond { leg } => assert_eq!(leg, "bra_left"),
-        other => panic!("expected MalformedEdgeBond {{ leg: \"mps_left\" }}, got {other:?}"),
+        other => panic!("expected MalformedEdgeBond {{ leg: \"bra_left\" }}, got {other:?}"),
+    }
+
+    // The bra edge is checked before the ket edge, so the "ket_left" leg
+    // name is only reachable with distinct bra / ket: pair a well-formed
+    // bra with the same malformed edge now placed on the ket. (On the
+    // bra = ket DMRG path the bra check always fires first.)
+    let mut c = 0.3_f64;
+    let mut good = || {
+        make_u1_mps_site(
+            vec![(U1Sector(0), 1)],
+            vec![(U1Sector(0), 1), (U1Sector(1), 1)],
+            vec![(U1Sector(0), 1)],
+            &mut c,
+        )
+    };
+    let bra: Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> =
+        Mps::from_sites(vec![good(), good()]);
+    // Match without printing the Ok payload: BraketEnvs<BlockSparse> is
+    // not Debug (hence the `expect_build_err` helper).
+    match BraketEnvs::build(&bra, &mpo, &mps) {
+        Ok(_) => panic!("expected MalformedEdgeBond {{ leg: \"ket_left\" }} on the ket edge"),
+        Err(BraketEnvError::MalformedEdgeBond { leg }) => assert_eq!(leg, "ket_left"),
+        Err(other) => panic!("expected MalformedEdgeBond {{ leg: \"ket_left\" }}, got {other:?}"),
     }
 }
 
