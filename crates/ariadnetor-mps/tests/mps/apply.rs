@@ -609,3 +609,152 @@ fn test_apply_zipup_ignores_params_center() {
     let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 2 });
 }
+
+// ===========================================================================
+// Density-matrix algorithm tests
+// ===========================================================================
+
+#[test]
+fn test_apply_density_matrix_identity_preserves_state() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let identity = make_identity_mpo(3, 2);
+
+    let phi = mps::apply_with_method(&backend, &identity, &psi, None, ApplyMethod::DensityMatrix);
+
+    let v_orig = mps_to_dense(&psi);
+    let v_after = mps_to_dense(&phi);
+    assert_dense_close(&v_orig, &v_after, 1e-10);
+}
+
+/// With no truncation the density-matrix sweep is a lossless refactoring of the
+/// exact MPO·MPS product, so its state vector matches the lossless
+/// streaming-naive baseline.
+#[test]
+fn test_apply_density_matrix_lossless_matches_streaming_naive() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let phi_dm = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    let phi_baseline = mps::apply(&backend, &op, &psi, None);
+
+    let v_dm = mps_to_dense(&phi_dm);
+    let v_baseline = mps_to_dense(&phi_baseline);
+    assert_dense_close(&v_dm, &v_baseline, 1e-10);
+}
+
+#[test]
+fn test_apply_density_matrix_truncates_bond_dim() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let phi = mps::apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::DensityMatrix,
+    );
+
+    for d in phi.bond_dims() {
+        assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
+    }
+}
+
+/// The density-matrix sweep ends left-canonical, parking the center at the last
+/// site regardless of whether truncation ran.
+#[test]
+fn test_apply_density_matrix_canonical_form() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let phi_none = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    assert_eq!(
+        *phi_none.canonical_form(),
+        CanonicalForm::Mixed { center: 2 }
+    );
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+    let phi_trunc = mps::apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::DensityMatrix,
+    );
+    assert_eq!(
+        *phi_trunc.canonical_form(),
+        CanonicalForm::Mixed { center: 2 }
+    );
+}
+
+/// `params.center` is not consulted by the density-matrix method; passing an
+/// explicit center must not move the result's orthogonality center off the
+/// last site.
+#[test]
+fn test_apply_density_matrix_ignores_params_center() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let params = TruncateParams {
+        svd: TruncSvdParams {
+            chi_max: Some(2),
+            target_trunc_err: None,
+        },
+        absorb: SvdAbsorb::default(),
+        center: Some(0),
+    };
+    let phi = mps::apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::DensityMatrix,
+    );
+    assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 2 });
+}
+
+/// `target_trunc_err` is not consulted by the density-matrix method: applied to
+/// the reduced density matrix `ρ` it would truncate in `ρ`'s eigenvalue domain
+/// rather than the caller's Schmidt-value domain, so it is dropped. A huge
+/// `target_trunc_err` that would collapse every bond to 1 if consulted must
+/// leave the bonds identical to the untruncated (`params = None`) result.
+#[test]
+fn test_apply_density_matrix_ignores_target_trunc_err() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+
+    let lossless = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+
+    // chi_max = None, but a target_trunc_err large enough to discard everything
+    // down to chi = 1 if it were consulted.
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1e10),
+    });
+    let phi = mps::apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::DensityMatrix,
+    );
+
+    assert_eq!(
+        phi.bond_dims(),
+        lossless.bond_dims(),
+        "target_trunc_err must not truncate the density-matrix result"
+    );
+}

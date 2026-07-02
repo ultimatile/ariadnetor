@@ -107,6 +107,24 @@ pub enum ApplyMethod {
     /// [`StreamingNaive`](ApplyMethod::StreamingNaive), which keeps a full
     /// `chi_max` backward sweep.
     ZipUp,
+    /// Density-matrix compression: materialize the untruncated product
+    /// `φ = Wψ`, accumulate the `⟨φ|φ⟩` right environment, then a single
+    /// left-to-right sweep that forms the reduced density matrix
+    /// `ρ = θ · R · θ†` at each bond and keeps its largest `chi_max`
+    /// eigenvectors. Because `ρ` is Hermitian positive-semidefinite, its
+    /// dominant eigenvectors are its dominant left singular vectors, so the
+    /// truncation reuses the SVD (for a PSD matrix the SVD coincides with the
+    /// eigendecomposition). Only `params.svd.chi_max` is consulted; `params =
+    /// None` (or `chi_max = None`) keeps full rank at every bond (lossless).
+    /// `params.svd.target_trunc_err`, `params.absorb`, and `params.center` are
+    /// not consulted — the sweep carries the orthogonality center to the last
+    /// site like [`ZipUp`](ApplyMethod::ZipUp), and a `target_trunc_err` cutoff
+    /// in the caller's Schmidt-value domain would need a dedicated truncated
+    /// eigensolver (forming `ρ` moves truncation into the squared-eigenvalue
+    /// domain). Forming `ρ` also squares the Schmidt spectrum, so this method
+    /// carries the standard density-matrix `√ε` accuracy floor on very small
+    /// Schmidt values relative to [`ZipUp`](ApplyMethod::ZipUp).
+    DensityMatrix,
 }
 
 impl Default for ApplyMethod {

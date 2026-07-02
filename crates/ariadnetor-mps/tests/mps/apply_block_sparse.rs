@@ -590,3 +590,64 @@ fn zipup_canonical_form() {
     let phi = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::ZipUp);
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 3 });
 }
+
+// ---------------------------------------------------------------------------
+// Density-matrix algorithm tests
+// ---------------------------------------------------------------------------
+
+/// With no truncation, the density-matrix sweep is a lossless refactoring of
+/// the exact MPO·MPS product, so its contracted state matches the lossless
+/// streaming-naive baseline. This also pins the block-sparse `ρ = θ R θ†`
+/// leg-direction wiring (`trunc_svd(&ρ, 2, …)` must accept the rank-4 `ρ` and
+/// the carry `U† θ` must contract into the next site).
+#[test]
+fn density_matrix_lossless_matches_streaming_naive() {
+    let backend = NativeBackend::new();
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+
+    let phi_dm = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    let phi_baseline = mps::apply(&backend, &op, &psi, None);
+
+    let v_dm = bsp_mps_contract_full(&phi_dm);
+    let v_baseline = bsp_mps_contract_full(&phi_baseline);
+    assert_block_sparse_close(&v_dm, &v_baseline, 1e-10);
+}
+
+/// A `chi_max` cap bounds every bond of the density-matrix result. The
+/// thick-middle fixture has a sector of dim 3, so `chi_max = 2` genuinely
+/// truncates.
+#[test]
+fn density_matrix_truncates_bond_dim() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_u1_mps_multipath_middle();
+    let op = make_identity_u1_mpo(3);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: None,
+    });
+
+    let phi = mps::apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::DensityMatrix,
+    );
+
+    for d in phi.bond_dims() {
+        assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
+    }
+}
+
+/// The density-matrix sweep ends its forward pass left-canonical, parking the
+/// center at the last site.
+#[test]
+fn density_matrix_canonical_form() {
+    let backend = NativeBackend::new();
+    let psi = make_4site_u1_mps();
+    let op = make_total_n_u1_mpo(4);
+
+    let phi = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 3 });
+}
