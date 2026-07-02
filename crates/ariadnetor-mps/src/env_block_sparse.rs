@@ -11,11 +11,15 @@
 //! extend step regardless of per-site charge.
 //!
 //! Boundary helpers reject inputs whose edge bonds violate the
-//! dim-1 / single-sector contract or whose chosen edge sectors fail
-//! to fuse to identity flux. Under the common-sector requirement (bra
-//! and ket share their edge sector) the bra / ket legs cancel; a
-//! cross-sector bra / ket pair is out of scope and rejected the same
-//! way.
+//! dim-1 / single-sector contract, and require the bra / MPO / ket edge
+//! charges to fuse to identity flux — i.e. the identity-flux `(0, 0, 0)`
+//! boundary block must exist. That fusion condition admits an
+//! MPO-charge-connected cross-sector `bra` / `ket` pair (a legitimate
+//! non-zero overlap), exactly as `braket` does. A pair whose edges do
+//! NOT fuse — a genuinely orthogonal, zero overlap — is rejected here as
+//! `MalformedEdgeBond` rather than producing a zero environment (which
+//! is what `braket` returns); that zero-environment case is the current
+//! limitation, tracked separately.
 
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{LinalgError, permute_block_sparse_with_backend, tensordot};
@@ -73,12 +77,14 @@ fn check_dim1_single_sector<S: Sector>(
 /// `trivial_left_boundary` and `trivial_right_boundary`.
 ///
 /// Axis 0 carries the bra edge sector, axis 2 the (flipped) ket edge
-/// sector. The `(0, 0, 0)` identity-flux block exists only when the
-/// three edges fuse to identity. When bra and ket share their edge
-/// sector — the common-sector requirement (see the `env` module docs) —
-/// the two MPS legs cancel and an absent block is attributable to the
-/// MPO edge; cross-sector bra / ket (a legitimately zero overlap) is
-/// out of scope and also surfaces here as `MalformedEdgeBond`.
+/// sector. The `(0, 0, 0)` identity-flux block exists exactly when the
+/// three edge charges fuse to identity; the boundary is valid iff it
+/// does. This does not require `bra` and `ket` to share a sector — an
+/// MPO edge carrying the compensating charge fuses a distinct-sector
+/// pair, matching `braket`. An absent block (charges do not fuse) is a
+/// zero-overlap boundary; it is reported as `MalformedEdgeBond` on the
+/// MPO leg (a hint, exact for the common identity-edge case) rather than
+/// producing a zero environment.
 fn build_boundary<T, S>(
     bra_edge: &QNIndex<S>,
     mpo_edge: &QNIndex<S>,
@@ -107,9 +113,10 @@ where
             slot[0] = T::one();
             Ok(env)
         }
-        // Under the common-sector requirement the bra / ket legs cancel,
-        // so an absent identity-flux block is attributable to the MPO
-        // edge not fusing to identity.
+        // Absent block: the bra / MPO / ket edge charges do not fuse to
+        // identity (a zero-overlap boundary). Attributed to the MPO leg
+        // as a hint — exact for the common case where the MPS edges are
+        // the identity sector, so the MPO edge carries the fusion.
         None => Err(BraketEnvError::MalformedEdgeBond { leg: mpo_leg_name }),
     }
 }

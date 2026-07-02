@@ -93,12 +93,12 @@ pub enum BraketEnvError {
 }
 
 /// Per-edge well-formedness requirement rendered in
-/// [`BraketEnvError::MalformedEdgeBond`]'s message. bra / ket edges only
-/// need dim-1 / single-sector (under the common-sector requirement
-/// `env_leg0` and `env_leg2` carry the same sector with opposite
-/// directions and cancel). MPO edges additionally require an
-/// identity-fusing sector to land a `(0, 0, 0)` boundary block under
-/// `flux = identity`.
+/// [`BraketEnvError::MalformedEdgeBond`]'s message. Every edge must be
+/// dim-1 / single-sector (a structural check). The MPO leg's message
+/// additionally names identity-flux fusion because the absent-`(0, 0, 0)`
+/// -block case — the bra / MPO / ket edge charges failing to fuse to
+/// identity — is attributed to the MPO leg (exact for the common case
+/// where the MPS edges are the identity sector).
 fn edge_bond_detail(leg: &str) -> &'static str {
     match leg {
         "bra_left" | "bra_right" | "ket_left" | "ket_right" => "must be dim-1 / single-sector",
@@ -156,9 +156,10 @@ pub trait BraketEnvOps<T: Scalar>: sealed::Sealed {
     /// Build the trivial L boundary tensor sitting just left of site 0.
     ///
     /// For BlockSparse the boundary's axis 0 carries the bra edge sector
-    /// and axis 2 the ket edge sector; the two cancel only when bra and
-    /// ket share that edge sector (see the module docs on the
-    /// common-sector requirement).
+    /// and axis 2 the ket edge sector; the boundary is valid iff the
+    /// bra / MPO / ket edge charges fuse to identity flux (see the
+    /// `env_block_sparse` module docs — an MPO edge can fuse a
+    /// distinct-sector bra / ket pair).
     fn trivial_left_boundary(
         bra_left_edge: &Tensor<Self::Storage, Self::Layout>,
         mpo_left_edge: &Tensor<Self::Storage, Self::Layout>,
