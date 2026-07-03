@@ -201,3 +201,43 @@ fn variational_single_site_short_circuits() {
 
     assert_dense_close(&mps_to_dense(&phi), &mps_to_dense(&baseline), 1e-9);
 }
+
+/// `target_trunc_err` is not consulted: only `chi_max` fixes the bond. A huge
+/// cutoff that would collapse every bond to 1 if honored must leave the fit
+/// identical to the lossless (`chi_max = None`) result. Guards the seed-param
+/// stripping — a zip-up seed built from the raw params would otherwise leak
+/// `target_trunc_err` into its truncation and shrink the fixed bond.
+#[test]
+fn variational_ignores_target_trunc_err() {
+    let backend = NativeBackend::new();
+    let psi = test_mps();
+    let op = make_total_n_dense_mpo(4);
+
+    let lossless = mps::apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        None,
+        variational(VariationalInit::ZipUp, 10),
+    );
+
+    // chi_max = None, but a target_trunc_err large enough to collapse every
+    // bond to 1 if it were consulted.
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1e10),
+    });
+    let fit = mps::apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        variational(VariationalInit::ZipUp, 10),
+    );
+
+    assert_eq!(
+        fit.bond_dims(),
+        lossless.bond_dims(),
+        "target_trunc_err must not truncate the variational result",
+    );
+}
