@@ -24,7 +24,7 @@ unreachable_pub = "warn"
 [workspace.dependencies]
 # Linear algebra
 faer = "0.24"
-hptt = "0.4.0"
+hptt = "0.4.1"
 
 # Memory alignment
 aligned-vec = "0.6"
