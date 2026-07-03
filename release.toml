@@ -1,0 +1,50 @@
+# Release configuration for the ariadnetor workspace.
+#
+# Drives `cargo release` (install once: `cargo install cargo-release`).
+# Invoke through the cargo-make wrapper so the canonical form is
+# discoverable and does not drift (pass the version directly, without a `--`
+# separator — see the Makefile.toml `release` task comment for why):
+#
+#   cargo make release 0.0.4              # dry-run: prints the full plan
+#   cargo make release 0.0.4 --execute    # bump + publish + tag
+#
+# Every publishable member takes its version from `version.workspace`, so a
+# single run: bumps the shared workspace version, rewrites the hard-coded
+# internal-dependency version requirements to match, publishes each crate in
+# dependency order (waiting for each to appear on the index before the crate
+# that needs it), and creates one annotated tag. `algorithms-fixtures` carries
+# `publish = false`, so cargo-release skips it automatically.
+
+# All published crates move in lockstep on the one workspace version.
+shared-version = true
+
+# Only release from the default branch. cargo-release runs the version bump,
+# tag, and publish on whatever branch is checked out; without this guard its
+# default (`["*", "!HEAD"]`) would let an accidental `--execute` from a feature
+# branch publish an immutable crates.io version. Releases are cut on `main`
+# (see CONTRIBUTING.md), so restrict to it.
+allow-branch = ["main"]
+
+# Rewrite the `version = "x.y.z"` requirement on path dependencies that point
+# at workspace members as they are bumped — this is what keeps the hard-coded
+# internal-dep versions in sync across crates. The external `arpack` dependency
+# has no `path`, so it is never a release target and its coincidentally-equal
+# `version = "0.0.3"` is left untouched.
+dependent-version = "upgrade"
+
+# One tag for the whole workspace, matching the existing `v0.0.x` history
+# (rather than the per-crate `<crate>-vX.Y.Z` default).
+tag = true
+tag-prefix = ""
+tag-name = "v{{version}}"
+
+# One squashed release commit for the whole workspace.
+consolidate-commits = true
+pre-release-commit-message = "chore(release): bump to v{{version}}"
+
+# Publishing to crates.io is irreversible (versions are immutable), so it runs
+# as part of the release. Pushing the commit + tag is left to a deliberate
+# manual step because the default branch is guarded by the local pre-push hook;
+# see CONTRIBUTING.md for the push command.
+publish = true
+push = false
