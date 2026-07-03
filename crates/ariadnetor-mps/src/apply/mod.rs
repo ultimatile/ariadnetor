@@ -4,8 +4,10 @@
 //! submodule and reuse this module's per-site `local_product_*` helpers.
 
 mod density_matrix;
+mod variational;
 
 pub(crate) use density_matrix::{apply_density_matrix_bsp, apply_density_matrix_dense};
+pub(crate) use variational::{apply_variational_bsp, apply_variational_dense};
 
 use std::num::NonZeroUsize;
 

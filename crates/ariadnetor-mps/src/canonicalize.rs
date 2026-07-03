@@ -50,7 +50,11 @@ where
 }
 
 /// QR step: decompose site j, replace with Q, absorb R into site j+1.
-fn left_qr_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
+///
+/// State-preserving: the `R` factor is absorbed into site `j+1`, so the chain
+/// as a whole is unchanged — only the gauge (orthogonality center) moves one
+/// site right. Reused by the single-site variational sweep to move the center.
+pub(crate) fn left_qr_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     B: OpsFor<DenseStorage<T>>,
@@ -81,7 +85,10 @@ where
 }
 
 /// LQ step: decompose site j, replace with Q, absorb L into site j-1.
-fn right_lq_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
+///
+/// State-preserving mirror of [`left_qr_step`] — moves the center one site
+/// left. Reused by the single-site variational sweep.
+pub(crate) fn right_lq_step<T, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     B: OpsFor<DenseStorage<T>>,
@@ -159,7 +166,7 @@ where
     chain.set_canonical_form(CanonicalForm::Mixed { center });
 }
 
-fn left_qr_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
+pub(crate) fn left_qr_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     S: Sector,
@@ -182,7 +189,7 @@ where
     *chain.site_mut(j + 1) = new_next;
 }
 
-fn right_lq_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
+pub(crate) fn right_lq_step_bsp<T, S, B, C>(chain: &mut C, j: usize, backend: &B)
 where
     T: Scalar,
     S: Sector,

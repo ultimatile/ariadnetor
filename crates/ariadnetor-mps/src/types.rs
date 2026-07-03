@@ -69,9 +69,22 @@ impl From<TruncSvdParams> for TruncateParams {
     }
 }
 
+/// Initial-guess generator for [`ApplyMethod::Variational`]. Its truncation
+/// to `chi_max` sets the fixed bond the variational sweeps then refine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VariationalInit {
+    /// Seed from the Stoudenmire-White zip-up result.
+    ZipUp,
+    /// Seed from the density-matrix result.
+    DensityMatrix,
+}
+
 /// Algorithm used by [`apply_with_method`](super::dispatch::apply_with_method)
 /// to multiply an MPO into an MPS.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Eq` is intentionally not derived: [`Variational`](ApplyMethod::Variational)
+/// carries an `f64` tolerance, which is `PartialEq` but not `Eq`.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ApplyMethod {
     /// Per-site MPO·MPS product with a streaming forward QR sweep
     /// (or truncated SVD when `forward_cap = Some(k)` and the natural
@@ -125,6 +138,40 @@ pub enum ApplyMethod {
     /// carries the standard density-matrix `√ε` accuracy floor on very small
     /// Schmidt values relative to [`ZipUp`](ApplyMethod::ZipUp).
     DensityMatrix,
+    /// Variational (fit) compression: minimize `‖φ − Wψ‖` at the fixed bond
+    /// set by the initial guess, via single-site DMRG-style sweeps whose local
+    /// update replaces the center tensor with the `⟨φ|W|ψ⟩` environment
+    /// projection `P_j = L(j)·W_j·ψ_j·R(j+1)`. Because the off-center sites are
+    /// isometric, `P_j` is the exact per-site minimizer of `‖φ − Wψ‖²`.
+    ///
+    /// Seeded from `init` (zip-up or density-matrix, truncated to
+    /// `params.svd.chi_max`), then swept until the relative change of the
+    /// center overlap `‖P_center‖²` between successive cycles is at or below
+    /// `tol`, or `max_sweeps` full L→R + R→L cycles have run. Only
+    /// `params.svd.chi_max` is consulted (it sizes the seed and thus the fixed
+    /// bond); `params.absorb`, `params.center`, and `params.target_trunc_err`
+    /// are not — the bond is held fixed at the seed's. Like the other
+    /// compression methods the sweep maintains a single orthogonality center (a
+    /// single-site gauge); it merely ends at a different site (see below).
+    ///
+    /// Host-pinned: this method builds on the host-resident
+    /// [`BraketEnvs`](crate::BraketEnvs) primitive, so — like DMRG — the whole
+    /// computation runs on the `Host` substrate and the `backend` passed to
+    /// [`apply_with_method`](super::dispatch::apply_with_method) is **not
+    /// consulted**. The result is left in `Mixed { center: 0 }` (the R→L
+    /// half-sweep runs last, matching the DMRG sweep convention), unlike
+    /// [`ZipUp`](ApplyMethod::ZipUp) / [`DensityMatrix`](ApplyMethod::DensityMatrix)
+    /// which end at `center: n − 1`.
+    Variational {
+        /// Initial-guess generator; its `chi_max` truncation fixes the bond
+        /// the sweeps refine.
+        init: VariationalInit,
+        /// Maximum number of full L→R + R→L sweep cycles.
+        max_sweeps: usize,
+        /// Relative-change convergence tolerance on the center overlap
+        /// `‖P_center‖²` between successive cycles.
+        tol: f64,
+    },
 }
 
 impl Default for ApplyMethod {
