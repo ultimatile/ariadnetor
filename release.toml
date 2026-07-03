@@ -18,6 +18,13 @@
 # All published crates move in lockstep on the one workspace version.
 shared-version = true
 
+# Only release from the default branch. cargo-release runs the version bump,
+# tag, and publish on whatever branch is checked out; without this guard its
+# default (`["*", "!HEAD"]`) would let an accidental `--execute` from a feature
+# branch publish an immutable crates.io version. Releases are cut on `main`
+# (see CONTRIBUTING.md), so restrict to it.
+allow-branch = ["main"]
+
 # Rewrite the `version = "x.y.z"` requirement on path dependencies that point
 # at workspace members as they are bumped — this is what keeps the hard-coded
 # internal-dep versions in sync across crates. The external `arpack` dependency
