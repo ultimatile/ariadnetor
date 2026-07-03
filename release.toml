@@ -33,10 +33,13 @@ allow-branch = ["main"]
 dependent-version = "upgrade"
 
 # One tag for the whole workspace, matching the existing `v0.0.x` history
-# (rather than the per-crate `<crate>-vX.Y.Z` default).
+# (rather than the per-crate `<crate>-vX.Y.Z` default). tag-message overrides
+# the default annotation, which otherwise names the first crate published
+# (`chore: Release ariadnetor-core version ...`).
 tag = true
 tag-prefix = ""
 tag-name = "v{{version}}"
+tag-message = "Release v{{version}}"
 
 # One squashed release commit for the whole workspace.
 consolidate-commits = true
