@@ -9,6 +9,8 @@ mod apply;
 mod apply_block_sparse;
 #[path = "mps/apply_variational.rs"]
 mod apply_variational;
+#[path = "mps/apply_variational_block_sparse.rs"]
+mod apply_variational_block_sparse;
 #[path = "mps/basic.rs"]
 mod basic;
 #[path = "mps/canonicalize.rs"]

@@ -150,8 +150,9 @@ pub enum ApplyMethod {
     /// `tol`, or `max_sweeps` full L→R + R→L cycles have run. Only
     /// `params.svd.chi_max` is consulted (it sizes the seed and thus the fixed
     /// bond); `params.absorb`, `params.center`, and `params.target_trunc_err`
-    /// are not — the bond is held fixed at the seed's, and the sweep carries
-    /// the orthogonality center like the other compression methods.
+    /// are not — the bond is held fixed at the seed's. Like the other
+    /// compression methods the sweep maintains a single orthogonality center (a
+    /// single-site gauge); it merely ends at a different site (see below).
     ///
     /// Host-pinned: this method builds on the host-resident
     /// [`BraketEnvs`](crate::BraketEnvs) primitive, so — like DMRG — the whole
