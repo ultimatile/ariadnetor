@@ -117,6 +117,32 @@ command = "cargo"
 args = ["bench", "-p", "ariadnetor-algorithms"]
 
 # ============================================================================
+# Release / publish
+# ============================================================================
+
+# Thin passthrough to cargo-release (install once: cargo install cargo-release).
+# All release policy — shared version, internal-dep version upgrade,
+# dependency-ordered publish with index-wait, single workspace tag — lives in
+# release.toml; this task only forwards arguments so the canonical invocation is
+# discoverable and does not drift. Version is per-release, so it is passed as an
+# argument rather than baked into a task.
+#
+#   cargo make release 0.0.4              # dry-run: prints the full plan
+#   cargo make release 0.0.4 --execute    # bump + publish + tag (no push)
+#
+# Pass the version and flags directly, WITHOUT a `--` separator: cargo-make
+# forwards a `--` into the `cargo release` command, where clap then reads a
+# following `--execute` as a positional and aborts the release.
+#
+# release.toml sets push = false: after --execute, push the release commit + tag
+# past the default-branch guard with
+#   SKIP=protect-default-branch git push --follow-tags
+[tasks.release]
+description = "Release via cargo-release (dry-run unless --execute); policy in release.toml. Usage: cargo make release <version> [--execute]"
+command = "cargo"
+args = ["release", "${@}"]
+
+# ============================================================================
 # Composite tasks
 # ============================================================================
 

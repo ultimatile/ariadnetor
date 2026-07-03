@@ -88,6 +88,38 @@ pass writes to its own `target/mutants-{arpack,hptt}` directory so all
 three result sets coexist; triage each pass's `missed.txt` independently —
 there, as in the shipped run, "missed" means untested.
 
+## Releasing
+
+Publishing a version to crates.io is driven by
+[`cargo-release`](https://github.com/crate-ci/cargo-release) (install once:
+`cargo install cargo-release`), configured in `release.toml` and wrapped by a
+`cargo make` task:
+
+```bash
+cargo make release 0.0.4              # dry-run: prints the full plan
+cargo make release 0.0.4 --execute    # bump + publish + tag (no push)
+SKIP=protect-default-branch git push --follow-tags   # push commit + tag
+```
+
+Pass the version and flags directly, without a `--` separator: `cargo make`
+forwards a `--` into the `cargo release` invocation, where it makes clap read a
+following `--execute` as a positional and abort.
+
+One `--execute` run does what would otherwise be an error-prone manual
+sequence: it bumps the shared workspace version, rewrites the hard-coded
+`version = "…"` requirement on every internal path dependency to match,
+publishes each crate in dependency order — waiting for each to appear on the
+index before the crate that needs it — and creates one `vX.Y.Z` tag. Because
+crates.io versions are immutable, always run the dry-run first and read the
+plan. The external `arpack` dependency happens to share the internal crates'
+version number; `cargo-release` only rewrites `path` dependencies, so it is left
+untouched (a blanket find-and-replace would not be — do not bump versions that
+way).
+
+`release.toml` sets `push = false`, so the release commit and tag stay local
+until the explicit `git push` above; the `SKIP=` bypass is needed because the
+pre-push hook guards the default branch.
+
 ## Coding Conventions
 
 ### Public API surface taxonomy
