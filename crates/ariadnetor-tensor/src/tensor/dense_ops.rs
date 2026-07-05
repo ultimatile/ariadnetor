@@ -7,7 +7,6 @@
 use std::ops::{Mul, MulAssign};
 
 use ariadnetor_core::Scalar;
-use num_traits::Zero;
 
 use super::Tensor;
 use crate::{DenseLayout, DenseStorage, DenseTensorData, TensorData};
@@ -230,12 +229,9 @@ where
     ///
     /// Panics if the tensor has zero norm.
     pub fn normalize(&mut self) -> S::Real {
-        let norm = self.norm();
-        assert!(norm != S::Real::zero(), "Cannot normalize zero tensor");
-        for slot in self.data.storage_mut().data_mut().iter_mut() {
-            *slot = slot.div_real(norm);
-        }
-        norm
+        // Delegate to the dense storage normalizer so the norm-and-divide
+        // contract lives in one place rather than diverging across sites.
+        self.data.normalize()
     }
 
     /// Normalize and return a new tensor (out-of-place).
