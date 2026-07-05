@@ -5,9 +5,9 @@
 //! one helper keeps the numerics in a single place: a naive
 //! `sqrt(Σ |x|²)` overflows in `f32` once any `|x|` nears
 //! `sqrt(T::Real::MAX)` (~`1.8e19`), because the squared term saturates
-//! to `inf` before the sum. This kernel uses the scaled algorithm
-//! (BLAS `dnrm2` / Higham, *Accuracy and Stability of Numerical
-//! Algorithms*, 2nd ed., §27.5): it tracks a running maximum `scale`
+//! to `inf` before the sum. This kernel uses the standard scaled
+//! sum-of-squares algorithm (the approach of the BLAS `dnrm2` / LAPACK
+//! `dlassq` reference routines): it tracks a running maximum `scale`
 //! and accumulates `(|x| / scale)²`, so no intermediate overflows until
 //! the result itself would.
 
