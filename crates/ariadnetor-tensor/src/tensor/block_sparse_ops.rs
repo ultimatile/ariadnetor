@@ -11,7 +11,6 @@
 use std::ops::Mul;
 
 use ariadnetor_core::Scalar;
-use num_traits::Float;
 
 use super::Tensor;
 use crate::{BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, QNIndex, Sector};
@@ -81,12 +80,7 @@ where
 {
     /// Frobenius norm: `sqrt(Σ |x|^2)` over the packed flat buffer.
     pub fn norm(&self) -> T::Real {
-        let mut sq = <T::Real as num_traits::Zero>::zero();
-        for &x in self.data.storage().data() {
-            let a = x.abs();
-            sq = sq + a * a;
-        }
-        <T::Real as Float>::sqrt(sq)
+        self.data.storage().norm_frobenius()
     }
 
     /// Hermitian adjoint: element-wise conjugation, leg-direction flip,

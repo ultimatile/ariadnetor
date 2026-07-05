@@ -94,6 +94,23 @@ fn norm_matches_frobenius_definition() {
 }
 
 #[test]
+fn norm_stays_finite_on_extreme_f32_magnitudes() {
+    // Regression for https://github.com/ultimatile/ariadnetor/issues/189:
+    // the public `.norm()` must reach the overflow-safe kernel. The naive
+    // `sqrt(Σ |x|²)` returned inf here (1e20² overflows f32); exact-value
+    // accuracy is covered by the kernel's own unit tests, so this only
+    // confirms the delegation stays on the finite path.
+    let mut t = DenseTensor::<f32>::zeros(vec![2]);
+    t.set([0], 1e20);
+    t.set([1], 2e20);
+    let n = t.norm();
+    assert!(n.is_finite(), "expected finite norm, got {n}");
+    // Coarse sanity that the result is the real norm (~2.2e20), not a
+    // degenerate value — the kernel unit test pins the exact magnitude.
+    assert!(n > 1e20, "expected ~2.2e20, got {n}");
+}
+
+#[test]
 fn normalize_in_place_returns_original_norm_and_unitizes() {
     let mut t = DenseTensor::<f64>::zeros(vec![2]);
     t.set([0], 3.0);

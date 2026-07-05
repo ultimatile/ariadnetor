@@ -221,12 +221,7 @@ where
 {
     /// Frobenius norm.
     pub fn norm(&self) -> S::Real {
-        let mut sq = S::Real::zero();
-        for &x in self.data.storage().data() {
-            let a = x.abs();
-            sq = sq + a * a;
-        }
-        <S::Real as num_traits::Float>::sqrt(sq)
+        self.data.storage().norm_frobenius()
     }
 
     /// Normalize to unit norm (in-place). Returns the original norm.

@@ -11,6 +11,7 @@ mod capability;
 mod dense;
 mod error;
 mod layout;
+mod norm;
 mod ops;
 mod reorder;
 mod sector;
