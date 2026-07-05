@@ -155,10 +155,9 @@ fn test_normalize_zero_tensor_panic() {
     tensor.normalize();
 }
 
-/// Regression for https://github.com/ultimatile/ariadnetor/issues/450:
-/// a subnormal-magnitude element has a nonzero norm too
-/// small to reciprocate (`1 / norm` overflows to `+inf`). Dividing per
-/// element must still yield a finite unit-norm tensor rather than `inf`.
+// A subnormal-magnitude element has a nonzero norm too small to reciprocate
+// (`1 / norm` overflows to `+inf`); dividing per element must still yield a
+// finite unit-norm tensor rather than `inf`.
 #[test]
 fn test_normalize_f32_subnormal_stays_finite() {
     let subnormal = f32::from_bits(1); // smallest positive subnormal (~1.4e-45)
