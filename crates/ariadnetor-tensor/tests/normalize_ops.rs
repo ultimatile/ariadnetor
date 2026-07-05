@@ -155,5 +155,29 @@ fn test_normalize_zero_tensor_panic() {
     tensor.normalize();
 }
 
+/// Regression for https://github.com/ultimatile/ariadnetor/issues/450:
+/// a subnormal-magnitude element has a nonzero norm too
+/// small to reciprocate (`1 / norm` overflows to `+inf`). Dividing per
+/// element must still yield a finite unit-norm tensor rather than `inf`.
+#[test]
+fn test_normalize_f32_subnormal_stays_finite() {
+    let subnormal = f32::from_bits(1); // smallest positive subnormal (~1.4e-45)
+    let mut tensor =
+        DenseTensorData::from_raw_parts(vec![subnormal], vec![1], MemoryOrder::ColumnMajor);
+    let norm = tensor.normalize();
+    assert_eq!(
+        norm, subnormal,
+        "returned norm should be the pre-normalization value"
+    );
+    let data = tensor.data();
+    assert!(
+        data[0].is_finite(),
+        "expected finite element, got {}",
+        data[0]
+    );
+    assert_eq!(data[0], 1.0f32);
+    assert!((tensor.norm() - 1.0).abs() < 1e-6);
+}
+
 // Tensor-level norm/normalize tests are in ariadnetor/tests/
 // since Tensor is now defined in the ariadnetor crate.

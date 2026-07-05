@@ -48,6 +48,10 @@ pub trait Scalar:
     fn im(self) -> Self::Real;
     /// Multiply by a real factor.
     fn scale_real(self, factor: Self::Real) -> Self;
+    /// Divide by a real divisor. Dividing per element avoids the
+    /// intermediate overflow that scaling by a precomputed `1 / divisor`
+    /// incurs when the divisor is subnormal-magnitude.
+    fn div_real(self, divisor: Self::Real) -> Self;
     /// Complex conjugate (identity for real scalars).
     fn conj(self) -> Self;
     /// Widen into the corresponding complex type.
@@ -75,6 +79,10 @@ impl Scalar for f32 {
     #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
         self * factor
+    }
+    #[inline]
+    fn div_real(self, divisor: Self::Real) -> Self {
+        self / divisor
     }
     #[inline]
     fn conj(self) -> Self {
@@ -111,6 +119,10 @@ impl Scalar for f64 {
         self * factor
     }
     #[inline]
+    fn div_real(self, divisor: Self::Real) -> Self {
+        self / divisor
+    }
+    #[inline]
     fn conj(self) -> Self {
         self
     }
@@ -145,6 +157,10 @@ impl Scalar for Complex<f32> {
         Complex::new(self.re * factor, self.im * factor)
     }
     #[inline]
+    fn div_real(self, divisor: Self::Real) -> Self {
+        Complex::new(self.re / divisor, self.im / divisor)
+    }
+    #[inline]
     fn conj(self) -> Self {
         Complex::conj(&self)
     }
@@ -176,6 +192,10 @@ impl Scalar for Complex<f64> {
     #[inline]
     fn scale_real(self, factor: Self::Real) -> Self {
         Complex::new(self.re * factor, self.im * factor)
+    }
+    #[inline]
+    fn div_real(self, divisor: Self::Real) -> Self {
+        Complex::new(self.re / divisor, self.im / divisor)
     }
     #[inline]
     fn conj(self) -> Self {
@@ -216,6 +236,10 @@ mod tests {
         let scaled = Scalar::scale_real(x, factor);
         assert_eq!(Scalar::re(scaled), Scalar::re(x) * factor);
         assert_eq!(Scalar::im(scaled), Scalar::im(x) * factor);
+        // div_real divides each component by the real divisor
+        let divided = Scalar::div_real(x, factor);
+        assert_eq!(Scalar::re(divided), Scalar::re(x) / factor);
+        assert_eq!(Scalar::im(divided), Scalar::im(x) / factor);
         // re/im round-trip
         assert_eq!(S::from_real_imag(Scalar::re(x), Scalar::im(x)), x);
     }
@@ -226,6 +250,25 @@ mod tests {
         assert_scalar_laws(2.5f64, 3.0);
         assert_scalar_laws(Complex::new(3.0f32, 4.0), 2.0);
         assert_scalar_laws(Complex::new(3.0f64, 4.0), 2.0);
+    }
+
+    /// `div_real` divides directly rather than scaling by a precomputed
+    /// reciprocal, so a subnormal-magnitude divisor does not overflow.
+    /// The reciprocal `1 / f32::from_bits(1)` is `+inf`; dividing the
+    /// element by the divisor yields a finite `1.0`.
+    #[test]
+    fn div_real_avoids_reciprocal_overflow() {
+        let x = f32::from_bits(1); // smallest positive subnormal
+        assert!(
+            !(1.0f32 / x).is_finite(),
+            "reciprocal is expected to overflow"
+        );
+        assert_eq!(Scalar::div_real(x, x), 1.0f32);
+        let z = Complex::new(x, 0.0f32);
+        assert_eq!(Scalar::div_real(z, x), Complex::new(1.0f32, 0.0));
+        let y = f64::from_bits(1);
+        assert!(!(1.0f64 / y).is_finite());
+        assert_eq!(Scalar::div_real(y, y), 1.0f64);
     }
 
     #[test]
