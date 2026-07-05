@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use aligned_vec::{AVec, ConstAlign};
-use num_traits::{Float, One, Zero};
+use num_traits::{One, Zero};
 
 use crate::{Sector, Storage, StorageFor};
 
@@ -129,20 +129,9 @@ where
         self.data.len()
     }
 
-    /// Squared Frobenius norm: Σ |element|².
-    fn norm_squared(&self) -> T::Real {
-        self.data
-            .iter()
-            .map(|&x| {
-                let a = x.abs();
-                a * a
-            })
-            .fold(T::Real::zero(), |acc, x| acc + x)
-    }
-
     /// Frobenius norm: √(Σ |element|²).
     pub(crate) fn norm_frobenius(&self) -> T::Real {
-        self.norm_squared().sqrt()
+        crate::norm::frobenius_norm(&self.data[..])
     }
 
     /// Frobenius norm (alias for [`norm_frobenius`](Self::norm_frobenius)).

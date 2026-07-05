@@ -102,7 +102,7 @@ fn bench_map_mut(c: &mut Criterion) {
 }
 
 // ==========================================================================
-// norm_squared (via norm_frobenius which calls norm_squared internally)
+// norm_frobenius (scaled 2-norm kernel over the flat buffer)
 // ==========================================================================
 
 fn bench_norm_frobenius(c: &mut Criterion) {
