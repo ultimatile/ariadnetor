@@ -269,6 +269,8 @@ mod tests {
         let y = f64::from_bits(1);
         assert!(!(1.0f64 / y).is_finite());
         assert_eq!(Scalar::div_real(y, y), 1.0f64);
+        let w = Complex::new(y, 0.0f64);
+        assert_eq!(Scalar::div_real(w, y), Complex::new(1.0f64, 0.0));
     }
 
     #[test]
