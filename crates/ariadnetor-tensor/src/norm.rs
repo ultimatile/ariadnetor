@@ -89,6 +89,22 @@ mod tests {
     }
 
     #[test]
+    fn f64_extreme_magnitude_stays_finite() {
+        // Mirror of the f32 case one exponent-range up: 1e200² = 1e400
+        // exceeds f64::MAX (~1.8e308) and saturates to inf under the naive
+        // sum. The scaled algorithm keeps the generic `T: Scalar` path
+        // finite for f64 too.
+        let n = frobenius_norm::<f64>(&[1e200, 2e200]);
+        assert!(n.is_finite(), "expected finite norm, got {n}");
+        // sqrt(1e400 + 4e400) = sqrt(5) * 1e200 ≈ 2.2360680e200.
+        let expected = 5.0_f64.sqrt() * 1e200;
+        assert!(
+            (n - expected).abs() / expected < 1e-12,
+            "expected ~{expected}, got {n}"
+        );
+    }
+
+    #[test]
     fn nan_propagates() {
         assert!(frobenius_norm::<f64>(&[1.0, f64::NAN, 2.0]).is_nan());
         assert!(frobenius_norm::<f64>(&[f64::INFINITY, f64::NAN]).is_nan());
