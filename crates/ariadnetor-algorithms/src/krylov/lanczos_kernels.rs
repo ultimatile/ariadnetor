@@ -31,6 +31,14 @@ pub(super) fn inner<T: Scalar>(a: &DenseTensor<T>, b: &DenseTensor<T>) -> T {
 
 /// Subtract `alpha * v` from `w` in place, where alpha is real.
 pub(super) fn sub_real_axpy<T: Scalar>(w: &mut DenseTensor<T>, alpha: T::Real, v: &DenseTensor<T>) {
+    // The zip below truncates to the shorter slice; a length mismatch is a
+    // solver bug (all Lanczos vectors are length `dim`), so fail fast in debug
+    // instead of silently updating only a prefix of `w`.
+    debug_assert_eq!(
+        w.data_slice().len(),
+        v.data_slice().len(),
+        "sub_real_axpy: w and v length mismatch",
+    );
     let neg_alpha = -alpha;
     for (wi, &vi) in w.data_slice_mut().iter_mut().zip(v.data_slice().iter()) {
         *wi = *wi + vi.scale_real(neg_alpha);
@@ -46,6 +54,16 @@ pub(super) fn sub_two_real_axpy<T: Scalar>(
     beta: T::Real,
     u: &DenseTensor<T>,
 ) {
+    debug_assert_eq!(
+        w.data_slice().len(),
+        v.data_slice().len(),
+        "sub_two_real_axpy: w and v length mismatch",
+    );
+    debug_assert_eq!(
+        w.data_slice().len(),
+        u.data_slice().len(),
+        "sub_two_real_axpy: w and u length mismatch",
+    );
     let neg_alpha = -alpha;
     let neg_beta = -beta;
     for ((wi, &vi), &ui) in w
@@ -61,6 +79,11 @@ pub(super) fn sub_two_real_axpy<T: Scalar>(
 /// Subtract `gamma * v` from `w` in place, where gamma is the (possibly
 /// complex) scalar T.
 pub(super) fn sub_complex_axpy<T: Scalar>(w: &mut DenseTensor<T>, gamma: T, v: &DenseTensor<T>) {
+    debug_assert_eq!(
+        w.data_slice().len(),
+        v.data_slice().len(),
+        "sub_complex_axpy: w and v length mismatch",
+    );
     let neg_gamma = gamma.scale_real(-T::Real::one());
     for (wi, &vi) in w.data_slice_mut().iter_mut().zip(v.data_slice().iter()) {
         *wi = *wi + neg_gamma * vi;
@@ -190,6 +213,18 @@ mod tests {
         let mut w = w;
         sub_real_axpy(&mut w, alpha, &v);
         assert_dense_close::<T>(&w, &expected, real_from_f64::<T>(1e-12));
+
+        // Aliasing case: `w` shares its storage buffer with `v` via clone.
+        // The copy-on-write detach in `data_slice_mut` must give `w` a private
+        // buffer before the first write, so `w` becomes v - 2*v = [-1, -2, -3]
+        // and `v` itself stays unmodified.
+        let v_alias = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
+        let mut w_alias = v_alias.clone();
+        sub_real_axpy(&mut w_alias, alpha, &v_alias);
+        let expected_alias = dense_from_real::<T>(&[-1.0, -2.0, -3.0]);
+        assert_dense_close::<T>(&w_alias, &expected_alias, real_from_f64::<T>(1e-12));
+        let v_untouched = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
+        assert_dense_close::<T>(&v_alias, &v_untouched, real_from_f64::<T>(1e-12));
     }
 
     #[test]
@@ -212,6 +247,18 @@ mod tests {
         let mut w = w;
         sub_two_real_axpy(&mut w, alpha, &v, beta, &u);
         assert_dense_close::<T>(&w, &expected, real_from_f64::<T>(1e-12));
+
+        // Aliasing case: `w` shares its storage buffer with `v` via clone. The
+        // copy-on-write detach must keep the `v` read intact, so `w` becomes
+        // v - 2*v - 3*u = -v - 3*u = [-13, -17] and `v` stays unmodified.
+        let v_alias = dense_from_real::<T>(&[1.0, 2.0]);
+        let u2 = dense_from_real::<T>(&[4.0, 5.0]);
+        let mut w_alias = v_alias.clone();
+        sub_two_real_axpy(&mut w_alias, alpha, &v_alias, beta, &u2);
+        let expected_alias = dense_from_real::<T>(&[-13.0, -17.0]);
+        assert_dense_close::<T>(&w_alias, &expected_alias, real_from_f64::<T>(1e-12));
+        let v_untouched = dense_from_real::<T>(&[1.0, 2.0]);
+        assert_dense_close::<T>(&v_alias, &v_untouched, real_from_f64::<T>(1e-12));
     }
 
     #[test]
