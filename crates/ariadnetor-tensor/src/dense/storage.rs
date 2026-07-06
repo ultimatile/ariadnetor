@@ -45,17 +45,14 @@ impl<T> Clone for DenseStorage<T> {
 }
 
 impl<T> DenseStorage<T> {
-    /// Construct from a `Vec<T>`, internally rebuilding into a
+    /// Construct from a `Vec<T>`, bulk-moving its elements into a
     /// 64-byte-aligned buffer.
     pub fn new(data: Vec<T>) -> Self {
-        let len = data.len();
-        let mut aligned: AVec<T, ConstAlign<64>> = AVec::with_capacity(64, len);
-        for elem in data {
-            aligned.push(elem);
-        }
-        Self {
-            data: Arc::new(aligned),
-        }
+        // `Vec::into_iter` reports an exact `size_hint`, so `from_iter`
+        // reserves once and writes each moved element straight into the
+        // aligned buffer.
+        let aligned: AVec<T, ConstAlign<64>> = AVec::from_iter(64, data);
+        Self::from_aligned(aligned)
     }
 
     /// Construct from an already-aligned `AVec` (zero-copy).
