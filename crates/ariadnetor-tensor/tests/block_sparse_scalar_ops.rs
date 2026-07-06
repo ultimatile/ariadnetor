@@ -250,6 +250,31 @@ fn normalize_complex() {
     assert!((bs.norm() - 1.0).abs() < 1e-12);
 }
 
+// A subnormal-magnitude element has a nonzero norm too small to reciprocate
+// (`1 / norm` overflows to `+inf`); dividing per element must still yield a
+// finite unit-norm tensor rather than `inf`.
+#[test]
+fn normalize_f32_subnormal_stays_finite() {
+    let subnormal = f32::from_bits(1); // smallest positive subnormal (~1.4e-45)
+    let mut bs = BlockSparseTensorData::<f32, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 1)]),
+        U1Sector(0),
+        MemoryOrder::ColumnMajor,
+    );
+    bs.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[subnormal]);
+    let norm = bs.normalize();
+    assert_eq!(
+        norm, subnormal,
+        "returned norm should be the pre-normalization value"
+    );
+    let elem = bs.block_data(&BlockCoord(vec![0, 0])).unwrap()[0];
+    assert!(elem.is_finite(), "expected finite element, got {elem}");
+    assert_eq!(elem, 1.0f32);
+    assert!((bs.norm() - 1.0).abs() < 1e-6);
+}
+
 #[test]
 #[should_panic(expected = "Cannot normalize zero tensor")]
 fn normalize_zero_panics() {

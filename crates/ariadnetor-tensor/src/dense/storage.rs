@@ -13,7 +13,7 @@ use std::ops::Mul;
 use std::sync::Arc;
 
 use aligned_vec::{AVec, ConstAlign};
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 use super::Align64;
 use crate::{Storage, StorageFor};
@@ -183,10 +183,9 @@ where
     pub(crate) fn normalize(&mut self) -> T::Real {
         let norm = self.norm_frobenius();
         assert!(norm != T::Real::zero(), "Cannot normalize zero tensor");
-        let inv_norm = T::Real::one() / norm;
         let data = Arc::make_mut(&mut self.data);
         for elem in data.iter_mut() {
-            *elem = elem.scale_real(inv_norm);
+            *elem = elem.div_real(norm);
         }
         norm
     }

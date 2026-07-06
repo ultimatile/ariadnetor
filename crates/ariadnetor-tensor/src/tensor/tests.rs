@@ -145,6 +145,28 @@ fn normalize_panics_on_zero_tensor() {
     t.normalize();
 }
 
+// A subnormal-magnitude element has a nonzero norm too small to reciprocate
+// (`1 / norm` overflows to `+inf`); `DenseTensor::normalize` divides per
+// element, so it must yield a finite unit-norm tensor, not `inf`.
+#[test]
+fn normalize_f32_subnormal_stays_finite() {
+    let subnormal = f32::from_bits(1); // smallest positive subnormal (~1.4e-45)
+    let mut t = DenseTensor::<f32>::zeros(vec![1]);
+    t.set([0], subnormal);
+    let n = t.normalize();
+    assert_eq!(
+        n, subnormal,
+        "returned norm should be the pre-normalization value"
+    );
+    assert!(
+        t.get([0]).is_finite(),
+        "expected finite element, got {}",
+        t.get([0])
+    );
+    assert_eq!(t.get([0]), 1.0f32);
+    assert!((t.norm() - 1.0).abs() < 1e-6);
+}
+
 #[test]
 fn linear_combine_sums_with_coefs() {
     let mut a = DenseTensor::<f64>::zeros(vec![2]);
