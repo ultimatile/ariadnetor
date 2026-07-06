@@ -4,6 +4,15 @@
 //! Split from `lanczos.rs` to keep the public entry-point file under
 //! the per-file line cap. The helpers themselves are
 //! crate-private — only the lanczos kernel needs them.
+//!
+//! The three `sub_*_axpy` helpers all subtract a linear combination from
+//! their accumulator `w` in place. Two shared properties make this sound:
+//! each output element depends only on its own index, so reading `w_i`
+//! before overwriting it is exact — bit-identical to materializing the
+//! result into a fresh buffer; and `data_slice_mut()` detaches a shared
+//! buffer via copy-on-write before the first write, so an operator that
+//! returns a `w` aliasing one of the input vectors cannot have that read
+//! corrupted by the in-place write.
 
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::eigh_with_backend;
@@ -20,56 +29,42 @@ pub(super) fn inner<T: Scalar>(a: &DenseTensor<T>, b: &DenseTensor<T>) -> T {
         .fold(T::zero(), |acc, (&x, &y)| acc + x.conj() * y)
 }
 
-/// Compute `w - alpha * v` where alpha is real.
-pub(super) fn sub_real_axpy<T: Scalar>(
-    w: &DenseTensor<T>,
-    alpha: T::Real,
-    v: &DenseTensor<T>,
-) -> DenseTensor<T> {
+/// Subtract `alpha * v` from `w` in place, where alpha is real.
+pub(super) fn sub_real_axpy<T: Scalar>(w: &mut DenseTensor<T>, alpha: T::Real, v: &DenseTensor<T>) {
     let neg_alpha = -alpha;
-    let data: Vec<T> = w
-        .data_slice()
-        .iter()
-        .zip(v.data_slice().iter())
-        .map(|(&wi, &vi)| wi + vi.scale_real(neg_alpha))
-        .collect();
-    Host::shared().dense(data, w.shape().to_vec())
+    for (wi, &vi) in w.data_slice_mut().iter_mut().zip(v.data_slice().iter()) {
+        *wi = *wi + vi.scale_real(neg_alpha);
+    }
 }
 
-/// Compute `w - alpha * v - beta * u` where alpha, beta are real.
+/// Subtract `alpha * v + beta * u` from `w` in place, where alpha, beta
+/// are real.
 pub(super) fn sub_two_real_axpy<T: Scalar>(
-    w: &DenseTensor<T>,
+    w: &mut DenseTensor<T>,
     alpha: T::Real,
     v: &DenseTensor<T>,
     beta: T::Real,
     u: &DenseTensor<T>,
-) -> DenseTensor<T> {
+) {
     let neg_alpha = -alpha;
     let neg_beta = -beta;
-    let data: Vec<T> = w
-        .data_slice()
-        .iter()
+    for ((wi, &vi), &ui) in w
+        .data_slice_mut()
+        .iter_mut()
         .zip(v.data_slice().iter())
         .zip(u.data_slice().iter())
-        .map(|((&wi, &vi), &ui)| wi + vi.scale_real(neg_alpha) + ui.scale_real(neg_beta))
-        .collect();
-    Host::shared().dense(data, w.shape().to_vec())
+    {
+        *wi = *wi + vi.scale_real(neg_alpha) + ui.scale_real(neg_beta);
+    }
 }
 
-/// Compute `w - gamma * v` where gamma is the (possibly complex) scalar T.
-pub(super) fn sub_complex_axpy<T: Scalar>(
-    w: &DenseTensor<T>,
-    gamma: T,
-    v: &DenseTensor<T>,
-) -> DenseTensor<T> {
+/// Subtract `gamma * v` from `w` in place, where gamma is the (possibly
+/// complex) scalar T.
+pub(super) fn sub_complex_axpy<T: Scalar>(w: &mut DenseTensor<T>, gamma: T, v: &DenseTensor<T>) {
     let neg_gamma = gamma.scale_real(-T::Real::one());
-    let data: Vec<T> = w
-        .data_slice()
-        .iter()
-        .zip(v.data_slice().iter())
-        .map(|(&wi, &vi)| wi + neg_gamma * vi)
-        .collect();
-    Host::shared().dense(data, w.shape().to_vec())
+    for (wi, &vi) in w.data_slice_mut().iter_mut().zip(v.data_slice().iter()) {
+        *wi = *wi + neg_gamma * vi;
+    }
 }
 
 /// Draw a unit-norm random vector by sampling each component
@@ -143,7 +138,7 @@ where
 #[cfg(test)]
 mod tests {
     //! Direct unit tests for the private helpers `sub_real_axpy`,
-    //! `sub_two_real_axpy`, and `random_unit_vector`.
+    //! `sub_two_real_axpy`, `sub_complex_axpy`, and `random_unit_vector`.
     use super::*;
     use num_complex::Complex;
     use num_traits::Float;
@@ -192,8 +187,9 @@ mod tests {
         let v = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
         let alpha = real_from_f64::<T>(2.0);
         let expected = dense_from_real::<T>(&[8.0, 16.0, 24.0]);
-        let result = sub_real_axpy(&w, alpha, &v);
-        assert_dense_close::<T>(&result, &expected, real_from_f64::<T>(1e-12));
+        let mut w = w;
+        sub_real_axpy(&mut w, alpha, &v);
+        assert_dense_close::<T>(&w, &expected, real_from_f64::<T>(1e-12));
     }
 
     #[test]
@@ -213,14 +209,47 @@ mod tests {
         let alpha = real_from_f64::<T>(2.0);
         let beta = real_from_f64::<T>(3.0);
         let expected = dense_from_real::<T>(&[-4.0, 1.0]);
-        let result = sub_two_real_axpy(&w, alpha, &v, beta, &u);
-        assert_dense_close::<T>(&result, &expected, real_from_f64::<T>(1e-12));
+        let mut w = w;
+        sub_two_real_axpy(&mut w, alpha, &v, beta, &u);
+        assert_dense_close::<T>(&w, &expected, real_from_f64::<T>(1e-12));
     }
 
     #[test]
     fn sub_two_real_axpy_subtracts_alpha_v_and_beta_u_for_real_and_complex() {
         check_sub_two_real_axpy::<f64>();
         check_sub_two_real_axpy::<Complex<f64>>();
+    }
+
+    fn check_sub_complex_axpy<T>()
+    where
+        T: Scalar + std::fmt::Debug,
+        T::Real: std::fmt::Debug,
+    {
+        let w = dense_from_real::<T>(&[10.0, 20.0, 30.0]);
+        let v = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
+        let gamma = T::from_real_imag(real_from_f64::<T>(2.0), T::Real::zero());
+        let expected = dense_from_real::<T>(&[8.0, 16.0, 24.0]);
+        let mut w = w;
+        sub_complex_axpy(&mut w, gamma, &v);
+        assert_dense_close::<T>(&w, &expected, real_from_f64::<T>(1e-12));
+
+        // Aliasing case: `w` shares its storage buffer with `v` via clone.
+        // The copy-on-write detach in `data_slice_mut` must give `w` a
+        // private buffer before the first write, so the result is exact
+        // (v - gamma * v = [-1, -2, -3]) and `v` itself stays unmodified.
+        let v_alias = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
+        let mut w_alias = v_alias.clone();
+        sub_complex_axpy(&mut w_alias, gamma, &v_alias);
+        let expected_alias = dense_from_real::<T>(&[-1.0, -2.0, -3.0]);
+        assert_dense_close::<T>(&w_alias, &expected_alias, real_from_f64::<T>(1e-12));
+        let v_untouched = dense_from_real::<T>(&[1.0, 2.0, 3.0]);
+        assert_dense_close::<T>(&v_alias, &v_untouched, real_from_f64::<T>(1e-12));
+    }
+
+    #[test]
+    fn sub_complex_axpy_subtracts_gamma_v_and_is_alias_safe_for_real_and_complex() {
+        check_sub_complex_axpy::<f64>();
+        check_sub_complex_axpy::<Complex<f64>>();
     }
 
     fn check_random_unit_vector_matches_unaltered_path<T>()
