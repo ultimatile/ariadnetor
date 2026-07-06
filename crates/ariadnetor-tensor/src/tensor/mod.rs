@@ -18,7 +18,6 @@ use std::fmt;
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
 use num_traits::Zero;
-use rand::RngExt;
 
 use crate::capability::Host;
 use crate::{
@@ -169,31 +168,22 @@ where
 impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout> {
     /// Create a Dense tensor filled with zeros.
     pub fn zeros(shape: Vec<usize>) -> Self {
-        Self::dense_filled(shape, S::zero())
+        Self::from_data(DenseTensorData::zeros_in_order(shape, host_order()))
     }
 
     /// Create a Dense tensor filled with ones.
     pub fn ones(shape: Vec<usize>) -> Self {
-        Self::dense_filled(shape, S::one())
+        Self::from_data(DenseTensorData::ones_in_order(shape, host_order()))
     }
 
     /// Create a Dense tensor filled with `value`.
     pub fn filled(shape: Vec<usize>, value: S) -> Self {
-        Self::dense_filled(shape, value)
+        Self::from_data(DenseTensorData::filled_in_order(shape, value, host_order()))
     }
 
     /// Create an n×n identity matrix.
     pub fn eye(n: usize) -> Self {
-        let order = host_order();
-        let mut data = vec![S::zero(); n * n];
-        // The identity matrix is symmetric, so the flat data is the
-        // same regardless of memory order; only the layout's `order()`
-        // field differs.
-        for i in 0..n {
-            data[i * n + i] = S::one();
-        }
-        let td = DenseTensorData::from_raw_parts(data, vec![n, n], order);
-        Self::from_data(td)
+        Self::from_data(DenseTensorData::eye_in_order(n, host_order()))
     }
 
     /// Create a Dense tensor filled with values drawn from the
@@ -202,18 +192,7 @@ impl<S: Scalar> Tensor<DenseStorage<S>, DenseLayout> {
     where
         rand::distr::StandardUniform: rand::distr::Distribution<S>,
     {
-        let order = host_order();
-        let total: usize = shape.iter().product();
-        let data: Vec<S> = (0..total).map(|_| rng.random()).collect();
-        let td = DenseTensorData::from_raw_parts(data, shape, order);
-        Self::from_data(td)
-    }
-
-    fn dense_filled(shape: Vec<usize>, value: S) -> Self {
-        let order = host_order();
-        let len: usize = shape.iter().product();
-        let data = DenseTensorData::from_raw_parts(vec![value; len], shape, order);
-        Self::from_data(data)
+        Self::from_data(DenseTensorData::random_in_order(shape, host_order(), rng))
     }
 }
 

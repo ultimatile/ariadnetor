@@ -239,6 +239,25 @@ fn dense_tensor_zeros_pins_order_to_host_preferred() {
 }
 
 #[test]
+fn dense_tensor_random_fills_in_flat_draw_order() {
+    use rand::{RngExt, SeedableRng};
+
+    // Pin the host `random` constructor against a direct sequential draw
+    // from the same seed: it must draw once per element and store in flat
+    // draw order. A construction path that reorders or skips a draw
+    // diverges from `expected`; comparing two same-seed constructions
+    // would not — both shift identically and mask the regression.
+    let seed = 0xA11A;
+    let mut direct = rand::rngs::StdRng::seed_from_u64(seed);
+    let expected: Vec<f64> = (0..6).map(|_| direct.random()).collect();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let t = DenseTensor::<f64>::random(vec![2, 3], &mut rng);
+
+    assert_eq!(t.data_slice(), expected.as_slice());
+}
+
+#[test]
 fn block_sparse_tensor_zeros_pins_order_to_host_preferred() {
     use ariadnetor_core::backend::ComputeBackend;
     use ariadnetor_native::NativeBackend;

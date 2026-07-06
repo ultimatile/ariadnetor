@@ -60,13 +60,11 @@ where
     where
         T: Zero + One,
     {
-        let mut buf = vec![T::zero(); n * n];
-        for i in 0..n {
-            buf[i * n + i] = T::one();
-        }
         let mut data: AVec<T, ConstAlign<64>> = AVec::with_capacity(64, n * n);
-        for elem in buf {
-            data.push(elem);
+        data.resize(n * n, T::zero());
+        let slice = data.as_mut_slice();
+        for i in 0..n {
+            slice[i * n + i] = T::one();
         }
         let storage = DenseStorage::from_aligned(data);
         let layout = DenseLayout::new(vec![n, n], order);
