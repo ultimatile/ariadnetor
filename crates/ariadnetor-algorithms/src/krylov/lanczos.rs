@@ -236,11 +236,11 @@ where
 
         // Three-term recurrence: w <- w - alpha v_j - beta_{j-1} v_{j-1}.
         if j == 0 {
-            w = sub_real_axpy(&w, alpha, &v_j);
+            sub_real_axpy(&mut w, alpha, &v_j);
         } else {
             let beta_prev = betas[j - 1];
             let v_prev = &basis[j - 1];
-            w = sub_two_real_axpy(&w, alpha, &v_j, beta_prev, v_prev);
+            sub_two_real_axpy(&mut w, alpha, &v_j, beta_prev, v_prev);
         }
 
         // Full reorthogonalization. Two passes of classical Gram-Schmidt
@@ -249,7 +249,7 @@ where
         for _ in 0..2 {
             for v_k in basis.iter().take(j + 1) {
                 let gamma = inner(v_k, &w);
-                w = sub_complex_axpy(&w, gamma, v_k);
+                sub_complex_axpy(&mut w, gamma, v_k);
             }
         }
 
@@ -291,10 +291,15 @@ where
             // the spanned subspace.
             break;
         }
+        // Normalize w in place into v_{j+1} = w / beta, then hand the
+        // operator-output buffer straight to the basis. `scale` mutates w's
+        // uniquely-owned buffer, so reusing w avoids a fresh length-`dim`
+        // allocation per iteration. The `beta_floor` guard above keeps
+        // `1 / beta` finite so the reciprocal does not overflow.
         let inv = T::Real::one() / beta;
-        let v_next_data: Vec<T> = w.data_slice().iter().map(|&x| x.scale_real(inv)).collect();
-        basis.push(Host::shared().dense(v_next_data, vec![dim]));
+        w.scale(inv);
         betas.push(beta);
+        basis.push(w);
     }
 
     // Reconstruct the Ritz vector psi = sum_k z[k] v_k.
