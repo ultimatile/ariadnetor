@@ -398,6 +398,17 @@ fn bench_transpose_case(
     });
 }
 
+/// Micro-benchmark for the physical per-block transpose.
+///
+/// This times [`ComputeBackend::transpose`] — the native naive kernel on the
+/// default build, HPTT under `--features hptt` — so comparing the two baselines
+/// answers "does HPTT beat the naive kernel per block". It does NOT time today's
+/// `transpose_block_data`, the in-tree naive kernel that block-sparse
+/// contract/permute currently call: routing those sites through the backend is
+/// the pending change whose payoff this measures. `transpose_block_data` is the
+/// same cost class as the native naive kernel (both O(n), output-driven,
+/// stride-indexed), so the native-vs-HPTT ratio here stands in for the routing
+/// benefit rather than measuring the current call path directly.
 fn bench_block_transpose(c: &mut Criterion) {
     let backend = NativeBackend::new();
     let order = backend.preferred_order();
