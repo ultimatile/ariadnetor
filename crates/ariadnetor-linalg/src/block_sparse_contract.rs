@@ -5,9 +5,10 @@
 //! GEMM per block pair.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use ariadnetor_core::Scalar;
-use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, MemoryOrder};
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, GemmDescriptor, TransposeDescriptor};
 use ariadnetor_tensor::Sector;
 use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, QNIndex};
 
@@ -43,15 +44,7 @@ pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     let rhs_groups = group_by_contracted_key(rhs, axes_rhs);
 
     if output_rank == 0 {
-        let order = backend.preferred_order();
-        return Ok(contract_to_scalar(
-            lhs,
-            rhs,
-            axes_lhs,
-            axes_rhs,
-            &rhs_groups,
-            order,
-        ));
+        return contract_to_scalar(backend, lhs, rhs, axes_lhs, axes_rhs, &rhs_groups);
     }
 
     contract_to_tensor(
@@ -142,20 +135,21 @@ fn group_by_contracted_key<T, S: Sector>(
 // ---------------------------------------------------------------------------
 
 fn contract_to_scalar<T: Scalar, S: Sector>(
+    backend: &impl ComputeBackend,
     lhs: &BlockSparseTensorData<T, S>,
     rhs: &BlockSparseTensorData<T, S>,
     axes_lhs: &[usize],
     axes_rhs: &[usize],
     rhs_groups: &HashMap<Vec<usize>, Vec<usize>>,
-    order: MemoryOrder,
-) -> BlockSparseTensorData<T, S> {
+) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
+    let order = backend.preferred_order();
     let output_flux = lhs.layout().flux().fuse(rhs.layout().flux());
     // Rank-0 output: identity flux yields one block holding the scalar; a
     // non-identity fused flux is symmetry-forbidden and yields zero blocks (the
     // zero scalar). `block_data_mut` returns `Some` only in the identity case.
     let mut output = BlockSparseTensorData::zeros(Vec::new(), output_flux, order);
     if output.block_data_mut(&BlockCoord(Vec::new())).is_none() {
-        return output;
+        return Ok(output);
     }
 
     let lhs_rank = lhs.layout().rank();
@@ -172,6 +166,10 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
     let rhs_metas = rhs.layout().block_metas();
     let mut sum = T::zero();
 
+    // Each distinct rhs block is transposed once and cached: a given rhs block
+    // pairs with every lhs block sharing its contracted-axis key, so without the
+    // cache it would be re-transposed once per matching lhs block.
+    let mut rhs_t_cache: HashMap<usize, Vec<T>> = HashMap::new();
     let mut key = Vec::with_capacity(axes_lhs.len());
 
     for lhs_meta in lhs.layout().block_metas() {
@@ -188,10 +186,15 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
             let rhs_data = rhs.block_data(&rhs_meta.coord).unwrap();
 
             if needs_transpose {
-                let rhs_shape: Vec<usize> = (0..rhs_rank)
-                    .map(|a| rhs.layout().indices()[a].block_dim(rhs_meta.coord.0[a]))
-                    .collect();
-                let rhs_t = transpose_block_data(rhs_data, &rhs_shape, &rhs_perm, order);
+                let rhs_t = match rhs_t_cache.entry(ri) {
+                    Entry::Occupied(e) => e.into_mut(),
+                    Entry::Vacant(e) => {
+                        let rhs_shape: Vec<usize> = (0..rhs_rank)
+                            .map(|a| rhs.layout().indices()[a].block_dim(rhs_meta.coord.0[a]))
+                            .collect();
+                        e.insert(transpose_block(backend, rhs_data, &rhs_shape, &rhs_perm)?)
+                    }
+                };
                 for (&a, &b) in lhs_data.iter().zip(rhs_t.iter()) {
                     sum = sum + a * b;
                 }
@@ -205,7 +208,7 @@ fn contract_to_scalar<T: Scalar, S: Sector>(
 
     // The identity-flux block was confirmed present above.
     output.block_data_mut(&BlockCoord(Vec::new())).unwrap()[0] = sum;
-    output
+    Ok(output)
 }
 
 // ---------------------------------------------------------------------------
@@ -241,8 +244,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     // GEMM wants lhs as (m, k) and rhs as (k, n). When the permutation
     // is a simple prefix/suffix swap, the reshaped block can be read in
     // the backend's preferred order via trans_a/trans_b without physical
-    // data movement. Other non-identity permutations require explicit
-    // transpose_block_data.
+    // data movement. Other non-identity permutations require a physical
+    // transpose through the backend.
     let lhs_is_id = free_lhs
         .iter()
         .chain(axes_lhs.iter())
@@ -267,6 +270,11 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
     // (both immutable on the same value) and with
     // `output.block_data_mut(...)` (different value).
     let rhs_metas = rhs.layout().block_metas();
+    let rhs_perm: Vec<usize> = axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
+    // Cache each rhs block's physical transpose: an rhs block is revisited once
+    // per lhs block sharing its contracted-axis key, so caching transposes it at
+    // most once per contraction rather than once per matching lhs block.
+    let mut rhs_t_cache: HashMap<usize, Vec<T>> = HashMap::new();
     let mut key = Vec::with_capacity(axes_lhs.len());
 
     for lhs_meta in lhs.layout().block_metas() {
@@ -294,7 +302,7 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
         let lhs_buf;
         let lhs_slice: &[T] = if lhs_needs_physical_t {
             let lhs_perm: Vec<usize> = free_lhs.iter().chain(axes_lhs.iter()).copied().collect();
-            lhs_buf = transpose_block_data(lhs_data, &lhs_block_shape, &lhs_perm, order);
+            lhs_buf = transpose_block(backend, lhs_data, &lhs_block_shape, &lhs_perm)?;
             &lhs_buf
         } else {
             lhs_data
@@ -326,12 +334,16 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
                 .max(1);
 
             let rhs_data = rhs.block_data(&rhs_meta.coord).unwrap();
-            let rhs_buf;
             let rhs_slice: &[T] = if rhs_needs_physical_t {
-                let rhs_perm: Vec<usize> =
-                    axes_rhs.iter().chain(free_rhs.iter()).copied().collect();
-                rhs_buf = transpose_block_data(rhs_data, &rhs_block_shape, &rhs_perm, order);
-                &rhs_buf
+                match rhs_t_cache.entry(ri) {
+                    Entry::Occupied(e) => e.into_mut(),
+                    Entry::Vacant(e) => e.insert(transpose_block(
+                        backend,
+                        rhs_data,
+                        &rhs_block_shape,
+                        &rhs_perm,
+                    )?),
+                }
             } else {
                 rhs_data
             };
@@ -360,72 +372,28 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Transpose block data in the given memory order layout.
+/// Physically transpose a block into a fresh buffer via the backend.
 ///
-/// Convention: `perm[new_axis] = old_axis`.
-pub(crate) fn transpose_block_data<T: Copy>(
+/// Runs sequentially: per-block transposes are small enough that Rayon dispatch
+/// costs more than it saves. HPTT (when the build enables it) or the native
+/// naive kernel is selected inside the backend.
+fn transpose_block<T: Scalar>(
+    backend: &impl ComputeBackend,
     data: &[T],
     shape: &[usize],
     perm: &[usize],
-    order: MemoryOrder,
-) -> Vec<T> {
-    let rank = shape.len();
-    if rank <= 1 || data.is_empty() {
-        return data.to_vec();
-    }
-
-    let total = data.len();
-    let old_strides = compute_strides(shape, order);
-    let perm_strides: Vec<usize> = perm.iter().map(|&p| old_strides[p]).collect();
-
-    let new_shape: Vec<usize> = perm.iter().map(|&p| shape[p]).collect();
-    let new_strides = compute_strides(&new_shape, order);
-
-    // Axis iteration order for flat→multi-index decomposition:
-    // RowMajor strides are descending → process 0..rank
-    // ColumnMajor strides are ascending → process (0..rank).rev()
-    let decomp_order: Vec<usize> = match order {
-        MemoryOrder::RowMajor => (0..rank).collect(),
-        MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
-    };
-
-    let mut result = vec![data[0]; total];
-    let mut idx = vec![0usize; rank];
-
-    for (flat, out) in result.iter_mut().enumerate() {
-        let mut rem = flat;
-        for &ax in &decomp_order {
-            idx[ax] = rem / new_strides[ax];
-            rem %= new_strides[ax];
-        }
-        let old_flat: usize = idx
-            .iter()
-            .zip(perm_strides.iter())
-            .map(|(&i, &s)| i * s)
-            .sum();
-        *out = data[old_flat];
-    }
-
-    result
-}
-
-/// Compute strides for the given memory order.
-pub(crate) fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
-    let rank = shape.len();
-    let mut strides = vec![1usize; rank];
-    match order {
-        MemoryOrder::RowMajor => {
-            for i in (0..rank.saturating_sub(1)).rev() {
-                strides[i] = strides[i + 1] * shape[i + 1];
-            }
-        }
-        MemoryOrder::ColumnMajor => {
-            for i in 1..rank {
-                strides[i] = strides[i - 1] * shape[i - 1];
-            }
-        }
-    }
-    strides
+) -> Result<Vec<T>, LinalgError> {
+    let mut buf = vec![T::zero(); data.len()];
+    backend.transpose(TransposeDescriptor {
+        input: data,
+        output: &mut buf,
+        shape,
+        perm,
+        order: backend.preferred_order(),
+        conj: false,
+        policy: ExecPolicy::Sequential,
+    })?;
+    Ok(buf)
 }
 
 fn is_identity_perm(perm: &[usize]) -> bool {

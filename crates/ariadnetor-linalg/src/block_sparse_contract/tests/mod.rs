@@ -1,5 +1,5 @@
 use super::*;
-use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::{legs, out_in_legs, square_legs};
 use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction};
@@ -14,6 +14,25 @@ fn b() -> NativeBackend {
 
 fn order() -> MemoryOrder {
     b().preferred_order()
+}
+
+/// Compute strides for the given memory order (test helper for index math).
+fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
+    let rank = shape.len();
+    let mut strides = vec![1usize; rank];
+    match order {
+        MemoryOrder::RowMajor => {
+            for i in (0..rank.saturating_sub(1)).rev() {
+                strides[i] = strides[i + 1] * shape[i + 1];
+            }
+        }
+        MemoryOrder::ColumnMajor => {
+            for i in 1..rank {
+                strides[i] = strides[i - 1] * shape[i - 1];
+            }
+        }
+    }
+    strides
 }
 
 /// Compute flat index from multi-index in the backend's preferred order.

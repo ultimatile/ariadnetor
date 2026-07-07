@@ -13,6 +13,25 @@ fn order() -> MemoryOrder {
     backend().preferred_order()
 }
 
+/// Flat offset of a multi-index within a block laid out in the given order.
+fn flat(coords: &[usize], shape: &[usize], order: MemoryOrder) -> usize {
+    let rank = shape.len();
+    let mut strides = vec![1usize; rank];
+    match order {
+        MemoryOrder::RowMajor => {
+            for i in (0..rank.saturating_sub(1)).rev() {
+                strides[i] = strides[i + 1] * shape[i + 1];
+            }
+        }
+        MemoryOrder::ColumnMajor => {
+            for i in 1..rank {
+                strides[i] = strides[i - 1] * shape[i - 1];
+            }
+        }
+    }
+    coords.iter().zip(&strides).map(|(&c, &s)| c * s).sum()
+}
+
 // ---------------------------------------------------------------------------
 // Helper: build a rank-3 U1 tensor with known data
 // ---------------------------------------------------------------------------
@@ -118,6 +137,49 @@ fn cyclic_permutation_rank3() {
                 "block {:?}[{i}]: {a} vs {b}",
                 meta.coord
             );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rank-3 ground-truth data check
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cyclic_permutation_rank3_ground_truth() {
+    // Distinct block dims [2, 3, 4] and distinct element values pin the exact
+    // permuted layout, so a no-op or mis-shaped transpose fails loudly — which
+    // the round-trip checks above cannot detect. perm [1, 2, 0] sends new axes
+    // (old1, old2, old0), so dst[a, b, c] == src[c, a, b].
+    let src_shape = [2usize, 3, 4];
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([
+            (vec![(U1Sector(0), 2)], Direction::Out),
+            (vec![(U1Sector(0), 3)], Direction::Out),
+            (vec![(U1Sector(0), 4)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
+    let d = bs.block_data_mut(&BlockCoord(vec![0, 0, 0])).unwrap();
+    for (i, v) in d.iter_mut().enumerate() {
+        *v = i as f64;
+    }
+
+    let result = permute_block_sparse_dense(&backend(), &bs, &[1, 2, 0]).unwrap();
+    assert_eq!(result.shape(), &[3, 4, 2]);
+
+    let src = bs.block_data(&BlockCoord(vec![0, 0, 0])).unwrap();
+    let dst = result.block_data(&BlockCoord(vec![0, 0, 0])).unwrap();
+    let dst_shape = [3usize, 4, 2];
+    let ord = order();
+    for i in 0..src_shape[0] {
+        for j in 0..src_shape[1] {
+            for k in 0..src_shape[2] {
+                let s = src[flat(&[i, j, k], &src_shape, ord)];
+                let dd = dst[flat(&[j, k, i], &dst_shape, ord)];
+                assert_eq!(s, dd, "src[{i},{j},{k}] should map to dst[{j},{k},{i}]");
+            }
         }
     }
 }
