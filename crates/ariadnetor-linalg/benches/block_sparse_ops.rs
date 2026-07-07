@@ -7,10 +7,14 @@
 //!
 //! Decomposition and rank-2 contract groups include a Dense baseline of
 //! equivalent total dimension. Rank-3 contraction is BlockSparse-only.
+//!
+//! The `block_transpose` group is a separate micro-benchmark isolating the
+//! physical per-block transpose (naive kernel vs HPTT via `backend.transpose`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, TransposeDescriptor};
 use ariadnetor_linalg::{DenseHostOps, TruncSvdParams, lq, qr, svd, tensordot, trunc_svd};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::{legs, square_legs};
@@ -306,6 +310,129 @@ fn bench_singh_reference(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-block transpose micro-benchmark
+// ---------------------------------------------------------------------------
+
+/// One representative (shape, perm) case for the physical per-block transpose.
+/// `d` is the per-sector degeneracy that generated the shape; the parallel
+/// sweep filters on it so the "largest d" selection tracks [`D_SWEEP`] rather
+/// than a hardcoded label substring.
+struct TransposeCase {
+    label: String,
+    d: usize,
+    shape: Vec<usize>,
+    perm: Vec<usize>,
+}
+
+/// Per-sector degeneracies swept for the per-block transpose micro-benchmark.
+const D_SWEEP: [usize; 4] = [16, 32, 64, 128];
+
+/// Representative per-block transpose cases.
+///
+/// Block-sparse contraction reads a block through the GEMM `trans_a`/`trans_b`
+/// flag when the fold is an ascending prefix/suffix, and only falls back to a
+/// physical transpose otherwise; block-sparse permute transposes every
+/// non-identity perm physically. Each perm here is neither an ascending prefix
+/// nor suffix, so it exercises that physical fallback rather than the flag path.
+/// `d` sweeps the per-sector degeneracy so the naive-vs-HPTT crossover can be
+/// read per block shape instead of being diluted by surrounding contraction
+/// work.
+fn transpose_cases() -> Vec<TransposeCase> {
+    let mut cases = Vec::new();
+    for &d in &D_SWEEP {
+        // rank-3 (d, phys, d): adjacent swap, cyclic, full reversal.
+        for (tag, perm) in [
+            ("rank3_swap", vec![0, 2, 1]),
+            ("rank3_cyc", vec![2, 0, 1]),
+            ("rank3_rev", vec![2, 1, 0]),
+        ] {
+            cases.push(TransposeCase {
+                label: format!("{tag}_d{d}"),
+                d,
+                shape: vec![d, 2, d],
+                perm,
+            });
+        }
+        // rank-4 (d, phys, phys, d): fold-style perm.
+        cases.push(TransposeCase {
+            label: format!("rank4_fold_d{d}"),
+            d,
+            shape: vec![d, 2, 2, d],
+            perm: vec![0, 2, 3, 1],
+        });
+    }
+    cases
+}
+
+/// Time `backend.transpose` on a single case with the given policy. The output
+/// buffer is allocated once and reused across iterations so the measurement is
+/// the kernel cost, not per-block allocation.
+fn bench_transpose_case(
+    group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>,
+    backend: &NativeBackend,
+    order: MemoryOrder,
+    prefix: &str,
+    case: &TransposeCase,
+    policy: ExecPolicy,
+) {
+    let total: usize = case.shape.iter().product();
+    let input: Vec<f64> = (0..total).map(|i| i as f64).collect();
+    let mut output = vec![0.0f64; total];
+
+    group.bench_function(BenchmarkId::new(prefix, &case.label), |bench| {
+        bench.iter(|| {
+            backend
+                .transpose(TransposeDescriptor {
+                    input: &input,
+                    output: &mut output,
+                    shape: &case.shape,
+                    perm: &case.perm,
+                    order,
+                    conj: false,
+                    policy,
+                })
+                .unwrap();
+            // Force the write to survive dead-store elimination on the naive path.
+            std::hint::black_box(&output);
+        });
+    });
+}
+
+fn bench_block_transpose(c: &mut Criterion) {
+    let backend = NativeBackend::new();
+    let order = backend.preferred_order();
+    let mut group = c.benchmark_group("block_transpose");
+
+    let cases = transpose_cases();
+    for case in &cases {
+        bench_transpose_case(
+            &mut group,
+            &backend,
+            order,
+            "seq",
+            case,
+            ExecPolicy::Sequential,
+        );
+    }
+
+    // Parallel at the largest `d` only, to see whether threading shifts the
+    // crossover without quadrupling wall time across the whole sweep.
+    let max_d = D_SWEEP.iter().copied().max().unwrap_or(0);
+    for case in cases.iter().filter(|tc| tc.d == max_d) {
+        bench_transpose_case(
+            &mut group,
+            &backend,
+            order,
+            "par",
+            case,
+            ExecPolicy::Parallel(0),
+        );
+    }
+
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -319,5 +446,6 @@ criterion_group!(
     bench_qr,
     bench_lq,
     bench_singh_reference,
+    bench_block_transpose,
 );
 criterion_main!(benches);
