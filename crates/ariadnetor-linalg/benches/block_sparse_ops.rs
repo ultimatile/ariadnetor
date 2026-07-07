@@ -2,6 +2,7 @@
 //!
 //! Sweeps over sector count (q) and per-sector degeneracy (d) for:
 //! - contract_block_sparse (rank-2 matmul, rank-3 contraction)
+//! - permute_block_sparse (rank-3, physical per-block transpose)
 //! - svd_block_sparse / trunc_svd_block_sparse
 //! - qr_block_sparse / lq_block_sparse
 //!
@@ -15,7 +16,10 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 
 use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, TransposeDescriptor};
-use ariadnetor_linalg::{DenseHostOps, TruncSvdParams, lq, qr, svd, tensordot, trunc_svd};
+use ariadnetor_linalg::{
+    DenseHostOps, TruncSvdParams, lq, permute_block_sparse_with_backend, qr, svd, tensordot,
+    trunc_svd,
+};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::{legs, square_legs};
 use ariadnetor_tensor::{BlockSparseTensor, DenseTensor, Direction, U1Sector};
@@ -163,6 +167,29 @@ fn bench_contract_rank3(c: &mut Criterion) {
                 bench.iter_with_large_drop(|| tensordot(&backend, a, b, &[2], &[0]).unwrap());
             },
         );
+    }
+
+    group.finish();
+}
+
+/// End-to-end block-sparse permute. A non-identity permutation has no GEMM
+/// trans-flag shortcut, so every block is physically transposed through the
+/// backend. Unlike the isolated `block_transpose` micro-benchmark, this drives
+/// the full public `permute_block_sparse_with_backend` path — block iteration,
+/// per-block transpose, output assembly — so it tracks the user-facing payoff
+/// of routing the per-block transpose through HPTT (build with `--features
+/// hptt` and compare).
+fn bench_permute(c: &mut Criterion) {
+    let backend = NativeBackend::new();
+    let mut group = c.benchmark_group("permute_bsp");
+
+    for p in &standard_sweep() {
+        let a = random_bsp_rank3(p.q, p.d);
+        group.bench_with_input(BenchmarkId::new("bsp", &p.label), &a, |bench, a| {
+            bench.iter_with_large_drop(|| {
+                permute_block_sparse_with_backend(&backend, a, &[2, 0, 1]).unwrap()
+            });
+        });
     }
 
     group.finish();
@@ -402,13 +429,10 @@ fn bench_transpose_case(
 ///
 /// This times [`ComputeBackend::transpose`] — the native naive kernel on the
 /// default build, HPTT under `--features hptt` — so comparing the two baselines
-/// answers "does HPTT beat the naive kernel per block". It does NOT time today's
-/// `transpose_block_data`, the in-tree naive kernel that block-sparse
-/// contract/permute currently call: routing those sites through the backend is
-/// the pending change whose payoff this measures. `transpose_block_data` is the
-/// same cost class as the native naive kernel (both O(n), output-driven,
-/// stride-indexed), so the native-vs-HPTT ratio here stands in for the routing
-/// benefit rather than measuring the current call path directly.
+/// answers "does HPTT beat the naive kernel per block". Block-sparse
+/// contract/permute route their per-block transpose through
+/// [`ComputeBackend::transpose`], so this measures that production path directly:
+/// the native-vs-HPTT ratio is the per-block payoff of building with HPTT.
 fn bench_block_transpose(c: &mut Criterion) {
     let backend = NativeBackend::new();
     let order = backend.preferred_order();
@@ -458,5 +482,6 @@ criterion_group!(
     bench_lq,
     bench_singh_reference,
     bench_block_transpose,
+    bench_permute,
 );
 criterion_main!(benches);

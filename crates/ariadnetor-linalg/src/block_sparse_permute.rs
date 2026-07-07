@@ -4,10 +4,9 @@
 //! reordering indices, block coordinates, and transposing each block's data.
 
 use ariadnetor_core::Scalar;
-use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, TransposeDescriptor};
 use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Sector};
 
-use crate::block_sparse_contract::transpose_block_data;
 use crate::error::LinalgError;
 use crate::perm::validate_perm;
 
@@ -67,12 +66,21 @@ where
             .map(|a| old_indices[a].block_dim(meta.coord.0[a]))
             .collect();
 
-        let transposed = transpose_block_data(src_data, &src_shape, perm, order);
-
         let dst_data = output
             .block_data_mut(&new_coord)
             .expect("permuted block must exist in output");
-        dst_data.copy_from_slice(&transposed);
+        // Transpose straight into the freshly-zeroed output block, avoiding an
+        // intermediate buffer and copy. Sequential: per-block transposes are too
+        // small for Rayon dispatch to pay off.
+        backend.transpose(TransposeDescriptor {
+            input: src_data,
+            output: dst_data,
+            shape: &src_shape,
+            perm,
+            order,
+            conj: false,
+            policy: ExecPolicy::Sequential,
+        })?;
     }
 
     Ok(output)
