@@ -8,7 +8,7 @@
 
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{ComputeBackend, MemoryOrder, TransposeDescriptor};
-use ariadnetor_tensor::DenseTensorData;
+use ariadnetor_tensor::{DenseLayout, DenseTensorData};
 
 use crate::error::LinalgError;
 
@@ -36,13 +36,12 @@ pub(crate) fn reorder_via_backend<T: Scalar>(
     }
     let shape = tensor.shape().to_vec();
     // A rank-0 / rank-1 tensor has one byte layout shared by both orders, so
-    // re-tagging the order is correct without moving data; this also keeps a
-    // degenerate perm off the HPTT path.
+    // re-tag the order by cloning the Arc-backed storage (zero-copy) rather
+    // than moving data; this also keeps a degenerate perm off the HPTT path.
     if shape.len() <= 1 {
-        return Ok(DenseTensorData::from_raw_parts(
-            tensor.data().to_vec(),
-            shape,
-            to,
+        return Ok(DenseTensorData::new(
+            tensor.storage().clone(),
+            DenseLayout::new(shape, to),
         ));
     }
     let total = tensor.len();
