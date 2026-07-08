@@ -43,6 +43,10 @@ harness = false
 name = "block_sparse_ops"
 harness = false
 
+[[bench]]
+name = "reorder_sandwich"
+harness = false
+
 # Threshold-sweep instruments: each is a plain `fn main()` that measures the
 # `ExecPolicy::Sequential` vs `Parallel(0)` crossover, run on demand via
 # `cargo bench --bench sweep_*`. Distinct from the criterion regression benches above.

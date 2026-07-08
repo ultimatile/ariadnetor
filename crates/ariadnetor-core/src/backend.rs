@@ -394,7 +394,15 @@ pub trait ComputeBackend: Send + Sync {
     /// GEMM: C = alpha * A * B + beta * C
     fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError>;
 
-    /// Transpose tensor
+    /// Transpose tensor.
+    ///
+    /// Unlike the compute kernels (GEMM / SVD / …), whose buffers must be in
+    /// [`preferred_order`](Self::preferred_order), transpose is
+    /// layout-parametric: `desc.order` is the memory layout of *this* call's
+    /// input and output buffers, and implementors must honor it per call
+    /// regardless of `preferred_order()`. This lets callers convert between
+    /// memory orders (a fixed-shape axis reversal) by transposing under the
+    /// source order.
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError>;
 
     /// Thin SVD: A = U * diag(S) * Vt

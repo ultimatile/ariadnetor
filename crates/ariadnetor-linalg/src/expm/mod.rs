@@ -8,10 +8,10 @@ use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 use crate::contract::contract_dense;
 use crate::eigen::eigh_dense;
 use crate::error::LinalgError;
+use crate::reorder_route::reorder_via_backend;
 use crate::scalar_ops::diagonal_scale_dense;
 use crate::solve::solve_dense;
 use crate::transpose::conjugate_transpose_dense;
-use ariadnetor_tensor::reorder_data;
 
 /// Matrix exponential for Hermitian (self-adjoint) matrices via eigendecomposition.
 ///
@@ -94,7 +94,7 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
     let order = backend.preferred_order();
 
     // Reorder to RowMajor for element-wise iA computation
-    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
     let data = rm.data();
     let shape = tensor.shape();
 
@@ -106,7 +106,7 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
         .collect();
     // ia data is in RowMajor; reorder to preferred_order for backend consumption
     let ia_rm = DenseTensorData::from_raw_parts(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
-    let ia = reorder_data(&ia_rm, order);
+    let ia = reorder_via_backend(backend, &ia_rm, order)?;
 
     // eigh(iA) -> real eigenvalues lambda, eigenvectors V
     let (w, v_orig) = eigh_dense(backend, &ia, nrow)?;
@@ -455,12 +455,13 @@ pub(crate) fn expm_dense<T: Scalar>(
     let order = backend.preferred_order();
 
     // Flatten to n x n row-major for internal computation (norm_1 expects row-major)
-    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
     // Construct the working matrix in preferred_order for backend operations
-    let a = reorder_data(
+    let a = reorder_via_backend(
+        backend,
         &DenseTensorData::from_raw_parts(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor),
         order,
-    );
+    )?;
 
     let norm = norm_1::<T>(rm.data(), n);
 
@@ -481,13 +482,13 @@ pub(crate) fn expm_dense<T: Scalar>(
             let (u, v) = pade_uv_small(backend, &a, n, pade_order)?;
             let result = solve_pade(backend, &u, &v)?;
             // RM intermediate for correct axis-split, then back to preferred order
-            let result_rm = reorder_data(&result, MemoryOrder::RowMajor);
+            let result_rm = reorder_via_backend(backend, &result, MemoryOrder::RowMajor)?;
             let reshaped = DenseTensorData::from_raw_parts(
                 result_rm.data().to_vec(),
                 shape.to_vec(),
                 MemoryOrder::RowMajor,
             );
-            return Ok(reorder_data(&reshaped, order));
+            return reorder_via_backend(backend, &reshaped, order);
         }
     }
 
@@ -504,13 +505,13 @@ pub(crate) fn expm_dense<T: Scalar>(
     }
 
     // RM intermediate for correct axis-split, then back to preferred order
-    let result_rm = reorder_data(&result, MemoryOrder::RowMajor);
+    let result_rm = reorder_via_backend(backend, &result, MemoryOrder::RowMajor)?;
     let reshaped = DenseTensorData::from_raw_parts(
         result_rm.data().to_vec(),
         shape.to_vec(),
         MemoryOrder::RowMajor,
     );
-    Ok(reorder_data(&reshaped, order))
+    reorder_via_backend(backend, &reshaped, order)
 }
 
 /// Solve (V - U) X = V + U for the Pade approximant.

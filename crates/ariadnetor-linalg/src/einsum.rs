@@ -14,9 +14,9 @@ use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData, normalize_to_d
 
 use crate::contract::contract_dense;
 use crate::error::LinalgError;
+use crate::reorder_route::reorder_via_backend;
 use crate::scalar_ops::trace_dense;
 use crate::transpose::transpose_dense;
-use ariadnetor_tensor::reorder_data;
 
 /// Internal kernel for the N-input einsum on joined [`DenseTensorData<T>`]
 /// slices. The public entry point is [`crate::einsum_with_backend`].
@@ -184,16 +184,13 @@ fn batched_contract<T: Scalar>(
         rhs.clone()
     };
 
-    // The no-permutation branch carries the caller's order tag, which
-    // may differ from `order`. Normalize so the subsequent
-    // `reorder_data(.., RowMajor)` reads the bytes under the
-    // declared layout.
-    let lhs_permuted = normalize_to_data(&lhs_permuted, order).into_owned();
-    let rhs_permuted = normalize_to_data(&rhs_permuted, order).into_owned();
-
-    // Reorder to RowMajor so batch slices are contiguous memory ranges
-    let lhs_rm = reorder_data(&lhs_permuted, MemoryOrder::RowMajor);
-    let rhs_rm = reorder_data(&rhs_permuted, MemoryOrder::RowMajor);
+    // Reorder each operand to RowMajor so batch slices are contiguous memory
+    // ranges. The reorder reads each operand under its own order tag (the
+    // no-permutation branch keeps the caller's), producing the same RowMajor
+    // bytes regardless of that tag — so no separate normalize-to-`order` step
+    // is needed first.
+    let lhs_rm = reorder_via_backend(backend, &lhs_permuted, MemoryOrder::RowMajor)?;
+    let rhs_rm = reorder_via_backend(backend, &rhs_permuted, MemoryOrder::RowMajor)?;
 
     // Per-slice sizes (after removing batch dimensions)
     let lhs_slice_size = lhs_rm.len() / batch_size;
@@ -227,22 +224,24 @@ fn batched_contract<T: Scalar>(
 
         // Slice data is in RowMajor layout; contract() expects data in
         // preferred_order, so reorder each slice before contracting.
-        let lhs_slice_preferred = reorder_data(
+        let lhs_slice_preferred = reorder_via_backend(
+            backend,
             &DenseTensorData::from_raw_parts(
                 lhs_slice_data.to_vec(),
                 lhs_slice_shape.clone(),
                 MemoryOrder::RowMajor,
             ),
             order,
-        );
-        let rhs_slice_preferred = reorder_data(
+        )?;
+        let rhs_slice_preferred = reorder_via_backend(
+            backend,
             &DenseTensorData::from_raw_parts(
                 rhs_slice_data.to_vec(),
                 rhs_slice_shape.clone(),
                 MemoryOrder::RowMajor,
             ),
             order,
-        );
+        )?;
 
         let slice_result = contract_dense(
             backend,
@@ -268,7 +267,7 @@ fn batched_contract<T: Scalar>(
     let mut stacked_data: Vec<T> = Vec::with_capacity(total_size);
     for slice in &result_slices {
         // Reorder each slice result to RowMajor for consistent stacking
-        let rm = reorder_data(slice, MemoryOrder::RowMajor);
+        let rm = reorder_via_backend(backend, slice, MemoryOrder::RowMajor)?;
         stacked_data.extend_from_slice(rm.data());
     }
 
@@ -276,7 +275,7 @@ fn batched_contract<T: Scalar>(
     // preferred_order for the final result.
     let stacked_rm =
         DenseTensorData::from_raw_parts(stacked_data, output_shape, MemoryOrder::RowMajor);
-    let stacked = reorder_data(&stacked_rm, order);
+    let stacked = reorder_via_backend(backend, &stacked_rm, order)?;
 
     // Reorder to requested output index order
     reorder_batched_output(
@@ -489,7 +488,7 @@ fn einsum_single<T: Scalar>(
         tensor.clone()
     } else {
         let result_rm = trace_dense(tensor, &trace_pairs)?;
-        reorder_data(&result_rm, order)
+        reorder_via_backend(backend, &result_rm, order)?
     };
 
     // Scalar result -> done

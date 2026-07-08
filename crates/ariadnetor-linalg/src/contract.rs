@@ -5,8 +5,8 @@ use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
 use crate::contract_spec::{validate_contract_notation, validate_contraction_axes_pair};
 use crate::error::LinalgError;
+use crate::reorder_route::reorder_via_backend;
 use crate::transpose::transpose_dense;
-use ariadnetor_tensor::{normalize_to_data, reorder_data};
 
 /// Internal kernel for the pure tensor contraction on the joined
 /// [`DenseTensorData<T>`] form.
@@ -295,13 +295,13 @@ fn gemm_reshape_dense<T: Scalar>(
     let order = backend.preferred_order();
 
     // Prepare operands for GEMM: reshape to 2D.
-    // rank <= 2: no axis merge needed; `prepare_for_gemm` normalizes
-    // the operand to `order` via `normalize_to_data` so a caller-supplied
-    // tensor tagged in a different order is reordered at the boundary.
+    // rank <= 2: no axis merge needed; `prepare_for_gemm` routes the operand
+    // to `order` through the backend transpose so a caller-supplied tensor
+    // tagged in a different order is reordered at the boundary.
     // rank > 2: RowMajor reshape (correct axis merge semantics) is
     // required, then the reshaped tensor is reordered to `order`.
-    let lhs_ready = prepare_for_gemm(&lhs_permuted, m, k, order);
-    let rhs_ready = prepare_for_gemm(&rhs_permuted, k, n, order);
+    let lhs_ready = prepare_for_gemm(backend, &lhs_permuted, m, k, order)?;
+    let rhs_ready = prepare_for_gemm(backend, &rhs_permuted, k, n, order)?;
 
     let mut c_data = vec![T::zero(); m * n];
 
@@ -328,35 +328,37 @@ fn gemm_reshape_dense<T: Scalar>(
     } else {
         // 2D preferred_order -> RowMajor 2D -> reshape to multi-dim -> preferred_order
         let result_2d = DenseTensorData::from_raw_parts(c_data, vec![m, n], order);
-        let result_rm = reorder_data(&result_2d, MemoryOrder::RowMajor);
+        let result_rm = reorder_via_backend(backend, &result_2d, MemoryOrder::RowMajor)?;
         let multi_dim = DenseTensorData::from_raw_parts(
             result_rm.data().to_vec(),
             output_shape,
             MemoryOrder::RowMajor,
         );
-        Ok(reorder_data(&multi_dim, order))
+        reorder_via_backend(backend, &multi_dim, order)
     }
 }
 
 /// Reshape a permuted operand to 2D and convert to the target memory order.
 ///
-/// For rank <= 2, no axis merge is needed — normalize the input to the
-/// target order and return.
+/// For rank <= 2, no axis merge is needed — route the input to the target
+/// order through the backend transpose and return.
 /// For rank > 2, reorder to RowMajor, reshape (correct axis merge), then back.
 fn prepare_for_gemm<T: Scalar>(
+    backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
     rows: usize,
     cols: usize,
     order: MemoryOrder,
-) -> DenseTensorData<T> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     if tensor.rank() <= 2 {
-        // No axis merge needed; ensure data is in the target order before GEMM.
-        normalize_to_data(tensor, order).into_owned()
+        // No axis merge needed; route the operand to the target order through
+        // the backend transpose (a 2D order flip is HPTT's core case).
+        reorder_via_backend(backend, tensor, order)
     } else {
         // Axis merge requires RowMajor reshape, then convert to preferred_order
-        let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+        let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
         let reshaped = rm.reshape(vec![rows, cols]);
-        reorder_data(&reshaped, order)
+        reorder_via_backend(backend, &reshaped, order)
     }
 }
 

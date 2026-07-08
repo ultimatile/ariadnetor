@@ -59,7 +59,7 @@ pub(crate) fn lq_with_policy_dense<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
     let k = m.min(n);
 
-    let mat_2d = reshape_for_backend(tensor, m, n, order);
+    let mat_2d = reshape_for_backend(backend, tensor, m, n, order)?;
 
     let mut l_data = vec![T::zero(); m * k];
     let mut q_data = vec![T::zero(); k * n];

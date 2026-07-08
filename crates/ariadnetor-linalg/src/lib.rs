@@ -57,6 +57,7 @@ mod error;
 mod expm;
 mod host_ops;
 mod perm;
+mod reorder_route;
 mod scalar_ops;
 mod scale_dispatch;
 mod sealed;
