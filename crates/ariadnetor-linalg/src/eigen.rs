@@ -6,7 +6,7 @@ use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::Zero;
 
 use crate::error::LinalgError;
-use ariadnetor_tensor::reorder_data;
+use crate::reorder_route::reorder_via_backend;
 
 /// Result of a self-adjoint eigenvalue decomposition: `(eigenvalues, eigenvectors)`.
 ///
@@ -62,10 +62,10 @@ pub(crate) fn eigh_with_policy_dense<T: Scalar>(
 
     let order = backend.preferred_order();
     // Ensure row-major reshape to 2D, then convert to backend order
-    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
     let mat_2d =
         DenseTensorData::from_raw_parts(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let contiguous = reorder_data(&mat_2d, order);
+    let contiguous = reorder_via_backend(backend, &mat_2d, order)?;
 
     let mut w_data = vec![T::Real::zero(); n];
     let mut v_data = vec![T::zero(); n * n];
@@ -146,10 +146,10 @@ pub(crate) fn eig_with_policy_dense<T: Scalar>(
     }
 
     let order = backend.preferred_order();
-    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
     let mat_2d =
         DenseTensorData::from_raw_parts(rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let contiguous = reorder_data(&mat_2d, order);
+    let contiguous = reorder_via_backend(backend, &mat_2d, order)?;
 
     let mut w_data = vec![T::Complex::zero(); n];
     let mut v_data = vec![T::Complex::zero(); n * n];

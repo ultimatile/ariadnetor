@@ -6,7 +6,7 @@ use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::{Float, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
-use ariadnetor_tensor::reorder_data;
+use crate::reorder_route::reorder_via_backend;
 
 /// Result of a thin SVD decomposition: `(U, S, Vt)`.
 ///
@@ -74,17 +74,18 @@ pub(crate) use lq::{lq_dense, lq_with_policy_dense};
 /// column-major order, which differs from the standard mathematical reshape.
 /// This function ensures row-major merge semantics regardless of input layout.
 pub(super) fn reshape_for_backend<T: Scalar>(
+    backend: &impl ComputeBackend,
     tensor: &DenseTensorData<T>,
     m: usize,
     n: usize,
     order: MemoryOrder,
-) -> DenseTensorData<T> {
+) -> Result<DenseTensorData<T>, LinalgError> {
     // Reorder to RowMajor layout, reshape to 2D, then reorder to backend order
-    let rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
     let mat_2d =
         DenseTensorData::from_raw_parts(rm.data().to_vec(), vec![m, n], MemoryOrder::RowMajor);
     // mat_2d data is in RowMajor; convert to backend's preferred order
-    reorder_data(&mat_2d, order)
+    reorder_via_backend(backend, &mat_2d, order)
 }
 
 /// Internal kernel for the SVD operation on the joined
@@ -131,7 +132,7 @@ pub(crate) fn svd_with_policy_dense<T: Scalar>(
 
     // Reshape to 2D using row-major merge (standard mathematical convention),
     // then convert to the backend's preferred order.
-    let mat_2d = reshape_for_backend(tensor, m, n, order);
+    let mat_2d = reshape_for_backend(backend, tensor, m, n, order)?;
 
     let mut u_data = vec![T::zero(); m * k];
     let mut s_data = vec![T::Real::zero(); k];
@@ -341,7 +342,7 @@ pub(crate) fn qr_with_policy_dense<T: Scalar>(
     let n: usize = shape[nrow..].iter().product();
     let k = m.min(n);
 
-    let mat_2d = reshape_for_backend(tensor, m, n, order);
+    let mat_2d = reshape_for_backend(backend, tensor, m, n, order)?;
 
     let mut q_data = vec![T::zero(); m * k];
     let mut r_data = vec![T::zero(); k * n];

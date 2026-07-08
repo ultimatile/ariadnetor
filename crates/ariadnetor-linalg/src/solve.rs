@@ -3,7 +3,7 @@ use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, SolveDes
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData};
 
 use crate::error::LinalgError;
-use ariadnetor_tensor::reorder_data;
+use crate::reorder_route::reorder_via_backend;
 
 /// Internal kernel for the linear solve on the joined
 /// [`DenseTensorData<T>`] form.
@@ -58,12 +58,12 @@ pub(crate) fn solve_with_policy_dense<T: Scalar>(
     let order = backend.preferred_order();
 
     // Ensure row-major reshape semantics, then convert to backend order
-    let a_rm = reorder_data(a, MemoryOrder::RowMajor);
+    let a_rm = reorder_via_backend(backend, a, MemoryOrder::RowMajor)?;
     let a_2d =
         DenseTensorData::from_raw_parts(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let a_contiguous = reorder_data(&a_2d, order);
+    let a_contiguous = reorder_via_backend(backend, &a_2d, order)?;
 
-    let b_rm = reorder_data(b, MemoryOrder::RowMajor);
+    let b_rm = reorder_via_backend(backend, b, MemoryOrder::RowMajor)?;
     let b_total = b_rm.len();
 
     if !b_total.is_multiple_of(n) {
@@ -76,7 +76,7 @@ pub(crate) fn solve_with_policy_dense<T: Scalar>(
 
     let b_2d =
         DenseTensorData::from_raw_parts(b_rm.data().to_vec(), vec![n, nrhs], MemoryOrder::RowMajor);
-    let b_contiguous = reorder_data(&b_2d, order);
+    let b_contiguous = reorder_via_backend(backend, &b_2d, order)?;
 
     let mut x_data = vec![T::zero(); n * nrhs];
 
@@ -96,13 +96,13 @@ pub(crate) fn solve_with_policy_dense<T: Scalar>(
     // Convert to row-major for reshape (correct axis-merge semantics),
     // then reshape to b's original shape, then back to preferred order.
     let x_2d = backend.make_tensor(x_data, vec![n, nrhs]);
-    let x_rm = reorder_data(&x_2d, MemoryOrder::RowMajor);
+    let x_rm = reorder_via_backend(backend, &x_2d, MemoryOrder::RowMajor)?;
     let x_reshaped = DenseTensorData::from_raw_parts(
         x_rm.data().to_vec(),
         b.shape().to_vec(),
         MemoryOrder::RowMajor,
     );
-    Ok(reorder_data(&x_reshaped, order))
+    reorder_via_backend(backend, &x_reshaped, order)
 }
 
 /// Internal kernel for the matrix-inverse operation on the joined
@@ -139,20 +139,20 @@ pub(crate) fn inverse_dense<T: Scalar>(
     let identity = backend.eye::<T>(n);
 
     // Flatten tensor to n x n using RM reshape semantics, then convert to preferred_order.
-    let a_rm = reorder_data(tensor, MemoryOrder::RowMajor);
+    let a_rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
     let a_flat_rm =
         DenseTensorData::from_raw_parts(a_rm.data().to_vec(), vec![n, n], MemoryOrder::RowMajor);
-    let a_flat = reorder_data(&a_flat_rm, order);
+    let a_flat = reorder_via_backend(backend, &a_flat_rm, order)?;
 
     let result = solve_dense(backend, &a_flat, &identity, 1)?;
 
     // solve() returns preferred_order data. RM intermediate for axis-split,
     // then back to preferred_order.
-    let result_rm = reorder_data(&result, MemoryOrder::RowMajor);
+    let result_rm = reorder_via_backend(backend, &result, MemoryOrder::RowMajor)?;
     let reshaped = DenseTensorData::from_raw_parts(
         result_rm.data().to_vec(),
         shape.to_vec(),
         MemoryOrder::RowMajor,
     );
-    Ok(reorder_data(&reshaped, order))
+    reorder_via_backend(backend, &reshaped, order)
 }

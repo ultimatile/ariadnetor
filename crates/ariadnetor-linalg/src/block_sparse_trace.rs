@@ -26,9 +26,10 @@
 
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::ComputeBackend;
-use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, DenseTensorData, Sector, reorder_data};
+use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::error::LinalgError;
+use crate::reorder_route::reorder_via_backend;
 use crate::scalar_ops::{trace_dense, validate_trace_pairs};
 
 /// Internal kernel for the block-sparse partial trace on joined-form
@@ -102,7 +103,7 @@ where
         // Reuse the dense per-block trace; it returns RowMajor data, so realign
         // to the storage order before accumulating into the packed buffer.
         let traced = trace_dense(&block, pairs)?;
-        let traced = reorder_data(&traced, order);
+        let traced = reorder_via_backend(backend, &traced, order)?;
 
         let free_coord = BlockCoord(free_axes.iter().map(|&i| meta.coord.0[i]).collect());
         let dst = output
