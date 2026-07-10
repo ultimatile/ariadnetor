@@ -15,7 +15,9 @@
 use ariadnetor_core::Scalar;
 use ariadnetor_tensor::{DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 
-use crate::eigen::{EigResult, EighResult, eig_dense, eigh_dense};
+use crate::eigen::{
+    EigResult, EighResult, TridiagEighResult, eig_dense, eigh_dense, tridiag_eigh_dense,
+};
 use crate::einsum::einsum_dense;
 use crate::error::LinalgError;
 use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
@@ -44,6 +46,32 @@ pub fn eigvalsh_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 ) -> Result<DenseTensor<T::Real>, LinalgError> {
     let (w, _v) = eigh_with_backend(backend, tensor, nrow)?;
     Ok(w)
+}
+
+/// Real symmetric tridiagonal eigenvalue decomposition, using the
+/// supplied backend.
+///
+/// The matrix is given by its diagonal (`n` entries) and subdiagonal
+/// (`n - 1` entries); no dense matrix is materialized, so the
+/// decomposition skips the dense path's O(n^3) tridiagonalization step.
+/// Returns ascending eigenvalues (shape `[n]`) and eigenvectors (shape
+/// `[n, n]`, columns are eigenvectors, column `j` pairing with
+/// eigenvalue `j`).
+///
+/// A real symmetric tridiagonal matrix has a fully real eigensystem
+/// (a general complex symmetric tridiagonal matrix is not Hermitian),
+/// so `T` is bound to the real scalar types at compile time:
+/// `Scalar<Real = T>` holds only for `f32` / `f64`. Backends
+/// additionally reject complex descriptors at dispatch with a
+/// `NotSupported` error, as defense for callers that reach
+/// `ComputeBackend::tridiag_eigh` directly.
+pub fn tridiag_eigh_with_backend<T: Scalar<Real = T>, B: OpsFor<DenseStorage<T>>>(
+    backend: &B,
+    diag: &[T],
+    subdiag: &[T],
+) -> Result<TridiagEighResult<T>, LinalgError> {
+    let (w, v) = tridiag_eigh_dense(backend, diag, subdiag)?;
+    Ok((DenseTensor::from_data(w), DenseTensor::from_data(v)))
 }
 
 /// General eigenvalue decomposition, using the supplied backend.

@@ -11,7 +11,7 @@ use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{
     BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
     GemmDescriptor, LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor,
-    TransposeDescriptor,
+    TransposeDescriptor, TridiagEighDescriptor,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
@@ -28,6 +28,7 @@ pub(crate) struct RecordingBackend {
     pub qr_policies: Mutex<Vec<ExecPolicy>>,
     pub lq_policies: Mutex<Vec<ExecPolicy>>,
     pub eigh_policies: Mutex<Vec<ExecPolicy>>,
+    pub tridiag_eigh_policies: Mutex<Vec<ExecPolicy>>,
     pub eig_policies: Mutex<Vec<ExecPolicy>>,
     pub solve_policies: Mutex<Vec<ExecPolicy>>,
     pub transpose_policies: Mutex<Vec<ExecPolicy>>,
@@ -42,6 +43,7 @@ impl RecordingBackend {
             qr_policies: Mutex::new(Vec::new()),
             lq_policies: Mutex::new(Vec::new()),
             eigh_policies: Mutex::new(Vec::new()),
+            tridiag_eigh_policies: Mutex::new(Vec::new()),
             eig_policies: Mutex::new(Vec::new()),
             solve_policies: Mutex::new(Vec::new()),
             transpose_policies: Mutex::new(Vec::new()),
@@ -108,6 +110,14 @@ impl ComputeBackend for RecordingBackend {
         self.inner.eigh(desc)
     }
 
+    fn tridiag_eigh<T: Scalar>(
+        &self,
+        desc: TridiagEighDescriptor<'_, T>,
+    ) -> Result<(), BackendError> {
+        self.tridiag_eigh_policies.lock().unwrap().push(desc.policy);
+        self.inner.tridiag_eigh(desc)
+    }
+
     fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
         self.eig_policies.lock().unwrap().push(desc.policy);
         self.inner.eig(desc)
@@ -133,7 +143,7 @@ impl ComputeBackend for RecordingBackend {
 /// All kernels delegate to the inner `NativeBackend`. Among the inner
 /// backend's ops, only GEMM and transpose honor the descriptor's `order`
 /// field for both `RowMajor` and `ColumnMajor`; the decomposition family
-/// (SVD, QR, LQ, eigh, eig, solve) is column-major only, so a descriptor
+/// (SVD, QR, LQ, eigh, tridiag_eigh, eig, solve) is column-major only, so a descriptor
 /// constructed with `order: MemoryOrder::RowMajor` and dispatched through
 /// this wrapper returns `BackendError::InvalidArgument`. Callers must
 /// pass descriptors and buffers consistent with the memory order they
@@ -188,6 +198,13 @@ impl ComputeBackend for RowMajorBackend {
         self.inner.eigh(desc)
     }
 
+    fn tridiag_eigh<T: Scalar>(
+        &self,
+        desc: TridiagEighDescriptor<'_, T>,
+    ) -> Result<(), BackendError> {
+        self.inner.tridiag_eigh(desc)
+    }
+
     fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
         self.inner.eig(desc)
     }
@@ -203,7 +220,8 @@ impl ComputeBackend for RowMajorBackend {
 // lets it be passed to the `OpsFor`-gated twins it exercises.
 //
 // `RowMajorBackend` deliberately does NOT declare `OpsFor`: it is a partial
-// backend (its row-major decomposition paths are `todo!`), used only to force
+// backend (its row-major decomposition paths fail at runtime with
+// `InvalidArgument` from the column-major-only inner backend), used only to force
 // the row-major branch of the `pub(crate)` `*_dense` kernels, which take a plain
 // `ComputeBackend`. It is never handed to a gated public twin, so claiming the
 // capability would advertise support it does not have.

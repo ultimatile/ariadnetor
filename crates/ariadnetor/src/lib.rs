@@ -72,7 +72,7 @@ pub use ops::{
     diag_with_backend, eig_with_backend, eigh_with_backend, eigvals_with_backend,
     eigvalsh_with_backend, einsum_with_backend, expm_antihermitian_with_backend,
     expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,
-    solve_with_backend, trace_with_backend,
+    solve_with_backend, trace_with_backend, tridiag_eigh_with_backend,
 };
 
 // Tensor-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
@@ -116,7 +116,9 @@ pub use ariadnetor_linalg::expert;
 // Linalg-level error type and SVD parameters.
 pub use ariadnetor_linalg::{LinalgError, TruncSvdParams};
 pub use ariadnetor_tensor::TensorError;
-pub use ops::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
+pub use ops::{
+    EigResult, EighResult, LqResult, QrResult, SvdResult, TridiagEighResult, TruncSvdResult,
+};
 
 // Re-export the native backend
 pub use ariadnetor_native::NativeBackend;

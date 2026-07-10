@@ -3,6 +3,8 @@
 //! Provides [`NativeBackend`] implementing `ComputeBackend` via:
 //! - **GEMM**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **SVD/QR/LQ/EIGH**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
+//! - **Tridiagonal EIGH**: faer (f64, f32; the eigensystem of a real
+//!   symmetric tridiagonal matrix is real, so complex scalars are rejected)
 //! - **Transpose**: HPTT (f64, f32, Complex) when the `hptt` feature is on, a naive kernel otherwise
 
 #![deny(missing_docs)]
@@ -16,6 +18,7 @@ mod qr;
 mod solve;
 mod svd;
 mod transpose;
+mod tridiag_eigh;
 
 use std::sync::{Arc, OnceLock};
 
@@ -23,7 +26,7 @@ use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{
     BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
     GemmDescriptor, LqDescriptor, MemoryOrder, OpDesc, QrDescriptor, ScalarKernels,
-    SolveDescriptor, SvdDescriptor, TransposeDescriptor,
+    SolveDescriptor, SvdDescriptor, TransposeDescriptor, TridiagEighDescriptor,
 };
 use num_complex::Complex;
 
@@ -95,6 +98,16 @@ impl Default for NativeBackend {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Shared rejection for complex `tridiag_eigh` instantiations: a general
+/// complex symmetric tridiagonal matrix is not Hermitian, so no complex
+/// kernel exists — reject instead of silently reinterpreting the data.
+/// One definition keeps the c64/c32 dispatch arms' error text identical.
+fn tridiag_eigh_complex_unsupported() -> Result<(), BackendError> {
+    Err(BackendError::NotSupported(
+        "tridiag_eigh: requires a real scalar type".into(),
+    ))
 }
 
 /// faer-backed decomposition / solve kernels accept column-major slices only.
@@ -179,6 +192,22 @@ impl ComputeBackend for NativeBackend {
         T::dispatch_op(&NativeKernels, OpDesc::Eigh(desc))
     }
 
+    /// Real symmetric tridiagonal eigenvalue decomposition via faer
+    ///
+    /// Dispatches to faer for f64/f32; complex scalars are rejected
+    /// with `BackendError::NotSupported` (a general complex symmetric
+    /// tridiagonal matrix is not Hermitian, so no complex kernel
+    /// exists). The eigenvector output is column-major only;
+    /// descriptors with any other order are rejected with
+    /// `BackendError::InvalidArgument`.
+    fn tridiag_eigh<T: Scalar>(
+        &self,
+        desc: TridiagEighDescriptor<'_, T>,
+    ) -> Result<(), BackendError> {
+        require_column_major("tridiag_eigh", desc.order)?;
+        T::dispatch_op(&NativeKernels, OpDesc::TridiagEigh(desc))
+    }
+
     /// General eigenvalue decomposition via faer
     ///
     /// Dispatches to faer for f64/f32/`Complex<f64>`/`Complex<f32>`.
@@ -256,6 +285,7 @@ impl ScalarKernels for NativeKernels {
             OpDesc::Qr(d) => qr::qr_f64(d),
             OpDesc::Lq(d) => lq::lq_f64(d),
             OpDesc::Eigh(d) => eigh::eigh_f64(d),
+            OpDesc::TridiagEigh(d) => tridiag_eigh::tridiag_eigh_f64(d),
             OpDesc::Eig(d) => eig::eig_f64(d),
             OpDesc::Solve(d) => solve::solve_f64(d),
             OpDesc::Transpose(d) => transpose::transpose_f64(d),
@@ -269,6 +299,7 @@ impl ScalarKernels for NativeKernels {
             OpDesc::Qr(d) => qr::qr_f32(d),
             OpDesc::Lq(d) => lq::lq_f32(d),
             OpDesc::Eigh(d) => eigh::eigh_f32(d),
+            OpDesc::TridiagEigh(d) => tridiag_eigh::tridiag_eigh_f32(d),
             OpDesc::Eig(d) => eig::eig_f32(d),
             OpDesc::Solve(d) => solve::solve_f32(d),
             OpDesc::Transpose(d) => transpose::transpose_f32(d),
@@ -282,6 +313,7 @@ impl ScalarKernels for NativeKernels {
             OpDesc::Qr(d) => qr::qr_c64(d),
             OpDesc::Lq(d) => lq::lq_c64(d),
             OpDesc::Eigh(d) => eigh::eigh_c64(d),
+            OpDesc::TridiagEigh(_) => tridiag_eigh_complex_unsupported(),
             OpDesc::Eig(d) => eig::eig_c64(d),
             OpDesc::Solve(d) => solve::solve_c64(d),
             OpDesc::Transpose(d) => transpose::transpose_c64(d),
@@ -295,6 +327,7 @@ impl ScalarKernels for NativeKernels {
             OpDesc::Qr(d) => qr::qr_c32(d),
             OpDesc::Lq(d) => lq::lq_c32(d),
             OpDesc::Eigh(d) => eigh::eigh_c32(d),
+            OpDesc::TridiagEigh(_) => tridiag_eigh_complex_unsupported(),
             OpDesc::Eig(d) => eig::eig_c32(d),
             OpDesc::Solve(d) => solve::solve_c32(d),
             OpDesc::Transpose(d) => transpose::transpose_c32(d),

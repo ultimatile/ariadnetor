@@ -1,6 +1,6 @@
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{
-    ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder,
+    ComputeBackend, EigDescriptor, EighDescriptor, ExecPolicy, MemoryOrder, TridiagEighDescriptor,
 };
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::Zero;
@@ -80,6 +80,81 @@ pub(crate) fn eigh_with_policy_dense<T: Scalar>(
     };
 
     backend.eigh(desc)?;
+
+    let w_tensor = DenseTensorData::from_raw_parts(w_data, vec![n], order);
+    let v_tensor = backend.make_tensor(v_data, vec![n, n]);
+
+    Ok((w_tensor, v_tensor))
+}
+
+/// Result of a real symmetric tridiagonal eigenvalue decomposition:
+/// `(eigenvalues, eigenvectors)`.
+///
+/// - Eigenvalues: `DenseTensor<T>` with shape `[n]`, sorted ascending
+/// - Eigenvectors: `DenseTensor<T>` with shape `[n, n]`, columns are
+///   eigenvectors, column `j` pairing with eigenvalue `j`
+///
+/// Both outputs are real: the input matrix is real symmetric, so `T`
+/// is a real scalar type (`f32` / `f64`).
+pub type TridiagEighResult<T> = (DenseTensor<T>, DenseTensor<T>);
+
+/// Internal kernel form of [`TridiagEighResult`] operating on joined
+/// [`DenseTensorData<T>`].
+pub(crate) type TridiagEighResultDense<T> = (DenseTensorData<T>, DenseTensorData<T>);
+
+/// Internal kernel for the real symmetric tridiagonal eigenvalue
+/// decomposition on diagonal / subdiagonal slices.
+pub(crate) fn tridiag_eigh_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    diag: &[T],
+    subdiag: &[T],
+) -> Result<TridiagEighResultDense<T>, LinalgError> {
+    let policy = backend.par_for_tridiag_eigh(diag.len());
+    tridiag_eigh_with_policy_dense(backend, diag, subdiag, policy)
+}
+
+/// Internal kernel for [`crate::expert::tridiag_eigh`] on diagonal /
+/// subdiagonal slices.
+///
+/// Unlike the dense decompositions there is no input reorder step: the
+/// inputs are 1-D slices with no layout ambiguity, and only the
+/// eigenvector output carries a memory order (the backend's preferred
+/// one).
+pub(crate) fn tridiag_eigh_with_policy_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    diag: &[T],
+    subdiag: &[T],
+    policy: ExecPolicy,
+) -> Result<TridiagEighResultDense<T>, LinalgError> {
+    let n = diag.len();
+    if n < 1 {
+        return Err(LinalgError::InvalidArgument(
+            "tridiag_eigh requires a non-empty diagonal".into(),
+        ));
+    }
+    if subdiag.len() != n - 1 {
+        return Err(LinalgError::InvalidArgument(format!(
+            "tridiag_eigh requires subdiag length n - 1 = {}, got {}",
+            n - 1,
+            subdiag.len(),
+        )));
+    }
+
+    let order = backend.preferred_order();
+    let mut w_data = vec![T::zero(); n];
+    let mut v_data = vec![T::zero(); n * n];
+
+    let desc = TridiagEighDescriptor {
+        n,
+        d: diag,
+        e: subdiag,
+        w: &mut w_data,
+        v: &mut v_data,
+        order,
+        policy,
+    };
+
+    backend.tridiag_eigh(desc)?;
 
     let w_tensor = DenseTensorData::from_raw_parts(w_data, vec![n], order);
     let v_tensor = backend.make_tensor(v_data, vec![n, n]);

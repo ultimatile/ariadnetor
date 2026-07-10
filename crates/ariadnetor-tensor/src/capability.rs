@@ -64,7 +64,7 @@ mod alt_host {
     use ariadnetor_core::backend::{
         BackendError, ComputeBackend, DeviceType, EigDescriptor, EighDescriptor, ExecPolicy,
         GemmDescriptor, LqDescriptor, MemoryOrder, QrDescriptor, SolveDescriptor, SvdDescriptor,
-        TransposeDescriptor,
+        TransposeDescriptor, TridiagEighDescriptor,
     };
     use ariadnetor_native::NativeBackend;
 
@@ -150,6 +150,14 @@ mod alt_host {
             self.inner.eigh(desc)
         }
 
+        fn tridiag_eigh<T: Scalar>(
+            &self,
+            desc: TridiagEighDescriptor<'_, T>,
+        ) -> Result<(), BackendError> {
+            self.bump();
+            self.inner.tridiag_eigh(desc)
+        }
+
         fn eig<T: Scalar>(&self, desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
             self.bump();
             self.inner.eig(desc)
@@ -176,6 +184,10 @@ mod alt_host {
 
         fn par_for_eigh(&self, n: usize) -> ExecPolicy {
             self.inner.par_for_eigh(n)
+        }
+
+        fn par_for_tridiag_eigh(&self, n: usize) -> ExecPolicy {
+            self.inner.par_for_tridiag_eigh(n)
         }
 
         fn par_for_eig(&self, n: usize) -> ExecPolicy {
