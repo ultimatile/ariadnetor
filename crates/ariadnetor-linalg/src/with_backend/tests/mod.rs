@@ -30,6 +30,7 @@ fn total_recorded(b: &RecordingBackend) -> usize {
         + b.lq_policies.lock().unwrap().len()
         + b.gemm_policies.lock().unwrap().len()
         + b.eigh_policies.lock().unwrap().len()
+        + b.tridiag_eigh_policies.lock().unwrap().len()
         + b.eig_policies.lock().unwrap().len()
         + b.solve_policies.lock().unwrap().len()
         + b.transpose_policies.lock().unwrap().len()
@@ -142,6 +143,29 @@ fn eigh_routes_to_passed_backend() {
     let (hw, hv) = eigh_with_backend(&host, &t, 1).unwrap();
     approx_eq(w.data().data(), hw.data().data());
     approx_eq(v.data().data(), hv.data().data());
+}
+
+#[test]
+fn tridiag_eigh_routes_to_passed_backend() {
+    let rec = RecordingBackend::new();
+    let host = NativeBackend::new();
+    let d = [1.0_f64, 2.0, 3.0];
+    let e = [0.5_f64, 0.5];
+    let (w, v) = tridiag_eigh_with_backend(&rec, &d, &e).unwrap();
+    assert_eq!(rec.tridiag_eigh_policies.lock().unwrap().len(), 1);
+    let (hw, hv) = tridiag_eigh_with_backend(&host, &d, &e).unwrap();
+    approx_eq(w.data().data(), hw.data().data());
+    approx_eq(v.data().data(), hv.data().data());
+}
+
+#[test]
+fn expert_tridiag_eigh_forwards_caller_policy() {
+    let rec = RecordingBackend::new();
+    let d = [1.0_f64, 2.0, 3.0];
+    let e = [0.5_f64, 0.5];
+    let policy = ExecPolicy::Parallel(2);
+    let _ = crate::expert::tridiag_eigh(&rec, &d, &e, policy).unwrap();
+    assert_eq!(*rec.tridiag_eigh_policies.lock().unwrap(), vec![policy]);
 }
 
 #[test]

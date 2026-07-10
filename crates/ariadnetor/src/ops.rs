@@ -11,7 +11,9 @@
 // Result type aliases — re-exported from ariadnetor_linalg
 // ============================================================================
 
-pub use ariadnetor_linalg::{EigResult, EighResult, LqResult, QrResult, SvdResult, TruncSvdResult};
+pub use ariadnetor_linalg::{
+    EigResult, EighResult, LqResult, QrResult, SvdResult, TridiagEighResult, TruncSvdResult,
+};
 
 // ============================================================================
 // Tensor-keyed dispatch — `svd` / `trunc_svd` / `qr` / `lq` (decomposition),
@@ -34,5 +36,5 @@ pub use ariadnetor_linalg::{
     diag_with_backend, eig_with_backend, eigh_with_backend, eigvals_with_backend,
     eigvalsh_with_backend, einsum_with_backend, expm_antihermitian_with_backend,
     expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,
-    solve_with_backend, trace_with_backend,
+    solve_with_backend, trace_with_backend, tridiag_eigh_with_backend,
 };

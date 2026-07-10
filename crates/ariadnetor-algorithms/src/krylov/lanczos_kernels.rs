@@ -15,7 +15,7 @@
 //! corrupted by the in-place write.
 
 use ariadnetor_core::Scalar;
-use ariadnetor_linalg::eigh_with_backend;
+use ariadnetor_linalg::tridiag_eigh_with_backend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_traits::{One, Zero};
 use rand::RngExt;
@@ -133,28 +133,16 @@ where
     T: Scalar,
     T::Real: Scalar<Real = T::Real>,
 {
-    if m == 1 {
-        return (
-            alphas[0],
-            Host::shared().dense(vec![T::Real::one()], vec![1]),
-        );
-    }
-    // Build the m×m matrix in column-major order to match the host
-    // substrate's `preferred_order()`. For column-major, the (i, j)
-    // entry lives at index `i + m * j`.
-    let mut data = vec![T::Real::zero(); m * m];
-    for i in 0..m {
-        data[i + m * i] = alphas[i];
-        if i + 1 < m {
-            data[(i + 1) + m * i] = betas[i];
-            data[i + m * (i + 1)] = betas[i];
-        }
-    }
-    let matrix = Host::shared().dense(data, vec![m, m]);
+    // The specialized tridiagonal path takes the diagonal / subdiagonal
+    // directly — no m×m dense build, no O(m^3) tridiagonalization.
+    // Eigenvalues come back ascending, so index 0 is the smallest pair.
+    // Column 0 is extracted through the order-aware `get` so the code
+    // does not assume which memory order the backend produced `V` in.
     let (eigvals, eigvecs) =
-        eigh_with_backend(Host::shared().as_ref(), &matrix, 1).expect("tridiagonal eigh");
+        tridiag_eigh_with_backend(Host::shared().as_ref(), &alphas[..m], &betas[..m - 1])
+            .expect("tridiagonal eigh");
     let lambda = eigvals.data_slice()[0];
-    let z_data = eigvecs.data_slice()[0..m].to_vec();
+    let z_data: Vec<T::Real> = (0..m).map(|i| eigvecs.get([i, 0])).collect();
     (lambda, Host::shared().dense(z_data, vec![m]))
 }
 

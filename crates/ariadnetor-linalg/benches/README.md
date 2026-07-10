@@ -2,7 +2,8 @@
 
 Two classes of bench live here, distinguished by filename:
 
-- **Criterion regression benches** (`scalar_ops`, `block_sparse_ops`) — statistical
+- **Criterion regression benches** (`scalar_ops`, `block_sparse_ops`,
+  `reorder_sandwich`, `tridiag_eigh`) — statistical
   micro-benchmarks for catching performance regressions. These are the regression
   suite, run by `cargo make bench`.
 - **Threshold-sweep instruments** (`sweep_*`) — plain `fn main()` binaries that sweep

@@ -35,7 +35,10 @@ use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::ExecPolicy;
 use ariadnetor_tensor::{DenseStorage, DenseTensor, OpsFor};
 
-use crate::eigen::{EigResult, EighResult, eig_with_policy_dense, eigh_with_policy_dense};
+use crate::eigen::{
+    EigResult, EighResult, TridiagEighResult, eig_with_policy_dense, eigh_with_policy_dense,
+    tridiag_eigh_with_policy_dense,
+};
 use crate::error::LinalgError;
 use crate::solve::solve_with_policy_dense;
 use crate::transpose::transpose_inner;
@@ -119,6 +122,24 @@ pub fn eigh<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     policy: ExecPolicy,
 ) -> Result<EighResult<T>, LinalgError> {
     let (w, v) = eigh_with_policy_dense(backend, tensor.data(), nrow, policy)?;
+    Ok((DenseTensor::from_data(w), DenseTensor::from_data(v)))
+}
+
+/// Real symmetric tridiagonal eigenvalue decomposition with an explicit
+/// backend and caller-specified execution policy.
+///
+/// Expert-layer counterpart of [`crate::tridiag_eigh_with_backend`];
+/// that entry point consults `backend.par_for_tridiag_eigh`, while this
+/// one takes `policy` directly. See the counterpart for the input /
+/// output contract (real scalar only, ascending eigenvalues, column
+/// eigenvectors).
+pub fn tridiag_eigh<T: Scalar<Real = T>, B: OpsFor<DenseStorage<T>>>(
+    backend: &B,
+    diag: &[T],
+    subdiag: &[T],
+    policy: ExecPolicy,
+) -> Result<TridiagEighResult<T>, LinalgError> {
+    let (w, v) = tridiag_eigh_with_policy_dense(backend, diag, subdiag, policy)?;
     Ok((DenseTensor::from_data(w), DenseTensor::from_data(v)))
 }
 

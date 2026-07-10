@@ -203,6 +203,38 @@ pub struct EighDescriptor<'a, T: Scalar> {
     pub policy: ExecPolicy,
 }
 
+/// Real symmetric tridiagonal eigenvalue decomposition descriptor:
+/// T = V * diag(W) * V^T
+///
+/// Computes eigenvalues and eigenvectors of the n×n real symmetric
+/// tridiagonal matrix defined by its diagonal `d` and subdiagonal `e`.
+/// The matrix is intrinsically real (a real symmetric tridiagonal
+/// matrix has a fully real eigensystem), so the scalar `T` is meant to
+/// be instantiated at a real type (`f32` / `f64`); backends reject
+/// complex instantiations with [`BackendError::NotSupported`] instead
+/// of silently reinterpreting the data.
+/// Data layout of the `v` slice is specified by the `order` field;
+/// a backend that does not support a given order returns
+/// [`BackendError::InvalidArgument`].
+/// Outputs: W (n eigenvalues, ascending), V (n×n eigenvectors, columns
+/// are eigenvectors, column j pairing with eigenvalue j)
+pub struct TridiagEighDescriptor<'a, T: Scalar> {
+    /// Dimension of the square tridiagonal matrix.
+    pub n: usize,
+    /// Diagonal entries (`n` values).
+    pub d: &'a [T],
+    /// Subdiagonal entries (`n - 1` values).
+    pub e: &'a [T],
+    /// Output eigenvalues `W` (`n` values, ascending).
+    pub w: &'a mut [T],
+    /// Output eigenvectors `V` (`n×n`, columns are eigenvectors).
+    pub v: &'a mut [T],
+    /// Memory layout of the `v` slice.
+    pub order: MemoryOrder,
+    /// Per-call execution policy.
+    pub policy: ExecPolicy,
+}
+
 /// General eigenvalue decomposition descriptor
 ///
 /// Computes eigenvalues and right eigenvectors of an n×n matrix A.
@@ -268,6 +300,8 @@ pub enum OpDesc<'a, T: Scalar> {
     Lq(LqDescriptor<'a, T>),
     /// Self-adjoint eigendecomposition operation.
     Eigh(EighDescriptor<'a, T>),
+    /// Real symmetric tridiagonal eigendecomposition operation.
+    TridiagEigh(TridiagEighDescriptor<'a, T>),
     /// General eigendecomposition operation.
     Eig(EigDescriptor<'a, T>),
     /// Linear-solve operation.
@@ -425,6 +459,15 @@ pub trait ComputeBackend: Send + Sync {
         Err(BackendError::NotSupported("eigh".into()))
     }
 
+    /// Real symmetric tridiagonal eigenvalue decomposition:
+    /// T = V * diag(W) * V^T
+    fn tridiag_eigh<T: Scalar>(
+        &self,
+        _desc: TridiagEighDescriptor<'_, T>,
+    ) -> Result<(), BackendError> {
+        Err(BackendError::NotSupported("tridiag_eigh".into()))
+    }
+
     /// General eigenvalue decomposition
     fn eig<T: Scalar>(&self, _desc: EigDescriptor<'_, T>) -> Result<(), BackendError> {
         Err(BackendError::NotSupported("eig".into()))
@@ -455,6 +498,17 @@ pub trait ComputeBackend: Send + Sync {
 
     /// Recommended execution policy for self-adjoint eigendecomposition.
     fn par_for_eigh(&self, _n: usize) -> ExecPolicy {
+        ExecPolicy::Sequential
+    }
+
+    /// Recommended execution policy for real symmetric tridiagonal
+    /// eigendecomposition.
+    ///
+    /// The kernel skips the O(n^3) tridiagonalization the dense
+    /// decompositions pay, so the dense thresholds do not transfer; the
+    /// default stays `Sequential` until a workload demonstrates
+    /// parallel demand.
+    fn par_for_tridiag_eigh(&self, _n: usize) -> ExecPolicy {
         ExecPolicy::Sequential
     }
 

@@ -105,9 +105,9 @@ args = ["bench", "-p", "ariadnetor-tensor"]
 # on-demand (`cargo bench --bench sweep_*`) and excluded here so the regression
 # run does not fire their expensive matrix-size sweeps.
 [tasks.bench-linalg]
-description = "Run the linalg Criterion regression benches (scalar_ops, block_sparse_ops); excludes the on-demand sweep_* instruments"
+description = "Run the linalg Criterion regression benches (scalar_ops, block_sparse_ops, reorder_sandwich, tridiag_eigh); excludes the on-demand sweep_* instruments"
 command = "cargo"
-args = ["bench", "-p", "ariadnetor-linalg", "--bench", "scalar_ops", "--bench", "block_sparse_ops"]
+args = ["bench", "-p", "ariadnetor-linalg", "--bench", "scalar_ops", "--bench", "block_sparse_ops", "--bench", "reorder_sandwich", "--bench", "tridiag_eigh"]
 
 # Lanczos arm by default; the ARPACK arm is feature-gated, run ad hoc via
 # `cargo bench -p ariadnetor-algorithms --features arpack`.

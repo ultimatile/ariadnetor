@@ -24,14 +24,16 @@
 //!   substrate via the [`DenseHostOps`] / [`BlockSparseHostOps`] extension
 //!   traits (`t.svd(nrow)` instead of `svd(&backend, &t, nrow)`).
 //!
-//! [`einsum_with_backend`] is the exception: it has no method form, because its
-//! operands are a slice with no natural receiver, so the explicit-backend free
-//! function is the only form.
+//! [`einsum_with_backend`] and [`tridiag_eigh_with_backend`] are the
+//! exceptions: they have no method form, because their operands (a tensor
+//! slice, a diagonal / subdiagonal slice pair) have no natural tensor
+//! receiver, so the explicit-backend free function is the only form.
 //!
 //! Covered operations: axis permutation (dense and block-sparse), contraction
 //! (dense and block-sparse), Einstein summation, partial trace (dense and
 //! block-sparse), diagonal extraction / scaling, SVD / truncated SVD / QR / LQ
-//! (dense and block-sparse), self-adjoint and general eigenvalue decomposition, the
+//! (dense and block-sparse), self-adjoint and general eigenvalue decomposition,
+//! real symmetric tridiagonal eigenvalue decomposition, the
 //! Hermitian / anti-Hermitian / general matrix exponential, linear solve,
 //! matrix inverse, and block-sparse leg fusion.
 
@@ -79,7 +81,7 @@ pub use block_sparse_decomp::{
     BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
 pub use decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
-pub use eigen::{EigResult, EighResult};
+pub use eigen::{EigResult, EighResult, TridiagEighResult};
 
 // Tensor-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
 // (decomposition) and `contract` entry points serve both Dense and BlockSparse
@@ -106,7 +108,7 @@ pub use with_backend::{
     diag_with_backend, eig_with_backend, eigh_with_backend, eigvals_with_backend,
     eigvalsh_with_backend, einsum_with_backend, expm_antihermitian_with_backend,
     expm_hermitian_with_backend, expm_with_backend, inverse_with_backend, permute_with_backend,
-    solve_with_backend, trace_with_backend,
+    solve_with_backend, trace_with_backend, tridiag_eigh_with_backend,
 };
 
 // Ergonomic Host-defaulting method surface over the explicit-backend paths.
