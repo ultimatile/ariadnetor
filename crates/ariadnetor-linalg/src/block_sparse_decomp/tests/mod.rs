@@ -366,6 +366,64 @@ fn trunc_svd_no_truncation() {
     assert!(trunc_err.abs() < 1e-15);
 }
 
+/// Assert a QR factor Q is a per-sector isometry with orthonormal columns:
+/// Q^T Q = I on each fused sector block.
+fn assert_orthonormal_columns<S: Sector + PartialEq>(
+    q: &BlockSparseTensorData<f64, S>,
+    order: MemoryOrder,
+) {
+    let q_groups = compute_fused_sector_groups(q, 1);
+    for g in &q_groups {
+        let q_mat = assemble_sector_matrix(q, g, order);
+        let (m, k) = (g.m, g.n);
+        // Q^T * Q should be identity (k × k)
+        let mut qtq = vec![0.0; k * k];
+        for i in 0..k {
+            for j in 0..k {
+                for p in 0..m {
+                    qtq[i * k + j] +=
+                        q_mat[mat_idx(p, i, m, k, order)] * q_mat[mat_idx(p, j, m, k, order)];
+                }
+            }
+        }
+        for i in 0..k {
+            for j in 0..k {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((qtq[i * k + j] - expected).abs() < 1e-10);
+            }
+        }
+    }
+}
+
+/// Assert an LQ factor Q is a per-sector isometry with orthonormal rows:
+/// Q Q^T = I on each fused sector block.
+fn assert_orthonormal_rows<S: Sector + PartialEq>(
+    q: &BlockSparseTensorData<f64, S>,
+    order: MemoryOrder,
+) {
+    let q_groups = compute_fused_sector_groups(q, 1);
+    for g in &q_groups {
+        let q_mat = assemble_sector_matrix(q, g, order);
+        let (k, n) = (g.m, g.n);
+        // Q * Q^T should be identity (k × k)
+        let mut qqt = vec![0.0; k * k];
+        for i in 0..k {
+            for j in 0..k {
+                for p in 0..n {
+                    qqt[i * k + j] +=
+                        q_mat[mat_idx(i, p, k, n, order)] * q_mat[mat_idx(j, p, k, n, order)];
+                }
+            }
+        }
+        for i in 0..k {
+            for j in 0..k {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((qqt[i * k + j] - expected).abs() < 1e-10);
+            }
+        }
+    }
+}
+
 // -- QR tests ----------------------------------------------------------------
 #[test]
 fn qr_rank2_reconstruction() {
@@ -381,7 +439,6 @@ fn qr_rank2_reconstruction() {
 
 #[test]
 fn qr_orthogonality() {
-    let ord = order();
     let (q, _) = qr_block_sparse_with_policy_dense(
         &backend(),
         &sample_u1_rank2(),
@@ -389,27 +446,25 @@ fn qr_orthogonality() {
         ExecPolicy::Sequential,
     )
     .unwrap();
-    let q_groups = compute_fused_sector_groups(&q, 1);
-    for g in &q_groups {
-        let q_mat = assemble_sector_matrix(&q, g, ord);
-        let (m, k) = (g.m, g.n);
-        // Q^T * Q should be identity (k × k)
-        let mut qtq = vec![0.0; k * k];
-        for i in 0..k {
-            for j in 0..k {
-                for p in 0..m {
-                    qtq[i * k + j] +=
-                        q_mat[mat_idx(p, i, m, k, ord)] * q_mat[mat_idx(p, j, m, k, ord)];
-                }
-            }
-        }
-        for i in 0..k {
-            for j in 0..k {
-                let expected = if i == j { 1.0 } else { 0.0 };
-                assert!((qtq[i * k + j] - expected).abs() < 1e-10);
-            }
-        }
-    }
+    assert_orthonormal_columns(&q, order());
+}
+
+/// Block-sparse QR isometry is a per-sector orthogonality condition,
+/// independent of the tensor's overall flux label: the flux only gates which
+/// blocks are allowed, while each allowed block is an ordinary dense QR whose
+/// Q has orthonormal columns. Uses a non-identity flux (U1Sector(1)) fixture to
+/// pin this invariant, guarding against re-conflating the overall flux label
+/// with the per-sector isometry property.
+#[test]
+fn qr_orthogonality_holds_for_nonzero_flux() {
+    let (q, _) = qr_block_sparse_with_policy_dense(
+        &backend(),
+        &sample_u1_nonzero_flux(),
+        1,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
+    assert_orthonormal_columns(&q, order());
 }
 
 // -- LQ tests ----------------------------------------------------------------
@@ -427,7 +482,6 @@ fn lq_rank2_reconstruction() {
 
 #[test]
 fn lq_orthogonality() {
-    let ord = order();
     let (_, q) = lq_block_sparse_with_policy_dense(
         &backend(),
         &sample_u1_rank2(),
@@ -435,27 +489,25 @@ fn lq_orthogonality() {
         ExecPolicy::Sequential,
     )
     .unwrap();
-    let q_groups = compute_fused_sector_groups(&q, 1);
-    for g in &q_groups {
-        let q_mat = assemble_sector_matrix(&q, g, ord);
-        let (k, n) = (g.m, g.n);
-        // Q * Q^T should be identity (k × k)
-        let mut qqt = vec![0.0; k * k];
-        for i in 0..k {
-            for j in 0..k {
-                for p in 0..n {
-                    qqt[i * k + j] +=
-                        q_mat[mat_idx(i, p, k, n, ord)] * q_mat[mat_idx(j, p, k, n, ord)];
-                }
-            }
-        }
-        for i in 0..k {
-            for j in 0..k {
-                let expected = if i == j { 1.0 } else { 0.0 };
-                assert!((qqt[i * k + j] - expected).abs() < 1e-10);
-            }
-        }
-    }
+    assert_orthonormal_rows(&q, order());
+}
+
+/// Block-sparse LQ isometry is a per-sector orthogonality condition,
+/// independent of the tensor's overall flux label: the flux only gates which
+/// blocks are allowed, while each allowed block is an ordinary dense LQ whose
+/// Q has orthonormal rows. Uses a non-identity flux (U1Sector(1)) fixture to
+/// pin this invariant, guarding against re-conflating the overall flux label
+/// with the per-sector isometry property.
+#[test]
+fn lq_orthogonality_holds_for_nonzero_flux() {
+    let (_, q) = lq_block_sparse_with_policy_dense(
+        &backend(),
+        &sample_u1_nonzero_flux(),
+        1,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
+    assert_orthonormal_rows(&q, order());
 }
 
 // -- Exact truncation error tests --------------------------------------------
