@@ -1,6 +1,5 @@
 /target
 **/build
-**/Cargo.lock
 
 # Runtime artifacts produced by calibration sweep scripts
 /sweep_*.log
