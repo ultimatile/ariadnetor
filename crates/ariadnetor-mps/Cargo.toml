@@ -17,10 +17,10 @@ hptt = ["ariadnetor-native/hptt"]
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.4" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.4" }
-ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.4" }
-ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.4" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.5" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.5" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.5" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.5" }
 num-traits = { workspace = true }
 thiserror = { workspace = true }
 

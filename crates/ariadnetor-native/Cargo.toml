@@ -16,7 +16,7 @@ default = []
 hptt = ["dep:hptt"]
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.4" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.5" }
 faer = { workspace = true }
 hptt = { workspace = true, optional = true }
 num-complex = { workspace = true }
