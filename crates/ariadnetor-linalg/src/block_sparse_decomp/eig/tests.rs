@@ -105,7 +105,7 @@ fn assert_close<T: Scalar<Real = f64>>(a: &[T], b: &[T], tol: f64) {
 /// diagonalizability (no `V⁻¹`), so it covers defective and repeated-spectrum
 /// blocks too. The original block (type `T`) is widened to `T::Complex` to
 /// multiply against the complex eigenvectors.
-fn verify_reconstruction<T, S: Sector + PartialEq>(
+fn verify_reconstruction<T, S: Sector>(
     tensor: &BlockSparseTensorData<T, S>,
     w: &BlockScalars<T::Complex, S>,
     v: &BlockSparseTensorData<T::Complex, S>,
