@@ -114,7 +114,7 @@ fn assert_close<T: Scalar<Real = f64>>(a: &[T], b: &[T], tol: f64) {
 }
 
 /// Per-sector reconstruction check: `V_q diag(w_q) V_q† ≈ H_q`.
-fn verify_reconstruction<T: Scalar<Real = f64>, S: Sector + PartialEq>(
+fn verify_reconstruction<T: Scalar<Real = f64>, S: Sector>(
     tensor: &BlockSparseTensorData<T, S>,
     w: &crate::block_sparse_decomp::BlockScalars<T::Real, S>,
     v: &BlockSparseTensorData<T, S>,

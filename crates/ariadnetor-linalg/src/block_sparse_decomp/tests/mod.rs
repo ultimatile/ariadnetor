@@ -139,7 +139,7 @@ fn assert_approx_eq(a: &[f64], b: &[f64], tol: f64) {
 }
 
 /// Per-sector SVD reconstruction check: U * diag(S) * Vt ≈ original.
-fn verify_svd_reconstruction<S: Sector + PartialEq>(
+fn verify_svd_reconstruction<S: Sector>(
     tensor: &BlockSparseTensorData<f64, S>,
     u: &BlockSparseTensorData<f64, S>,
     sv: &BlockScalars<f64, S>,
@@ -170,7 +170,7 @@ fn verify_svd_reconstruction<S: Sector + PartialEq>(
 }
 
 /// Per-sector two-factor reconstruction: left * right ≈ original.
-fn verify_two_factor_reconstruction<S: Sector + PartialEq>(
+fn verify_two_factor_reconstruction<S: Sector>(
     tensor: &BlockSparseTensorData<f64, S>,
     left: &BlockSparseTensorData<f64, S>,
     right: &BlockSparseTensorData<f64, S>,
@@ -368,10 +368,7 @@ fn trunc_svd_no_truncation() {
 
 /// Assert a QR factor Q is a per-sector isometry with orthonormal columns:
 /// Q^T Q = I on each fused sector block.
-fn assert_orthonormal_columns<S: Sector + PartialEq>(
-    q: &BlockSparseTensorData<f64, S>,
-    order: MemoryOrder,
-) {
+fn assert_orthonormal_columns<S: Sector>(q: &BlockSparseTensorData<f64, S>, order: MemoryOrder) {
     let q_groups = compute_fused_sector_groups(q, 1);
     for g in &q_groups {
         let q_mat = assemble_sector_matrix(q, g, order);
@@ -397,10 +394,7 @@ fn assert_orthonormal_columns<S: Sector + PartialEq>(
 
 /// Assert an LQ factor Q is a per-sector isometry with orthonormal rows:
 /// Q Q^T = I on each fused sector block.
-fn assert_orthonormal_rows<S: Sector + PartialEq>(
-    q: &BlockSparseTensorData<f64, S>,
-    order: MemoryOrder,
-) {
+fn assert_orthonormal_rows<S: Sector>(q: &BlockSparseTensorData<f64, S>, order: MemoryOrder) {
     let q_groups = compute_fused_sector_groups(q, 1);
     for g in &q_groups {
         let q_mat = assemble_sector_matrix(q, g, order);

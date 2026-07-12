@@ -106,7 +106,7 @@ fn verify_expm<T, S, FD>(
     dense_expm: FD,
 ) where
     T: Scalar<Real = f64>,
-    S: Sector + PartialEq,
+    S: Sector,
     FD: Fn(&DenseTensorData<T>) -> DenseTensorData<T>,
 {
     let groups = compute_fused_sector_groups(tensor, nrow);
