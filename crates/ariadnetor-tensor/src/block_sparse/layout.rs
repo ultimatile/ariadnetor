@@ -34,7 +34,19 @@ pub enum BlockLayoutError {
     /// dimension overflowed `usize`.
     #[error("storage extent overflow while enumerating blocks")]
     ExtentOverflow,
+    /// The descriptor's candidate block-coordinate count exceeds the decode
+    /// bound. Enumeration walks the full Cartesian product of per-leg block
+    /// counts, so a crafted many-legged descriptor could otherwise force
+    /// astronomically many iterations from a compact input.
+    #[error("too many candidate blocks to enumerate")]
+    TooManyBlocks,
 }
+
+/// Upper bound on the candidate block coordinates [`BlockSparseLayout::try_new`]
+/// enumerates from untrusted input, capping decode cost and memory. A
+/// legitimately-saved tensor stays far below this — its `new`-side enumeration
+/// of the same product would already have been intractable to construct.
+const MAX_CANDIDATE_BLOCKS: usize = 1 << 24;
 
 /// Interpretation half of the block-sparse tensor split.
 ///
@@ -199,9 +211,12 @@ impl<S: SerializableSector> BlockSparseLayout<S> {
     /// uses [`checked_fuse`](SerializableSector::checked_fuse) /
     /// [`checked_dual`](SerializableSector::checked_dual) and checked size /
     /// offset / extent arithmetic, returning [`BlockLayoutError`] where `new`
-    /// would panic. It does not delegate to `new`, and `new` does not delegate
-    /// to it — the two coexist so `new`'s hot path keeps its unchecked
-    /// arithmetic.
+    /// would panic. It additionally caps the candidate-coordinate count
+    /// ([`BlockLayoutError::TooManyBlocks`]) so a crafted many-legged
+    /// descriptor cannot hang the loader on the Cartesian-product enumeration
+    /// that `new` walks unbounded. It does not delegate to `new`, and `new`
+    /// does not delegate to it — the two coexist so `new`'s hot path keeps its
+    /// unchecked arithmetic.
     pub fn try_new(
         indices: Vec<QNIndex<S>>,
         flux: S,
@@ -223,6 +238,19 @@ impl<S: SerializableSector> BlockSparseLayout<S> {
         }
 
         let num_blocks_per_leg: Vec<usize> = indices.iter().map(|idx| idx.num_blocks()).collect();
+
+        // Bound total decode work before enumerating: the loop walks the full
+        // Cartesian product of per-leg block counts, so a crafted many-legged
+        // descriptor could otherwise hang the loader or exhaust memory from a
+        // tiny input. Overflowing the product is likewise out of range.
+        let within_bound = num_blocks_per_leg
+            .iter()
+            .try_fold(1usize, |acc, &n| acc.checked_mul(n))
+            .is_some_and(|count| count <= MAX_CANDIDATE_BLOCKS);
+        if !within_bound {
+            return Err(BlockLayoutError::TooManyBlocks);
+        }
+
         let mut blocks = Vec::new();
         let mut storage_extent = 0usize;
 

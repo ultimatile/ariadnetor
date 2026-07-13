@@ -382,6 +382,34 @@ fn bsp_decode_size_overflow() {
 }
 
 #[test]
+fn bsp_decode_too_many_candidate_blocks() {
+    // A compact many-legged descriptor (25 two-block legs → 2^25 candidate
+    // coordinates) must be rejected before enumeration, not walked.
+    let indices: Vec<QnIndexDto> = (0..25)
+        .map(|_| QnIndexDto {
+            direction: DirectionTag::Out,
+            blocks: vec![
+                QnBlockDto {
+                    sector: vec![0],
+                    dim: 1,
+                },
+                QnBlockDto {
+                    sector: vec![1],
+                    dim: 1,
+                },
+            ],
+        })
+        .collect();
+    let err = decode_block_sparse::<f64, Z2Sector>(&[0], &indices, MemoryOrder::RowMajor, &[])
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        TensorCodecError::Layout(BlockLayoutError::TooManyBlocks)
+    );
+}
+
+#[test]
 fn bsp_decode_truncated_body() {
     // Valid single 1x1 Z2 block (flux 0) expects one f64 (8 bytes); supply none.
     let indices = one_leg(
