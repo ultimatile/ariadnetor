@@ -18,6 +18,7 @@ mod dispatch;
 mod env;
 mod env_block_sparse;
 mod inner;
+mod serialize;
 mod site_ops;
 mod truncate;
 mod types;
@@ -37,6 +38,11 @@ pub use dispatch::{apply, apply_with_method, braket, inner};
 pub use env::{BraketEnvError, BraketEnvOps, BraketEnvs};
 
 pub use chain::TensorChain;
+// MPS serialization primitive: lossless, deterministic save/load for restart.
+pub use serialize::{
+    MpsCodec, MpsIoError, MpsManifest, OrderTag, SiteMeta, load_mps, load_mps_from_path, save_mps,
+    save_mps_to_path,
+};
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use types::{
     ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TruncResult, TruncateParams, VariationalInit,

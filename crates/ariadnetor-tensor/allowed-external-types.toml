@@ -20,4 +20,11 @@ allowed_external_types = [
     "num_traits::identities::Zero",
     "rand_core::Rng",
     "rand::distr::distribution::Distribution",
+    # The Mid-layer serialization DTOs (ScalarTag / SectorTag / BodyMeta / …)
+    # derive serde for the self-describing CBOR metadata, so serde's traits
+    # surface on this crate's Mid-layer API. Deliberate: serde is the codec's
+    # metadata format. The end-user save/load surface (ariadnetor-mps) stays
+    # serde-free (impl Write / impl Read).
+    "serde::ser::Serialize",
+    "serde::de::Deserialize",
 ]

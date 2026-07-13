@@ -24,7 +24,7 @@ mod qn_index;
 mod storage;
 mod tensor_data;
 
-pub use layout::BlockSparseLayout;
+pub use layout::{BlockLayoutError, BlockSparseLayout};
 pub use qn_index::QNIndex;
 pub use storage::BlockSparseStorage;
 pub use tensor_data::BlockSparseTensorData;

@@ -131,8 +131,10 @@ dependencies = [
  "ariadnetor-linalg",
  "ariadnetor-native",
  "ariadnetor-tensor",
+ "ciborium",
  "num-traits",
  "rand 0.10.1",
+ "serde",
  "thiserror 2.0.18",
 ]
 
@@ -157,10 +159,12 @@ dependencies = [
  "ariadnetor-core",
  "ariadnetor-native",
  "ariadnetor-tensor",
+ "ciborium",
  "criterion",
  "num-complex",
  "num-traits",
  "rand 0.10.1",
+ "serde",
  "thiserror 2.0.18",
 ]
 
