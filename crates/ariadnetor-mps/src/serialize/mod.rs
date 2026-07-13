@@ -38,8 +38,9 @@
 //! # Version policy
 //!
 //! `format_version` is `1`. Pre-v0.1 there are no migration shims: a load
-//! rejects an unknown (higher) version cleanly. A future MPS shape change
-//! bumps the version rather than being speculatively accommodated now.
+//! rejects any version outside the supported range (higher or lower) cleanly.
+//! A future MPS shape change bumps the version rather than being speculatively
+//! accommodated now.
 //!
 //! # Decode safety
 //!

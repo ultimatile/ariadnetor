@@ -2,7 +2,7 @@
 //!
 //! Layout: `[8-byte magic] [u64 LE manifest length] [CBOR manifest]
 //! [numeric data section]`. The magic and version give a clean rejection of
-//! foreign or future-version streams before any tensor is touched.
+//! foreign or unsupported-version streams before any tensor is touched.
 
 use std::fs;
 use std::io::{self, BufReader, BufWriter, Cursor, Read, Write};
@@ -24,8 +24,12 @@ const MAGIC: &[u8; 8] = b"ARIADMPS";
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Format version this build writes.
 const FORMAT_VERSION: u32 = 1;
+/// Lowest format version this build can read.
+const MIN_VERSION: u32 = 1;
 /// Highest format version this build can read.
 const MAX_VERSION: u32 = 1;
+/// Bounded attempts to claim an unused temp-file name in [`save_mps_to_path`].
+const MAX_TEMP_ATTEMPTS: u32 = 16;
 
 /// Map a short-read `io::Error` to the typed EOF variant.
 fn map_eof(err: io::Error) -> MpsIoError {
@@ -123,7 +127,10 @@ where
         });
     }
 
-    if manifest.format_version > MAX_VERSION {
+    // Reject both future versions and any below the supported floor: with a
+    // single defined version and no migration logic, an out-of-range version
+    // would otherwise be decoded against the wrong schema.
+    if manifest.format_version < MIN_VERSION || manifest.format_version > MAX_VERSION {
         return Err(MpsIoError::UnsupportedVersion {
             found: manifest.format_version,
             max: MAX_VERSION,
@@ -182,15 +189,39 @@ where
             "destination path has no file name",
         ))
     })?;
-    let tmp = dir.join(format!(
-        "{}.tmp.{}.{}",
-        file_name.to_string_lossy(),
-        std::process::id(),
-        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
+
+    // Claim a fresh temp file with `create_new` (O_EXCL): it refuses to open an
+    // existing path — including a pre-planted symlink — so an attacker who can
+    // write the destination directory cannot redirect the write through a
+    // guessed temp name onto a victim file. Retry a bounded number of times if
+    // the name is already taken.
+    let (tmp, file) = {
+        let mut attempt = 0;
+        loop {
+            let candidate = dir.join(format!(
+                "{}.tmp.{}.{}",
+                file_name.to_string_lossy(),
+                std::process::id(),
+                TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+            {
+                Ok(file) => break (candidate, file),
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                    attempt += 1;
+                    if attempt >= MAX_TEMP_ATTEMPTS {
+                        return Err(MpsIoError::Io(e));
+                    }
+                }
+                Err(e) => return Err(MpsIoError::Io(e)),
+            }
+        }
+    };
 
     let write = || -> Result<(), MpsIoError> {
-        let file = fs::File::create(&tmp)?;
         let mut writer = BufWriter::new(file);
         save_mps(mps, &mut writer)?;
         writer.flush()?;

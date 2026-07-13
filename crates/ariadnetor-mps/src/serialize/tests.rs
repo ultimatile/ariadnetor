@@ -312,6 +312,26 @@ fn unsupported_version() {
 }
 
 #[test]
+fn unsupported_version_below_range() {
+    // Version 0 is below the supported floor and must be rejected, not decoded
+    // as version 1.
+    let manifest = MpsManifest {
+        format_version: 0,
+        scalar_type: ScalarTag::F64,
+        storage_type: StorageTag::Dense,
+        sector_type: None,
+        canonical_form: CanonicalForm::Unknown,
+        sites: Vec::new(),
+    };
+    let bytes = frame(&manifest, &[]);
+    let err = load_err::<DenseStorage<f64>, DenseLayout>(&bytes);
+    assert!(
+        matches!(err, MpsIoError::UnsupportedVersion { found: 0, max: 1 }),
+        "got {err:?}"
+    );
+}
+
+#[test]
 fn manifest_length_mismatch() {
     // A declared manifest length longer than the actual CBOR encoding must be
     // rejected, not silently absorbed (CBOR decode ignores trailing bytes).

@@ -13,7 +13,8 @@ pub enum MpsIoError {
     /// The stream did not begin with the expected magic bytes.
     #[error("bad magic: not an ariadnetor MPS stream")]
     BadMagic,
-    /// The file's format version is newer than this build supports.
+    /// The file's format version is outside the range this build supports
+    /// (newer than the maximum, or below the minimum).
     #[error("unsupported format version {found} (max supported {max})")]
     UnsupportedVersion {
         /// Version found in the file.
