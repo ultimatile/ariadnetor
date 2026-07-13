@@ -40,10 +40,17 @@ pub enum BlockLayoutError {
     /// astronomically many iterations from a compact input.
     #[error("too many candidate blocks to enumerate")]
     TooManyBlocks,
+    /// The enumerated blocks require more stored elements than the caller's
+    /// budget allows — the numeric body is too short for the described tensor.
+    /// Checked incrementally so a compact descriptor cannot allocate a huge
+    /// block table before the body-length check would reject it.
+    #[error("described tensor exceeds the numeric-body budget")]
+    ExtentBudgetExceeded,
 }
 
 /// Upper bound on the candidate block coordinates [`BlockSparseLayout::try_new`]
-/// enumerates from untrusted input, capping decode cost and memory. A
+/// enumerates from untrusted input, capping the iteration count so a
+/// many-legged descriptor cannot hang the loader on the Cartesian product. A
 /// legitimately-saved tensor stays far below this — its `new`-side enumeration
 /// of the same product would already have been intractable to construct.
 const MAX_CANDIDATE_BLOCKS: usize = 1 << 24;
@@ -211,16 +218,21 @@ impl<S: SerializableSector> BlockSparseLayout<S> {
     /// uses [`checked_fuse`](SerializableSector::checked_fuse) /
     /// [`checked_dual`](SerializableSector::checked_dual) and checked size /
     /// offset / extent arithmetic, returning [`BlockLayoutError`] where `new`
-    /// would panic. It additionally caps the candidate-coordinate count
-    /// ([`BlockLayoutError::TooManyBlocks`]) so a crafted many-legged
-    /// descriptor cannot hang the loader on the Cartesian-product enumeration
-    /// that `new` walks unbounded. It does not delegate to `new`, and `new`
-    /// does not delegate to it — the two coexist so `new`'s hot path keeps its
-    /// unchecked arithmetic.
+    /// would panic. It bounds decode cost against untrusted input two ways: it
+    /// caps the candidate-coordinate count
+    /// ([`BlockLayoutError::TooManyBlocks`]) so the Cartesian-product
+    /// enumeration `new` walks unbounded cannot hang the loader, and it stops
+    /// once the enumerated blocks would exceed `max_extent`
+    /// ([`BlockLayoutError::ExtentBudgetExceeded`]) — the element count the
+    /// caller can supply data for — so a compact descriptor cannot allocate a
+    /// huge block table before its (empty or short) body is inspected. It does
+    /// not delegate to `new`, and `new` does not delegate to it — the two
+    /// coexist so `new`'s hot path keeps its unchecked arithmetic.
     pub fn try_new(
         indices: Vec<QNIndex<S>>,
         flux: S,
         order: MemoryOrder,
+        max_extent: usize,
     ) -> Result<Self, BlockLayoutError> {
         let rank = indices.len();
 
@@ -298,6 +310,11 @@ impl<S: SerializableSector> BlockSparseLayout<S> {
                     storage_extent = storage_extent
                         .checked_add(size)
                         .ok_or(BlockLayoutError::ExtentOverflow)?;
+                    // Fail fast before the block table can grow past what the
+                    // numeric body could ever fill.
+                    if storage_extent > max_extent {
+                        return Err(BlockLayoutError::ExtentBudgetExceeded);
+                    }
                 }
 
                 let mut carry = true;

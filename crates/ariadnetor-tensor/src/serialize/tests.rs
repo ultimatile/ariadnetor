@@ -409,34 +409,53 @@ fn bsp_decode_too_many_candidate_blocks() {
     );
 }
 
+/// A rank-2 Z₂ descriptor whose single flux-0 block holds one element.
+fn one_block_z2() -> Vec<QnIndexDto> {
+    vec![
+        QnIndexDto {
+            direction: DirectionTag::Out,
+            blocks: vec![QnBlockDto {
+                sector: vec![0],
+                dim: 1,
+            }],
+        },
+        QnIndexDto {
+            direction: DirectionTag::In,
+            blocks: vec![QnBlockDto {
+                sector: vec![0],
+                dim: 1,
+            }],
+        },
+    ]
+}
+
 #[test]
 fn bsp_decode_truncated_body() {
-    // Valid single 1x1 Z2 block (flux 0) expects one f64 (8 bytes); supply none.
-    let indices = one_leg(
-        DirectionTag::Out,
-        vec![QnBlockDto {
-            sector: vec![0],
-            dim: 1,
-        }],
-    );
-    // Second leg In so block (0,0) fuses to flux 0.
-    let leg_in = QnIndexDto {
-        direction: DirectionTag::In,
-        blocks: vec![QnBlockDto {
-            sector: vec![0],
-            dim: 1,
-        }],
-    };
-    let mut idx = indices;
-    idx.push(leg_in);
+    // A block-sparse tensor needing one f64 with an empty body: enumeration
+    // must stop against the (zero) body budget before building the block table.
+    let idx = one_block_z2();
     let err = decode_block_sparse::<f64, Z2Sector>(&[0], &idx, MemoryOrder::RowMajor, &[])
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        TensorCodecError::Layout(BlockLayoutError::ExtentBudgetExceeded)
+    );
+}
+
+#[test]
+fn bsp_decode_oversized_body() {
+    // One f64 expected, two supplied: within the enumeration budget, so the
+    // exact-length check in the numeric-body reader rejects it.
+    let idx = one_block_z2();
+    let err = decode_block_sparse::<f64, Z2Sector>(&[0], &idx, MemoryOrder::RowMajor, &[0u8; 16])
         .err()
         .unwrap();
     assert_eq!(
         err,
         TensorCodecError::ExtentMismatch {
             expected: 8,
-            found: 0
+            found: 16
         }
     );
 }

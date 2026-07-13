@@ -46,7 +46,10 @@
 //!
 //! Load never panics on crafted input. Every descriptor is validated and all
 //! extent arithmetic is checked before the panicking reconstruction
-//! constructors run; violations map to a typed [`MpsIoError`].
+//! constructors run; violations map to a typed [`MpsIoError`]. Block-sparse
+//! enumeration is bounded in both iteration count and memory, so a compact
+//! descriptor cannot hang the loader or exhaust memory before its numeric body
+//! is inspected.
 
 mod codec;
 mod container;

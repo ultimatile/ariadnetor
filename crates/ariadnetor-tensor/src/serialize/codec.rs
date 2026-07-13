@@ -212,7 +212,11 @@ pub fn decode_block_sparse<T: ScalarCodec, S: SerializableSector>(
         qn_indices.push(decode_qn_index::<S>(dto)?);
     }
 
-    let layout = BlockSparseLayout::try_new(qn_indices, flux, order)?;
+    // The numeric body caps how many stored elements the tensor can have, so
+    // pass it as the enumeration budget: this bounds the block table's memory
+    // against a compact descriptor before `read_body` runs its exact check.
+    let max_extent = body.len() / T::BYTE_LEN;
+    let layout = BlockSparseLayout::try_new(qn_indices, flux, order, max_extent)?;
     let data = read_body::<T>(layout.storage_extent(), body)?;
     // `read_body` guarantees `data.len() == storage_extent`, so the
     // storage/layout length assertion inside `TensorData::new` cannot fire.
