@@ -15,6 +15,7 @@ mod norm;
 mod ops;
 mod reorder;
 mod sector;
+mod serialize;
 mod storage;
 mod tensor;
 mod tensor_data;
@@ -34,8 +35,8 @@ pub use ariadnetor_core::{
 };
 
 pub use block_sparse::{
-    BlockCoord, BlockMeta, BlockSparseLayout, BlockSparseStorage, BlockSparseTensorData, Direction,
-    QNIndex,
+    BlockCoord, BlockLayoutError, BlockMeta, BlockSparseLayout, BlockSparseStorage,
+    BlockSparseTensorData, Direction, QNIndex,
 };
 pub use capability::{Host, OpsFor};
 pub use dense::{DenseLayout, DenseStorage, DenseTensorData};
@@ -44,6 +45,13 @@ pub use layout::{StorageFor, TensorLayout};
 pub use ops::{add_all, linear_combine};
 pub use reorder::{flat_index, normalize_to_data, reorder_data};
 pub use sector::{Sector, U1Sector, Z2Sector};
+// Mid-layer per-tensor serialization codec, consumed by `ariadnetor-mps`'s
+// chain-level `save_mps` / `load_mps`. Not re-exported by the umbrella.
+pub use serialize::{
+    BodyMeta, DirectionTag, QnBlockDto, QnIndexDto, ScalarCodec, ScalarDecodeError, ScalarTag,
+    SectorDecodeError, SectorTag, SerializableSector, StorageTag, TensorCodecError,
+    decode_block_sparse, decode_dense, encode_block_sparse, encode_dense,
+};
 pub use storage::Storage;
 pub use tensor::{BlockSparseTensor, DenseTensor, Tensor};
 pub use tensor_data::TensorData;

@@ -8,9 +8,16 @@
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_tensor::{Storage, StorageFor, Tensor, TensorLayout};
+use serde::{Deserialize, Serialize};
 
 /// Canonical form of a tensor chain.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Serialize` / `Deserialize` round-trip the form verbatim for MPS
+/// serialization. No stricter-than-type validation is imposed on load: the
+/// in-memory type does not enforce its documented positional invariants (the
+/// setter stores arbitrary values), so rejecting an out-of-order `Partial`
+/// would break the lossless round-trip of legally-representable states.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CanonicalForm {
     /// No canonicalization guarantees.
     Unknown,

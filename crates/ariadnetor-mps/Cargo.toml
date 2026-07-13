@@ -23,6 +23,8 @@ ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.5" }
 ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.5" }
 num-traits = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
+ciborium = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }

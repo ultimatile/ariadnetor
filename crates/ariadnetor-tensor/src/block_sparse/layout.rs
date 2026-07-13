@@ -10,9 +10,31 @@
 use std::collections::HashMap;
 
 use ariadnetor_core::backend::MemoryOrder;
+use thiserror::Error;
 
 use super::{BlockCoord, BlockMeta, Direction, QNIndex};
+use crate::serialize::SerializableSector;
 use crate::{Sector, TensorLayout};
+
+/// Overflow encountered while enumerating flux-allowed blocks in the
+/// panic-free [`BlockSparseLayout::try_new`] path.
+///
+/// The infallible [`BlockSparseLayout::new`] would panic on these; `try_new`
+/// exists so a load reconstructing a layout from crafted input reports a
+/// typed error instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum BlockLayoutError {
+    /// Sector fusion (or its dual) overflowed while testing a block.
+    #[error("sector fusion overflow while enumerating blocks")]
+    FusionOverflow,
+    /// A block's element count (product of per-leg dims) overflowed `usize`.
+    #[error("block size overflow while enumerating blocks")]
+    SizeOverflow,
+    /// A running offset, the cached storage extent, or a leg's total
+    /// dimension overflowed `usize`.
+    #[error("storage extent overflow while enumerating blocks")]
+    ExtentOverflow,
+}
 
 /// Interpretation half of the block-sparse tensor split.
 ///
@@ -22,10 +44,11 @@ use crate::{Sector, TensorLayout};
 /// [`BlockSparseStorage`](crate::BlockSparseStorage) is laid out in.
 ///
 /// Construction goes through [`new`](Self::new), which enumerates
-/// flux-allowed blocks and produces a packed layout. Layout-internal
-/// invariants (sector conservation, coord uniqueness, no-gap
-/// packing) hold by construction; the storage-layout boundary check
-/// happens in
+/// flux-allowed blocks and produces a packed layout, or its panic-free
+/// counterpart [`try_new`](Self::try_new) for reconstruction from
+/// untrusted input. Layout-internal invariants (sector conservation,
+/// coord uniqueness, no-gap packing) hold by construction; the
+/// storage-layout boundary check happens in
 /// [`TensorData::new`](crate::TensorData::new).
 #[derive(Clone)]
 pub struct BlockSparseLayout<S: Sector> {
@@ -165,6 +188,119 @@ impl<S: Sector> BlockSparseLayout<S> {
             fused = fused.fuse(&directed);
         }
         fused == self.flux
+    }
+}
+
+impl<S: SerializableSector> BlockSparseLayout<S> {
+    /// Panic-free counterpart to [`new`](Self::new) for reconstruction from
+    /// untrusted input.
+    ///
+    /// Enumerates the same flux-allowed blocks in the same order as `new`, but
+    /// uses [`checked_fuse`](SerializableSector::checked_fuse) /
+    /// [`checked_dual`](SerializableSector::checked_dual) and checked size /
+    /// offset / extent arithmetic, returning [`BlockLayoutError`] where `new`
+    /// would panic. It does not delegate to `new`, and `new` does not delegate
+    /// to it — the two coexist so `new`'s hot path keeps its unchecked
+    /// arithmetic.
+    pub fn try_new(
+        indices: Vec<QNIndex<S>>,
+        flux: S,
+        order: MemoryOrder,
+    ) -> Result<Self, BlockLayoutError> {
+        let rank = indices.len();
+
+        // Leg total dimensions via checked sums: crafted per-block dims could
+        // otherwise overflow the logical shape.
+        let mut shape = Vec::with_capacity(rank);
+        for idx in &indices {
+            let mut total = 0usize;
+            for &(_, dim) in idx.blocks() {
+                total = total
+                    .checked_add(dim)
+                    .ok_or(BlockLayoutError::ExtentOverflow)?;
+            }
+            shape.push(total);
+        }
+
+        let num_blocks_per_leg: Vec<usize> = indices.iter().map(|idx| idx.num_blocks()).collect();
+        let mut blocks = Vec::new();
+        let mut storage_extent = 0usize;
+
+        if rank == 0 || num_blocks_per_leg.iter().all(|&n| n > 0) {
+            let mut current = vec![0usize; rank];
+            loop {
+                let mut fused = S::identity();
+                let mut fusion_ok = true;
+                for (axis, &bi) in current.iter().enumerate() {
+                    let sector = indices[axis].sector(bi);
+                    let directed = match indices[axis].direction() {
+                        Direction::Out => sector.clone(),
+                        Direction::In => match sector.checked_dual() {
+                            Some(dual) => dual,
+                            None => {
+                                fusion_ok = false;
+                                break;
+                            }
+                        },
+                    };
+                    match fused.checked_fuse(&directed) {
+                        Some(next) => fused = next,
+                        None => {
+                            fusion_ok = false;
+                            break;
+                        }
+                    }
+                }
+                if !fusion_ok {
+                    return Err(BlockLayoutError::FusionOverflow);
+                }
+
+                if fused == flux {
+                    let mut size = 1usize;
+                    for (axis, &bi) in current.iter().enumerate() {
+                        size = size
+                            .checked_mul(indices[axis].block_dim(bi))
+                            .ok_or(BlockLayoutError::SizeOverflow)?;
+                    }
+                    blocks.push(BlockMeta {
+                        coord: BlockCoord(current.clone()),
+                        offset: storage_extent,
+                        size,
+                    });
+                    storage_extent = storage_extent
+                        .checked_add(size)
+                        .ok_or(BlockLayoutError::ExtentOverflow)?;
+                }
+
+                let mut carry = true;
+                for axis in (0..rank).rev() {
+                    current[axis] += 1;
+                    if current[axis] < num_blocks_per_leg[axis] {
+                        carry = false;
+                        break;
+                    }
+                    current[axis] = 0;
+                }
+                if carry {
+                    break;
+                }
+            }
+        }
+
+        let mut block_index = HashMap::with_capacity(blocks.len());
+        for (i, meta) in blocks.iter().enumerate() {
+            block_index.insert(meta.coord.clone(), i);
+        }
+
+        Ok(Self {
+            blocks,
+            block_index,
+            indices,
+            flux,
+            shape,
+            order,
+            storage_extent,
+        })
     }
 }
 
