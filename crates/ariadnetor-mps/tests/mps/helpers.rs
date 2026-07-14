@@ -108,6 +108,10 @@ pub(crate) fn make_3site_test_mpo() -> Mpo<DenseStorage<f64>, DenseLayout> {
 /// Assert two dense f64 tensors agree element-wise within `tol`.
 pub(crate) fn assert_dense_close(a: &DenseTensor<f64>, b: &DenseTensor<f64>, tol: f64) {
     assert_eq!(a.shape(), b.shape(), "shape mismatch");
+    // Zipping raw storage is element-correct only when both tensors share
+    // one memory order; guard it so an order mismatch fails loudly instead
+    // of comparing wrong element pairs.
+    assert_eq!(a.order(), b.order(), "memory order mismatch");
     for (i, (x, y)) in a.data_slice().iter().zip(b.data_slice().iter()).enumerate() {
         let diff = (x - y).abs();
         assert!(diff < tol, "elem {i} mismatch: {x} vs {y} (diff {diff})");
