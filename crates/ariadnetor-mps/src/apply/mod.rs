@@ -1,12 +1,16 @@
-//! MPO-MPS application: apply an MPO to an MPS via the streaming-naive
-//! algorithm, the Stoudenmire-White zip-up algorithm, or the density-matrix
-//! algorithm. The density-matrix kernels live in the [`density_matrix`]
-//! submodule and reuse this module's per-site `local_product_*` helpers.
+//! MPO-MPS application: apply an MPO to an MPS via the streaming-naive,
+//! Stoudenmire-White zip-up, density-matrix, variational-fitting, or
+//! successive-randomized-compression algorithm. The density-matrix kernels
+//! live in the [`density_matrix`] submodule and reuse this module's
+//! per-site `local_product_*` helpers; the variational and randomized
+//! kernels live in their own submodules.
 
 mod density_matrix;
+mod successive_randomized;
 mod variational;
 
 pub(crate) use density_matrix::{apply_density_matrix_bsp, apply_density_matrix_dense};
+pub(crate) use successive_randomized::apply_successive_randomized_dense;
 pub(crate) use variational::{apply_variational_bsp, apply_variational_dense};
 
 use std::num::NonZeroUsize;
@@ -140,17 +144,29 @@ where
 
     let mut result_mps: Mps<DenseStorage<T>, DenseLayout> = Mps::from_sites(tensors);
     result_mps.set_canonical_form(CanonicalForm::Mixed { center: n - 1 });
+    finish_dense(backend, &mut result_mps, params);
+    result_mps
+}
 
-    // Delegate final canonicalization + truncation to the standard pipeline.
-    // This reuses the three-sweep gauge pattern in `truncate_dense` and
-    // honors every `SvdAbsorb` variant and any in-range `params.center`.
+/// Shared optional finishing pass: delegate final canonicalization +
+/// truncation to the standard pipeline. This reuses the three-sweep gauge
+/// pattern in `truncate_dense` and honors every `SvdAbsorb` variant and any
+/// in-range `params.center`. Used by the streaming-naive and
+/// successive-randomized methods; zip-up and density-matrix carry their
+/// truncation inside the sweep instead.
+fn finish_dense<T, B>(
+    backend: &B,
+    result: &mut Mps<DenseStorage<T>, DenseLayout>,
+    params: Option<&TruncateParams>,
+) where
+    T: Scalar,
+    B: OpsFor<DenseStorage<T>>,
+{
     if let Some(trunc_params) = params {
         let center = trunc_params.center.unwrap_or(0);
-        super::canonicalize::canonicalize_dense(backend, &mut result_mps, center);
-        super::truncate::truncate_dense(backend, &mut result_mps, trunc_params);
+        super::canonicalize::canonicalize_dense(backend, result, center);
+        super::truncate::truncate_dense(backend, result, trunc_params);
     }
-
-    result_mps
 }
 
 /// Apply a Dense MPO to a Dense MPS via the Stoudenmire-White zip-up

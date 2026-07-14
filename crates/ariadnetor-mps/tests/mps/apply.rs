@@ -6,11 +6,11 @@ use ariadnetor_mps::{
     TruncateParams,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use ariadnetor_tensor::DenseTensor;
 
 use super::helpers::{
-    cm_dense_tensor, dense_basis_site, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo,
-    mps_to_dense,
+    assert_dense_close, cm_dense_tensor, dense_basis_site, make_3site_test_mpo,
+    make_3site_test_mps, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
 };
 
 #[test]
@@ -209,35 +209,6 @@ fn test_apply_matches_expect() {
 // ===========================================================================
 // Streaming-naive algorithm tests
 // ===========================================================================
-
-/// 3-site MPS with bond dim 2 and physical dim 2. Deterministic content.
-fn make_3site_test_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
-    Mps::from_sites(vec![
-        cm_dense_tensor(vec![1.0, 0.0, 0.5, 0.5], vec![1, 2, 2]),
-        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2]),
-        cm_dense_tensor(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2, 1]),
-    ])
-}
-
-/// 3-site MPO with bond dim 2 and physical dim 2.
-fn make_3site_test_mpo() -> Mpo<DenseStorage<f64>, DenseLayout> {
-    Mpo::from_sites(vec![
-        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 2, 2]),
-        cm_dense_tensor(
-            (1..=16).map(|i| i as f64 * 0.05).collect(),
-            vec![2, 2, 2, 2],
-        ),
-        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2, 1]),
-    ])
-}
-
-fn assert_dense_close(a: &DenseTensor<f64>, b: &DenseTensor<f64>, tol: f64) {
-    assert_eq!(a.shape(), b.shape(), "shape mismatch");
-    for (i, (x, y)) in a.data_slice().iter().zip(b.data_slice().iter()).enumerate() {
-        let diff = (x - y).abs();
-        assert!(diff < tol, "elem {i} mismatch: {x} vs {y} (diff {diff})");
-    }
-}
 
 #[test]
 fn test_apply_streaming_naive_identity_preserves_state() {

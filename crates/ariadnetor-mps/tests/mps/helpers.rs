@@ -84,6 +84,40 @@ pub(crate) fn make_4site_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
     Mps::from_sites(sites)
 }
 
+/// 3-site MPS with bond dim 2 and physical dim 2. Deterministic content.
+pub(crate) fn make_3site_test_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
+    Mps::from_sites(vec![
+        cm_dense_tensor(vec![1.0, 0.0, 0.5, 0.5], vec![1, 2, 2]),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2]),
+        cm_dense_tensor(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2, 1]),
+    ])
+}
+
+/// 3-site MPO with bond dim 2 and physical dim 2.
+pub(crate) fn make_3site_test_mpo() -> Mpo<DenseStorage<f64>, DenseLayout> {
+    Mpo::from_sites(vec![
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![1, 2, 2, 2]),
+        cm_dense_tensor(
+            (1..=16).map(|i| i as f64 * 0.05).collect(),
+            vec![2, 2, 2, 2],
+        ),
+        cm_dense_tensor((1..=8).map(|i| i as f64 * 0.1).collect(), vec![2, 2, 2, 1]),
+    ])
+}
+
+/// Assert two dense f64 tensors agree element-wise within `tol`.
+pub(crate) fn assert_dense_close(a: &DenseTensor<f64>, b: &DenseTensor<f64>, tol: f64) {
+    assert_eq!(a.shape(), b.shape(), "shape mismatch");
+    // Zipping raw storage is element-correct only when both tensors share
+    // one memory order; guard it so an order mismatch fails loudly instead
+    // of comparing wrong element pairs.
+    assert_eq!(a.order(), b.order(), "memory order mismatch");
+    for (i, (x, y)) in a.data_slice().iter().zip(b.data_slice().iter()).enumerate() {
+        let diff = (x - y).abs();
+        assert!(diff < tol, "elem {i} mismatch: {x} vs {y} (diff {diff})");
+    }
+}
+
 /// Check that a site tensor is left-canonical: Q^H Q ≈ I.
 pub(crate) fn is_left_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     let shape = site.shape();
@@ -133,40 +167,22 @@ pub(crate) fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     true
 }
 
+/// Contract a dense chain into its full state tensor (any scalar type).
+pub(crate) fn densify<T: ariadnetor_core::Scalar>(
+    backend: &NativeBackend,
+    mps: &Mps<DenseStorage<T>, DenseLayout>,
+) -> DenseTensor<T> {
+    let mut acc = mps.site(0).clone();
+    for j in 1..mps.len() {
+        let last = acc.rank() - 1;
+        acc = tensordot(backend, &acc, mps.site(j), &[last], &[0]).expect("chain contraction");
+    }
+    acc
+}
+
 /// Compute the full state vector from an MPS by contracting all sites.
 pub(crate) fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTensor<f64> {
-    let order = MemoryOrder::ColumnMajor;
-    let rm = MemoryOrder::RowMajor;
-    let n = mps.len();
-    let backend = NativeBackend::new();
-
-    let mut result = mps.site(0).clone();
-
-    for j in 1..n {
-        let site = mps.site(j);
-        let r_rank = result.rank();
-        let r_last: usize = *result.shape().last().unwrap();
-        let r_rest: usize = result.shape()[..r_rank - 1].iter().product();
-        let result_rm = result.reordered(rm);
-        let result_2d_rm = result_rm.reshape(vec![r_rest, r_last]);
-        let result_2d = result_2d_rm.reordered(order);
-
-        let s_first = site.shape()[0];
-        let s_rest: usize = site.shape()[1..].iter().product();
-        let site_rm = site.reordered(rm);
-        let site_2d_rm = site_rm.reshape(vec![s_first, s_rest]);
-        let site_2d = site_2d_rm.reordered(order);
-
-        let contracted = contract(&backend, &result_2d, &site_2d, "ab,bc->ac").unwrap();
-
-        let contracted_rm = contracted.reordered(rm);
-        let mut new_shape: Vec<usize> = result.shape()[..r_rank - 1].to_vec();
-        new_shape.extend_from_slice(&site.shape()[1..]);
-        let multi_rm = contracted_rm.reshape(new_shape);
-        result = multi_rm.reordered(order);
-    }
-
-    result
+    densify(&NativeBackend::new(), mps)
 }
 
 /// Build an identity MPO for a given number of sites and physical dimension.
