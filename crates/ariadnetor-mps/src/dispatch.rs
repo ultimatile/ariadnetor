@@ -39,7 +39,9 @@ use ariadnetor_tensor::{
     StorageFor, TensorLayout,
 };
 
-use super::types::{ApplyMethod, Mpo, Mps, TruncResult, TruncateParams, VariationalInit};
+use super::types::{
+    ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TruncResult, TruncateParams, VariationalInit,
+};
 
 mod sealed {
     use ariadnetor_core::Scalar;
@@ -156,6 +158,21 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
     where
         Self: Sized;
 
+    /// Apply an MPO to an MPS via successive randomized compression (SRC):
+    /// a single right-to-left randomized-QB sweep with adaptive or fixed-rank
+    /// bond selection (see [`ApplyMethod::SuccessiveRandomized`]). Dense-only:
+    /// the block-sparse impl panics because the Gaussian sketch mixes
+    /// symmetry sectors.
+    fn apply_successive_randomized_k<B: OpsFor<Self::Storage>>(
+        backend: &B,
+        op: &Mpo<Self::Storage, Self::Layout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+        src: SuccessiveRandomizedParams,
+    ) -> Self
+    where
+        Self: Sized;
+
     /// Position the orthogonality center at `center`.
     fn canon_k<B: OpsFor<Self::Storage>>(backend: &B, chain: &mut Self, center: usize);
 
@@ -232,6 +249,16 @@ impl<T: Scalar> MpsOps<T> for Mps<DenseStorage<T>, DenseLayout> {
         tol: f64,
     ) -> Self {
         super::apply::apply_variational_dense(op, psi, params, init, max_sweeps, tol)
+    }
+
+    fn apply_successive_randomized_k<B: OpsFor<DenseStorage<T>>>(
+        backend: &B,
+        op: &Mpo<DenseStorage<T>, DenseLayout>,
+        psi: &Self,
+        params: Option<&TruncateParams>,
+        src: SuccessiveRandomizedParams,
+    ) -> Self {
+        super::apply::apply_successive_randomized_dense(backend, op, psi, params, src)
     }
 
     fn canon_k<B: OpsFor<DenseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -312,6 +339,20 @@ impl<T: Scalar, S: Sector> MpsOps<T> for Mps<BlockSparseStorage<T>, BlockSparseL
         tol: f64,
     ) -> Self {
         super::apply::apply_variational_bsp(op, psi, params, init, max_sweeps, tol)
+    }
+
+    fn apply_successive_randomized_k<B: OpsFor<BlockSparseStorage<T>>>(
+        _backend: &B,
+        _op: &Mpo<BlockSparseStorage<T>, BlockSparseLayout<S>>,
+        _psi: &Self,
+        _params: Option<&TruncateParams>,
+        _src: SuccessiveRandomizedParams,
+    ) -> Self {
+        panic!(
+            "ApplyMethod::SuccessiveRandomized is dense-only: the Gaussian sketch \
+             mixes symmetry sectors, so a block-sparse product would not preserve \
+             the chain's quantum-number structure"
+        );
     }
 
     fn canon_k<B: OpsFor<BlockSparseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -434,6 +475,10 @@ where
 ///   the fit at the fixed seed bond via single-site DMRG-style sweeps. This
 ///   method is **host-pinned**: it builds on the host-resident `BraketEnvs`
 ///   primitive, so `backend` is not consulted for it.
+/// - `ApplyMethod::SuccessiveRandomized` computes the compressed product
+///   directly via a single right-to-left randomized-QB sweep with adaptive
+///   or fixed-rank bond selection. **Dense-only** (panics on block-sparse
+///   chains).
 pub fn apply_with_method<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -463,5 +508,8 @@ where
         } => <Mps<St, L> as MpsOps<T>>::apply_variational_k(
             backend, op, psi, params, init, max_sweeps, tol,
         ),
+        ApplyMethod::SuccessiveRandomized(src) => {
+            <Mps<St, L> as MpsOps<T>>::apply_successive_randomized_k(backend, op, psi, params, src)
+        }
     }
 }

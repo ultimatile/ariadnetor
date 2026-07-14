@@ -35,6 +35,7 @@ num-traits = "0.2"
 
 # Random number generation
 rand = "0.10"
+rand_distr = "0.6"
 
 # Parallelism
 rayon = "1"

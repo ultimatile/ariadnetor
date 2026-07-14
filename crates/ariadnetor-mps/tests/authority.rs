@@ -386,3 +386,28 @@ fn apply_bsp_svd_branch_routes_kernels_to_call_site_backend() {
         "apply (block-sparse, SVD branch): call-site backend recorded no kernel dispatch",
     );
 }
+
+#[test]
+fn apply_dense_successive_randomized_routes_kernels_to_call_site_backend() {
+    use ariadnetor_mps::SuccessiveRandomizedParams;
+
+    let backend = CountingBackend::new();
+    let op = dense_mpo();
+    let psi = dense_mps();
+
+    let _ = apply_with_method(
+        &backend,
+        &op,
+        &psi,
+        None,
+        ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+            seed: 1,
+            ..Default::default()
+        }),
+    );
+
+    assert!(
+        backend.count() > 0,
+        "apply (dense, successive randomized): call-site backend recorded no kernel dispatch",
+    );
+}

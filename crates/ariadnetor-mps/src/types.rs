@@ -86,6 +86,65 @@ pub enum VariationalInit {
     DensityMatrix,
 }
 
+/// Parameters for [`ApplyMethod::SuccessiveRandomized`].
+///
+/// Two stopping modes:
+///
+/// - **Fixed rank** (`output_dim = Some(k)`): every output bond is `k`,
+///   clamped per site to the exactly representable rank. `cutoff`,
+///   `sketch_dim`, `sketch_increment`, and `min_dim` are validated for
+///   configuration hygiene but not consulted.
+/// - **Adaptive** (`output_dim = None`): each bond starts at `sketch_dim`
+///   and grows by `sketch_increment` until the leave-one-out error
+///   estimate satisfies `err <= cutoff * norm_estimate` (with the bond at
+///   least `min_dim`), or the per-site cap is reached. `cutoff` is
+///   required in this mode.
+///
+/// `cutoff` is the per-site randomized QB stopping criterion of the
+/// underlying algorithm, not a certified bound on the global relative
+/// error of the output MPS: the estimate is statistically unbiased for
+/// the previous rank's error and per-bond, so the realized global error
+/// can exceed `cutoff` by a modest factor.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SuccessiveRandomizedParams {
+    /// Fixed output bond dimension. `Some(k)` short-circuits the adaptive
+    /// loop; `None` selects adaptive mode (which requires `cutoff`).
+    pub output_dim: Option<usize>,
+    /// Relative per-site stopping tolerance for adaptive mode. Must be
+    /// finite and non-negative when `Some`.
+    pub cutoff: Option<f64>,
+    /// Lower bound on each adaptive bond (clamped to the per-site cap).
+    pub min_dim: usize,
+    /// Upper bound on every output bond. `None` defaults to the product
+    /// of the maximum MPO and MPS bond dimensions (the rank beyond which
+    /// the product is exactly representable).
+    pub max_dim: Option<usize>,
+    /// Initial sketch size for adaptive mode.
+    pub sketch_dim: usize,
+    /// Sketch growth per adaptive round.
+    pub sketch_increment: usize,
+    /// RNG seed for the Gaussian sketch. Runs with equal seeds and inputs
+    /// produce identical output.
+    pub seed: u64,
+}
+
+impl Default for SuccessiveRandomizedParams {
+    /// Adaptive mode at `cutoff = 1e-6` with a small initial sketch —
+    /// practical defaults for small problems; tune `sketch_dim` /
+    /// `sketch_increment` per workload.
+    fn default() -> Self {
+        Self {
+            output_dim: None,
+            cutoff: Some(1e-6),
+            min_dim: 1,
+            max_dim: None,
+            sketch_dim: 4,
+            sketch_increment: 4,
+            seed: 0,
+        }
+    }
+}
+
 /// Algorithm used by [`apply_with_method`](super::dispatch::apply_with_method)
 /// to multiply an MPO into an MPS.
 ///
@@ -179,6 +238,36 @@ pub enum ApplyMethod {
         /// `‖P_center‖²` between successive cycles.
         tol: f64,
     },
+    /// Successive randomized compression (SRC): a single right-to-left
+    /// sweep that computes a compressed `η ≈ Wψ` directly, without ever
+    /// materializing the `w_R * chi_R` product MPS. Each site is the Q
+    /// factor of a randomized QB decomposition whose test matrix is a
+    /// Khatri-Rao product of per-site Gaussian matrices, realized as
+    /// cached per-column environment recursions; the output bond is
+    /// chosen adaptively from a leave-one-out error estimate (see
+    /// [`SuccessiveRandomizedParams`]). Algorithm from arXiv:2504.06475.
+    ///
+    /// The result is a random variable of the seed: exact with
+    /// probability one whenever the product is exactly representable at
+    /// the selected bond, and near the tolerance-selected rank otherwise.
+    /// The sweep ends with the orthogonality center at the first site
+    /// (`Mixed { center: 0 }`), like
+    /// [`Variational`](ApplyMethod::Variational). When the caller passes
+    /// `Some(TruncateParams)`, the sweep is followed by the standard
+    /// `canonicalize` + `truncate` finishing pass (the
+    /// [`StreamingNaive`](ApplyMethod::StreamingNaive) convention); all
+    /// truncation-side knobs live there, none are consulted during the
+    /// sweep itself.
+    ///
+    /// # Panics
+    ///
+    /// Panics on block-sparse chains: the Gaussian sketch mixes symmetry
+    /// sectors, so this method is dense-only. Also panics on parameter
+    /// violations documented in [`SuccessiveRandomizedParams`]
+    /// (zero dimensions; a missing `cutoff` in adaptive mode; a
+    /// non-finite, negative, or not-representable-in-the-scalar's-real-type
+    /// `cutoff` in any mode — validation runs even in fixed mode).
+    SuccessiveRandomized(SuccessiveRandomizedParams),
 }
 
 impl Default for ApplyMethod {
