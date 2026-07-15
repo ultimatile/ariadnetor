@@ -323,6 +323,32 @@ fn append_after_termination_panics() {
 }
 
 #[test]
+fn a_larger_later_block_demotes_an_earlier_diagonal() {
+    let backend = Host::shared();
+    let backend = backend.as_ref();
+    // Two individually well-conditioned, mutually independent blocks whose
+    // scales differ by 18 orders. The stacked matrix is numerically
+    // rank-deficient at working precision — the first block's columns are
+    // noise next to the second's — so the rank test, which weighs every
+    // diagonal entry against the largest one, must demote the earlier
+    // entries once the later block raises that maximum.
+    let a = pseudo_random::<f64>(8, 2, 71).scaled(1e-10);
+    let b = pseudo_random::<f64>(8, 2, 72).scaled(1e8);
+
+    let mut inc = IncrementalQr::<f64>::new(8, true);
+    assert_eq!(
+        inc.append(backend, &a).expect("first append"),
+        QrAppendOutcome::FullRank,
+        "the first block is full-rank on its own scale"
+    );
+    assert_eq!(
+        inc.append(backend, &b).expect("second append"),
+        QrAppendOutcome::RankDeficient,
+        "the second block's scale must demote the first block's diagonal"
+    );
+}
+
+#[test]
 fn append_rejects_a_backend_with_a_different_order() {
     let host = Host::shared();
     let mut inc = IncrementalQr::<f64>::new(6, true);
