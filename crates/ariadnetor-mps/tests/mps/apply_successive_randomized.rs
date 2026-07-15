@@ -209,31 +209,30 @@ fn src_rank_deficient_sketch_stops_exactly() {
 fn src_rank_deficiency_after_growth_restores_isometry() {
     let backend = NativeBackend::new();
     // Sum of three product states u_c^{x4} with u = {(1,0), (0,1), (1,1)},
-    // carried on bonds padded to 4: the true rank at the middle cut is 3
-    // while the caps allow p = 4. Starting at sketch_dim = 2 the first
-    // sketch block is full-rank; the growth round then crosses the true
-    // rank, so a LATER block is the rank-deficient one — the case where the
-    // assembled basis can lose orthonormality and only the terminal
-    // re-orthonormalization restores the right-canonical isometry. The
-    // growth round also lands exactly on the per-site cap, so the
-    // deficiency must be honored regardless of which stopping condition
-    // fires.
+    // carried on bonds padded to 6: the true rank at every interior cut is
+    // 3 while the caps allow up to 6. Starting at sketch_dim = 2 the first
+    // sketch block is full-rank; the growth round to 4 then crosses the
+    // true rank, so a LATER block is the rank-deficient one — the case
+    // where the assembled basis can lose orthonormality. At the leftmost
+    // cut the cap (6) is above 4, so the rank-deficient outcome, not the
+    // cap, is what stops the growth there.
+    const PAD: usize = 6;
     let u = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
-    let mut first = vec![0.0; 2 * 4];
-    let mut middle = vec![0.0; 4 * 2 * 4];
-    let mut last = vec![0.0; 4 * 2];
+    let mut first = vec![0.0; 2 * PAD];
+    let mut middle = vec![0.0; PAD * 2 * PAD];
+    let mut last = vec![0.0; PAD * 2];
     for (c, uc) in u.iter().enumerate() {
         for (d, v) in uc.iter().enumerate() {
-            first[d * 4 + c] = *v;
-            middle[c * 2 * 4 + d * 4 + c] = *v;
+            first[d * PAD + c] = *v;
+            middle[c * 2 * PAD + d * PAD + c] = *v;
             last[c * 2 + d] = *v;
         }
     }
     let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
-        rm_dense_tensor(first, vec![1, 2, 4]),
-        rm_dense_tensor(middle.clone(), vec![4, 2, 4]),
-        rm_dense_tensor(middle, vec![4, 2, 4]),
-        rm_dense_tensor(last, vec![4, 2, 1]),
+        rm_dense_tensor(first, vec![1, 2, PAD]),
+        rm_dense_tensor(middle.clone(), vec![PAD, 2, PAD]),
+        rm_dense_tensor(middle, vec![PAD, 2, PAD]),
+        rm_dense_tensor(last, vec![PAD, 2, 1]),
     ]);
     let op = make_identity_mpo(4, 2);
 
@@ -254,6 +253,14 @@ fn src_rank_deficiency_after_growth_restores_isometry() {
             "site {j} must stay an isometry through the deficient growth round"
         );
     }
+    // The leftmost cut's growth is stopped by the rank-deficient outcome
+    // rather than by its cap of 6: an implementation that ignored the
+    // outcome would keep sketching to that cap.
+    assert_eq!(
+        out.bond_dim(0),
+        4,
+        "growth must stop at the rank-deficient append, not at the cap"
+    );
 }
 
 #[test]
