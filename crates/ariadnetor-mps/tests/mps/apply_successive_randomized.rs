@@ -21,6 +21,7 @@ use num_traits::NumCast;
 use super::helpers::{
     assert_dense_close, cm_dense_tensor, densify, is_right_canonical, make_3site_test_mpo,
     make_3site_test_mps, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+    rm_dense_tensor,
 };
 
 /// Fixed-rank SRC at a rank high enough to be clamped to the exactly
@@ -202,6 +203,57 @@ fn src_rank_deficient_sketch_stops_exactly() {
     let out = mps::apply_with_method(&backend, &op, &psi, None, method);
 
     assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&psi), 1e-10);
+}
+
+#[test]
+fn src_rank_deficiency_after_growth_restores_isometry() {
+    let backend = NativeBackend::new();
+    // Sum of three product states u_c^{x4} with u = {(1,0), (0,1), (1,1)},
+    // carried on bonds padded to 4: the true rank at the middle cut is 3
+    // while the caps allow p = 4. Starting at sketch_dim = 2 the first
+    // sketch block is full-rank; the growth round then crosses the true
+    // rank, so a LATER block is the rank-deficient one — the case where the
+    // assembled basis can lose orthonormality and only the terminal
+    // re-orthonormalization restores the right-canonical isometry. The
+    // growth round also lands exactly on the per-site cap, so the
+    // deficiency must be honored regardless of which stopping condition
+    // fires.
+    let u = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+    let mut first = vec![0.0; 2 * 4];
+    let mut middle = vec![0.0; 4 * 2 * 4];
+    let mut last = vec![0.0; 4 * 2];
+    for (c, uc) in u.iter().enumerate() {
+        for (d, v) in uc.iter().enumerate() {
+            first[d * 4 + c] = *v;
+            middle[c * 2 * 4 + d * 4 + c] = *v;
+            last[c * 2 + d] = *v;
+        }
+    }
+    let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
+        rm_dense_tensor(first, vec![1, 2, 4]),
+        rm_dense_tensor(middle.clone(), vec![4, 2, 4]),
+        rm_dense_tensor(middle, vec![4, 2, 4]),
+        rm_dense_tensor(last, vec![4, 2, 1]),
+    ]);
+    let op = make_identity_mpo(4, 2);
+
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(1e-12),
+        sketch_dim: 2,
+        sketch_increment: 2,
+        seed: 3,
+        ..Default::default()
+    });
+    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+
+    assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&psi), 1e-10);
+    assert_eq!(*out.canonical_form(), CanonicalForm::Mixed { center: 0 });
+    for j in 1..out.len() {
+        assert!(
+            is_right_canonical(out.site(j), 1e-10),
+            "site {j} must stay an isometry through the deficient growth round"
+        );
+    }
 }
 
 #[test]

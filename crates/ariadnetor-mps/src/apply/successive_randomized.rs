@@ -4,11 +4,16 @@
 //!
 //! Each output site is the Q factor of a randomized QB decomposition of the
 //! partially compressed product. The test matrix is a Khatri-Rao product of
-//! per-site Gaussian matrices; it is never formed explicitly. Instead, each
-//! sketch column carries a left-to-right recursion of small environment
+//! per-site Gaussian matrices; it is never formed explicitly. Instead, the
+//! sketch columns carry a left-to-right recursion of small environment
 //! tensors, computed once and reused across the sweep, so exactness with
 //! probability one at the representable rank is preserved even though the
-//! same Gaussians serve every site.
+//! same Gaussians serve every site. Columns are created and recursed in
+//! blocks — one batched contraction per site instead of per-column
+//! tensordot chains — and the per-site adaptive loop feeds the resulting
+//! panel blocks to an [`IncrementalQr`], so a growth round costs a
+//! column-block update rather than a full restack, refactorization, and
+//! inversion of everything sketched so far.
 //!
 //! Dense-only: a Gaussian sketch mixes symmetry sectors, so there is no
 //! block-sparse twin (the dispatch arm panics instead).
@@ -22,7 +27,9 @@
 //! reference implementation" in comments below refers to it.
 
 use ariadnetor_core::Scalar;
-use ariadnetor_linalg::{inverse_with_backend, permute_with_backend, qr, tensordot};
+use ariadnetor_linalg::{
+    IncrementalQr, QrAppendOutcome, einsum_with_backend, permute_with_backend, tensordot,
+};
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
 use num_traits::{Float, NumCast, Zero};
 use rand::rngs::StdRng;
@@ -43,140 +50,187 @@ fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
         .expect("cutoff must be representable as a finite value in the scalar's real type")
 }
 
-/// A rank-1 tensor of `len` i.i.d. standard Gaussians. Entries are real
-/// even for complex scalars: the leave-one-out estimator only needs sketch
-/// columns satisfying the isotropy condition `E[w w^dagger] = I`, which
-/// real standard normals provide for complex operands too (the reference
-/// implementation makes the same choice; see the module doc).
-fn gaussian_vec<T: Scalar, R: RngExt>(len: usize, rng: &mut R) -> DenseTensor<T> {
-    let mut v = DenseTensor::<T>::zeros(vec![len]);
-    for i in 0..len {
-        let x: f64 = rng.sample(StandardNormal);
-        let re = <T::Real as NumCast>::from(x)
-            .expect("a standard normal sample is representable in every supported real type");
-        v.set([i], T::from_real_imag(re, T::Real::zero()));
-    }
-    v
-}
-
-/// One sketch column: the prefix chain of environment tensors. Each
-/// Gaussian vector is drawn on the fly and fully absorbed into its site's
-/// environment update, so only the environments persist. `envs[i]` has
-/// shape `(w, chi)` — the MPO / MPS bonds to the right of site `i` — and
-/// absorbs sites `0..=i`. Site `j` of the sweep consumes `envs[j - 1]`;
-/// because the sweep moves right to left, a prefix computed once serves
-/// every later (more-left) site.
-struct SketchColumn<T: Scalar> {
-    envs: Vec<DenseTensor<T>>,
-}
-
-impl<T: Scalar> SketchColumn<T> {
-    fn new() -> Self {
-        Self { envs: Vec::new() }
-    }
-
-    /// Extend this column's environment chain through site `last` (i.e.
-    /// ensure `envs[0..=last]` exist), drawing Gaussians as needed.
-    fn extend_through<B: OpsFor<DenseStorage<T>>>(
-        &mut self,
-        backend: &B,
-        op: &Mpo<DenseStorage<T>, DenseLayout>,
-        psi: &Mps<DenseStorage<T>, DenseLayout>,
-        last: usize,
-        rng: &mut StdRng,
-    ) {
-        for i in self.envs.len()..=last {
-            let w = op.site(i);
-            let a = psi.site(i);
-            let omega = gaussian_vec::<T, _>(w.shape()[2], rng);
-            // (b) x (w, k, b, w') over the bra leg -> (w, k, w').
-            let m = tensordot(backend, &omega, w, &[0], &[2])
-                .expect("sketch contraction: MPO/MPS site legs must be compatible");
-            let boundary;
-            let prev = if i == 0 {
-                boundary = DenseTensor::<T>::ones(vec![1, 1]);
-                &boundary
-            } else {
-                &self.envs[i - 1]
-            };
-            // (w, chi) x (w, k, w') -> (chi, k, w'), then contract the MPS
-            // site over (chi, k) -> (w', chi').
-            let t = tensordot(backend, prev, &m, &[0], &[0])
-                .expect("sketch contraction: MPO/MPS site legs must be compatible");
-            let env = tensordot(backend, &t, a, &[0, 1], &[0, 1])
-                .expect("sketch contraction: MPO/MPS site legs must be compatible");
-            self.envs.push(env);
+/// A `(cols, len)` block of i.i.d. standard Gaussians, one row per sketch
+/// column. Entries are real even for complex scalars: the leave-one-out
+/// estimator only needs sketch columns satisfying the isotropy condition
+/// `E[w w^dagger] = I`, which real standard normals provide for complex
+/// operands too (the reference implementation makes the same choice; see
+/// the module doc). Each column's vector is drawn contiguously, so a
+/// single-column block consumes the stream exactly like a lone vector.
+fn gaussian_block<T: Scalar, R: RngExt>(cols: usize, len: usize, rng: &mut R) -> DenseTensor<T> {
+    let mut m = DenseTensor::<T>::zeros(vec![cols, len]);
+    for c in 0..cols {
+        for i in 0..len {
+            let x: f64 = rng.sample(StandardNormal);
+            let re = <T::Real as NumCast>::from(x)
+                .expect("a standard normal sample is representable in every supported real type");
+            m.set([c, i], T::from_real_imag(re, T::Real::zero()));
         }
     }
+    m
 }
 
-/// Per-column sketch of site `j`: contract the column's environment with
-/// the site pair and the cap, yielding a `(d_bra, cap_dim)` panel.
-fn sketch_panel<T: Scalar, B: OpsFor<DenseStorage<T>>>(
+/// One site's batched environment buffer: physical shape
+/// `(w, chi, capacity)` with the batch axis last, holding the environments
+/// of the first `filled` sketch columns. Capacity grows geometrically so
+/// appends cost amortized `O(block)`, not `O(buffer)`.
+struct EnvBuf<T: Scalar> {
+    data: DenseTensorData<T>,
+    filled: usize,
+}
+
+impl<T: Scalar> EnvBuf<T> {
+    /// Append a `(w, chi, s)` column block. The block's memory order sets
+    /// the buffer's order at creation and must match on later appends
+    /// (`replace_slice` enforces it); every block comes from the same
+    /// einsum pipeline, so the orders agree by construction.
+    fn append(&mut self, block: &DenseTensorData<T>) {
+        let s = block.shape()[2];
+        let (w, chi, cap) = (
+            self.data.shape()[0],
+            self.data.shape()[1],
+            self.data.shape()[2],
+        );
+        if self.filled + s > cap {
+            let new_cap = (cap * 2).max(self.filled + s);
+            let mut grown =
+                DenseTensorData::zeros_in_order(vec![w, chi, new_cap], self.data.order());
+            let prefix = self.data.slice(&[(0, w), (0, chi), (0, self.filled)]);
+            grown.replace_slice(&prefix, &[0, 0, 0]);
+            self.data = grown;
+        }
+        self.data.replace_slice(block, &[0, 0, self.filled]);
+        self.filled += s;
+    }
+
+    /// Copy out the environments of columns `c0..c1` as a `(w, chi, c1-c0)`
+    /// tensor.
+    fn range(&self, c0: usize, c1: usize) -> DenseTensorData<T> {
+        assert!(c0 < c1 && c1 <= self.filled, "column range out of bounds");
+        let (w, chi) = (self.data.shape()[0], self.data.shape()[1]);
+        self.data.slice(&[(0, w), (0, chi), (c0, c1)])
+    }
+}
+
+/// Per-site batched environment storage. `bufs[i]` holds, for every sketch
+/// column created so far, the environment absorbing sites `0..=i` — shape
+/// `(w, chi)` over the MPO / MPS bonds to the right of site `i`, stacked
+/// along a trailing batch axis. Site `j` of the sweep consumes `bufs[j-1]`;
+/// because the sweep moves right to left and every column is recursed
+/// through `0..=j-1` at creation, the prefix a later (more-left) site needs
+/// is always present.
+struct EnvStore<T: Scalar> {
+    bufs: Vec<Option<EnvBuf<T>>>,
+}
+
+impl<T: Scalar> EnvStore<T> {
+    /// One slot per site for uniform indexing; the last slot stays `None`
+    /// forever, because the recursion stops at site `n - 2` (site `n - 1`,
+    /// the sweep's starting point, consumes `bufs[n - 2]`).
+    fn new(n: usize) -> Self {
+        Self {
+            bufs: (0..n).map(|_| None).collect(),
+        }
+    }
+
+    /// Number of sketch columns created so far. Every column's recursion
+    /// starts at site 0, so the first buffer's fill count is the global
+    /// column count.
+    fn ncols(&self) -> usize {
+        self.bufs[0].as_ref().map_or(0, |b| b.filled)
+    }
+
+    /// Drop a site's buffer once the sweep has moved past its last reader.
+    fn release(&mut self, site: usize) {
+        self.bufs[site] = None;
+    }
+
+    fn append(&mut self, site: usize, block: &DenseTensorData<T>) {
+        match &mut self.bufs[site] {
+            Some(buf) => buf.append(block),
+            None => {
+                self.bufs[site] = Some(EnvBuf {
+                    data: block.clone(),
+                    filled: block.shape()[2],
+                });
+            }
+        }
+    }
+
+    fn range(&self, site: usize, c0: usize, c1: usize) -> DenseTensorData<T> {
+        self.bufs[site]
+            .as_ref()
+            .expect("environments are recursed through a site before it is read")
+            .range(c0, c1)
+    }
+}
+
+/// Create `s` fresh sketch columns and run their environment recursion
+/// through sites `0..=last` in one batched contraction per site, appending
+/// each site's `(w, chi, s)` block to the store. Gaussians are drawn on the
+/// fly and fully absorbed, so only the environments persist.
+///
+/// Of the pairwise contractions only the environment-carrying step has the
+/// batch index on both operands; the Gaussian absorption and the MPS-site
+/// contraction fold it into a free GEMM dimension.
+fn extend_new_columns<T, B>(
     backend: &B,
-    env: &DenseTensor<T>,
+    op: &Mpo<DenseStorage<T>, DenseLayout>,
+    psi: &Mps<DenseStorage<T>, DenseLayout>,
+    envs: &mut EnvStore<T>,
+    last: usize,
+    s: usize,
+    rng: &mut StdRng,
+) where
+    T: Scalar,
+    B: OpsFor<DenseStorage<T>>,
+{
+    // Left boundary: dummy (w = 1, chi = 1) environments for every column.
+    let mut cur = DenseTensor::<T>::ones(vec![1, 1, s]);
+    for i in 0..=last {
+        let w = op.site(i);
+        let a = psi.site(i);
+        let omega = gaussian_block::<T, _>(s, w.shape()[2], rng);
+        // (c, b) x (w, k, b, w') x (w, chi, c) x (chi, k, chi') -> (w', chi', c).
+        let next = einsum_with_backend(backend, &[&omega, w, &cur, a], "cb,wkbv,wxc,xky->vyc")
+            .expect("sketch recursion: MPO/MPS site legs must be compatible");
+        envs.append(i, next.data());
+        cur = next;
+    }
+}
+
+/// Batched sketch panels for one column block at site `j`: contract the
+/// columns' environments with the site pair and the cap in one pass,
+/// yielding a `(d_bra * cap_dim, s)` matrix whose fused row leg matches the
+/// `split_leg` applied to the Q factor.
+fn sketch_panel_block<T: Scalar, B: OpsFor<DenseStorage<T>>>(
+    backend: &B,
+    env_block: &DenseTensor<T>,
     w: &DenseTensor<T>,
     a: &DenseTensor<T>,
     cap: &DenseTensor<T>,
 ) -> DenseTensor<T> {
-    // (w, chi) x (w, k, b, w') -> (chi, k, b, w')
-    let m = tensordot(backend, env, w, &[0], &[0])
+    // (w, chi, c) x (w, k, b, w') x (chi, k, chi') x (z, w', chi') -> (b, z, c);
+    // the batch index rides through as a free GEMM dimension at every step.
+    let t = einsum_with_backend(backend, &[env_block, w, a, cap], "wxc,wkbv,xky,zvy->bzc")
         .expect("sketch contraction: MPO/MPS site legs must be compatible");
-    // ... x (chi, k, chi') -> (b, w', chi')
-    let t = tensordot(backend, &m, a, &[0, 1], &[0, 1])
-        .expect("sketch contraction: MPO/MPS site legs must be compatible");
-    // ... x (c, w', chi') -> (b, c)
-    tensordot(backend, &t, cap, &[1, 2], &[1, 2])
-        .expect("sketch contraction: MPO/MPS site legs must be compatible")
+    t.fuse_legs(0..2)
 }
 
-/// Leave-one-out error estimate from the square triangular factor `R`.
-///
-/// Returns `None` when `R` is numerically rank-deficient (some
-/// `|R_ii| <= eps * p * max_j |R_jj|`): for a Gaussian sketch this happens
-/// with probability one only when the sketch already covers the exact rank
-/// of the compressed product, so the caller treats `None` as "converged"
-/// rather than inverting a singular matrix.
-///
-/// Otherwise the estimate is `sqrt((1/p) * sum_i ||g_i||^-2)` over the
-/// columns `g_i` of `G = R^{-dagger}` (arXiv:2504.06475), computed as the
-/// row norms of `R^{-1}` — the same quantities, for one plain inversion
-/// with no conjugate-transpose materialization. Elements are read through
-/// the order-aware accessor, never through raw storage strides.
-fn leave_one_out_estimate<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    r: &DenseTensor<T>,
-) -> Option<T::Real> {
-    let p = r.shape()[0];
-    debug_assert_eq!(p, r.shape()[1], "R must be square for the estimator");
-
-    let mut max_diag = T::Real::zero();
-    for i in 0..p {
-        let d = r.get([i, i]).abs();
-        if d > max_diag {
-            max_diag = d;
-        }
+/// Leave-one-out error estimate from the squared row norms of `R^-1`
+/// maintained by the incremental QR: `sqrt((1/p) * sum_i ||g_i||^-2)` over
+/// the columns `g_i` of `G = R^-dagger` (arXiv:2504.06475) — row norms of
+/// `R^-1` are the same quantities. Rank deficiency is reported by the QR
+/// append itself ([`QrAppendOutcome::RankDeficient`]) before this runs, so
+/// the row norms fed here always come from an invertible factor.
+fn leave_one_out_estimate<T: Scalar>(row_sq_norms: &[T::Real]) -> T::Real {
+    let p = row_sq_norms.len();
+    let mut inv_sq_sum = T::Real::zero();
+    for r in row_sq_norms {
+        inv_sq_sum = inv_sq_sum + r.recip();
     }
     let p_real = <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
-    let tol = T::Real::epsilon() * p_real * max_diag;
-    for i in 0..p {
-        if r.get([i, i]).abs() <= tol {
-            return None;
-        }
-    }
-
-    let g = inverse_with_backend(backend, r, 1)
-        .expect("R inversion: diagonal checked non-singular above");
-    let mut inv_sq_sum = T::Real::zero();
-    for i in 0..p {
-        let mut row_sq = T::Real::zero();
-        for col in 0..p {
-            let x = g.get([i, col]).abs();
-            row_sq = row_sq + x * x;
-        }
-        inv_sq_sum = inv_sq_sum + row_sq.recip();
-    }
-    Some((inv_sq_sum / p_real).sqrt())
+    (inv_sq_sum / p_real).sqrt()
 }
 
 /// Validate the SRC parameter struct. Every field is checked in every mode
@@ -255,8 +309,11 @@ where
     let maxdim_global = src
         .max_dim
         .unwrap_or_else(|| op.max_bond_dim() * psi.max_bond_dim());
+    // Adaptive mode reads the estimator off the incremental QR; fixed mode
+    // does a single append and never consults it, so it skips the tracking.
+    let adaptive = src.output_dim.is_none();
 
-    let mut columns: Vec<SketchColumn<T>> = Vec::new();
+    let mut envs = EnvStore::<T>::new(n);
     // Right boundary cap: dummy (c = 1, w' = 1, chi' = 1) so the last site
     // goes through the same code path as the interior ones.
     let mut cap = DenseTensor::<T>::ones(vec![1, 1, 1]);
@@ -275,54 +332,82 @@ where
         // bond), bound the rank of the matrix this site's QB step sees.
         let current_maxdim = (w.shape()[0] * a.shape()[0]).min(maxdim_global).min(rows);
         let current_mindim = src.min_dim.min(current_maxdim);
-        let mut p = match src.output_dim {
+        let mut target_p = match src.output_dim {
             Some(k) => k.min(current_maxdim),
             None => src.sketch_dim.min(current_maxdim).max(current_mindim),
         };
 
-        let mut panels: Vec<DenseTensor<T>> = Vec::new();
-        let q = loop {
-            columns.resize_with(p.max(columns.len()), SketchColumn::new);
-            for column in columns.iter_mut().take(p).skip(panels.len()) {
-                column.extend_through(backend, op, psi, j - 1, &mut rng);
-                panels.push(sketch_panel(backend, &column.envs[j - 1], w, a, &cap));
+        let mut inc = IncrementalQr::<T>::new(rows, adaptive);
+        let mut norm_sq = T::Real::zero();
+        loop {
+            let columns_created = envs.ncols();
+            if target_p > columns_created {
+                extend_new_columns(
+                    backend,
+                    op,
+                    psi,
+                    &mut envs,
+                    j - 1,
+                    target_p - columns_created,
+                    &mut rng,
+                );
             }
-            // Stack the (d, cap_dim) panels into Y (d, cap_dim, p). All
-            // panels come from the same tensordot pipeline, so they share
-            // one memory order, which `stack` requires.
-            let panel_data: Vec<&DenseTensorData<T>> = panels.iter().map(|t| t.data()).collect();
-            let y = DenseTensor::from_data(DenseTensorData::stack(&panel_data, 2));
-            // p <= rows (so R is square, as the estimator requires) is
-            // enforced by the `current_maxdim` clamp above, which every
-            // assignment to p passes through.
-            debug_assert!(p <= rows, "sketch dimension exceeds the QR row count");
-            let (q, r) = qr(backend, &y, 2).expect("sketch QR: shape validated above");
+            let c0 = inc.ncols();
+            let env_block = DenseTensor::from_data(envs.range(j - 1, c0, target_p));
+            let panel = sketch_panel_block(backend, &env_block, w, a, &cap);
+            // Fixed mode breaks before either consumer of the accumulated
+            // norm (the zero-norm break and the estimator), so the panel
+            // pass is adaptive-only work.
+            if adaptive {
+                let panel_norm = panel.norm();
+                norm_sq = norm_sq + panel_norm * panel_norm;
+            }
+            // The `current_maxdim` clamp above keeps the block within the
+            // factorization's bounds, so a failure here is an unrecoverable
+            // backend error, not a rejected input.
+            let outcome = inc.append(backend, &panel).expect(
+                "sketch QR append: the clamps keep the block within the row budget, \
+                     so only an unrecoverable backend kernel failure lands here",
+            );
+            let p = inc.ncols();
 
-            if src.output_dim.is_some() || p == current_maxdim {
-                break q;
+            if !adaptive || p == current_maxdim {
+                break;
             }
-            let y_norm = y.norm();
-            if y_norm.is_zero() {
+            if norm_sq.is_zero() {
                 // Zero product at this cut: any orthonormal basis is exact.
-                break q;
+                break;
             }
-            match leave_one_out_estimate(backend, &r) {
+            if outcome == QrAppendOutcome::RankDeficient {
                 // Rank-deficient sketch = the exact rank is already covered.
-                None => break q,
-                Some(err) => {
-                    let p_real = <T::Real as NumCast>::from(p)
-                        .expect("bond dimensions fit in the real type");
-                    let norm_est = y_norm / p_real.sqrt();
-                    let cutoff = cutoff_real.expect("validated: adaptive mode has a cutoff");
-                    // p started at or above the clamped min_dim and only
-                    // grows, so the cutoff test alone decides convergence.
-                    if err <= cutoff * norm_est {
-                        break q;
-                    }
-                }
+                break;
             }
-            p = p.saturating_add(src.sketch_increment).min(current_maxdim);
-        };
+            let row_sq = inc
+                .r_inverse_row_sq_norms()
+                .expect("adaptive mode tracks the inverse and this append was full-rank");
+            let err = leave_one_out_estimate::<T>(row_sq);
+            let p_real =
+                <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
+            let norm_est = norm_sq.sqrt() / p_real.sqrt();
+            let cutoff = cutoff_real.expect("validated: adaptive mode has a cutoff");
+            // p started at or above the clamped min_dim and only grows, so
+            // the cutoff test alone decides convergence.
+            if err <= cutoff * norm_est {
+                break;
+            }
+            target_p = p.saturating_add(src.sketch_increment).min(current_maxdim);
+        }
+
+        // The terminal accessor re-orthonormalizes the assembled basis
+        // whenever more than one block was appended (fixed mode's single
+        // plain Householder QR is returned as is), so the site tensor is an
+        // isometry regardless of how block Gram-Schmidt fared across the
+        // growth rounds. The cost is at most one O(rows p^2) factorization
+        // per site — the same as a single full QR over the accumulated
+        // sketch.
+        let q = inc
+            .into_orthonormal_q(backend)
+            .expect("terminal re-orthonormalization: Q is a valid matrix");
 
         // Q columns are orthonormal over the fused (d, cap_dim) rows, so the
         // permuted site is an isometry from its left bond into (physical x
@@ -343,6 +428,10 @@ where
         debug_assert_eq!(cap.shape()[0], k);
 
         rev_sites.push(site);
+        // This iteration was `bufs[j - 1]`'s last reader (site j - 1 reads
+        // `bufs[j - 2]`), so its environments can be freed now instead of
+        // holding every site's buffer until the sweep ends.
+        envs.release(j - 1);
     }
 
     // First site: deterministic contraction with the final cap; it carries
