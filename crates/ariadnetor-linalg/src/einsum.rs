@@ -387,13 +387,24 @@ fn einsum_multi<T: Scalar>(
 /// Compute intermediate output indices for a pairwise contraction step.
 ///
 /// Keeps indices from (lhs union rhs) that appear in the final output or in any
-/// future input tensor, preserving the order of first appearance.
+/// future input tensor, preserving the order of first appearance. The LAST
+/// step (no future inputs) instead emits the requested output order itself:
+/// first-appearance order is only an internal labeling, and no reorder runs
+/// after the pairwise loop, so the final step's notation must carry the
+/// caller's order. The index sets coincide either way — every surviving
+/// index at the last step is a final-output index and vice versa (parse
+/// validation rejects output indices absent from the inputs) — and
+/// `einsum_pair` handles arbitrary output orders.
 fn compute_intermediate_output(
     lhs: &[u8],
     rhs: &[u8],
     future_inputs: &[Vec<u8>],
     final_output: &[u8],
 ) -> Vec<u8> {
+    if future_inputs.is_empty() {
+        return final_output.to_vec();
+    }
+
     // Indices that must survive this contraction step
     let mut needed: HashSet<u8> = final_output.iter().copied().collect();
     for future in future_inputs {
