@@ -338,7 +338,12 @@ where
         };
 
         let mut inc = IncrementalQr::<T>::new(rows, adaptive);
-        let mut norm_sq = T::Real::zero();
+        // Accumulated Frobenius norm of the sketch. Chaining `hypot` keeps
+        // the running value on the norms' own scale: squaring them to sum
+        // would flush a legitimately small sketch to zero (and so report a
+        // zero product) or overflow a large one, making the stopping rule
+        // scale-dependent for a criterion that is not.
+        let mut norm = T::Real::zero();
         loop {
             let columns_created = envs.ncols();
             if target_p > columns_created {
@@ -359,8 +364,7 @@ where
             // norm (the zero-norm break and the estimator), so the panel
             // pass is adaptive-only work.
             if adaptive {
-                let panel_norm = panel.norm();
-                norm_sq = norm_sq + panel_norm * panel_norm;
+                norm = norm.hypot(panel.norm());
             }
             // The `current_maxdim` clamp above keeps the block within the
             // factorization's bounds, so a failure here is an unrecoverable
@@ -374,7 +378,7 @@ where
             if !adaptive || p == current_maxdim {
                 break;
             }
-            if norm_sq.is_zero() {
+            if norm.is_zero() {
                 // Zero product at this cut: any orthonormal basis is exact.
                 break;
             }
@@ -388,7 +392,7 @@ where
             let err = leave_one_out_estimate::<T>(row_sq);
             let p_real =
                 <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
-            let norm_est = norm_sq.sqrt() / p_real.sqrt();
+            let norm_est = norm / p_real.sqrt();
             let cutoff = cutoff_real.expect("validated: adaptive mode has a cutoff");
             // p started at or above the clamped min_dim and only grows, so
             // the cutoff test alone decides convergence.
