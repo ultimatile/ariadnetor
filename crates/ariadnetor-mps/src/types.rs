@@ -243,7 +243,7 @@ pub enum ApplyMethod {
     /// materializing the `w_R * chi_R` product MPS. Each site is the Q
     /// factor of a randomized QB decomposition whose test matrix is a
     /// Khatri-Rao product of per-site Gaussian matrices, realized as
-    /// cached per-column environment recursions; the output bond is
+    /// cached batched environment recursions; the output bond is
     /// chosen adaptively from a leave-one-out error estimate (see
     /// [`SuccessiveRandomizedParams`]). Algorithm from arXiv:2504.06475.
     ///

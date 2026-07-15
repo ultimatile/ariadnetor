@@ -21,6 +21,7 @@ use num_traits::NumCast;
 use super::helpers::{
     assert_dense_close, cm_dense_tensor, densify, is_right_canonical, make_3site_test_mpo,
     make_3site_test_mps, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+    rm_dense_tensor,
 };
 
 /// Fixed-rank SRC at a rank high enough to be clamped to the exactly
@@ -115,6 +116,52 @@ fn src_adaptive_meets_relative_tolerance() {
 }
 
 #[test]
+fn src_adaptive_is_scale_invariant() {
+    let backend = NativeBackend::new();
+    // Which ranks the adaptive sweep selects is a scale-free property: the
+    // stopping rule compares an error estimate against a fraction of the
+    // sketch's own norm. Scaling one site by 1e200 puts every panel norm
+    // where its square overflows f64 while the norm itself stays
+    // representable, so the same seed must still select the same bonds.
+    let psi = make_4site_mps();
+    let scaled: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(
+        (0..psi.len())
+            .map(|j| {
+                let site = psi.site(j);
+                if j == 0 {
+                    site.scaled(1e200)
+                } else {
+                    site.clone()
+                }
+            })
+            .collect(),
+    );
+    let op = make_total_n_dense_mpo(4);
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(1e-6),
+        sketch_dim: 1,
+        sketch_increment: 1,
+        seed: 42,
+        ..Default::default()
+    });
+
+    let unit = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let big = mps::apply_with_method(&backend, &op, &scaled, None, method);
+
+    assert!(
+        unit.max_bond_dim() > 1,
+        "the unit-scale reference must exercise growth"
+    );
+    for j in 0..unit.len() - 1 {
+        assert_eq!(
+            big.bond_dim(j),
+            unit.bond_dim(j),
+            "bond {j} must not depend on the state's scale"
+        );
+    }
+}
+
+#[test]
 fn src_complex_matches_streaming_naive() {
     type C = Complex<f64>;
     let backend = NativeBackend::new();
@@ -202,6 +249,69 @@ fn src_rank_deficient_sketch_stops_exactly() {
     let out = mps::apply_with_method(&backend, &op, &psi, None, method);
 
     assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&psi), 1e-10);
+}
+
+#[test]
+fn src_rank_deficiency_after_growth_restores_isometry() {
+    let backend = NativeBackend::new();
+    // Sum of three product states u_c^{x4} with u = {(1,0), (0,1), (1,1)},
+    // carried on bonds padded to 6: the true rank at every interior cut is
+    // 3 while the caps allow up to 6. Starting at sketch_dim = 2 the first
+    // sketch block is full-rank; the growth round to 4 then crosses the
+    // true rank, so a LATER block is the rank-deficient one — the case
+    // where the assembled basis can lose orthonormality. At the leftmost
+    // cut the cap (6) is above 4, so the rank-deficient outcome, not the
+    // cap, is what stops the growth there.
+    const PAD: usize = 6;
+    let u = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+    let mut first = vec![0.0; 2 * PAD];
+    let mut middle = vec![0.0; PAD * 2 * PAD];
+    let mut last = vec![0.0; PAD * 2];
+    for (c, uc) in u.iter().enumerate() {
+        for (d, v) in uc.iter().enumerate() {
+            first[d * PAD + c] = *v;
+            middle[c * 2 * PAD + d * PAD + c] = *v;
+            last[c * 2 + d] = *v;
+        }
+    }
+    let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
+        rm_dense_tensor(first, vec![1, 2, PAD]),
+        rm_dense_tensor(middle.clone(), vec![PAD, 2, PAD]),
+        rm_dense_tensor(middle, vec![PAD, 2, PAD]),
+        rm_dense_tensor(last, vec![PAD, 2, 1]),
+    ]);
+    let op = make_identity_mpo(4, 2);
+
+    // A zero cutoff makes the stopping reason unambiguous: the estimator's
+    // `err <= cutoff * norm` can never hold for a finite inverse, so the
+    // only things that can end the growth are the cap and the
+    // rank-deficient outcome.
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(0.0),
+        sketch_dim: 2,
+        sketch_increment: 2,
+        seed: 3,
+        ..Default::default()
+    });
+    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+
+    assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&psi), 1e-10);
+    assert_eq!(*out.canonical_form(), CanonicalForm::Mixed { center: 0 });
+    for j in 1..out.len() {
+        assert!(
+            is_right_canonical(out.site(j), 1e-10),
+            "site {j} must stay an isometry through the deficient growth round"
+        );
+    }
+    // The leftmost cut's cap is 6, and the cutoff cannot stop anything, so
+    // a bond of 4 pins the rank-deficient outcome as the stopping reason:
+    // an implementation that ignored or never reported it would sketch on
+    // to the cap.
+    assert_eq!(
+        out.bond_dim(0),
+        4,
+        "growth must stop at the rank-deficient append, not at the cap"
+    );
 }
 
 #[test]

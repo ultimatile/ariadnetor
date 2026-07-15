@@ -49,5 +49,9 @@ path = "src/lib.rs"
 name = "dmrg_local_eigensolver"
 harness = false
 
+[[bench]]
+name = "mpo_mps_apply"
+harness = false
+
 [lints]
 workspace = true
