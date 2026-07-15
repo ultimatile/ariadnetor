@@ -480,3 +480,53 @@ fn test_einsum_batched_multi_contracted_different_order() {
         }
     }
 }
+
+/// Four-operand contraction whose requested output order `(v, y, c)`
+/// differs from the first-appearance order `(c, v, y)` of the surviving
+/// indices. The pairwise recursion must emit the requested order, not its
+/// internal first-appearance labeling (which is only an implementation
+/// detail of the interior steps). The middle step also carries an index
+/// (`c`) in both operands and the output, so the per-slice batched path is
+/// exercised alongside the plain GEMM path.
+#[test]
+fn multi_tensor_honors_requested_output_order() {
+    // Row-major fills through the same `cm` helper the rest of this file
+    // uses, with distinct non-symmetric values so axis mixups cannot cancel.
+    let filled = |shape: Vec<usize>| {
+        let total: usize = shape.iter().product();
+        let data = (1..=total).map(|i| (i as f64 * 0.7).sin()).collect();
+        cm(data, shape)
+    };
+    let omega = filled(vec![2, 2]); // (c, b)
+    let w = filled(vec![2, 2, 2, 2]); // (w, k, b, v)
+    let e = filled(vec![2, 4, 2]); // (w, x, c)
+    let a = filled(vec![4, 2, 4]); // (x, k, y)
+
+    let out = einsum(&[&omega, &w, &e, &a], "cb,wkbv,wxc,xky->vyc").expect("einsum");
+    assert_eq!(out.shape(), &[2, 4, 2], "requested output order (v, y, c)");
+
+    for v in 0..2 {
+        for y in 0..4 {
+            for c in 0..2 {
+                let mut want = 0.0;
+                for b in 0..2 {
+                    for wi in 0..2 {
+                        for k in 0..2 {
+                            for x in 0..4 {
+                                want += omega.get([c, b])
+                                    * w.get([wi, k, b, v])
+                                    * e.get([wi, x, c])
+                                    * a.get([x, k, y]);
+                            }
+                        }
+                    }
+                }
+                let got = out.get([v, y, c]);
+                assert!(
+                    (got - want).abs() < 1e-12,
+                    "mismatch at (v={v}, y={y}, c={c}): got {got}, want {want}"
+                );
+            }
+        }
+    }
+}
