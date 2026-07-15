@@ -58,6 +58,7 @@ mod einsum;
 mod error;
 mod expm;
 mod host_ops;
+mod incremental_qr;
 mod perm;
 mod reorder_route;
 mod scalar_ops;
@@ -82,6 +83,7 @@ pub use block_sparse_decomp::{
 };
 pub use decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
 pub use eigen::{EigResult, EighResult, TridiagEighResult};
+pub use incremental_qr::{IncrementalQr, QrAppendOutcome};
 
 // Tensor-keyed dispatch: the unified `svd` / `trunc_svd` / `qr` / `lq`
 // (decomposition) and `contract` entry points serve both Dense and BlockSparse
