@@ -176,11 +176,11 @@ impl<T: Scalar> IncrementalQr<T> {
     /// matrix of `nrows` rows, is empty, would push the column count past
     /// `nrows` (the triangular factor must stay square for the rank test
     /// and the inverse update), or comes from a backend whose memory order
-    /// differs from the one the factorization was started with — a single
-    /// factorization must be driven by a single backend, since its stored
-    /// factors are assembled from the kernels' output buffers. Failures of
-    /// the underlying backend kernels also propagate. In every `Err` case
-    /// the factorization state is unchanged.
+    /// differs from the one the factorization was started with — the
+    /// stored factors are assembled from the kernels' output buffers, so
+    /// every backend driving one factorization must agree on that order.
+    /// Failures of the underlying backend kernels also propagate. In every
+    /// `Err` case the factorization state is unchanged.
     ///
     /// # Panics
     ///
@@ -213,7 +213,7 @@ impl<T: Scalar> IncrementalQr<T> {
             if q.data().order() != order {
                 return Err(LinalgError::InvalidArgument(format!(
                     "backend produces {order:?} but the factorization holds {:?}; \
-                     one IncrementalQr must be driven by a single backend",
+                     every backend driving one IncrementalQr must agree on the order",
                     q.data().order()
                 )));
             }
