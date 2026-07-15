@@ -15,10 +15,11 @@
 //! `O(p^2 s)` per append instead of the `O(p^3)` full inversion a
 //! from-scratch recompute pays every round. The maintained inverse needs
 //! no refresh pass: the row-norm functional the estimators consume is
-//! dominated by its well-conditioned rows, which the incremental update
-//! computes to full accuracy, so it tracks a from-scratch inversion far
-//! inside the estimators' own stochastic spread even next to the rank
-//! tolerance.
+//! dominated by its small-norm rows — the well-conditioned directions,
+//! where the update is accurate — while the ill-conditioned rows enter
+//! only through near-zero reciprocals. So the maintained value tracks a
+//! from-scratch inversion to well within the estimators' own stochastic
+//! spread even for appends sitting just above the rank tolerance.
 //!
 //! The accumulated basis is NOT unconditionally orthonormal, in two ways.
 //! A rank-deficient append (detected from the maintained diagonal of `R`,
