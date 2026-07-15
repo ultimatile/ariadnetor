@@ -79,6 +79,39 @@ impl ComputeBackend for SolveFailingBackend {
 
 impl<T: Scalar> OpsFor<DenseStorage<T>> for SolveFailingBackend {}
 
+/// Backend that reports the opposite memory order to the host's, standing
+/// in for a second backend whose kernels emit a different layout.
+struct FlippedOrderBackend {
+    inner: NativeBackend,
+}
+
+impl ComputeBackend for FlippedOrderBackend {
+    fn name(&self) -> &'static str {
+        "flipped-order"
+    }
+
+    fn device_type(&self) -> DeviceType {
+        self.inner.device_type()
+    }
+
+    fn preferred_order(&self) -> MemoryOrder {
+        match self.inner.preferred_order() {
+            MemoryOrder::RowMajor => MemoryOrder::ColumnMajor,
+            MemoryOrder::ColumnMajor => MemoryOrder::RowMajor,
+        }
+    }
+
+    fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.gemm(desc)
+    }
+
+    fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.transpose(desc)
+    }
+}
+
+impl<T: Scalar> OpsFor<DenseStorage<T>> for FlippedOrderBackend {}
+
 /// `a - b` for scalars without a `Sub` bound (`Scalar` carries none).
 fn sub<T: Scalar>(a: T, b: T) -> T {
     a + b.scale_real(-T::Real::one())
@@ -290,6 +323,29 @@ fn append_after_termination_panics() {
 }
 
 #[test]
+fn append_rejects_a_backend_with_a_different_order() {
+    let host = Host::shared();
+    let mut inc = IncrementalQr::<f64>::new(6, true);
+    inc.append(host.as_ref(), &pseudo_random::<f64>(6, 2, 61))
+        .expect("first append");
+    let ncols = inc.ncols();
+
+    // A second backend whose kernels emit the opposite order would have the
+    // stored factors and the new block disagree on layout; the append must
+    // be rejected up front rather than fail deep inside an assembly step.
+    let other = FlippedOrderBackend {
+        inner: NativeBackend::new(),
+    };
+    assert!(matches!(
+        inc.append(&other, &pseudo_random::<f64>(6, 2, 62)),
+        Err(LinalgError::InvalidArgument(_))
+    ));
+    assert_eq!(inc.ncols(), ncols, "a rejected append must not mutate");
+    inc.append(host.as_ref(), &pseudo_random::<f64>(6, 2, 63))
+        .expect("the original backend still works");
+}
+
+#[test]
 fn tracking_off_reports_no_row_norms() {
     let backend = Host::shared();
     let backend = backend.as_ref();
@@ -355,6 +411,9 @@ fn backend_failure_mid_append_leaves_state_unchanged() {
         .expect("tracking is on")
         .to_vec();
     let q_before = inc.q.as_ref().expect("appended").clone();
+    let g_before = inc.g.as_ref().expect("tracking is on").clone();
+    let diag_before = inc.r_diag.clone();
+    let appends_before = inc.appends;
 
     // Orthogonalization succeeds, the inversion does not — the point where a
     // mutate-then-compute order would leave the factorization half-grown.
@@ -374,6 +433,19 @@ fn backend_failure_mid_append_leaves_state_unchanged() {
         0.0,
         "the basis must not absorb a failed block"
     );
+    // The private half of the state too: a mutation here would corrupt
+    // every later estimate or repair decision without moving `ncols`.
+    assert_eq!(
+        frob_dist(inc.g.as_ref().expect("tracking is on"), &g_before),
+        0.0,
+        "the maintained inverse must not change on failure"
+    );
+    assert_eq!(inc.r_diag, diag_before, "the diagonal must not grow");
+    assert_eq!(
+        inc.appends, appends_before,
+        "the append count must not grow"
+    );
+    assert!(!inc.terminated, "a backend failure must not terminate");
     // The factorization stays usable: a later append on a working backend
     // proceeds as if the failure never happened.
     let host = Host::shared();

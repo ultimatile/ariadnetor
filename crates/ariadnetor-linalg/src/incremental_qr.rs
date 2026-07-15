@@ -3,9 +3,9 @@
 //! [`IncrementalQr`] grows a thin QR factorization one column block at a
 //! time without refactorizing the columns already absorbed: each append
 //! runs block classical Gram-Schmidt with one reorthogonalization pass
-//! (BCGS2). The single extra projection is what keeps the assembled basis
-//! orthonormal to working precision — one pass alone degrades with the
-//! block's condition number.
+//! (BCGS2). The single extra projection is what makes the accumulated
+//! basis orthonormal to working precision in the well-conditioned case —
+//! one pass alone already degrades with the block's condition number.
 //!
 //! Optionally the inverse triangular factor is maintained across appends
 //! through the block-triangular inverse identity
@@ -72,8 +72,10 @@ pub enum QrAppendOutcome {
 pub struct IncrementalQr<T: Scalar> {
     nrows: usize,
     track_r_inverse: bool,
-    /// Accumulated orthonormal basis, `nrows x ncols`. `None` until the
-    /// first append.
+    /// Accumulated basis, `nrows x ncols`; orthonormal only to whatever
+    /// precision the appends achieved (see the module doc), which is why
+    /// [`Self::into_orthonormal_q`], not this field, is what callers get.
+    /// `None` until the first append.
     q: Option<DenseTensor<T>>,
     /// Maintained `R^-1`, `ncols x ncols` upper triangular. `None` unless
     /// `track_r_inverse` and at least one full-rank append happened.
@@ -170,11 +172,14 @@ impl<T: Scalar> IncrementalQr<T> {
     /// # Errors
     ///
     /// Returns [`LinalgError::InvalidArgument`] when the block is not a
-    /// matrix of `nrows` rows, is empty, or would push the column count
-    /// past `nrows` (the triangular factor must stay square for the rank
-    /// test and the inverse update). Failures of the underlying backend
-    /// kernels also propagate. In every `Err` case the factorization
-    /// state is unchanged.
+    /// matrix of `nrows` rows, is empty, would push the column count past
+    /// `nrows` (the triangular factor must stay square for the rank test
+    /// and the inverse update), or comes from a backend whose memory order
+    /// differs from the one the factorization was started with — a single
+    /// factorization must be driven by a single backend, since its stored
+    /// factors are assembled from the kernels' output buffers. Failures of
+    /// the underlying backend kernels also propagate. In every `Err` case
+    /// the factorization state is unchanged.
     ///
     /// # Panics
     ///
@@ -201,6 +206,16 @@ impl<T: Scalar> IncrementalQr<T> {
             return Err(LinalgError::InvalidArgument(
                 "block must have at least one column".to_string(),
             ));
+        }
+        if let Some(q) = &self.q {
+            let order = backend.preferred_order();
+            if q.data().order() != order {
+                return Err(LinalgError::InvalidArgument(format!(
+                    "backend produces {order:?} but the factorization holds {:?}; \
+                     one IncrementalQr must be driven by a single backend",
+                    q.data().order()
+                )));
+            }
         }
         let p_old = self.ncols();
         if p_old + s > self.nrows {
