@@ -50,8 +50,10 @@ mod tests;
 /// Result of one [`IncrementalQr::append`] call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QrAppendOutcome {
-    /// The appended block extended the factorization; `Q` stays
-    /// orthonormal and the inverse state (when tracked) was updated.
+    /// The appended block passed the rank test, so it extended the
+    /// factorization and the inverse state (when tracked) was updated.
+    /// This is not an orthonormality claim about the accumulated basis —
+    /// only [`IncrementalQr::into_orthonormal_q`] guarantees that.
     FullRank,
     /// The maintained diagonal of `R` failed the rank test after the
     /// append. The block's columns were still absorbed so the span stays

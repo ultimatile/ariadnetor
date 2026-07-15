@@ -1,5 +1,10 @@
 use ariadnetor_core::Scalar;
-use ariadnetor_tensor::{DenseTensor, DenseTensorData, Host};
+use ariadnetor_core::backend::{
+    BackendError, ComputeBackend, DeviceType, GemmDescriptor, MemoryOrder, QrDescriptor,
+    SolveDescriptor, TransposeDescriptor,
+};
+use ariadnetor_native::NativeBackend;
+use ariadnetor_tensor::{DenseStorage, DenseTensor, DenseTensorData, Host, OpsFor};
 use num_traits::{Float, NumCast, One, Zero};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -23,6 +28,56 @@ fn pseudo_random<T: Scalar>(nrows: usize, ncols: usize, seed: u64) -> DenseTenso
     }
     m
 }
+
+/// Native backend that serves `solves_allowed` linear solves and then fails
+/// every later one. The triangular inversion in `append`'s inverse
+/// maintenance is the only solve on that path, so arming it lets a chosen
+/// append fail after its orthogonalization has already succeeded — the
+/// error path where a mutate-then-compute order would corrupt the state.
+struct SolveFailingBackend {
+    inner: NativeBackend,
+    solves_allowed: usize,
+    seen: std::sync::Mutex<usize>,
+}
+
+impl ComputeBackend for SolveFailingBackend {
+    fn name(&self) -> &'static str {
+        "solve-failing"
+    }
+
+    fn device_type(&self) -> DeviceType {
+        self.inner.device_type()
+    }
+
+    fn preferred_order(&self) -> MemoryOrder {
+        self.inner.preferred_order()
+    }
+
+    fn gemm<T: Scalar>(&self, desc: GemmDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.gemm(desc)
+    }
+
+    fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.transpose(desc)
+    }
+
+    fn qr<T: Scalar>(&self, desc: QrDescriptor<'_, T>) -> Result<(), BackendError> {
+        self.inner.qr(desc)
+    }
+
+    fn solve<T: Scalar>(&self, desc: SolveDescriptor<'_, T>) -> Result<(), BackendError> {
+        let mut seen = self.seen.lock().expect("solve counter is never poisoned");
+        if *seen >= self.solves_allowed {
+            return Err(BackendError::ExecutionFailed(
+                "injected solve failure".into(),
+            ));
+        }
+        *seen += 1;
+        self.inner.solve(desc)
+    }
+}
+
+impl<T: Scalar> OpsFor<DenseStorage<T>> for SolveFailingBackend {}
 
 /// `a - b` for scalars without a `Sub` bound (`Scalar` carries none).
 fn sub<T: Scalar>(a: T, b: T) -> T {
@@ -277,4 +332,52 @@ fn append_validates_block_shape() {
     assert_eq!(inc.ncols(), 0);
     inc.append(backend, &pseudo_random::<f64>(6, 2, 43))
         .expect("valid append still works");
+}
+
+#[test]
+fn backend_failure_mid_append_leaves_state_unchanged() {
+    // One solve served, so the first append completes and the second fails
+    // inverting its own triangular block.
+    let backend = SolveFailingBackend {
+        inner: NativeBackend::new(),
+        solves_allowed: 1,
+        seen: std::sync::Mutex::new(0),
+    };
+    let mut inc = IncrementalQr::<f64>::new(8, true);
+    assert_eq!(
+        inc.append(&backend, &pseudo_random::<f64>(8, 3, 51))
+            .expect("the first append's solve is served"),
+        QrAppendOutcome::FullRank
+    );
+    let ncols = inc.ncols();
+    let row_sq = inc
+        .r_inverse_row_sq_norms()
+        .expect("tracking is on")
+        .to_vec();
+    let q_before = inc.q.as_ref().expect("appended").clone();
+
+    // Orthogonalization succeeds, the inversion does not — the point where a
+    // mutate-then-compute order would leave the factorization half-grown.
+    assert!(matches!(
+        inc.append(&backend, &pseudo_random::<f64>(8, 2, 52)),
+        Err(LinalgError::Backend(_))
+    ));
+
+    assert_eq!(inc.ncols(), ncols, "column count must not grow on failure");
+    assert_eq!(
+        inc.r_inverse_row_sq_norms().expect("tracking still on"),
+        row_sq.as_slice(),
+        "inverse row norms must not change on failure"
+    );
+    assert_eq!(
+        frob_dist(inc.q.as_ref().expect("appended"), &q_before),
+        0.0,
+        "the basis must not absorb a failed block"
+    );
+    // The factorization stays usable: a later append on a working backend
+    // proceeds as if the failure never happened.
+    let host = Host::shared();
+    inc.append(host.as_ref(), &pseudo_random::<f64>(8, 2, 53))
+        .expect("state is intact after the failed append");
+    assert_eq!(inc.ncols(), ncols + 2);
 }
