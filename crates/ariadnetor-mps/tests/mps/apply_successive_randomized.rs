@@ -236,8 +236,12 @@ fn src_rank_deficiency_after_growth_restores_isometry() {
     ]);
     let op = make_identity_mpo(4, 2);
 
+    // A zero cutoff makes the stopping reason unambiguous: the estimator's
+    // `err <= cutoff * norm` can never hold for a finite inverse, so the
+    // only things that can end the growth are the cap and the
+    // rank-deficient outcome.
     let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
-        cutoff: Some(1e-12),
+        cutoff: Some(0.0),
         sketch_dim: 2,
         sketch_increment: 2,
         seed: 3,
@@ -253,9 +257,10 @@ fn src_rank_deficiency_after_growth_restores_isometry() {
             "site {j} must stay an isometry through the deficient growth round"
         );
     }
-    // The leftmost cut's growth is stopped by the rank-deficient outcome
-    // rather than by its cap of 6: an implementation that ignored the
-    // outcome would keep sketching to that cap.
+    // The leftmost cut's cap is 6, and the cutoff cannot stop anything, so
+    // a bond of 4 pins the rank-deficient outcome as the stopping reason:
+    // an implementation that ignored or never reported it would sketch on
+    // to the cap.
     assert_eq!(
         out.bond_dim(0),
         4,
