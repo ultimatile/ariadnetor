@@ -36,7 +36,7 @@
 //! Dense-only: the consumer is the randomized MPO-MPS compression sweep,
 //! whose Gaussian sketch has no block-sparse counterpart.
 
-use ariadnetor_core::{NormAccumulator, Scalar, combine_norms};
+use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
 use ariadnetor_tensor::{
     DenseStorage, DenseTensor, DenseTensorData, OpsFor, add_all, linear_combine,
 };
@@ -354,14 +354,7 @@ impl<T: Scalar> IncrementalQr<T> {
 }
 
 /// Euclidean norm of row `i` of a matrix, read through the order-aware
-/// accessor. The scaled accumulation keeps the running value on the
-/// entries' own scale: summing squares would overflow once any entry
-/// exceeds the square root of the real type's maximum, even though the
-/// norm itself is representable.
+/// accessor. The overflow-safe numerics live in [`scale_safe_norm`].
 fn row_norm<T: Scalar>(m: &DenseTensor<T>, i: usize) -> T::Real {
-    let mut acc = NormAccumulator::new();
-    for j in 0..m.shape()[1] {
-        acc.push(m.get([i, j]).abs());
-    }
-    acc.finish()
+    scale_safe_norm((0..m.shape()[1]).map(|j| m.get([i, j]).abs()))
 }

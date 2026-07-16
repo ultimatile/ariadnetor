@@ -2,32 +2,31 @@
 //!
 //! Both the dense and block-sparse storage halves compute the Frobenius
 //! norm over their flat element buffer. The overflow-safe numerics live in
-//! [`ariadnetor_core::NormAccumulator`]; this helper only maps elements to
+//! [`ariadnetor_core::scale_safe_norm`]; this helper only maps elements to
 //! their magnitudes so both storage halves route through one call site.
 
-use ariadnetor_core::{NormAccumulator, Scalar};
+use ariadnetor_core::{Scalar, scale_safe_norm};
 
 /// Frobenius norm `sqrt(Σ |xᵢ|²)` over a flat buffer, computed with the
 /// scaled (overflow-avoiding) accumulation.
 ///
-/// Reproduces the naive loop's non-finite behavior exactly: any `NaN`
-/// element yields `NaN`, and an infinite element yields `inf` (the true
-/// norm of an unbounded vector).
+/// The non-finite contract is [`scale_safe_norm`]'s: any `NaN` element
+/// yields `NaN`, and an infinite element yields `inf` (the true norm of
+/// an unbounded vector).
 pub(crate) fn frobenius_norm<T: Scalar>(data: &[T]) -> T::Real {
-    let mut acc = NormAccumulator::new();
-    for &x in data {
-        acc.push(x.abs());
-    }
-    acc.finish()
+    scale_safe_norm(data.iter().map(|x| x.abs()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // The kernel-level cases (extreme magnitudes, NaN stickiness against
-    // infinity, zero handling) are pinned by `ariadnetor-core`'s norm
-    // tests; these cover the wrapper's element-to-magnitude mapping.
+    // The kernel-level corner cases (extreme magnitudes, NaN stickiness
+    // against infinity, zero handling) are pinned by `ariadnetor-core`'s
+    // norm tests. The complex-modulus test is the only one exercising
+    // behavior unique to this wrapper (the element-to-magnitude mapping);
+    // the others re-check a kernel representative through the generic
+    // `T: Scalar` path as routing smoke tests.
 
     #[test]
     fn matches_naive_for_moderate_input() {
@@ -50,12 +49,7 @@ mod tests {
         // f32::MAX (~3.4e38) and saturates to inf. The scaled accumulation
         // stays finite through the wrapper as well.
         let n = frobenius_norm::<f32>(&[1e20, 2e20]);
-        assert!(n.is_finite(), "expected finite norm, got {n}");
-        let expected = 5.0_f32.sqrt() * 1e20;
-        assert!(
-            (n - expected).abs() / expected < 1e-6,
-            "expected ~{expected}, got {n}"
-        );
+        approx::assert_relative_eq!(n, 5.0_f32.sqrt() * 1e20, max_relative = 1e-6);
     }
 
     #[test]

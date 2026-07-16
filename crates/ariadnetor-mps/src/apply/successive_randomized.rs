@@ -26,7 +26,7 @@
 //! out-of-range dimensions — follow that implementation, and "the
 //! reference implementation" in comments below refers to it.
 
-use ariadnetor_core::{NormAccumulator, Scalar, combine_norms};
+use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
 use ariadnetor_linalg::{
     IncrementalQr, QrAppendOutcome, einsum_with_backend, permute_with_backend, tensordot,
 };
@@ -221,27 +221,23 @@ fn sketch_panel_block<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 /// the incremental QR: `sqrt((1/p) * sum_i ||g_i||^-2)` over the columns
 /// `g_i` of `G = R^-dagger` (arXiv:2504.06475) — row norms of `R^-1` are
 /// the same quantities. The reciprocal sum is accumulated with the
-/// scale-safe accumulator so the squares of the reciprocals are never
-/// formed: the row norms scale as the inverse of the sketched state's
-/// amplitude, and squaring either them or their reciprocals leaves the
-/// representable range long before the estimate itself does. Rank
-/// deficiency is reported
-/// by the QR append itself ([`QrAppendOutcome::RankDeficient`]) before
-/// this runs, so the row norms fed here always come from an invertible
-/// factor and are nonzero (every row of `R^-1` carries the nonzero
-/// diagonal `1 / R_ii`).
+/// scale-safe kernel so the squares of the reciprocals are never formed:
+/// the row norms scale as the inverse of the sketched state's amplitude,
+/// and squaring either them or their reciprocals leaves the representable
+/// range long before the estimate itself does. Rank deficiency is
+/// reported by the QR append itself ([`QrAppendOutcome::RankDeficient`])
+/// before this runs, so the row norms fed here always come from an
+/// invertible factor and are nonzero (every row of `R^-1` carries the
+/// nonzero diagonal `1 / R_ii`).
 fn leave_one_out_estimate<T: Scalar>(row_norms: &[T::Real]) -> T::Real {
     let p = row_norms.len();
-    let mut acc = NormAccumulator::new();
-    for r in row_norms {
-        debug_assert!(
-            *r > T::Real::zero(),
-            "row norms of an invertible R^-1 are positive"
-        );
-        acc.push(r.recip());
-    }
+    debug_assert!(
+        row_norms.iter().all(|r| *r > T::Real::zero()),
+        "row norms of an invertible R^-1 are positive"
+    );
+    let inv_norm = scale_safe_norm(row_norms.iter().map(|r| r.recip()));
     let p_real = <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
-    acc.finish() / p_real.sqrt()
+    inv_norm / p_real.sqrt()
 }
 
 /// Validate the SRC parameter struct. Every field is checked in every mode
