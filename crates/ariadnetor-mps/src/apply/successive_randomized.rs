@@ -217,20 +217,30 @@ fn sketch_panel_block<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     t.fuse_legs(0..2)
 }
 
-/// Leave-one-out error estimate from the squared row norms of `R^-1`
-/// maintained by the incremental QR: `sqrt((1/p) * sum_i ||g_i||^-2)` over
-/// the columns `g_i` of `G = R^-dagger` (arXiv:2504.06475) — row norms of
-/// `R^-1` are the same quantities. Rank deficiency is reported by the QR
-/// append itself ([`QrAppendOutcome::RankDeficient`]) before this runs, so
-/// the row norms fed here always come from an invertible factor.
-fn leave_one_out_estimate<T: Scalar>(row_sq_norms: &[T::Real]) -> T::Real {
-    let p = row_sq_norms.len();
-    let mut inv_sq_sum = T::Real::zero();
-    for r in row_sq_norms {
-        inv_sq_sum = inv_sq_sum + r.recip();
+/// Leave-one-out error estimate from the row norms of `R^-1` maintained by
+/// the incremental QR: `sqrt((1/p) * sum_i ||g_i||^-2)` over the columns
+/// `g_i` of `G = R^-dagger` (arXiv:2504.06475) — row norms of `R^-1` are
+/// the same quantities. The reciprocal sum is accumulated with chained
+/// `hypot` so the squares of the reciprocals are never formed: the row
+/// norms scale as the inverse of the sketched state's amplitude, and
+/// squaring either them or their reciprocals leaves the representable
+/// range long before the estimate itself does. Rank deficiency is reported
+/// by the QR append itself ([`QrAppendOutcome::RankDeficient`]) before
+/// this runs, so the row norms fed here always come from an invertible
+/// factor and are nonzero (every row of `R^-1` carries the nonzero
+/// diagonal `1 / R_ii`).
+fn leave_one_out_estimate<T: Scalar>(row_norms: &[T::Real]) -> T::Real {
+    let p = row_norms.len();
+    let mut inv_norm = T::Real::zero();
+    for r in row_norms {
+        debug_assert!(
+            *r > T::Real::zero(),
+            "row norms of an invertible R^-1 are positive"
+        );
+        inv_norm = inv_norm.hypot(r.recip());
     }
     let p_real = <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
-    (inv_sq_sum / p_real).sqrt()
+    inv_norm / p_real.sqrt()
 }
 
 /// Validate the SRC parameter struct. Every field is checked in every mode
@@ -386,10 +396,10 @@ where
                 // Rank-deficient sketch = the exact rank is already covered.
                 break;
             }
-            let row_sq = inc
-                .r_inverse_row_sq_norms()
+            let row_norms = inc
+                .r_inverse_row_norms()
                 .expect("adaptive mode tracks the inverse and this append was full-rank");
-            let err = leave_one_out_estimate::<T>(row_sq);
+            let err = leave_one_out_estimate::<T>(row_norms);
             let p_real =
                 <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
             let norm_est = norm / p_real.sqrt();

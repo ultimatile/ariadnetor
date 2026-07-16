@@ -121,21 +121,12 @@ fn src_adaptive_is_scale_invariant() {
     // Which ranks the adaptive sweep selects is a scale-free property: the
     // stopping rule compares an error estimate against a fraction of the
     // sketch's own norm. Scaling one site by 1e200 puts every panel norm
-    // where its square overflows f64 while the norm itself stays
-    // representable, so the same seed must still select the same bonds.
+    // where its square overflows f64, and scaling by 1e-200 puts every
+    // row norm of the sketch's R^-1 where its square overflows instead
+    // (collapsing a squared-norm estimator to zero and accepting the
+    // initial sketch size); the norms themselves stay representable in
+    // both directions, so the same seed must still select the same bonds.
     let psi = make_4site_mps();
-    let scaled: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(
-        (0..psi.len())
-            .map(|j| {
-                let site = psi.site(j);
-                if j == 0 {
-                    site.scaled(1e200)
-                } else {
-                    site.clone()
-                }
-            })
-            .collect(),
-    );
     let op = make_total_n_dense_mpo(4);
     let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
         cutoff: Some(1e-6),
@@ -146,18 +137,32 @@ fn src_adaptive_is_scale_invariant() {
     });
 
     let unit = mps::apply_with_method(&backend, &op, &psi, None, method);
-    let big = mps::apply_with_method(&backend, &op, &scaled, None, method);
-
     assert!(
         unit.max_bond_dim() > 1,
         "the unit-scale reference must exercise growth"
     );
-    for j in 0..unit.len() - 1 {
-        assert_eq!(
-            big.bond_dim(j),
-            unit.bond_dim(j),
-            "bond {j} must not depend on the state's scale"
+
+    for scale in [1e200, 1e-200] {
+        let scaled: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(
+            (0..psi.len())
+                .map(|j| {
+                    let site = psi.site(j);
+                    if j == 0 {
+                        site.scaled(scale)
+                    } else {
+                        site.clone()
+                    }
+                })
+                .collect(),
         );
+        let out = mps::apply_with_method(&backend, &op, &scaled, None, method);
+        for j in 0..unit.len() - 1 {
+            assert_eq!(
+                out.bond_dim(j),
+                unit.bond_dim(j),
+                "bond {j} must not depend on the state's scale (scale {scale:e})"
+            );
+        }
     }
 }
 
