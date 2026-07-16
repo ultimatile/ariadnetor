@@ -1,58 +1,33 @@
 //! Shared Frobenius-norm kernel.
 //!
-//! Both the dense and block-sparse storage halves compute the
-//! Frobenius norm over their flat element buffer. Routing them through
-//! one helper keeps the numerics in a single place: a naive
-//! `sqrt(Σ |x|²)` overflows in `f32` once any `|x|` nears
-//! `sqrt(T::Real::MAX)` (~`1.8e19`), because the squared term saturates
-//! to `inf` before the sum. This kernel uses the standard scaled
-//! sum-of-squares algorithm (the approach of the BLAS `dnrm2` / LAPACK
-//! `dlassq` reference routines): it tracks a running maximum `scale`
-//! and accumulates `(|x| / scale)²`, so no intermediate overflows until
-//! the result itself would.
+//! Both the dense and block-sparse storage halves compute the Frobenius
+//! norm over their flat element buffer. The overflow-safe numerics live in
+//! [`ariadnetor_core::NormAccumulator`]; this helper only maps elements to
+//! their magnitudes so both storage halves route through one call site.
 
-use ariadnetor_core::Scalar;
-use num_traits::{Float, One, Zero};
+use ariadnetor_core::{NormAccumulator, Scalar};
 
 /// Frobenius norm `sqrt(Σ |xᵢ|²)` over a flat buffer, computed with the
-/// scaled (overflow-avoiding) algorithm.
+/// scaled (overflow-avoiding) accumulation.
 ///
 /// Reproduces the naive loop's non-finite behavior exactly: any `NaN`
 /// element yields `NaN`, and an infinite element yields `inf` (the true
 /// norm of an unbounded vector).
 pub(crate) fn frobenius_norm<T: Scalar>(data: &[T]) -> T::Real {
-    let zero = T::Real::zero();
-    let one = T::Real::one();
-    let mut scale = zero;
-    let mut sumsq = one;
+    let mut acc = NormAccumulator::new();
     for &x in data {
-        let a = x.abs();
-        if a.is_nan() {
-            return a; // NaN propagates, matching the naive loop.
-        }
-        if scale < a {
-            // New running maximum. `scale < a` implies `a > 0`; if `a`
-            // is `+inf` with a finite `scale`, `scale / a` underflows to
-            // 0 rather than producing a NaN.
-            let r = scale / a;
-            sumsq = one + sumsq * r * r;
-            scale = a;
-        } else if a > zero && scale.is_finite() {
-            // `0 < a <= scale` with a finite `scale`, so `a / scale` is
-            // finite.
-            let r = a / scale;
-            sumsq = sumsq + r * r;
-        }
-        // Otherwise `a == 0` (contributes nothing), or `a > 0` with an
-        // infinite `scale` (the infinity already dominates the result) —
-        // skip either way.
+        acc.push(x.abs());
     }
-    scale * sumsq.sqrt()
+    acc.finish()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The kernel-level cases (extreme magnitudes, NaN stickiness against
+    // infinity, zero handling) are pinned by `ariadnetor-core`'s norm
+    // tests; these cover the wrapper's element-to-magnitude mapping.
 
     #[test]
     fn matches_naive_for_moderate_input() {
@@ -62,25 +37,20 @@ mod tests {
     }
 
     #[test]
-    fn leading_and_interior_zeros_are_skipped() {
-        assert_eq!(frobenius_norm::<f64>(&[0.0, 0.0, 3.0, 4.0]), 5.0);
-        assert_eq!(frobenius_norm::<f64>(&[3.0, 0.0, 4.0]), 5.0);
+    fn complex_elements_accumulate_their_modulus() {
+        use ariadnetor_core::Complex;
+        // |3 + 4i| = 5, |0 - 12i| = 12, sqrt(5² + 12²) = 13.
+        let data = [Complex::new(3.0_f64, 4.0), Complex::new(0.0, -12.0)];
+        assert_eq!(frobenius_norm(&data), 13.0);
     }
 
     #[test]
-    fn zero_vector_has_zero_norm() {
-        assert_eq!(frobenius_norm::<f64>(&[0.0, 0.0]), 0.0);
-        assert_eq!(frobenius_norm::<f64>(&[]), 0.0);
-    }
-
-    #[test]
-    fn f32_extreme_magnitude_stays_finite() {
+    fn extreme_magnitude_stays_finite() {
         // The naive `sqrt(Σ |x|²)` overflows here: 1e20² = 1e40 exceeds
-        // f32::MAX (~3.4e38) and saturates to inf. The scaled algorithm
-        // stays finite.
+        // f32::MAX (~3.4e38) and saturates to inf. The scaled accumulation
+        // stays finite through the wrapper as well.
         let n = frobenius_norm::<f32>(&[1e20, 2e20]);
         assert!(n.is_finite(), "expected finite norm, got {n}");
-        // sqrt(1e40 + 4e40) = sqrt(5) * 1e20 ≈ 2.2360680e20.
         let expected = 5.0_f32.sqrt() * 1e20;
         assert!(
             (n - expected).abs() / expected < 1e-6,
@@ -89,34 +59,8 @@ mod tests {
     }
 
     #[test]
-    fn f64_extreme_magnitude_stays_finite() {
-        // Mirror of the f32 case one exponent-range up: 1e200² = 1e400
-        // exceeds f64::MAX (~1.8e308) and saturates to inf under the naive
-        // sum. The scaled algorithm keeps the generic `T: Scalar` path
-        // finite for f64 too.
-        let n = frobenius_norm::<f64>(&[1e200, 2e200]);
-        assert!(n.is_finite(), "expected finite norm, got {n}");
-        // sqrt(1e400 + 4e400) = sqrt(5) * 1e200 ≈ 2.2360680e200.
-        let expected = 5.0_f64.sqrt() * 1e200;
-        assert!(
-            (n - expected).abs() / expected < 1e-12,
-            "expected ~{expected}, got {n}"
-        );
-    }
-
-    #[test]
     fn nan_propagates() {
         assert!(frobenius_norm::<f64>(&[1.0, f64::NAN, 2.0]).is_nan());
         assert!(frobenius_norm::<f64>(&[f64::INFINITY, f64::NAN]).is_nan());
-    }
-
-    #[test]
-    fn infinity_yields_infinite_norm() {
-        // Single and repeated infinities both give inf, as the naive
-        // loop does (the true norm of an unbounded vector is inf).
-        assert!(frobenius_norm::<f64>(&[f64::INFINITY]).is_infinite());
-        assert!(frobenius_norm::<f64>(&[f64::INFINITY, f64::INFINITY]).is_infinite());
-        assert!(frobenius_norm::<f64>(&[1.0, f64::INFINITY, 2.0]).is_infinite());
-        assert!(frobenius_norm::<f64>(&[f64::NEG_INFINITY, 3.0]).is_infinite());
     }
 }

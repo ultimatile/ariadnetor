@@ -12,12 +12,14 @@ pub mod backend;
 mod contraction_error;
 mod einsum;
 mod label;
+mod norm;
 mod scalar;
 
 pub use backend::{ComputeBackend, ExecPolicy, MemoryOrder};
 pub use contraction_error::ContractionError;
 pub use einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 pub use label::LabelId;
+pub use norm::{NormAccumulator, combine_norms};
 pub use scalar::Scalar;
 
 // Re-export num_complex for user convenience

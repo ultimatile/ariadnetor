@@ -26,7 +26,7 @@
 //! out-of-range dimensions — follow that implementation, and "the
 //! reference implementation" in comments below refers to it.
 
-use ariadnetor_core::Scalar;
+use ariadnetor_core::{NormAccumulator, Scalar, combine_norms};
 use ariadnetor_linalg::{
     IncrementalQr, QrAppendOutcome, einsum_with_backend, permute_with_backend, tensordot,
 };
@@ -220,27 +220,28 @@ fn sketch_panel_block<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 /// Leave-one-out error estimate from the row norms of `R^-1` maintained by
 /// the incremental QR: `sqrt((1/p) * sum_i ||g_i||^-2)` over the columns
 /// `g_i` of `G = R^-dagger` (arXiv:2504.06475) — row norms of `R^-1` are
-/// the same quantities. The reciprocal sum is accumulated with chained
-/// `hypot` so the squares of the reciprocals are never formed: the row
-/// norms scale as the inverse of the sketched state's amplitude, and
-/// squaring either them or their reciprocals leaves the representable
-/// range long before the estimate itself does. Rank deficiency is reported
+/// the same quantities. The reciprocal sum is accumulated with the
+/// scale-safe accumulator so the squares of the reciprocals are never
+/// formed: the row norms scale as the inverse of the sketched state's
+/// amplitude, and squaring either them or their reciprocals leaves the
+/// representable range long before the estimate itself does. Rank
+/// deficiency is reported
 /// by the QR append itself ([`QrAppendOutcome::RankDeficient`]) before
 /// this runs, so the row norms fed here always come from an invertible
 /// factor and are nonzero (every row of `R^-1` carries the nonzero
 /// diagonal `1 / R_ii`).
 fn leave_one_out_estimate<T: Scalar>(row_norms: &[T::Real]) -> T::Real {
     let p = row_norms.len();
-    let mut inv_norm = T::Real::zero();
+    let mut acc = NormAccumulator::new();
     for r in row_norms {
         debug_assert!(
             *r > T::Real::zero(),
             "row norms of an invertible R^-1 are positive"
         );
-        inv_norm = inv_norm.hypot(r.recip());
+        acc.push(r.recip());
     }
     let p_real = <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
-    inv_norm / p_real.sqrt()
+    acc.finish() / p_real.sqrt()
 }
 
 /// Validate the SRC parameter struct. Every field is checked in every mode
@@ -348,11 +349,11 @@ where
         };
 
         let mut inc = IncrementalQr::<T>::new(rows, adaptive);
-        // Accumulated Frobenius norm of the sketch. Chaining `hypot` keeps
-        // the running value on the norms' own scale: squaring them to sum
-        // would flush a legitimately small sketch to zero (and so report a
-        // zero product) or overflow a large one, making the stopping rule
-        // scale-dependent for a criterion that is not.
+        // Accumulated Frobenius norm of the sketch. The scale-safe combine
+        // keeps the running value on the norms' own scale: squaring them
+        // to sum would flush a legitimately small sketch to zero (and so
+        // report a zero product) or overflow a large one, making the
+        // stopping rule scale-dependent for a criterion that is not.
         let mut norm = T::Real::zero();
         loop {
             let columns_created = envs.ncols();
@@ -374,7 +375,7 @@ where
             // norm (the zero-norm break and the estimator), so the panel
             // pass is adaptive-only work.
             if adaptive {
-                norm = norm.hypot(panel.norm());
+                norm = combine_norms(norm, panel.norm());
             }
             // The `current_maxdim` clamp above keeps the block within the
             // factorization's bounds, so a failure here is an unrecoverable
