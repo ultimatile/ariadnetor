@@ -10,10 +10,10 @@
 //! Optionally the inverse triangular factor is maintained across appends
 //! through the block-triangular inverse identity
 //! `[[R, C], [0, R22]]^-1 = [[G, -G C G22], [0, G22]]` (with `G = R^-1`,
-//! `G22 = R22^-1`), so the squared row norms of `R^-1` — the quantity
-//! randomized leave-one-out error estimators consume — update in
-//! `O(p^2 s)` per append instead of the `O(p^3)` full inversion a
-//! from-scratch recompute pays every round. The maintained inverse needs
+//! `G22 = R22^-1`), so the row norms of `R^-1` — the quantity randomized
+//! leave-one-out error estimators consume — update in `O(p^2 s)` per
+//! append instead of the `O(p^3)` full inversion a from-scratch
+//! recompute pays every round. The maintained inverse needs
 //! no refresh pass: the row-norm functional the estimators consume is
 //! dominated by its small-norm rows — the well-conditioned directions,
 //! where the update is accurate — while the ill-conditioned rows enter
@@ -84,8 +84,11 @@ pub struct IncrementalQr<T: Scalar> {
     /// `|R_ii|` across every append, for the rank test. Its length is the
     /// column count.
     r_diag: Vec<T::Real>,
-    /// Squared row norms of `g`, kept in step with it.
-    row_inv_sq: Vec<T::Real>,
+    /// Row norms of `g`, kept in step with it. Norms rather than squared
+    /// norms: `g`'s entries scale as the inverse of the appended data's
+    /// amplitude, and squaring them overflows long before the norms
+    /// themselves leave the representable range.
+    row_inv_norms: Vec<T::Real>,
     /// Number of committed appends; decides whether
     /// [`Self::into_orthonormal_q`] needs its repair pass.
     appends: usize,
@@ -96,7 +99,7 @@ impl<T: Scalar> IncrementalQr<T> {
     /// Empty factorization over `nrows`-row column blocks.
     ///
     /// `track_r_inverse` selects whether appends maintain `R^-1` and its
-    /// row norms (needed by [`Self::r_inverse_row_sq_norms`]); skipping it
+    /// row norms (needed by [`Self::r_inverse_row_norms`]); skipping it
     /// spares the per-append inversion when only `Q` is wanted.
     ///
     /// # Panics
@@ -110,7 +113,7 @@ impl<T: Scalar> IncrementalQr<T> {
             q: None,
             g: None,
             r_diag: Vec::new(),
-            row_inv_sq: Vec::new(),
+            row_inv_norms: Vec::new(),
             appends: 0,
             terminated: false,
         }
@@ -121,16 +124,16 @@ impl<T: Scalar> IncrementalQr<T> {
         self.r_diag.len()
     }
 
-    /// Squared row norms of the maintained `R^-1`, one per column.
+    /// Row norms of the maintained `R^-1`, one per column.
     ///
     /// `None` when inverse tracking is off, when nothing has been
     /// appended yet, or when the factorization is terminated (a
     /// rank-deficient append leaves the inverse state stale by design —
     /// a singular block has no inverse to fold in).
-    pub fn r_inverse_row_sq_norms(&self) -> Option<&[T::Real]> {
+    pub fn r_inverse_row_norms(&self) -> Option<&[T::Real]> {
         // `g` exists only when tracking is on and a full-rank append
         // happened, so it subsumes the tracking flag.
-        (!self.terminated && self.g.is_some()).then_some(self.row_inv_sq.as_slice())
+        (!self.terminated && self.g.is_some()).then_some(self.row_inv_norms.as_slice())
     }
 
     /// Consume the factorization and return an orthonormal basis whose
@@ -313,7 +316,7 @@ impl<T: Scalar> IncrementalQr<T> {
             match x {
                 None => {
                     for i in 0..s {
-                        self.row_inv_sq.push(row_sq_norm(&g22, i));
+                        self.row_inv_norms.push(row_norm(&g22, i));
                     }
                     self.g = Some(g22);
                 }
@@ -322,11 +325,16 @@ impl<T: Scalar> IncrementalQr<T> {
                         .g
                         .take()
                         .expect("a projection block implies a prior append installed the inverse");
-                    for (i, row) in self.row_inv_sq.iter_mut().enumerate() {
-                        *row = *row + row_sq_norm(&x, i);
+                    // An old row of the grown inverse is the concatenation
+                    // of its previous entries and its slice of `X`, so its
+                    // norm combines by the Pythagorean identity — `hypot`
+                    // rather than a squared sum, which would overflow at
+                    // extreme scales.
+                    for (i, row) in self.row_inv_norms.iter_mut().enumerate() {
+                        *row = row.hypot(row_norm(&x, i));
                     }
                     for i in 0..s {
-                        self.row_inv_sq.push(row_sq_norm(&g22, i));
+                        self.row_inv_norms.push(row_norm(&g22, i));
                     }
                     // Every operand comes from this backend's kernels, so
                     // the memory orders agree by construction and the
@@ -345,13 +353,15 @@ impl<T: Scalar> IncrementalQr<T> {
     }
 }
 
-/// Squared Euclidean norm of row `i` of a matrix, read through the
-/// order-aware accessor.
-fn row_sq_norm<T: Scalar>(m: &DenseTensor<T>, i: usize) -> T::Real {
+/// Euclidean norm of row `i` of a matrix, read through the order-aware
+/// accessor. Chained `hypot` keeps the accumulation on the entries' own
+/// scale: summing squares would overflow once any entry exceeds the
+/// square root of the real type's maximum, even though the norm itself
+/// is representable.
+fn row_norm<T: Scalar>(m: &DenseTensor<T>, i: usize) -> T::Real {
     let mut acc = T::Real::zero();
     for j in 0..m.shape()[1] {
-        let x = m.get([i, j]).abs();
-        acc = acc + x * x;
+        acc = acc.hypot(m.get([i, j]).abs());
     }
     acc
 }

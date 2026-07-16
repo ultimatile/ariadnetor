@@ -205,13 +205,14 @@ fn check_append_equals_full_qr<T: Scalar>() {
     // Row norms of R^-1 are phase-invariant too: the two factors differ
     // by a unit-modulus column scaling of the inverse.
     let g_full = inverse_with_backend(backend, &r_full, 1).expect("invert full R");
-    let row_sq = inc.r_inverse_row_sq_norms().expect("tracking is on");
-    for (i, got) in row_sq.iter().enumerate() {
+    let row_norms = inc.r_inverse_row_norms().expect("tracking is on");
+    for (i, got) in row_norms.iter().enumerate() {
         let mut want = T::Real::zero();
         for j in 0..9 {
             let x = g_full.get([i, j]).abs();
             want = want + x * x;
         }
+        let want = want.sqrt();
         assert!(
             Float::abs(*got - want) <= tol::<T>() * want.max(T::Real::one()),
             "inverse row norm mismatch at row {i}"
@@ -240,6 +241,49 @@ fn append_equals_full_qr_f64() {
 #[test]
 fn append_equals_full_qr_c64() {
     check_append_equals_full_qr::<num_complex::Complex<f64>>();
+}
+
+#[test]
+fn inverse_row_norms_survive_extreme_scales() {
+    let backend = Host::shared();
+    let backend = backend.as_ref();
+    // Row norms of R^-1 scale as the inverse of the appended data's
+    // amplitude, so a 1e-200-scaled append history must report finite
+    // norms exactly 1e200 times the unscaled run's. Squared-norm
+    // maintenance overflows to infinity here while the norms themselves
+    // are comfortably representable. Two appends so the old-row update
+    // path is exercised at the extreme scale, not just the first-block
+    // path.
+    let blocks = [
+        pseudo_random::<f64>(12, 3, 1),
+        pseudo_random::<f64>(12, 4, 2),
+    ];
+    let mut unit = IncrementalQr::<f64>::new(12, true);
+    let mut tiny = IncrementalQr::<f64>::new(12, true);
+    for b in &blocks {
+        assert_eq!(
+            unit.append(backend, b).expect("unscaled append"),
+            QrAppendOutcome::FullRank
+        );
+        assert_eq!(
+            tiny.append(backend, &b.scaled(1e-200))
+                .expect("scaled append"),
+            QrAppendOutcome::FullRank
+        );
+    }
+    let unit_norms = unit.r_inverse_row_norms().expect("tracking is on");
+    let tiny_norms = tiny.r_inverse_row_norms().expect("tracking is on");
+    for (i, (u, t)) in unit_norms.iter().zip(tiny_norms).enumerate() {
+        assert!(
+            t.is_finite(),
+            "row {i}: norm must stay finite at extreme scale"
+        );
+        let want = u * 1e200;
+        assert!(
+            Float::abs(*t - want) <= tol::<f64>() * want,
+            "row {i}: scaled norm must be 1e200 x the unscaled one"
+        );
+    }
 }
 
 #[test]
@@ -279,7 +323,7 @@ fn later_append_rank_deficiency_detected_and_recoverable() {
         QrAppendOutcome::RankDeficient
     );
     // The inverse state is stale by design after termination.
-    assert!(inc.r_inverse_row_sq_norms().is_none());
+    assert!(inc.r_inverse_row_norms().is_none());
 
     // The terminal accessor re-orthonormalizes the assembled basis, whose
     // span still contains every appended column.
@@ -376,10 +420,10 @@ fn tracking_off_reports_no_row_norms() {
     let backend = Host::shared();
     let backend = backend.as_ref();
     let mut inc = IncrementalQr::<f64>::new(6, false);
-    assert!(inc.r_inverse_row_sq_norms().is_none());
+    assert!(inc.r_inverse_row_norms().is_none());
     inc.append(backend, &pseudo_random::<f64>(6, 2, 31))
         .expect("append");
-    assert!(inc.r_inverse_row_sq_norms().is_none());
+    assert!(inc.r_inverse_row_norms().is_none());
     assert_eq!(inc.ncols(), 2);
 }
 
@@ -432,10 +476,7 @@ fn backend_failure_mid_append_leaves_state_unchanged() {
         QrAppendOutcome::FullRank
     );
     let ncols = inc.ncols();
-    let row_sq = inc
-        .r_inverse_row_sq_norms()
-        .expect("tracking is on")
-        .to_vec();
+    let row_norms = inc.r_inverse_row_norms().expect("tracking is on").to_vec();
     let q_before = inc.q.as_ref().expect("appended").clone();
     let g_before = inc.g.as_ref().expect("tracking is on").clone();
     let diag_before = inc.r_diag.clone();
@@ -450,8 +491,8 @@ fn backend_failure_mid_append_leaves_state_unchanged() {
 
     assert_eq!(inc.ncols(), ncols, "column count must not grow on failure");
     assert_eq!(
-        inc.r_inverse_row_sq_norms().expect("tracking still on"),
-        row_sq.as_slice(),
+        inc.r_inverse_row_norms().expect("tracking still on"),
+        row_norms.as_slice(),
         "inverse row norms must not change on failure"
     );
     assert_eq!(
