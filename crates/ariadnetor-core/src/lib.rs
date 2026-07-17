@@ -5,7 +5,8 @@
 //! - `ComputeBackend`: Pluggable backend trait
 //! - `LabelId`: Interned tensor index labels
 //! - `EinsumExpr`, `ContractionPlan`: Einsum parsing and analysis
-//! - `scale_safe_norm`, `combine_norms`: Scale-safe sum-of-squares accumulation
+//! - `scale_safe_norm`, `combine_norms`, `NormAccumulator`: Scale-safe
+//!   sum-of-squares accumulation
 
 #![deny(missing_docs)]
 
@@ -20,7 +21,7 @@ pub use backend::{ComputeBackend, ExecPolicy, MemoryOrder};
 pub use contraction_error::ContractionError;
 pub use einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 pub use label::LabelId;
-pub use norm::{combine_norms, scale_safe_norm};
+pub use norm::{NormAccumulator, combine_norms, scale_safe_norm};
 pub use scalar::Scalar;
 
 // Re-export num_complex for user convenience

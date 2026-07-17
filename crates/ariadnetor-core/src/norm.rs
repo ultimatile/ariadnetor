@@ -27,17 +27,33 @@ use num_traits::Float;
 /// the represented norm zero). Each ratio is at most 1, so `sumsq` is then
 /// bounded by the push count and the accumulation overflows only when the
 /// result itself is unrepresentable.
-struct NormAccumulator<R: Float> {
+///
+/// The pair itself is exposed (see [`Self::scale`] / [`Self::sumsq`])
+/// because it stays representable past the point where the finished norm
+/// saturates: with every pushed value finite, `scale` is their running
+/// maximum (finite by construction) and `sumsq` is at most the push count
+/// plus one, so a consumer comparing against the represented value can
+/// keep working on the `(scale, sumsq)` form when
+/// `scale * sqrt(sumsq)` itself would overflow to infinity. This is the
+/// same representation the LAPACK `dlassq` routine hands back to its
+/// callers.
+pub struct NormAccumulator<R: Float> {
     /// Running maximum magnitude; NaN once a NaN has been pushed.
     scale: R,
     /// Sum of squared ratios against `scale`.
     sumsq: R,
 }
 
+impl<R: Float> Default for NormAccumulator<R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<R: Float> NormAccumulator<R> {
     /// Empty accumulation; [`Self::finish`] on it returns zero.
     #[inline]
-    fn new() -> Self {
+    pub fn new() -> Self {
         // The initial `sumsq` is unobservable: the first nonzero push
         // rescales it away (its ratio against the zero scale vanishes),
         // and until then `finish` multiplies it by the zero `scale`. One
@@ -56,7 +72,7 @@ impl<R: Float> NormAccumulator<R> {
     /// [`Self::finish`] returns NaN regardless of later pushes, including
     /// infinite ones.
     #[inline]
-    fn push(&mut self, value: R) {
+    pub fn push(&mut self, value: R) {
         let a = value.abs();
         if a.is_nan() {
             self.scale = a;
@@ -79,9 +95,42 @@ impl<R: Float> NormAccumulator<R> {
     }
 
     /// The accumulated norm `sqrt(Σ |xᵢ|²)`.
+    ///
+    /// This finishes the `(scale, sumsq)` representation into one scalar,
+    /// which saturates to infinity when the true norm exceeds the real
+    /// type's range even though the representation itself is still exact;
+    /// consumers that must stay meaningful there compare against
+    /// [`Self::scale`] and [`Self::sumsq`] instead.
     #[inline]
-    fn finish(self) -> R {
+    pub fn finish(&self) -> R {
         self.scale * self.sumsq.sqrt()
+    }
+
+    /// The running maximum pushed magnitude — the `scale` half of the
+    /// represented norm `scale * sqrt(sumsq)`.
+    ///
+    /// Finite whenever every pushed value was finite; zero exactly when
+    /// nothing nonzero (and no NaN) has been pushed, which makes it the
+    /// saturation-free zero test for the accumulation. Infinite after an
+    /// infinite push, NaN (sticky) after a NaN push.
+    #[inline]
+    pub fn scale(&self) -> R {
+        self.scale
+    }
+
+    /// The sum of squared ratios against [`Self::scale`] — the `sumsq`
+    /// half of the represented norm `scale * sqrt(sumsq)`.
+    ///
+    /// With every pushed value finite this is bounded by the push count
+    /// plus one (each ratio is at most 1, and the initial value is one),
+    /// so it never saturates on its own. It is meaningful only alongside
+    /// its `scale`: while `scale` is zero the initial one is unobservable
+    /// by construction, and after an infinite or NaN push the pair no
+    /// longer carries the represented norm (the degenerate `scale` alone
+    /// does).
+    #[inline]
+    pub fn sumsq(&self) -> R {
+        self.sumsq
     }
 }
 
@@ -184,6 +233,60 @@ mod tests {
         assert!(scale_safe_norm([f64::INFINITY, f64::INFINITY]).is_infinite());
         assert!(scale_safe_norm([1.0, f64::INFINITY, 2.0]).is_infinite());
         assert!(scale_safe_norm([f64::NEG_INFINITY, 3.0]).is_infinite());
+    }
+
+    #[test]
+    fn accumulator_representation_matches_finish_on_moderate_input() {
+        // (scale, sumsq) = (4, 1 + 9/16) after pushing 3 and 4, so the
+        // represented norm scale * sqrt(sumsq) is exactly finish() = 5.
+        let mut acc = NormAccumulator::new();
+        acc.push(3.0_f64);
+        acc.push(4.0);
+        assert_eq!(acc.scale(), 4.0);
+        assert_relative_eq!(acc.sumsq(), 25.0 / 16.0, max_relative = 1e-15);
+        assert_eq!(acc.finish(), 5.0);
+        assert_eq!(acc.scale() * acc.sumsq().sqrt(), acc.finish());
+    }
+
+    #[test]
+    fn accumulator_pair_stays_finite_past_the_saturation_point() {
+        // Four values whose true combined norm 2e308 exceeds f64::MAX
+        // (~1.8e308): finish() saturates to inf, but the (scale, sumsq)
+        // representation stays exact and bounded (sumsq <= pushes + 1).
+        let mut acc = NormAccumulator::new();
+        for _ in 0..4 {
+            acc.push(1.0e308_f64);
+        }
+        assert!(acc.finish().is_infinite());
+        assert_eq!(acc.scale(), 1.0e308);
+        assert_relative_eq!(acc.sumsq(), 4.0, max_relative = 1e-15);
+    }
+
+    #[test]
+    fn component_pushes_survive_modulus_overflow() {
+        // A complex element with finite components can have an
+        // unrepresentable modulus; pushing the components separately keeps
+        // the accumulator's scale finite where pushing hypot(re, im) would
+        // poison it with inf.
+        let (re, im) = (1.5e308_f64, 1.5e308_f64);
+        assert!(re.hypot(im).is_infinite());
+        let mut acc = NormAccumulator::new();
+        acc.push(re.abs());
+        acc.push(im.abs());
+        assert!(acc.scale().is_finite());
+        assert_relative_eq!(acc.sumsq(), 2.0, max_relative = 1e-15);
+    }
+
+    #[test]
+    fn accumulator_zero_state_reports_zero_scale() {
+        // scale() == 0 is the saturation-free zero test: nothing nonzero
+        // pushed keeps both the scale and the finished norm at zero.
+        let mut acc = NormAccumulator::<f64>::new();
+        assert_eq!(acc.scale(), 0.0);
+        assert_eq!(acc.finish(), 0.0);
+        acc.push(0.0);
+        assert_eq!(acc.scale(), 0.0);
+        assert_eq!(acc.finish(), 0.0);
     }
 
     #[test]
