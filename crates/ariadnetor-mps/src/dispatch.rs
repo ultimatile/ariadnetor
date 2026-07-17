@@ -40,7 +40,8 @@ use ariadnetor_tensor::{
 };
 
 use super::types::{
-    ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TruncResult, TruncateParams, VariationalInit,
+    ApplyError, ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TruncResult, TruncateParams,
+    VariationalInit,
 };
 
 mod sealed {
@@ -162,14 +163,15 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
     /// a single right-to-left randomized-QB sweep with adaptive or fixed-rank
     /// bond selection (see [`ApplyMethod::SuccessiveRandomized`]). Dense-only:
     /// the block-sparse impl panics because the Gaussian sketch mixes
-    /// symmetry sectors.
+    /// symmetry sectors. Returns [`ApplyError::NonFinite`] when non-finite
+    /// elements reach the sweep's result boundaries.
     fn apply_successive_randomized_k<B: OpsFor<Self::Storage>>(
         backend: &B,
         op: &Mpo<Self::Storage, Self::Layout>,
         psi: &Self,
         params: Option<&TruncateParams>,
         src: SuccessiveRandomizedParams,
-    ) -> Self
+    ) -> Result<Self, ApplyError>
     where
         Self: Sized;
 
@@ -257,7 +259,7 @@ impl<T: Scalar> MpsOps<T> for Mps<DenseStorage<T>, DenseLayout> {
         psi: &Self,
         params: Option<&TruncateParams>,
         src: SuccessiveRandomizedParams,
-    ) -> Self {
+    ) -> Result<Self, ApplyError> {
         super::apply::apply_successive_randomized_dense(backend, op, psi, params, src)
     }
 
@@ -347,7 +349,7 @@ impl<T: Scalar, S: Sector> MpsOps<T> for Mps<BlockSparseStorage<T>, BlockSparseL
         _psi: &Self,
         _params: Option<&TruncateParams>,
         _src: SuccessiveRandomizedParams,
-    ) -> Self {
+    ) -> Result<Self, ApplyError> {
         panic!(
             "ApplyMethod::SuccessiveRandomized is dense-only: the Gaussian sketch \
              mixes symmetry sectors, so a block-sparse product would not preserve \
@@ -440,10 +442,15 @@ where
     <Mps<St, L> as MpsOps<T>>::braket_k(backend, psi, op, phi)
 }
 
-/// Apply an MPO to an MPS: O|ψ⟩ via the streaming-naive algorithm with the
-/// default lossless forward sweep (`forward_cap = None`).
+/// Apply an MPO to an MPS with the default method: O|ψ⟩ via the
+/// streaming-naive algorithm with the default lossless forward sweep
+/// (`forward_cap = None`).
 ///
-/// Equivalent to `apply_with_method(backend, op, psi, params, ApplyMethod::default())`.
+/// Computes the same state as
+/// `apply_with_method(backend, op, psi, params, ApplyMethod::default())`,
+/// but stays infallible: the current default method has no failure path,
+/// so there is no error to surface. Should the default ever change to a
+/// fallible method, this signature changes with it.
 pub fn apply<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -479,13 +486,24 @@ where
 ///   directly via a single right-to-left randomized-QB sweep with adaptive
 ///   or fixed-rank bond selection. **Dense-only** (panics on block-sparse
 ///   chains).
+///
+/// # Errors
+///
+/// Returns [`ApplyError::NonFinite`] when the computation was poisoned by
+/// non-finite values (NaN/inf) and the poison reached a result boundary.
+/// The scan runs before the optional `canonicalize` + `truncate`
+/// finishing pass, so `Ok` certifies the state as assembled, not the
+/// finishing pass's output (see [`ApplyError::NonFinite`] for the exact
+/// contract). Currently only `ApplyMethod::SuccessiveRandomized` performs
+/// this check; the other methods have no failure path and always return
+/// `Ok`.
 pub fn apply_with_method<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
     psi: &Mps<St, L>,
     params: Option<&TruncateParams>,
     method: ApplyMethod,
-) -> Mps<St, L>
+) -> Result<Mps<St, L>, ApplyError>
 where
     T: Scalar,
     St: Storage + StorageFor<L>,
@@ -494,20 +512,26 @@ where
     B: OpsFor<St>,
 {
     match method {
-        ApplyMethod::StreamingNaive { forward_cap } => {
-            <Mps<St, L> as MpsOps<T>>::apply_k(backend, op, psi, params, forward_cap)
-        }
-        ApplyMethod::ZipUp => <Mps<St, L> as MpsOps<T>>::apply_zipup_k(backend, op, psi, params),
-        ApplyMethod::DensityMatrix => {
-            <Mps<St, L> as MpsOps<T>>::apply_density_matrix_k(backend, op, psi, params)
-        }
+        ApplyMethod::StreamingNaive { forward_cap } => Ok(<Mps<St, L> as MpsOps<T>>::apply_k(
+            backend,
+            op,
+            psi,
+            params,
+            forward_cap,
+        )),
+        ApplyMethod::ZipUp => Ok(<Mps<St, L> as MpsOps<T>>::apply_zipup_k(
+            backend, op, psi, params,
+        )),
+        ApplyMethod::DensityMatrix => Ok(<Mps<St, L> as MpsOps<T>>::apply_density_matrix_k(
+            backend, op, psi, params,
+        )),
         ApplyMethod::Variational {
             init,
             max_sweeps,
             tol,
-        } => <Mps<St, L> as MpsOps<T>>::apply_variational_k(
+        } => Ok(<Mps<St, L> as MpsOps<T>>::apply_variational_k(
             backend, op, psi, params, init, max_sweeps, tol,
-        ),
+        )),
         ApplyMethod::SuccessiveRandomized(src) => {
             <Mps<St, L> as MpsOps<T>>::apply_successive_randomized_k(backend, op, psi, params, src)
         }

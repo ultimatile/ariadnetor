@@ -9,7 +9,7 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
 
 use super::helpers::{
-    assert_dense_close, cm_dense_tensor, dense_basis_site, make_3site_test_mpo,
+    apply_ok, assert_dense_close, cm_dense_tensor, dense_basis_site, make_3site_test_mpo,
     make_3site_test_mps, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
 };
 
@@ -382,7 +382,7 @@ fn test_apply_streaming_naive_forward_cap_factor_one_keeps_chi_max() {
         forward_cap: Some(NonZeroUsize::new(1).unwrap()),
     };
 
-    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), method);
+    let phi = apply_ok(&backend, &op, &psi, Some(&params), method);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond {d} exceeds chi_max=2 under forward_cap=1");
@@ -417,7 +417,7 @@ fn test_apply_streaming_naive_forward_cap_observably_changes_output() {
 
     let phi_ref = mps::apply(&backend, &op, &psi, Some(&ref_params));
     let phi_lossless_forward = mps::apply(&backend, &op, &psi, Some(&chi_2));
-    let phi_capped_forward = mps::apply_with_method(
+    let phi_capped_forward = apply_ok(
         &backend,
         &op,
         &psi,
@@ -464,7 +464,7 @@ fn dense_frobenius_distance(a: &DenseTensor<f64>, b: &DenseTensor<f64>) -> f64 {
 
 /// The default `apply()` and an explicit `ApplyMethod::default()` dispatch
 /// must produce numerically identical output. Anchors the
-/// `apply == apply_with_method(..., default())` contract.
+/// `apply == apply_with_method(..., default())` value contract.
 #[test]
 fn test_apply_streaming_naive_default_method_matches_free_apply() {
     let backend = NativeBackend::new();
@@ -476,8 +476,7 @@ fn test_apply_streaming_naive_default_method_matches_free_apply() {
     });
 
     let phi_apply = mps::apply(&backend, &op, &psi, Some(&params));
-    let phi_method =
-        mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::default());
+    let phi_method = apply_ok(&backend, &op, &psi, Some(&params), ApplyMethod::default());
 
     let v_apply = mps_to_dense(&phi_apply);
     let v_method = mps_to_dense(&phi_method);
@@ -494,7 +493,7 @@ fn test_apply_zipup_identity_preserves_state() {
     let psi = make_3site_test_mps();
     let identity = make_identity_mpo(3, 2);
 
-    let phi = mps::apply_with_method(&backend, &identity, &psi, None, ApplyMethod::ZipUp);
+    let phi = apply_ok(&backend, &identity, &psi, None, ApplyMethod::ZipUp);
 
     let v_orig = mps_to_dense(&psi);
     let v_after = mps_to_dense(&phi);
@@ -510,7 +509,7 @@ fn test_apply_zipup_lossless_matches_streaming_naive() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let phi_zipup = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = apply_ok(&backend, &op, &psi, None, ApplyMethod::ZipUp);
     let phi_baseline = mps::apply(&backend, &op, &psi, None);
 
     let v_zipup = mps_to_dense(&phi_zipup);
@@ -528,7 +527,7 @@ fn test_apply_zipup_truncates_bond_dim() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = apply_ok(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond dim {d} exceeds chi_max=2");
@@ -543,7 +542,7 @@ fn test_apply_zipup_canonical_form() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let phi_none = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::ZipUp);
+    let phi_none = apply_ok(&backend, &op, &psi, None, ApplyMethod::ZipUp);
     assert_eq!(
         *phi_none.canonical_form(),
         CanonicalForm::Mixed { center: 2 }
@@ -553,7 +552,7 @@ fn test_apply_zipup_canonical_form() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi_trunc = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi_trunc = apply_ok(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
     assert_eq!(
         *phi_trunc.canonical_form(),
         CanonicalForm::Mixed { center: 2 }
@@ -577,7 +576,7 @@ fn test_apply_zipup_ignores_params_center() {
         absorb: SvdAbsorb::default(),
         center: Some(0),
     };
-    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = apply_ok(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 2 });
 }
 
@@ -591,7 +590,7 @@ fn test_apply_density_matrix_identity_preserves_state() {
     let psi = make_3site_test_mps();
     let identity = make_identity_mpo(3, 2);
 
-    let phi = mps::apply_with_method(&backend, &identity, &psi, None, ApplyMethod::DensityMatrix);
+    let phi = apply_ok(&backend, &identity, &psi, None, ApplyMethod::DensityMatrix);
 
     let v_orig = mps_to_dense(&psi);
     let v_after = mps_to_dense(&phi);
@@ -607,7 +606,7 @@ fn test_apply_density_matrix_lossless_matches_streaming_naive() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let phi_dm = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    let phi_dm = apply_ok(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
     let phi_baseline = mps::apply(&backend, &op, &psi, None);
 
     let v_dm = mps_to_dense(&phi_dm);
@@ -625,7 +624,7 @@ fn test_apply_density_matrix_truncates_bond_dim() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -646,7 +645,7 @@ fn test_apply_density_matrix_canonical_form() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let phi_none = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    let phi_none = apply_ok(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
     assert_eq!(
         *phi_none.canonical_form(),
         CanonicalForm::Mixed { center: 2 }
@@ -656,7 +655,7 @@ fn test_apply_density_matrix_canonical_form() {
         chi_max: Some(2),
         target_trunc_err: None,
     });
-    let phi_trunc = mps::apply_with_method(
+    let phi_trunc = apply_ok(
         &backend,
         &op,
         &psi,
@@ -686,7 +685,7 @@ fn test_apply_density_matrix_ignores_params_center() {
         absorb: SvdAbsorb::default(),
         center: Some(0),
     };
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -707,7 +706,7 @@ fn test_apply_density_matrix_ignores_target_trunc_err() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let lossless = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    let lossless = apply_ok(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
 
     // chi_max = None, but a target_trunc_err large enough to discard everything
     // down to chi = 1 if it were consulted.
@@ -715,7 +714,7 @@ fn test_apply_density_matrix_ignores_target_trunc_err() {
         chi_max: None,
         target_trunc_err: Some(1e10),
     });
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,

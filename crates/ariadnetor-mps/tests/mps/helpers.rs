@@ -1,12 +1,15 @@
 //! Shared test helpers for MPS tests.
 
 use ariadnetor_linalg::{contract, permute_with_backend, tensordot};
-use ariadnetor_mps::{Mpo, Mps, TensorChain};
+use ariadnetor_mps::{
+    ApplyMethod, Mpo, Mps, MpsOps, TensorChain, TruncateParams, apply_with_method,
+};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::MemoryOrder;
 use ariadnetor_tensor::test_fixtures::legs;
 use ariadnetor_tensor::{
-    BlockCoord, BlockSparseTensor, DenseLayout, DenseStorage, DenseTensor, Direction, U1Sector,
+    BlockCoord, BlockSparseTensor, DenseLayout, DenseStorage, DenseTensor, Direction, OpsFor,
+    Storage, StorageFor, TensorLayout, U1Sector,
 };
 use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 
@@ -17,6 +20,27 @@ pub(crate) fn cm_dense_tensor<T: ariadnetor_core::Scalar>(
     shape: Vec<usize>,
 ) -> DenseTensor<T> {
     Host::shared().dense(data, shape)
+}
+
+/// `apply_with_method` unwrapped: shared by tests whose inputs are finite,
+/// where an `Err` can only mean the apply contract itself broke. Tests that
+/// exercise the error path call `apply_with_method` directly.
+pub(crate) fn apply_ok<T, St, L, B>(
+    backend: &B,
+    op: &Mpo<St, L>,
+    psi: &Mps<St, L>,
+    params: Option<&TruncateParams>,
+    method: ApplyMethod,
+) -> Mps<St, L>
+where
+    T: ariadnetor_core::Scalar,
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+    Mps<St, L>: MpsOps<T, Storage = St, Layout = L>,
+    B: OpsFor<St>,
+{
+    apply_with_method(backend, op, psi, params, method)
+        .expect("apply must succeed on finite inputs")
 }
 
 /// Build a `DenseTensor<f64>` whose logical content matches `data` read

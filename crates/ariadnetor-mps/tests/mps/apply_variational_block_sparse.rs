@@ -8,7 +8,7 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{BlockSparseLayout, BlockSparseStorage, U1Sector};
 
 use super::helpers::{
-    assert_block_sparse_close, bsp_mps_contract_full, make_3site_u1_mps_multipath_middle,
+    apply_ok, assert_block_sparse_close, bsp_mps_contract_full, make_3site_u1_mps_multipath_middle,
     make_4site_u1_mps, make_identity_u1_mpo, make_total_n_u1_mpo,
 };
 
@@ -27,7 +27,7 @@ fn variational_identity_preserves_state() {
     let psi = make_4site_u1_mps();
     let identity = make_identity_u1_mpo(4);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &identity,
         &psi,
@@ -51,7 +51,7 @@ fn variational_lossless_matches_streaming_naive() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -77,7 +77,7 @@ fn variational_truncates_bond_dim() {
         target_trunc_err: None,
     });
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -103,8 +103,8 @@ fn variational_refines_over_seed() {
     });
 
     let exact = mps::apply(&backend, &op, &psi, None);
-    let seed = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
-    let fit = mps::apply_with_method(
+    let seed = apply_ok(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let fit = apply_ok(
         &backend,
         &op,
         &psi,
@@ -135,7 +135,7 @@ fn variational_canonical_form() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -153,7 +153,7 @@ fn variational_density_matrix_init_lossless() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,

@@ -45,8 +45,8 @@ pub use serialize::{
 };
 pub use site_ops::{Qubit, SiteOps, SpinHalf};
 pub use types::{
-    ApplyMethod, CanonicalForm, Mpo, Mps, SuccessiveRandomizedParams, SvdAbsorb, TruncResult,
-    TruncateParams, VariationalInit,
+    ApplyError, ApplyMethod, CanonicalForm, Mpo, Mps, SuccessiveRandomizedParams, SvdAbsorb,
+    TruncResult, TruncateParams, VariationalInit,
 };
 
 // Re-export TruncSvdParams for convenience

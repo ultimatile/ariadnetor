@@ -19,9 +19,9 @@ use ariadnetor_tensor::{DenseLayout, DenseStorage};
 use num_traits::NumCast;
 
 use super::helpers::{
-    assert_dense_close, cm_dense_tensor, densify, is_right_canonical, make_3site_test_mpo,
-    make_3site_test_mps, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
-    rm_dense_tensor,
+    apply_ok, assert_dense_close, cm_dense_tensor, densify, is_right_canonical,
+    make_3site_test_mpo, make_3site_test_mps, make_4site_mps, make_identity_mpo,
+    make_total_n_dense_mpo, mps_to_dense, rm_dense_tensor,
 };
 
 /// Fixed-rank SRC at a rank high enough to be clamped to the exactly
@@ -75,7 +75,7 @@ fn src_exact_rank_matches_streaming_naive() {
     let op = make_3site_test_mpo();
 
     let exact = mps::apply(&backend, &op, &psi, None);
-    let out = mps::apply_with_method(&backend, &op, &psi, None, exact_rank_method(7));
+    let out = apply_ok(&backend, &op, &psi, None, exact_rank_method(7));
 
     assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&exact), 1e-10);
 }
@@ -95,7 +95,7 @@ fn src_adaptive_meets_relative_tolerance() {
         seed: 42,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     let rel = relative_error(&backend, &out, &exact);
     assert!(
@@ -136,7 +136,7 @@ fn src_adaptive_is_scale_invariant() {
         ..Default::default()
     });
 
-    let unit = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let unit = apply_ok(&backend, &op, &psi, None, method);
     assert!(
         unit.max_bond_dim() > 1,
         "the unit-scale reference must exercise growth"
@@ -155,7 +155,7 @@ fn src_adaptive_is_scale_invariant() {
                 })
                 .collect(),
         );
-        let out = mps::apply_with_method(&backend, &op, &scaled, None, method);
+        let out = apply_ok(&backend, &op, &scaled, None, method);
         for j in 0..unit.len() - 1 {
             assert_eq!(
                 out.bond_dim(j),
@@ -212,7 +212,7 @@ fn src_complex_matches_streaming_naive() {
     ]);
 
     let exact = mps::apply(&backend, &op, &psi, None);
-    let out = mps::apply_with_method(&backend, &op, &psi, None, exact_rank_method(11));
+    let out = apply_ok(&backend, &op, &psi, None, exact_rank_method(11));
 
     let rel = relative_error(&backend, &out, &exact);
     assert!(rel < 1e-10, "complex SRC deviates: relative error {rel}");
@@ -225,7 +225,7 @@ fn src_single_site_chain_is_exact() {
         Mps::from_sites(vec![cm_dense_tensor(vec![0.6, 0.8], vec![1, 2, 1])]);
     let op = make_identity_mpo(1, 2);
 
-    let out = mps::apply_with_method(&backend, &op, &psi, None, exact_rank_method(3));
+    let out = apply_ok(&backend, &op, &psi, None, exact_rank_method(3));
 
     assert_eq!(*out.canonical_form(), CanonicalForm::Mixed { center: 0 });
     assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&psi), 1e-12);
@@ -251,7 +251,7 @@ fn src_rank_deficient_sketch_stops_exactly() {
         seed: 5,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&psi), 1e-10);
 }
@@ -298,7 +298,7 @@ fn src_rank_deficiency_after_growth_restores_isometry() {
         seed: 3,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&psi), 1e-10);
     assert_eq!(*out.canonical_form(), CanonicalForm::Mixed { center: 0 });
@@ -334,7 +334,7 @@ fn src_zero_product_stops_immediately() {
         seed: 9,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     let v = mps_to_dense(&out);
     assert!(v.norm() < 1e-14, "zero product must stay zero");
@@ -350,7 +350,7 @@ fn src_canonical_form_and_isometry() {
     let psi = make_3site_test_mps();
     let op = make_3site_test_mpo();
 
-    let out = mps::apply_with_method(&backend, &op, &psi, None, exact_rank_method(13));
+    let out = apply_ok(&backend, &op, &psi, None, exact_rank_method(13));
 
     assert_eq!(*out.canonical_form(), CanonicalForm::Mixed { center: 0 });
     for j in 1..out.len() {
@@ -372,8 +372,8 @@ fn src_same_seed_is_reproducible() {
         ..Default::default()
     });
 
-    let a = mps::apply_with_method(&backend, &op, &psi, None, method);
-    let b = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let a = apply_ok(&backend, &op, &psi, None, method);
+    let b = apply_ok(&backend, &op, &psi, None, method);
 
     for j in 0..a.len() {
         assert_eq!(a.site(j).shape(), b.site(j).shape(), "site {j} shape");
@@ -404,7 +404,7 @@ fn src_forced_growth_from_small_sketch() {
         seed: 17,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     // A tight cutoff on a genuinely entangled product cannot be met at
     // sketch size 1, so growth must have occurred for accuracy to hold.
@@ -435,7 +435,7 @@ fn src_min_dim_floors_the_bond() {
         seed: 31,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     for j in 0..out.len() - 1 {
         let cap = op.site(j + 1).shape()[0] * psi.site(j + 1).shape()[0];
@@ -461,7 +461,7 @@ fn src_fixed_rank_sets_every_bond_to_output_dim() {
         seed: 37,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     for j in 0..out.len() - 1 {
         assert_eq!(out.bond_dim(j), 2, "bond {j} must equal output_dim");
@@ -480,7 +480,7 @@ fn src_max_dim_caps_every_bond() {
         seed: 23,
         ..Default::default()
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, None, method);
+    let out = apply_ok(&backend, &op, &psi, None, method);
 
     assert_eq!(out.max_bond_dim(), 1, "max_dim = 1 must cap every bond");
 }
@@ -495,7 +495,7 @@ fn src_finishing_pass_truncates() {
         chi_max: Some(1),
         target_trunc_err: None,
     });
-    let out = mps::apply_with_method(&backend, &op, &psi, Some(&params), exact_rank_method(19));
+    let out = apply_ok(&backend, &op, &psi, Some(&params), exact_rank_method(19));
 
     assert_eq!(
         out.max_bond_dim(),
@@ -503,6 +503,85 @@ fn src_finishing_pass_truncates() {
         "finishing pass must truncate to chi_max"
     );
 }
+
+// ===========================================================================
+// Non-finite surfacing
+// ===========================================================================
+
+/// Unpack the expected `NonFinite` error into its `(site, norm)`
+/// diagnostics, panicking on `Ok` or any other variant.
+fn expect_non_finite(
+    res: Result<Mps<DenseStorage<f64>, DenseLayout>, mps::ApplyError>,
+) -> (usize, f64) {
+    match res {
+        Ok(_) => panic!("a poisoned input must not be returned as a success"),
+        Err(mps::ApplyError::NonFinite { site, norm }) => (site, norm),
+        Err(other) => panic!("expected NonFinite, got {other:?}"),
+    }
+}
+
+#[test]
+fn src_adaptive_surfaces_nan_input_as_error() {
+    let backend = NativeBackend::new();
+    let mut psi = make_3site_test_mps();
+    let op = make_3site_test_mpo();
+    psi.site_mut(0).set([0, 0, 0], f64::NAN);
+
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams::default());
+    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
+    // Every sketch panel folds the environments of all sites to its
+    // left, so input poison anywhere surfaces at the first processed
+    // site of the right-to-left sweep.
+    assert_eq!(site, 2, "detection happens at the first processed site");
+    assert!(norm.is_nan(), "the diagnostic carries the offending norm");
+}
+
+#[test]
+fn src_fixed_mode_surfaces_inf_input_as_error() {
+    let backend = NativeBackend::new();
+    let psi = make_3site_test_mps();
+    let mut op = make_3site_test_mpo();
+    op.site_mut(1).set([0, 0, 0, 0], f64::INFINITY);
+
+    // Fixed mode never consults the adaptive stopping rule, so the check
+    // must fire on the single panel pass itself.
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        output_dim: Some(2),
+        ..Default::default()
+    });
+    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
+    assert_eq!(site, 2, "detection happens at the first processed site");
+    // The inf may surface as inf directly or as NaN through an
+    // `inf - inf` / `0 * inf` in the contraction sums.
+    assert!(
+        !norm.is_finite(),
+        "the diagnostic carries the offending norm"
+    );
+}
+
+#[test]
+fn src_single_site_surfaces_nan_as_error() {
+    let backend = NativeBackend::new();
+    // The n == 1 path has no sketch: the exact local product itself is
+    // the checked boundary quantity.
+    let psi: Mps<DenseStorage<f64>, DenseLayout> =
+        Mps::from_sites(vec![cm_dense_tensor(vec![1.0, f64::NAN], vec![1, 2, 1])]);
+    let op = make_identity_mpo(1, 2);
+
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams::default());
+    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
+    assert_eq!(site, 0, "the single site is site 0");
+    assert!(norm.is_nan(), "the diagnostic carries the offending norm");
+}
+
+// The remaining error return — the assembled-sites scan — has no
+// deterministic test: with all panels finite it fires only when the QR
+// factorization's internals, the final cap update, or the first-site
+// contraction alone produce a non-finite value, and the margin between
+// those sums and the (scanned) panel sums is set by the Gaussian
+// samples, so any triggering fixture would encode magic magnitudes tied
+// to the RNG stream and break on a `rand` upgrade. That scan is defense
+// in depth behind the panel scans.
 
 // ===========================================================================
 // Validation panics
@@ -588,7 +667,7 @@ fn src_unequal_bonds_agree_with_streaming_naive() {
     let op = make_total_n_dense_mpo(4);
 
     let exact = mps::apply(&backend, &op, &psi, None);
-    let out = mps::apply_with_method(&backend, &op, &psi, None, exact_rank_method(29));
+    let out = apply_ok(&backend, &op, &psi, None, exact_rank_method(29));
 
     assert_dense_close(&mps_to_dense(&out), &mps_to_dense(&exact), 1e-9);
 }

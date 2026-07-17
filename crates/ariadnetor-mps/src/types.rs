@@ -259,6 +259,14 @@ pub enum ApplyMethod {
     /// truncation-side knobs live there, none are consulted during the
     /// sweep itself.
     ///
+    /// # Errors
+    ///
+    /// The only method whose dispatch can currently return an error:
+    /// [`ApplyError::NonFinite`] when a non-finite element reaches a
+    /// result boundary, in both adaptive and fixed mode. See the variant
+    /// doc for the exact scope (pre-finishing-pass, detection locus,
+    /// elementwise detector).
+    ///
     /// # Panics
     ///
     /// Panics on block-sparse chains: the Gaussian sketch mixes symmetry
@@ -274,6 +282,51 @@ impl Default for ApplyMethod {
     fn default() -> Self {
         Self::StreamingNaive { forward_cap: None }
     }
+}
+
+/// Errors from applying an MPO to an MPS
+/// ([`apply_with_method`](crate::apply_with_method)).
+///
+/// This carries only genuine runtime failures the caller can recover
+/// from. Caller-side contract violations (mismatched chain lengths,
+/// invalid parameters, a block-sparse chain passed to a dense-only
+/// method) remain panics — they are programmer errors, not recoverable
+/// conditions.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ApplyError {
+    /// A non-finite element (NaN/inf) reached a result boundary: an
+    /// overflowed contraction produced `inf`, or `inf - inf` /
+    /// `0 * inf` produced NaN downstream. For
+    /// [`ApplyMethod::SuccessiveRandomized`] the scanned quantities are
+    /// each growth round's sketch panel and every assembled site tensor,
+    /// so an `Ok` state contains only finite elements. A poisoned state
+    /// must not flow on as a normal result, where it would silently
+    /// corrupt every downstream computation. Only methods that perform
+    /// the scan can report this error — currently
+    /// `ApplyMethod::SuccessiveRandomized` alone; the other methods
+    /// return a poisoned state as `Ok`, as they always have.
+    ///
+    /// The scan runs before the optional finishing pass, so it does not
+    /// cover non-finite values arising only inside a requested
+    /// `canonicalize` + `truncate`. The detector is elementwise: a
+    /// finite state whose Frobenius norm merely overflows the scalar's
+    /// real type is not rejected. The diagnostic is carried as `f64` so
+    /// the error type stays non-generic.
+    #[error("MPO-MPS apply produced a non-finite element (detected at site {site}): norm = {norm}")]
+    NonFinite {
+        /// Site index (0-based) where the sweep detected the poison.
+        /// This is the detection locus, not the poison's origin: the
+        /// first scanned quantity that folds the poisoned data reports
+        /// it, so poison already present in the inputs is detected at
+        /// the sweep's first processed site. The locus follows the
+        /// sweep's internal check placement and is informational, not a
+        /// stable contract.
+        site: usize,
+        /// Frobenius norm of the offending tensor — non-finite by
+        /// construction (lossily cast to `f64`).
+        norm: f64,
+    },
 }
 
 /// Result of a truncation operation.

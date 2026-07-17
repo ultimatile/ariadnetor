@@ -12,7 +12,7 @@ use ariadnetor_tensor::{
 };
 
 use super::helpers::{
-    assert_block_sparse_close, bsp_mps_contract_full, make_2site_entangled_u1_mps,
+    apply_ok, assert_block_sparse_close, bsp_mps_contract_full, make_2site_entangled_u1_mps,
     make_3site_u1_mps_multipath_middle, make_4site_u1_mps, make_identity_u1_mpo,
     make_total_n_u1_mpo,
 };
@@ -476,7 +476,7 @@ fn streaming_naive_forward_cap_factor_one_keeps_chi_max() {
         forward_cap: Some(NonZeroUsize::new(1).unwrap()),
     };
 
-    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), method);
+    let phi = apply_ok(&backend, &op, &psi, Some(&params), method);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond {d} exceeds chi_max=2 under forward_cap=1");
@@ -518,7 +518,7 @@ fn streaming_naive_forward_cap_observably_changes_output() {
     };
 
     let phi_lossless = mps::apply(&backend, &op, &psi, Some(&params));
-    let phi_capped = mps::apply_with_method(&backend, &op, &psi, Some(&params), capped);
+    let phi_capped = apply_ok(&backend, &op, &psi, Some(&params), capped);
 
     // Both paths must still respect the chi_max budget.
     for d in phi_capped.bond_dims() {
@@ -552,7 +552,7 @@ fn zipup_lossless_matches_streaming_naive() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
 
-    let phi_zipup = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::ZipUp);
+    let phi_zipup = apply_ok(&backend, &op, &psi, None, ApplyMethod::ZipUp);
     let phi_baseline = mps::apply(&backend, &op, &psi, None);
 
     let v_zipup = bsp_mps_contract_full(&phi_zipup);
@@ -572,7 +572,7 @@ fn zipup_truncates_bond_dim() {
         target_trunc_err: None,
     });
 
-    let phi = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let phi = apply_ok(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
 
     for d in phi.bond_dims() {
         assert!(d <= 2, "bond {d} exceeds chi_max=2");
@@ -587,7 +587,7 @@ fn zipup_canonical_form() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
 
-    let phi = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::ZipUp);
+    let phi = apply_ok(&backend, &op, &psi, None, ApplyMethod::ZipUp);
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 3 });
 }
 
@@ -606,7 +606,7 @@ fn density_matrix_lossless_matches_streaming_naive() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
 
-    let phi_dm = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    let phi_dm = apply_ok(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
     let phi_baseline = mps::apply(&backend, &op, &psi, None);
 
     let v_dm = bsp_mps_contract_full(&phi_dm);
@@ -627,7 +627,7 @@ fn density_matrix_truncates_bond_dim() {
         target_trunc_err: None,
     });
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -648,6 +648,6 @@ fn density_matrix_canonical_form() {
     let psi = make_4site_u1_mps();
     let op = make_total_n_u1_mpo(4);
 
-    let phi = mps::apply_with_method(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
+    let phi = apply_ok(&backend, &op, &psi, None, ApplyMethod::DensityMatrix);
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 3 });
 }
