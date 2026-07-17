@@ -101,6 +101,7 @@ dependencies = [
 name = "ariadnetor-core"
 version = "0.0.5"
 dependencies = [
+ "approx",
  "dashmap",
  "num-complex",
  "num-traits",
@@ -157,6 +158,7 @@ name = "ariadnetor-tensor"
 version = "0.0.5"
 dependencies = [
  "aligned-vec",
+ "approx",
  "ariadnetor-core",
  "ariadnetor-native",
  "ariadnetor-tensor",

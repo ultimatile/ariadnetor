@@ -36,7 +36,7 @@
 //! Dense-only: the consumer is the randomized MPO-MPS compression sweep,
 //! whose Gaussian sketch has no block-sparse counterpart.
 
-use ariadnetor_core::Scalar;
+use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
 use ariadnetor_tensor::{
     DenseStorage, DenseTensor, DenseTensorData, OpsFor, add_all, linear_combine,
 };
@@ -327,11 +327,11 @@ impl<T: Scalar> IncrementalQr<T> {
                         .expect("a projection block implies a prior append installed the inverse");
                     // An old row of the grown inverse is the concatenation
                     // of its previous entries and its slice of `X`, so its
-                    // norm combines by the Pythagorean identity — `hypot`
-                    // rather than a squared sum, which would overflow at
-                    // extreme scales.
+                    // norm combines by the Pythagorean identity — the
+                    // scale-safe combine rather than a squared sum, which
+                    // would overflow at extreme scales.
                     for (i, row) in self.row_inv_norms.iter_mut().enumerate() {
-                        *row = row.hypot(row_norm(&x, i));
+                        *row = combine_norms(*row, row_norm(&x, i));
                     }
                     for i in 0..s {
                         self.row_inv_norms.push(row_norm(&g22, i));
@@ -354,14 +354,7 @@ impl<T: Scalar> IncrementalQr<T> {
 }
 
 /// Euclidean norm of row `i` of a matrix, read through the order-aware
-/// accessor. Chained `hypot` keeps the accumulation on the entries' own
-/// scale: summing squares would overflow once any entry exceeds the
-/// square root of the real type's maximum, even though the norm itself
-/// is representable.
+/// accessor. The overflow-safe numerics live in [`scale_safe_norm`].
 fn row_norm<T: Scalar>(m: &DenseTensor<T>, i: usize) -> T::Real {
-    let mut acc = T::Real::zero();
-    for j in 0..m.shape()[1] {
-        acc = acc.hypot(m.get([i, j]).abs());
-    }
-    acc
+    scale_safe_norm((0..m.shape()[1]).map(|j| m.get([i, j]).abs()))
 }

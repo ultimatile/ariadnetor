@@ -35,6 +35,7 @@ serde = { workspace = true }
 ciborium = { workspace = true }
 
 [dev-dependencies]
+approx = { workspace = true }
 criterion = { workspace = true }
 rand = { workspace = true }
 # Self dev-dependency enabling `test-fixtures` for this crate's own
