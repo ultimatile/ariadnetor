@@ -167,6 +167,59 @@ fn src_adaptive_is_scale_invariant() {
 }
 
 #[test]
+fn src_adaptive_is_scale_invariant_at_norm_saturation() {
+    let backend = NativeBackend::new();
+    // Beyond the squared-overflow regime above: here the accumulated
+    // sketch norm itself exceeds f64::MAX while every per-round panel
+    // norm stays representable, so a finished running norm would
+    // saturate to inf and `err <= cutoff * inf` would accept the sketch
+    // at that round with the bond stuck below the unit-scale choice.
+    // The scaled `(scale, sumsq)` accumulation keeps the comparison
+    // meaningful, so the same seed must still select the same bonds.
+    //
+    // The scale is tuned against this fixture's measured panel norms
+    // (seed 42): the saturating site's largest per-round panel norm is
+    // ~946.8x the applied scale while its accumulated norm reaches
+    // ~954.1x, so any scale in (MAX / 954.1, MAX / 946.8) — a window of
+    // about 0.8% — saturates the accumulation without pushing any
+    // single panel past the representable range. Re-tune from the
+    // per-round panel norms if the fixture, seed, or random stream ever
+    // changes.
+    let psi = make_4site_mps();
+    let op = make_total_n_dense_mpo(4);
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(1e-6),
+        sketch_dim: 1,
+        sketch_increment: 1,
+        seed: 42,
+        ..Default::default()
+    });
+
+    let unit = apply_ok(&backend, &op, &psi, None, method);
+    let scale = 1.89e305;
+    let scaled: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(
+        (0..psi.len())
+            .map(|j| {
+                let site = psi.site(j);
+                if j == 0 {
+                    site.scaled(scale)
+                } else {
+                    site.clone()
+                }
+            })
+            .collect(),
+    );
+    let out = apply_ok(&backend, &op, &scaled, None, method);
+    for j in 0..unit.len() - 1 {
+        assert_eq!(
+            out.bond_dim(j),
+            unit.bond_dim(j),
+            "bond {j} must not depend on the state's scale at norm saturation"
+        );
+    }
+}
+
+#[test]
 fn src_complex_matches_streaming_naive() {
     type C = Complex<f64>;
     let backend = NativeBackend::new();
@@ -557,6 +610,46 @@ fn src_fixed_mode_surfaces_inf_input_as_error() {
         !norm.is_finite(),
         "the diagnostic carries the offending norm"
     );
+}
+
+#[test]
+fn src_adaptive_surfaces_panel_norm_overflow_as_error() {
+    let backend = NativeBackend::new();
+    // One notch past the saturation window of
+    // `src_adaptive_is_scale_invariant_at_norm_saturation`: at this
+    // scale a growth round's panel norm itself exceeds f64::MAX with
+    // every element finite, so the backend QR cannot produce a finite
+    // triangular factor and the stopping rule has nothing to certify
+    // against. The sweep must surface that as an error instead of
+    // accepting the round as rank-deficient coverage and returning a
+    // bond-stuck state as a success.
+    let psi = make_4site_mps();
+    let op = make_total_n_dense_mpo(4);
+    let scale = 2.5e305;
+    let scaled: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(
+        (0..psi.len())
+            .map(|j| {
+                let site = psi.site(j);
+                if j == 0 {
+                    site.scaled(scale)
+                } else {
+                    site.clone()
+                }
+            })
+            .collect(),
+    );
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(1e-6),
+        sketch_dim: 1,
+        sketch_increment: 1,
+        seed: 42,
+        ..Default::default()
+    });
+    let (site, _norm) =
+        expect_non_finite(mps::apply_with_method(&backend, &op, &scaled, None, method));
+    // The right-to-left sweep hits the overflowing growth round at the
+    // first processed site.
+    assert_eq!(site, 3, "detection happens at the first processed site");
 }
 
 #[test]

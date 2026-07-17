@@ -24,7 +24,14 @@
 //! on as a success: every growth round scans its sketch panel for
 //! non-finite elements, and every assembled site tensor is scanned
 //! before the state is returned (see
-//! [`apply_successive_randomized_dense`]).
+//! [`apply_successive_randomized_dense`]). The adaptive stopping rule is
+//! additionally hardened against representational extremes that carry
+//! finite elements but degenerate the certification quantities: the
+//! accumulated sketch norm is kept in a saturation-free scaled form, an
+//! overflowed error estimator counts as "not converged" rather than
+//! certifying, and a non-finite QR diagonal (a panel column norm past
+//! the real type's range) surfaces as [`ApplyError::NonFinite`] instead
+//! of masquerading as rank deficiency.
 //!
 //! No code is ported from the paper's reference implementation
 //! (RandomMPOMPS, <https://github.com/chriscamano/RandomMPOMPS>); this
@@ -34,7 +41,7 @@
 //! out-of-range dimensions — follow that implementation, and "the
 //! reference implementation" in comments below refers to it.
 
-use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
+use ariadnetor_core::{NormAccumulator, Scalar, scale_safe_norm};
 use ariadnetor_linalg::{
     IncrementalQr, QrAppendOutcome, einsum_with_backend, permute_with_backend, tensordot,
 };
@@ -43,6 +50,9 @@ use num_traits::{Float, NumCast, Zero};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use rand_distr::StandardNormal;
+
+#[cfg(test)]
+mod tests;
 
 use super::super::chain::TensorChain;
 use super::super::types::{
@@ -240,7 +250,19 @@ fn sketch_panel_block<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 /// before this runs, so the row norms fed here always come from an
 /// invertible factor and are nonzero (every row of `R^-1` carries the
 /// nonzero diagonal `1 / R_ii`).
-fn leave_one_out_estimate<T: Scalar>(row_norms: &[T::Real]) -> T::Real {
+///
+/// Returns `None` when the estimate carries no information: a non-finite
+/// row norm means the maintained inverse overflowed (indistinguishable,
+/// at this point, from a genuinely huge row norm whose true contribution
+/// would be negligible), and a non-finite finished estimate means the
+/// reciprocal accumulation itself saturated — feeding either into the
+/// stopping comparison could report convergence without the true
+/// ordering holding (`inf <= inf`, or an overflow-collapsed zero passing
+/// any cutoff). `Some(err)` implies `err` is finite.
+fn leave_one_out_estimate<T: Scalar>(row_norms: &[T::Real]) -> Option<T::Real> {
+    if row_norms.iter().any(|r| !r.is_finite()) {
+        return None;
+    }
     let p = row_norms.len();
     debug_assert!(
         row_norms.iter().all(|r| *r > T::Real::zero()),
@@ -248,7 +270,8 @@ fn leave_one_out_estimate<T: Scalar>(row_norms: &[T::Real]) -> T::Real {
     );
     let inv_norm = scale_safe_norm(row_norms.iter().map(|r| r.recip()));
     let p_real = <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
-    inv_norm / p_real.sqrt()
+    let err = inv_norm / p_real.sqrt();
+    err.is_finite().then_some(err)
 }
 
 /// Validate the SRC parameter struct. Every field is checked in every mode
@@ -299,9 +322,15 @@ fn validate(src: &SuccessiveRandomizedParams) {
 /// contains only finite elements before the optional finishing pass.
 /// Non-finite values arising only inside that finishing pass
 /// (`canonicalize` + `truncate`) are the truncation machinery's concern
-/// and are not checked here. The detector is elementwise, so a finite
-/// state whose Frobenius norm merely overflows `T::Real` is not
-/// rejected.
+/// and are not checked here. The element detector itself does not reject
+/// a finite state whose Frobenius norm merely overflows `T::Real`, but
+/// adaptive mode additionally errors when a sketch panel's column norm
+/// overflow degenerates the QR factorization
+/// ([`QrAppendOutcome::NonFinite`]) — the stopping rule cannot certify
+/// anything against a factor that does not exist, and stopping there
+/// would silently return a bond-stuck state. Fixed mode never certifies,
+/// so it tolerates the degenerated factor and relies on the elementwise
+/// scans alone.
 pub(crate) fn apply_successive_randomized_dense<T, B>(
     backend: &B,
     op: &Mpo<DenseStorage<T>, DenseLayout>,
@@ -372,12 +401,17 @@ where
         };
 
         let mut inc = IncrementalQr::<T>::new(rows, adaptive);
-        // Accumulated Frobenius norm of the sketch. The scale-safe combine
-        // keeps the running value on the norms' own scale: squaring them
-        // to sum would flush a legitimately small sketch to zero (and so
-        // report a zero product) or overflow a large one, making the
-        // stopping rule scale-dependent for a criterion that is not.
-        let mut norm = T::Real::zero();
+        // Accumulated Frobenius norm of the sketch, kept in the
+        // accumulator's `(scale, sumsq)` form instead of a finished
+        // scalar: panels are elementwise finite (enforced below), so the
+        // scale stays finite and the representation never saturates —
+        // where a finished running norm would overflow to `inf` once the
+        // true accumulated norm left the representable range and make
+        // `err <= cutoff * inf` accept any finite estimate at the first
+        // round. Elements enter component-wise (`|z|^2 = re^2 + im^2`
+        // keeps the represented value the exact Frobenius norm) because
+        // a complex modulus can overflow even with finite components.
+        let mut norm_acc = NormAccumulator::new();
         loop {
             let columns_created = envs.ncols();
             if target_p > columns_created {
@@ -404,7 +438,10 @@ where
             // norm (the zero-norm break and the estimator), so the panel
             // pass is adaptive-only work.
             if adaptive {
-                norm = combine_norms(norm, panel.norm());
+                for x in panel.data_slice() {
+                    norm_acc.push(<T::Real as Float>::abs(x.re()));
+                    norm_acc.push(<T::Real as Float>::abs(x.im()));
+                }
             }
             // The `current_maxdim` clamp above keeps the block within the
             // factorization's bounds, so a failure here is an unrecoverable
@@ -413,12 +450,35 @@ where
                 "sketch QR append: the clamps keep the block within the row budget, \
                      so only an unrecoverable backend kernel failure lands here",
             );
+            // A non-finite QR diagonal (a panel column whose true norm
+            // exceeds the real type's range) degenerates the
+            // certification machinery itself: the rank test and the
+            // estimator both read the factor this append could not
+            // produce. In adaptive mode that must not escape through any
+            // of the successful-coverage exits below (max-dimension,
+            // zero-norm, rank-deficient), so it errors here; fixed mode
+            // never claims certification and keeps relying on the
+            // elementwise result-boundary scans instead.
+            if adaptive && outcome == QrAppendOutcome::NonFinite {
+                use num_traits::ToPrimitive;
+                let panel_norm = panel.norm().to_f64().unwrap_or(f64::NAN);
+                return Err(ApplyError::NonFinite {
+                    site: j,
+                    norm: if panel_norm.is_finite() {
+                        // The degeneration arose in a derived quantity
+                        // (the QR diagonal), not the panel's own norm.
+                        f64::NAN
+                    } else {
+                        panel_norm
+                    },
+                });
+            }
             let p = inc.ncols();
 
             if !adaptive || p == current_maxdim {
                 break;
             }
-            if norm.is_zero() {
+            if norm_acc.scale().is_zero() {
                 // Zero product at this cut: any orthonormal basis is exact.
                 break;
             }
@@ -429,26 +489,29 @@ where
             let row_norms = inc
                 .r_inverse_row_norms()
                 .expect("adaptive mode tracks the inverse and this append was full-rank");
-            // The estimate is deliberately not finiteness-checked: with
-            // panels elementwise-finite (guaranteed above) Q and the
-            // returned state are finite regardless of the estimator's
-            // health, so erroring here would discard a usable result.
-            // The stopping rule itself is not robust at numerical
-            // extremes, and it degrades toward premature convergence,
-            // not growth: an accumulated norm that saturates to inf
-            // makes the right-hand side infinite, and R^-1 row norms
-            // that overflow collapse the estimate to zero. In those
-            // regimes the returned state is finite but not certified
-            // against the cutoff — an estimator-robustness concern
-            // separate from the poison surfacing these scans own.
-            let err = leave_one_out_estimate::<T>(row_norms);
             let p_real =
                 <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
-            let norm_est = norm / p_real.sqrt();
             let cutoff = cutoff_real.expect("validated: adaptive mode has a cutoff");
             // p started at or above the clamped min_dim and only grows, so
-            // the cutoff test alone decides convergence.
-            if err <= cutoff * norm_est {
+            // the cutoff test alone decides convergence. The comparison is
+            // `err <= cutoff * norm_est` with `norm_est = norm / sqrt(p)`,
+            // evaluated on the accumulator's `(scale, sumsq)` form in
+            // exactly this association order: `cutoff * sqrt(sumsq / p)`
+            // is small, so the only overflow left is the final `* scale`,
+            // which fires exactly when the true right-hand side exceeds
+            // the representable range — and then any finite `err` is
+            // genuinely below it, so "converged" is the correct reading.
+            // Every remaining degradation points toward growth (an
+            // uninformative `None` estimate, underflow of the right-hand
+            // side), never toward false certification; the growth is
+            // bounded by the `current_maxdim` break above.
+            let converged = match leave_one_out_estimate::<T>(row_norms) {
+                None => false,
+                Some(err) => {
+                    err <= (cutoff * (norm_acc.sumsq() / p_real).sqrt()) * norm_acc.scale()
+                }
+            };
+            if converged {
                 break;
             }
             target_p = p.saturating_add(src.sketch_increment).min(current_maxdim);
