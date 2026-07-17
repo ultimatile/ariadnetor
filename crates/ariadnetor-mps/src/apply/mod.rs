@@ -26,7 +26,32 @@ use ariadnetor_tensor::{
 };
 
 use super::chain::TensorChain;
-use super::types::{CanonicalForm, Mpo, Mps, TruncateParams};
+use super::types::{ApplyError, CanonicalForm, Mpo, Mps, TruncateParams};
+
+/// Return the result-boundary error when `t` contains a non-finite
+/// element (NaN/inf in either component), attributing it to `site`.
+///
+/// The detector is an elementwise scan, not a norm fold: a norm
+/// conflates genuine poison with a finite tensor whose Frobenius norm
+/// merely overflows the scalar's real type, and the latter must not be
+/// rejected. The error's diagnostic still carries the (necessarily
+/// non-finite) norm, computed only on the failure path and cast lossily
+/// so the error type stays non-generic. Shared across apply methods so
+/// a future fallible method reuses the same boundary predicate.
+pub(crate) fn check_finite<T: Scalar>(site: usize, t: &DenseTensor<T>) -> Result<(), ApplyError> {
+    use num_traits::{Float, ToPrimitive};
+    if t.data_slice()
+        .iter()
+        .all(|x| x.re().is_finite() && x.im().is_finite())
+    {
+        Ok(())
+    } else {
+        Err(ApplyError::NonFinite {
+            site,
+            norm: t.norm().to_f64().unwrap_or(f64::NAN),
+        })
+    }
+}
 
 /// Local single-site MPO·MPS product for the Dense path: contract the MPO
 /// (rank-4) with the MPS (rank-3) over the physical index and fuse the two

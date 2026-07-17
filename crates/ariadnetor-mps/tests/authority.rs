@@ -29,14 +29,36 @@ use ariadnetor_core::backend::{
 use ariadnetor_core::{ComputeBackend, Scalar};
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::{
-    ApplyMethod, CanonicalForm, Mpo, Mps, TensorChain, TruncateParams, apply, apply_with_method,
+    ApplyMethod, CanonicalForm, Mpo, Mps, MpsOps, TensorChain, TruncateParams, apply,
+    apply_with_method,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::legs;
 use ariadnetor_tensor::{
     BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout,
-    DenseStorage, DenseTensor, Direction, OpsFor, U1Sector,
+    DenseStorage, DenseTensor, Direction, OpsFor, Storage, StorageFor, TensorLayout, U1Sector,
 };
+
+/// `apply_with_method` unwrapped: the fixtures are finite, so an `Err`
+/// can only mean the apply contract itself broke. These tests assert on
+/// the backend's dispatch count, not the returned state.
+fn apply_ok<T, St, L, B>(
+    backend: &B,
+    op: &Mpo<St, L>,
+    psi: &Mps<St, L>,
+    params: Option<&TruncateParams>,
+    method: ApplyMethod,
+) -> Mps<St, L>
+where
+    T: Scalar,
+    St: Storage + StorageFor<L>,
+    L: TensorLayout,
+    Mps<St, L>: MpsOps<T, Storage = St, Layout = L>,
+    B: OpsFor<St>,
+{
+    apply_with_method(backend, op, psi, params, method)
+        .expect("apply must succeed on finite inputs")
+}
 
 // ---------------------------------------------------------------------------
 // CountingBackend: NativeBackend delegate that counts kernel dispatches
@@ -353,7 +375,7 @@ fn apply_dense_svd_branch_routes_kernels_to_call_site_backend() {
     let op = dense_mpo();
     let psi = dense_mps();
 
-    let _ = apply_with_method(
+    let _ = apply_ok(
         &backend,
         &op,
         &psi,
@@ -373,7 +395,7 @@ fn apply_bsp_svd_branch_routes_kernels_to_call_site_backend() {
     let op = u1_mpo();
     let psi = u1_mps();
 
-    let _ = apply_with_method(
+    let _ = apply_ok(
         &backend,
         &op,
         &psi,
@@ -395,7 +417,7 @@ fn apply_dense_successive_randomized_routes_kernels_to_call_site_backend() {
     let op = dense_mpo();
     let psi = dense_mps();
 
-    let _ = apply_with_method(
+    let _ = apply_ok(
         &backend,
         &op,
         &psi,

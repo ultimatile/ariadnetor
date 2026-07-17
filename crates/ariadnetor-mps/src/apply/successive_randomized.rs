@@ -18,6 +18,14 @@
 //! Dense-only: a Gaussian sketch mixes symmetry sectors, so there is no
 //! block-sparse twin (the dispatch arm panics instead).
 //!
+//! Non-finite poisoning (an overflowed contraction producing `inf`, or
+//! `inf - inf` / `0 * inf` producing NaN) is surfaced as
+//! [`ApplyError::NonFinite`] at the result boundary instead of flowing
+//! on as a success: every growth round scans its sketch panel for
+//! non-finite elements, and every assembled site tensor is scanned
+//! before the state is returned (see
+//! [`apply_successive_randomized_dense`]).
+//!
 //! No code is ported from the paper's reference implementation
 //! (RandomMPOMPS, <https://github.com/chriscamano/RandomMPOMPS>); this
 //! module is written from the published algorithm against this crate's
@@ -37,7 +45,10 @@ use rand::{RngExt, SeedableRng};
 use rand_distr::StandardNormal;
 
 use super::super::chain::TensorChain;
-use super::super::types::{CanonicalForm, Mpo, Mps, SuccessiveRandomizedParams, TruncateParams};
+use super::super::types::{
+    ApplyError, CanonicalForm, Mpo, Mps, SuccessiveRandomizedParams, TruncateParams,
+};
+use super::check_finite;
 
 /// Cast a plain-`f64` tolerance into `T::Real`, panicking when the value is
 /// not representable as a finite real. `NumCast::from` maps an out-of-range
@@ -278,13 +289,26 @@ fn validate(src: &SuccessiveRandomizedParams) {
 ///
 /// See [`super::super::types::ApplyMethod::SuccessiveRandomized`] and
 /// [`SuccessiveRandomizedParams`] for semantics and panics.
+///
+/// # Errors
+///
+/// Returns [`ApplyError::NonFinite`] when a non-finite element (NaN/inf)
+/// reaches a result boundary — a growth round's sketch panel or an
+/// assembled site tensor — instead of letting the poisoned state flow on
+/// as a success. Every returned site tensor is scanned, so an `Ok` state
+/// contains only finite elements before the optional finishing pass.
+/// Non-finite values arising only inside that finishing pass
+/// (`canonicalize` + `truncate`) are the truncation machinery's concern
+/// and are not checked here. The detector is elementwise, so a finite
+/// state whose Frobenius norm merely overflows `T::Real` is not
+/// rejected.
 pub(crate) fn apply_successive_randomized_dense<T, B>(
     backend: &B,
     op: &Mpo<DenseStorage<T>, DenseLayout>,
     psi: &Mps<DenseStorage<T>, DenseLayout>,
     params: Option<&TruncateParams>,
     src: SuccessiveRandomizedParams,
-) -> Mps<DenseStorage<T>, DenseLayout>
+) -> Result<Mps<DenseStorage<T>, DenseLayout>, ApplyError>
 where
     T: Scalar,
     B: OpsFor<DenseStorage<T>>,
@@ -306,10 +330,13 @@ where
         // (b, w_r = 1, chi_r = 1) -> (1, d, 1).
         let d = w.shape()[2];
         let site = t.reshape_logical(vec![1, d, 1]);
+        // No sketch exists on this path, so the exact product itself is
+        // the boundary quantity to check.
+        check_finite(0, &site)?;
         let mut result: Mps<DenseStorage<T>, DenseLayout> = Mps::from_sites(vec![site]);
         result.set_canonical_form(CanonicalForm::Mixed { center: 0 });
         super::finish_dense(backend, &mut result, params);
-        return result;
+        return Ok(result);
     }
 
     let mut rng = StdRng::seed_from_u64(src.seed);
@@ -367,6 +394,12 @@ where
             let c0 = inc.ncols();
             let env_block = DenseTensor::from_data(envs.range(j - 1, c0, target_p));
             let panel = sketch_panel_block(backend, &env_block, w, a, &cap);
+            // Poison detector: any non-finite value that entered this
+            // round's sketch is caught here, in both adaptive and fixed
+            // mode. Scanning per round (rather than only the assembled
+            // result) fails on the round the poison appears instead of
+            // growing the sketch to its bound first.
+            check_finite(j, &panel)?;
             // Fixed mode breaks before either consumer of the accumulated
             // norm (the zero-norm break and the estimator), so the panel
             // pass is adaptive-only work.
@@ -396,6 +429,18 @@ where
             let row_norms = inc
                 .r_inverse_row_norms()
                 .expect("adaptive mode tracks the inverse and this append was full-rank");
+            // The estimate is deliberately not finiteness-checked: with
+            // panels elementwise-finite (guaranteed above) Q and the
+            // returned state are finite regardless of the estimator's
+            // health, so erroring here would discard a usable result.
+            // The stopping rule itself is not robust at numerical
+            // extremes, and it degrades toward premature convergence,
+            // not growth: an accumulated norm that saturates to inf
+            // makes the right-hand side infinite, and R^-1 row norms
+            // that overflow collapse the estimate to zero. In those
+            // regimes the returned state is finite but not certified
+            // against the cutoff — an estimator-robustness concern
+            // separate from the poison surfacing these scans own.
             let err = leave_one_out_estimate::<T>(row_norms);
             let p_real =
                 <T::Real as NumCast>::from(p).expect("bond dimensions fit in the real type");
@@ -460,8 +505,16 @@ where
     let mut sites = Vec::with_capacity(n);
     sites.push(site0);
     sites.extend(rev_sites.into_iter().rev());
+    // Single enforcement point for the returned-state invariant: every
+    // assembled site is scanned, so poison arising past the last panel
+    // check — inside the QR factorization, the final cap update, or the
+    // first-site contraction — cannot reach an `Ok`. A new emission path
+    // added to the sweep is covered here without needing its own check.
+    for (idx, s) in sites.iter().enumerate() {
+        check_finite(idx, s)?;
+    }
     let mut result: Mps<DenseStorage<T>, DenseLayout> = Mps::from_sites(sites);
     result.set_canonical_form(CanonicalForm::Mixed { center: 0 });
     super::finish_dense(backend, &mut result, params);
-    result
+    Ok(result)
 }

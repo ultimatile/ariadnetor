@@ -7,7 +7,9 @@ use ariadnetor_mps::{
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
-use super::helpers::{cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense};
+use super::helpers::{
+    apply_ok, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+};
 
 /// 4-site bond-2 MPS with deterministic, genuinely entangled content, so that
 /// applying a bond-2 MPO inflates the product bond to 4 and `chi_max = 2`
@@ -57,7 +59,7 @@ fn variational_identity_preserves_state() {
     let psi = test_mps();
     let identity = make_identity_mpo(4, 2);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &identity,
         &psi,
@@ -77,7 +79,7 @@ fn variational_lossless_matches_streaming_naive() {
     let psi = test_mps();
     let op = make_total_n_dense_mpo(4);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -96,7 +98,7 @@ fn variational_density_matrix_init_lossless() {
     let psi = test_mps();
     let op = make_total_n_dense_mpo(4);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -122,8 +124,8 @@ fn variational_refines_over_seed() {
     });
 
     let exact = mps::apply(&backend, &op, &psi, None);
-    let seed = mps::apply_with_method(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
-    let fit = mps::apply_with_method(
+    let seed = apply_ok(&backend, &op, &psi, Some(&params), ApplyMethod::ZipUp);
+    let fit = apply_ok(
         &backend,
         &op,
         &psi,
@@ -151,7 +153,7 @@ fn variational_truncates_bond_dim() {
         target_trunc_err: None,
     });
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -172,7 +174,7 @@ fn variational_canonical_form() {
     let psi = test_mps();
     let op = make_total_n_dense_mpo(4);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -190,7 +192,7 @@ fn variational_single_site_short_circuits() {
     let psi = Mps::from_sites(vec![cm_dense_tensor(vec![0.6, 0.8], vec![1, 2, 1])]);
     let op = make_total_n_dense_mpo(1);
 
-    let phi = mps::apply_with_method(
+    let phi = apply_ok(
         &backend,
         &op,
         &psi,
@@ -213,7 +215,7 @@ fn variational_ignores_target_trunc_err() {
     let psi = test_mps();
     let op = make_total_n_dense_mpo(4);
 
-    let lossless = mps::apply_with_method(
+    let lossless = apply_ok(
         &backend,
         &op,
         &psi,
@@ -227,7 +229,7 @@ fn variational_ignores_target_trunc_err() {
         chi_max: None,
         target_trunc_err: Some(1e10),
     });
-    let fit = mps::apply_with_method(
+    let fit = apply_ok(
         &backend,
         &op,
         &psi,

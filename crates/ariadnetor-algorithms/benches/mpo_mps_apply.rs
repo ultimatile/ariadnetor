@@ -18,9 +18,22 @@
 //! there would need a dev-dependency cycle.
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
-use ariadnetor_mps::{ApplyMethod, SuccessiveRandomizedParams, TensorChain, apply_with_method};
-use ariadnetor_tensor::Host;
+use ariadnetor_mps::{
+    ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TensorChain, apply_with_method,
+};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, Host, OpsFor};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+
+/// `apply_with_method` unwrapped: the bench inputs are finite, so an `Err`
+/// can only mean the apply contract itself broke.
+fn apply_ok<B: OpsFor<DenseStorage<f64>>>(
+    backend: &B,
+    mpo: &Mpo<DenseStorage<f64>, DenseLayout>,
+    psi: &Mps<DenseStorage<f64>, DenseLayout>,
+    method: ApplyMethod,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
+    apply_with_method(backend, mpo, psi, None, method).expect("apply must succeed on finite inputs")
+}
 
 // ---------------------------------------------------------------------------
 // Bench fixture grid: (n_sites, chi). The Heisenberg MPO has bond dimension
@@ -89,7 +102,7 @@ fn bench_mpo_mps_apply(c: &mut Criterion) {
         // growth path if the adaptive run actually grows past the initial
         // sketch. An incompressible input guarantees it; assert rather than
         // assume.
-        let probe = apply_with_method(backend, &mpo, &psi, None, adaptive_method());
+        let probe = apply_ok(backend, &mpo, &psi, adaptive_method());
         assert!(
             probe.max_bond_dim() > SKETCH_DIM,
             "adaptive arm did not grow past the initial sketch; the bench \
@@ -100,7 +113,7 @@ fn bench_mpo_mps_apply(c: &mut Criterion) {
             BenchmarkId::new("adaptive", case.label),
             &(&mpo, &psi),
             |b, (mpo, psi)| {
-                b.iter(|| apply_with_method(backend, mpo, psi, None, adaptive_method()));
+                b.iter(|| apply_ok(backend, mpo, psi, adaptive_method()));
             },
         );
 
@@ -108,7 +121,7 @@ fn bench_mpo_mps_apply(c: &mut Criterion) {
             BenchmarkId::new("fixed", case.label),
             &(&mpo, &psi),
             |b, (mpo, psi)| {
-                b.iter(|| apply_with_method(backend, mpo, psi, None, fixed_method(case.chi)));
+                b.iter(|| apply_ok(backend, mpo, psi, fixed_method(case.chi)));
             },
         );
     }
