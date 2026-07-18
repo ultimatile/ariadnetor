@@ -8,5 +8,3 @@
 
 pub mod dmrg;
 pub mod krylov;
-
-pub(crate) mod numeric;

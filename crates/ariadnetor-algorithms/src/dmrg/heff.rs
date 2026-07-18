@@ -181,7 +181,7 @@ where
 
     validate_eigensolver_params(eigensolver)
         .map_err(|detail| DmrgHeffError::InvalidEigensolverParams { detail })?;
-    if crate::numeric::try_real_from_f64::<T>(eigensolver_tol(eigensolver)).is_none() {
+    if ariadnetor_core::try_real_from_f64::<T>(eigensolver_tol(eigensolver)).is_none() {
         return Err(DmrgHeffError::InvalidEigensolverParams {
             detail: "tol is not representable in T::Real",
         });

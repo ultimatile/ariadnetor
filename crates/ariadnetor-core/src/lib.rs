@@ -15,6 +15,7 @@ mod contraction_error;
 mod einsum;
 mod label;
 mod norm;
+mod numeric;
 mod scalar;
 
 pub use backend::{ComputeBackend, ExecPolicy, MemoryOrder};
@@ -22,6 +23,7 @@ pub use contraction_error::ContractionError;
 pub use einsum::{ContractionPlan, EinsumExpr, compute_permutation};
 pub use label::LabelId;
 pub use norm::{NormAccumulator, combine_norms, scale_safe_norm};
+pub use numeric::try_real_from_f64;
 pub use scalar::Scalar;
 
 // Re-export num_complex for user convenience
