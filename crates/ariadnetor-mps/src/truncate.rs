@@ -1,6 +1,6 @@
 //! Truncate: reduce bond dimensions of a tensor chain via SVD sweeps.
 
-use ariadnetor_core::Scalar;
+use ariadnetor_core::{Scalar, combine_norms};
 use ariadnetor_linalg::{TruncSvdParams, diagonal_scale, trunc_svd};
 use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, DenseTensor, OpsFor, Sector,
@@ -53,21 +53,34 @@ where
 
     let svd_params = &params.svd;
     let absorb = params.absorb;
-    let mut total_err_sq = T::Real::zero();
+    // Combine the per-step errors scale-safely (`combine_norms(a, b) =
+    // sqrt(a^2 + b^2)`), so the swept total is the Frobenius norm of all
+    // discarded weight without an intermediate sum of squares that could
+    // overflow to inf or underflow to zero.
+    let mut total_err = T::Real::zero();
 
     for j in center..n - 1 {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb, backend);
+        total_err = combine_norms(
+            total_err,
+            right_trunc_step(chain, j, svd_params, absorb, backend),
+        );
     }
 
     for j in (1..n).rev() {
-        total_err_sq = total_err_sq + left_trunc_step(chain, j, svd_params, absorb, backend);
+        total_err = combine_norms(
+            total_err,
+            left_trunc_step(chain, j, svd_params, absorb, backend),
+        );
     }
 
     // Final right sweep restoring the orthogonality center after the
     // preceding right and left sweeps; defensively accumulates any
-    // residual squared error from each step in case of numerical drift.
+    // residual error from each step in case of numerical drift.
     for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step(chain, j, svd_params, absorb, backend);
+        total_err = combine_norms(
+            total_err,
+            right_trunc_step(chain, j, svd_params, absorb, backend),
+        );
     }
 
     let form = match absorb {
@@ -75,13 +88,12 @@ where
         _ => CanonicalForm::Mixed { center },
     };
     chain.set_canonical_form(form);
-    TruncResult {
-        error: total_err_sq.sqrt(),
-    }
+    TruncResult { error: total_err }
 }
 
 /// Right SVD step at site j: decompose, absorb into j+1 based on absorb mode.
-/// Returns squared truncation error.
+/// Returns the truncation error at this step (Frobenius norm of the discarded
+/// singular values).
 fn right_trunc_step<T, B, C>(
     chain: &mut C,
     j: usize,
@@ -140,7 +152,7 @@ where
 
     *chain.site_mut(j + 1) = new_next;
 
-    err * err
+    err
 }
 
 /// Left SVD step at site j: decompose, absorb into j-1 based on absorb mode.
@@ -198,7 +210,7 @@ where
 
     *chain.site_mut(j - 1) = new_prev;
 
-    err * err
+    err
 }
 
 // ============================================================================
@@ -238,18 +250,28 @@ where
 
     let svd_params = &params.svd;
     let absorb = params.absorb;
-    let mut total_err_sq = T::Real::zero();
+    // Combine the per-step errors scale-safely, as in `truncate_dense`.
+    let mut total_err = T::Real::zero();
 
     for j in center..n - 1 {
-        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb, backend);
+        total_err = combine_norms(
+            total_err,
+            right_trunc_step_bsp(chain, j, svd_params, absorb, backend),
+        );
     }
 
     for j in (1..n).rev() {
-        total_err_sq = total_err_sq + left_trunc_step_bsp(chain, j, svd_params, absorb, backend);
+        total_err = combine_norms(
+            total_err,
+            left_trunc_step_bsp(chain, j, svd_params, absorb, backend),
+        );
     }
 
     for j in 0..center {
-        total_err_sq = total_err_sq + right_trunc_step_bsp(chain, j, svd_params, absorb, backend);
+        total_err = combine_norms(
+            total_err,
+            right_trunc_step_bsp(chain, j, svd_params, absorb, backend),
+        );
     }
 
     let form = match absorb {
@@ -257,9 +279,7 @@ where
         _ => CanonicalForm::Mixed { center },
     };
     chain.set_canonical_form(form);
-    TruncResult {
-        error: total_err_sq.sqrt(),
-    }
+    TruncResult { error: total_err }
 }
 
 fn right_trunc_step_bsp<T, S, B, C>(
@@ -315,7 +335,7 @@ where
 
     *chain.site_mut(j + 1) = new_next;
 
-    err * err
+    err
 }
 
 fn left_trunc_step_bsp<T, S, B, C>(
@@ -370,5 +390,5 @@ where
 
     *chain.site_mut(j - 1) = new_prev;
 
-    err * err
+    err
 }

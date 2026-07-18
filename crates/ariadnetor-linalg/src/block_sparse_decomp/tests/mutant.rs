@@ -25,6 +25,43 @@ fn trunc_svd_error_and_target_err_arithmetic() {
     assert!(err2.abs() < 1e-12);
 }
 
+#[test]
+fn trunc_svd_error_stays_finite_at_overflow_scale() {
+    // Two equal singular values 1e200 across sectors (well-conditioned, so the
+    // per-sector SVDs resolve them reliably). Discarding one leaves a
+    // truncation error of 1e200; a naive sum of squares squares it to 1e400
+    // and saturates to inf.
+    let mut bs = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        square_legs(vec![(U1Sector(0), 1), (U1Sector(1), 1)]),
+        U1Sector(0),
+        order(),
+    );
+    bs.block_data_mut(&BlockCoord(vec![0, 0]))
+        .unwrap()
+        .copy_from_slice(&[1e200]);
+    bs.block_data_mut(&BlockCoord(vec![1, 1]))
+        .unwrap()
+        .copy_from_slice(&[1e200]);
+
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    };
+    let (_, sv, _, err) = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &bs,
+        1,
+        &params,
+        ExecPolicy::Sequential,
+    )
+    .unwrap();
+
+    let kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
+    assert_eq!(kept, 1);
+    assert!(err.is_finite(), "trunc_err={err} must stay finite");
+    assert!((err - 1e200).abs() < 1e190);
+}
+
 // ---------------------------------------------------------------------------
 // RowMajor: direct tests for fused sector and truncation RM paths
 // ---------------------------------------------------------------------------

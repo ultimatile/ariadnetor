@@ -42,21 +42,6 @@ exclude_re = [
     # NativeBackend has no state, so Arc::new(Default::default()) == shared()
     "NativeBackend::shared .* Arc::new",
 
-    # --- Line-number-based patterns (fragile: update line numbers when source changes) ---
-    # truncate_bsp final right sweep accumulator: by the time `for j in 0..center`
-    # runs, the prior left sweep has already truncated every bond to chi_max,
-    # so trunc_svd_block_sparse returns err = 0 at every step here. With
-    # step = 0, `total + 0 ≡ total - 0`, so this mutation is structurally a no-op.
-    # The `+ → *` mutation on the same line is NOT equivalent (multiplying by 0
-    # zeros the accumulator) and remains in scope.
-    "truncate.rs:255:37: replace \\+ with - in truncate_bsp",
-    # truncate_dense final right sweep accumulator (the former
-    # restore_center_sweep_dense helper, now inlined): same structurally-zero
-    # error argument as the truncate_bsp pattern above. Line:col anchored
-    # because the first two sweeps' accumulators in the same function are
-    # killable and must stay in scope.
-    "truncate.rs:73:37: replace \\+ with - in truncate_dense",
-
     # --- Function-name-based patterns (stable across line changes) ---
     # norm_1: tie-breaking order doesn't affect max value
     "replace > with >= in norm_1",

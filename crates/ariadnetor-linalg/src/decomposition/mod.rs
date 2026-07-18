@@ -1,9 +1,9 @@
-use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{
     ComputeBackend, ExecPolicy, MemoryOrder, QrDescriptor, SvdDescriptor,
 };
+use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
-use num_traits::{Float, ToPrimitive, Zero};
+use num_traits::{ToPrimitive, Zero};
 
 use crate::error::LinalgError;
 use crate::reorder_route::reorder_via_backend;
@@ -215,19 +215,23 @@ pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
     // Apply target_trunc_err bound: keep the largest singular values
     // such that the norm of discarded values stays within the threshold
     if let Some(target_err) = params.target_trunc_err {
-        // Accumulate discarded norm^2 from the smallest singular value upward.
-        // Compare in f64 to avoid precision issues with the user-specified threshold.
-        let target_sq = target_err * target_err;
-        let mut discarded_sq = 0.0_f64;
+        // Accumulate the discarded norm from the smallest singular value
+        // upward, scale-safely, and compare the running norm directly against
+        // the (finite) target. Widening each value to f64 before it enters the
+        // fold keeps an f32 singular value near sqrt(f32::MAX) from overflowing
+        // when squared -- squaring in the real type first (`si * si`) would
+        // saturate it to inf and wrongly keep the value. Comparing against
+        // `target_err` rather than its square avoids overflowing the threshold
+        // too. f64 also sidesteps precision loss against the user threshold.
+        let mut discarded = 0.0_f64;
         let mut chi_err = k_full;
         for i in (0..k_full).rev() {
-            let si = s_data[i];
-            let si_sq: f64 = (si * si).to_f64().unwrap();
-            let new_discarded_sq = discarded_sq + si_sq;
-            if new_discarded_sq > target_sq {
+            let si = s_data[i].to_f64().unwrap();
+            let candidate = combine_norms(discarded, si);
+            if candidate > target_err {
                 break;
             }
-            discarded_sq = new_discarded_sq;
+            discarded = candidate;
             chi_err = i;
         }
         // Ensure at least one singular value is kept even with aggressive error threshold
@@ -239,12 +243,11 @@ pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
         return Ok((u_full, s_full, vt_full, T::Real::zero()));
     }
 
-    // Compute truncation error: Frobenius norm of discarded singular values
-    let mut err_sq = T::Real::zero();
-    for &si in &s_data[chi..] {
-        err_sq = err_sq + si * si;
-    }
-    let trunc_err = err_sq.sqrt();
+    // Compute truncation error: Frobenius norm of discarded singular values,
+    // accumulated scale-safely so it stays finite where a naive sum of squares
+    // would saturate to inf (or underflow to zero) at extreme singular-value
+    // magnitudes.
+    let trunc_err = scale_safe_norm(s_data[chi..].iter().copied());
 
     // Truncate S: [k_full] -> [chi]
     let s_trunc: Vec<T::Real> = s_data[..chi].to_vec();

@@ -285,8 +285,9 @@ fn truncate_bsp_error_is_positive_when_truncated() {
 
 /// Verify reported error² matches ||before||² - ||after||² (Pythagorean identity).
 ///
-/// Catches: `total_err_sq + step` → `- step` or `* step`,
-///          `err * err` → `err + err` in right/left_trunc_step_block_sparse.
+/// Catches mutations to the sweep's error accumulation — a per-step function
+/// returning a wrong contribution, or `truncate_bsp` returning a default /
+/// mis-folded total instead of the scale-safe combination of the step errors.
 #[test]
 fn truncate_bsp_error_matches_reconstruction_error() {
     let backend = NativeBackend::new();
@@ -323,9 +324,9 @@ fn truncate_bsp_error_matches_reconstruction_error() {
 /// structure on every bond. Block coefficients chosen so that
 /// `canonicalize(center=1)` followed by `chi_max=1` truncation produces a
 /// nonzero err contribution at the right sweep (j=1), the left sweep (j=1),
-/// and a zero contribution at the final right sweep — making 5 of the 6 sweep
-/// positions distinguish the original arithmetic from each missed mutant on
-/// `truncate.rs:349/354/424/482`.
+/// and a zero contribution at the final right sweep — so the swept positions
+/// carry distinct step errors, distinguishing the folding arithmetic from
+/// mutations that drop or mis-combine a single sweep's contribution.
 fn make_3site_u1_truncate_fixture() -> Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>> {
     let mut site0 = BlockSparseTensor::<f64, U1Sector>::zeros(
         legs([
@@ -381,30 +382,14 @@ fn make_3site_u1_truncate_fixture() -> Mps<BlockSparseStorage<f64>, BlockSparseL
 /// Pin the reported truncation error against the Pythagorean reconstruction
 /// identity on a fixture with genuine multi-Schmidt structure per bond.
 ///
-/// `truncate_bsp` accumulates squared step errors across three sweeps. Each
-/// step in `right_trunc_step_block_sparse` / `left_trunc_step_block_sparse`
-/// returns `err * err` (squared), and `truncate_bsp` adds them at three
-/// `+`-loops (right, left, final-right). For the identity
-/// `result.error² == ||before||² - ||after||²` to hold under the original
-/// arithmetic, every `+` and every `*` must be present as written:
-///
-/// * `+` → `-` (line 349, left sweep): flips the sign of left contributions,
-///   so the accumulated total drops below the reconstruction value (or goes
-///   negative → NaN).
-/// * `+` → `*` (line 349 or 354): zeros the entire accumulator the first
-///   time a step value is zero, giving `result.error = 0` while
-///   `||before||² > ||after||²`.
-/// * `* → +` in `right_trunc_step_block_sparse` (line 424) /
-///   `left_trunc_step_block_sparse` (line 482): each step returns
-///   `err + err = 2err` instead of `err²`. The accumulator becomes a sum of
-///   `2*err_step` instead of `err_step²`, which matches the reconstruction
-///   identity only at the trivial `err_step = 0` case the prior 4-site
-///   fixture happened to hit.
-///
-/// `center=1` exercises the right sweep range `1..2 = {1}` AND the final
-/// right sweep range `0..1 = {0}`, so `truncate.rs:354 + → *` is observable
-/// (its prior accumulator is nonzero from the right + left sweeps, and the
-/// final-right step multiplies by 0 instead of adding 0).
+/// `truncate_bsp` folds each step's error into the running total with
+/// `combine_norms` (`sqrt(a² + b²)`) across three sweeps (right, left,
+/// final-right), so `result.error² == Σ err_step² == ||before||² - ||after||²`.
+/// The `center=1` fixture makes the right sweep `{1}`, the left sweep `{1}`,
+/// and the final-right sweep `{0}` each carry a distinct step error, so a
+/// mutation that drops one sweep's contribution or returns a default total
+/// breaks the identity by at least one step's `err²` (≥ 1e-3 of
+/// `norm_sq_before` on this fixture).
 #[test]
 fn truncate_bsp_error_pins_step_arithmetic_3site() {
     let backend = NativeBackend::new();
@@ -432,11 +417,10 @@ fn truncate_bsp_error_pins_step_arithmetic_3site() {
          (norm_sq_before={norm_sq_before}) — Schmidt structure too trivial",
     );
     // Tolerance 1e-8 leaves headroom over BLAS / SVD rounding noise (typically
-    // O(1e-13) in f64) while still catching every targeted mutation. The
-    // observable mutation classes shift the accumulator by at least the size
-    // of one step's `err²` (≥ 1e-3 of `norm_sq_before` on this fixture) or
-    // zero it entirely (`+ → *` paired with a zero step), so any tolerance
-    // well below 1e-3 of `norm_sq_before` suffices.
+    // O(1e-13) in f64) while still catching every targeted mutation. A dropped
+    // or mis-combined sweep contribution shifts the accumulator by at least one
+    // step's `err²` (≥ 1e-3 of `norm_sq_before` on this fixture), so any
+    // tolerance well below 1e-3 of `norm_sq_before` suffices.
     assert!(
         (reported_err_sq - expected_err_sq).abs() < 1e-8 * norm_sq_before,
         "reported²={reported_err_sq}, expected²={expected_err_sq}, \
@@ -498,3 +482,14 @@ fn truncate_bsp_right_form_ignores_center_param() {
 
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
 }
+
+// A direct `truncate_bsp` overflow-scale sweep test is not constructible: the
+// faer SVD backend fails to converge (NoConvergence) on the general block
+// matrices a real chain presents at magnitudes near sqrt(f64::MAX), so the
+// per-step error the sweep would accumulate is never produced. The bsp sweep's
+// overflow safety is instead covered by composition of two direct tests over
+// the identical `combine_norms` fold: the block-sparse SVD site at 1e200
+// (`block_sparse_decomp::tests::mutant::trunc_svd_error_stays_finite_at_overflow_scale`,
+// 1x1 diagonal blocks where faer converges) supplies a scale-safe per-step
+// error, and the dense sweep (`truncate_mutant::test_truncation_error_stays_finite_at_overflow_scale`)
+// exercises the same fold `truncate_bsp` uses.
