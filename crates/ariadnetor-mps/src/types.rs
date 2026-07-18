@@ -332,11 +332,11 @@ pub enum ApplyError {
         /// sweep's internal check placement and is informational, not a
         /// stable contract.
         site: usize,
-        /// Frobenius norm of the offending tensor (lossily cast to
-        /// `f64`) — non-finite by construction when an elementwise scan
-        /// fired, and NaN when the poison arose only in a derived
-        /// certification quantity whose source tensor's own norm is
-        /// finite.
+        /// The offending non-finite quantity (lossily cast to `f64`,
+        /// non-finite by construction): the offending tensor's
+        /// Frobenius norm when an elementwise scan fired, or the
+        /// degenerated QR diagonal magnitude when adaptive mode's
+        /// certification check fired.
         norm: f64,
     },
 }

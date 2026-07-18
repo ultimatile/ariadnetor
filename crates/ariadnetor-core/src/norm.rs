@@ -18,6 +18,8 @@
 
 use num_traits::Float;
 
+use crate::scalar::Scalar;
+
 /// Scale-safe accumulator state for `sqrt(Σ |xᵢ|²)` over pushed values.
 ///
 /// `(scale, sumsq)` represents the norm of everything pushed so far as
@@ -37,6 +39,7 @@ use num_traits::Float;
 /// `scale * sqrt(sumsq)` itself would overflow to infinity. This is the
 /// same representation the LAPACK `dlassq` routine hands back to its
 /// callers.
+#[derive(Debug, Clone)]
 pub struct NormAccumulator<R: Float> {
     /// Running maximum magnitude; NaN once a NaN has been pushed.
     scale: R,
@@ -51,7 +54,7 @@ impl<R: Float> Default for NormAccumulator<R> {
 }
 
 impl<R: Float> NormAccumulator<R> {
-    /// Empty accumulation; [`Self::finish`] on it returns zero.
+    /// Empty accumulation; its finished norm is zero.
     #[inline]
     pub fn new() -> Self {
         // The initial `sumsq` is unobservable: the first nonzero push
@@ -69,7 +72,7 @@ impl<R: Float> NormAccumulator<R> {
     /// A NaN is sticky: it overwrites `scale`, after which neither
     /// accumulation branch can fire — the max-update comparison is false
     /// against a NaN `scale`, and the finite-scale test rejects it — so
-    /// [`Self::finish`] returns NaN regardless of later pushes, including
+    /// the finished norm is NaN regardless of later pushes, including
     /// infinite ones.
     #[inline]
     pub fn push(&mut self, value: R) {
@@ -94,6 +97,20 @@ impl<R: Float> NormAccumulator<R> {
         // `scale` is NaN (sticky) — skip either way.
     }
 
+    /// Accumulates a scalar element by its real and imaginary components
+    /// (`|z|² = re² + im²`), so the represented value is the Frobenius
+    /// norm of the elements pushed this way. Component-wise entry is
+    /// load-bearing, not a convenience: a complex modulus (`hypot`) can
+    /// overflow to `inf` even when both components are finite, which
+    /// would poison the scale exactly where the components themselves
+    /// are still representable. Real scalars contribute a vanishing
+    /// imaginary part, which the accumulation skips.
+    #[inline]
+    pub fn push_scalar<T: Scalar<Real = R>>(&mut self, value: T) {
+        self.push(value.re());
+        self.push(value.im());
+    }
+
     /// The accumulated norm `sqrt(Σ |xᵢ|²)`.
     ///
     /// This finishes the `(scale, sumsq)` representation into one scalar,
@@ -102,7 +119,7 @@ impl<R: Float> NormAccumulator<R> {
     /// consumers that must stay meaningful there compare against
     /// [`Self::scale`] and [`Self::sumsq`] instead.
     #[inline]
-    pub fn finish(&self) -> R {
+    fn finish(&self) -> R {
         self.scale * self.sumsq.sqrt()
     }
 
@@ -265,14 +282,13 @@ mod tests {
     #[test]
     fn component_pushes_survive_modulus_overflow() {
         // A complex element with finite components can have an
-        // unrepresentable modulus; pushing the components separately keeps
-        // the accumulator's scale finite where pushing hypot(re, im) would
-        // poison it with inf.
-        let (re, im) = (1.5e308_f64, 1.5e308_f64);
-        assert!(re.hypot(im).is_infinite());
+        // unrepresentable modulus; the component-wise scalar push keeps
+        // the accumulator's scale finite where pushing hypot(re, im)
+        // would poison it with inf.
+        let z = num_complex::Complex::new(1.5e308_f64, 1.5e308);
+        assert!(z.re.hypot(z.im).is_infinite());
         let mut acc = NormAccumulator::new();
-        acc.push(re.abs());
-        acc.push(im.abs());
+        acc.push_scalar(z);
         assert!(acc.scale().is_finite());
         assert_relative_eq!(acc.sumsq(), 2.0, max_relative = 1e-15);
     }

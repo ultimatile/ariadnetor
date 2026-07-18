@@ -408,9 +408,9 @@ where
         // where a finished running norm would overflow to `inf` once the
         // true accumulated norm left the representable range and make
         // `err <= cutoff * inf` accept any finite estimate at the first
-        // round. Elements enter component-wise (`|z|^2 = re^2 + im^2`
-        // keeps the represented value the exact Frobenius norm) because
-        // a complex modulus can overflow even with finite components.
+        // round. Elements enter through the component-wise
+        // [`NormAccumulator::push_scalar`], which owns the reason the
+        // modulus must not be formed first.
         let mut norm_acc = NormAccumulator::new();
         loop {
             let columns_created = envs.ncols();
@@ -439,8 +439,7 @@ where
             // pass is adaptive-only work.
             if adaptive {
                 for x in panel.data_slice() {
-                    norm_acc.push(<T::Real as Float>::abs(x.re()));
-                    norm_acc.push(<T::Real as Float>::abs(x.im()));
+                    norm_acc.push_scalar(*x);
                 }
             }
             // The `current_maxdim` clamp above keeps the block within the
@@ -459,18 +458,13 @@ where
             // zero-norm, rank-deficient), so it errors here; fixed mode
             // never claims certification and keeps relying on the
             // elementwise result-boundary scans instead.
-            if adaptive && outcome == QrAppendOutcome::NonFinite {
-                use num_traits::ToPrimitive;
-                let panel_norm = panel.norm().to_f64().unwrap_or(f64::NAN);
+            if adaptive && let QrAppendOutcome::NonFinite { diagnostic } = outcome {
+                // The diagnostic is the degenerated diagonal magnitude,
+                // reported from the detection site (non-finite by
+                // construction).
                 return Err(ApplyError::NonFinite {
                     site: j,
-                    norm: if panel_norm.is_finite() {
-                        // The degeneration arose in a derived quantity
-                        // (the QR diagonal), not the panel's own norm.
-                        f64::NAN
-                    } else {
-                        panel_norm
-                    },
+                    norm: diagnostic,
                 });
             }
             let p = inc.ncols();
@@ -495,20 +489,32 @@ where
             // p started at or above the clamped min_dim and only grows, so
             // the cutoff test alone decides convergence. The comparison is
             // `err <= cutoff * norm_est` with `norm_est = norm / sqrt(p)`,
-            // evaluated on the accumulator's `(scale, sumsq)` form in
-            // exactly this association order: `cutoff * sqrt(sumsq / p)`
-            // is small, so the only overflow left is the final `* scale`,
-            // which fires exactly when the true right-hand side exceeds
-            // the representable range — and then any finite `err` is
-            // genuinely below it, so "converged" is the correct reading.
-            // Every remaining degradation points toward growth (an
-            // uninformative `None` estimate, underflow of the right-hand
-            // side), never toward false certification; the growth is
-            // bounded by the `current_maxdim` break above.
+            // evaluated in the log domain over the accumulator's
+            // `(scale, sumsq)` representation: no product of these
+            // factors is ever formed, so no ordering of finite operands
+            // can overflow or underflow the comparison — a guarantee no
+            // association order of the direct product gives, because a
+            // representable-range cutoff times an extreme scale can
+            // saturate an intermediate in either direction. Every log
+            // here is finite: `err` is positive and finite by the
+            // estimator's `Some` contract, `scale` by the zero-product
+            // break above, `sumsq >= 1` once anything nonzero was
+            // pushed, and `p >= 1` — except a zero `cutoff`, whose
+            // `ln = -inf` makes the threshold unsatisfiable, so exact
+            // compression is decided by the rank-deficiency break
+            // alone (the pre-log behavior). The logs shift the decision
+            // boundary only at ulp level, far inside the estimator's
+            // stochastic spread. An uninformative `None` estimate stays
+            // "not converged"; growth is bounded by the
+            // `current_maxdim` break above.
+            let half = <T::Real as NumCast>::from(0.5).expect("0.5 is representable");
             let converged = match leave_one_out_estimate::<T>(row_norms) {
                 None => false,
                 Some(err) => {
-                    err <= (cutoff * (norm_acc.sumsq() / p_real).sqrt()) * norm_acc.scale()
+                    err.ln()
+                        <= cutoff.ln()
+                            + norm_acc.scale().ln()
+                            + (norm_acc.sumsq().ln() - p_real.ln()) * half
                 }
             };
             if converged {
@@ -523,7 +529,12 @@ where
         // isometry regardless of how block Gram-Schmidt fared across the
         // growth rounds. The cost is at most one O(rows p^2) factorization
         // per site — the same as a single full QR over the accumulated
-        // sketch.
+        // sketch. One reachable exception: after a NonFinite append —
+        // fixed mode only, since adaptive mode errored above — the
+        // degenerated factorization voids the accessor's isometry claim,
+        // and the result-boundary scans below bound the damage to finite
+        // values without restoring orthonormality (see the fixed-mode
+        // tolerance note at the append site).
         let q = inc
             .into_orthonormal_q(backend)
             .expect("terminal re-orthonormalization: Q is a valid matrix");

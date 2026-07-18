@@ -48,7 +48,7 @@ use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
 use ariadnetor_tensor::{
     DenseStorage, DenseTensor, DenseTensorData, OpsFor, add_all, linear_combine,
 };
-use num_traits::{Float, NumCast, One, Zero};
+use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
 use crate::{inverse_with_backend, qr, tensordot};
@@ -57,7 +57,10 @@ use crate::{inverse_with_backend, qr, tensordot};
 mod tests;
 
 /// Result of one [`IncrementalQr::append`] call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Eq` is intentionally not derived: [`NonFinite`](Self::NonFinite)
+/// carries an `f64` diagnostic, which is `PartialEq` but not `Eq`.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum QrAppendOutcome {
     /// The appended block passed the rank test, so it extended the
     /// factorization and the inverse state (when tracked) was updated.
@@ -86,7 +89,14 @@ pub enum QrAppendOutcome {
     /// absorbed basis carries no span or finiteness claim; consumers
     /// decide whether the result is salvageable (see
     /// [`IncrementalQr::into_orthonormal_q`]).
-    NonFinite,
+    NonFinite {
+        /// Magnitude of the first non-finite diagonal entry observed
+        /// (`inf` or NaN — non-finite by construction), reported from
+        /// the detection site so consumers need not reconstruct which
+        /// quantity degenerated. Carried as `f64` (lossless from every
+        /// supported real type) to keep the outcome non-generic.
+        diagnostic: f64,
+    },
 }
 
 /// Incrementally grown thin QR factorization of a logically stacked
@@ -311,7 +321,7 @@ impl<T: Scalar> IncrementalQr<T> {
         // as full rank). Only the new entries need scanning — committed
         // entries are finite by induction, since any append that produced
         // a non-finite one terminated the factorization.
-        let nonfinite = new_diag.iter().any(|d| !d.is_finite());
+        let nonfinite_diag = new_diag.iter().find(|d| !d.is_finite()).copied();
         let p_new = p_old + s;
         let mut max_diag = T::Real::zero();
         for d in self.r_diag.iter().chain(new_diag.iter()) {
@@ -329,7 +339,7 @@ impl<T: Scalar> IncrementalQr<T> {
         // the deficiency flag cannot be relied on for that (NaN entries
         // leave it false), and inverting a non-finite factor would poison
         // the maintained state.
-        let inverse_update = if self.track_r_inverse && !deficient && !nonfinite {
+        let inverse_update = if self.track_r_inverse && !deficient && nonfinite_diag.is_none() {
             let g22 = inverse_with_backend(backend, &r22, 1)?;
             let x = match (&self.g, &c) {
                 (Some(g), Some(c)) => {
@@ -364,9 +374,11 @@ impl<T: Scalar> IncrementalQr<T> {
         // infinite diagonal sets both, and reporting it as rank
         // deficiency would claim exact rank coverage the factor cannot
         // certify.
-        if nonfinite {
+        if let Some(diag) = nonfinite_diag {
             self.terminated = true;
-            return Ok(QrAppendOutcome::NonFinite);
+            return Ok(QrAppendOutcome::NonFinite {
+                diagnostic: diag.to_f64().unwrap_or(f64::NAN),
+            });
         }
         if deficient {
             self.terminated = true;

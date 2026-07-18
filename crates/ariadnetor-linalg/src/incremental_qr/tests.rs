@@ -543,7 +543,13 @@ fn overflow_norm_first_append_reports_non_finite_not_rank_deficient() {
     let outcome = inc
         .append(&backend, &overflow_norm_column())
         .expect("append is Ok: the degeneration is data-dependent, not a backend failure");
-    assert_eq!(outcome, QrAppendOutcome::NonFinite);
+    let QrAppendOutcome::NonFinite { diagnostic } = outcome else {
+        panic!("expected NonFinite, got {outcome:?}");
+    };
+    assert!(
+        diagnostic.is_infinite(),
+        "the overflow column's degenerated diagonal is infinite"
+    );
     assert_eq!(inc.ncols(), 1, "the block's columns are still absorbed");
     assert!(
         inc.r_inverse_row_norms().is_none(),
@@ -566,24 +572,24 @@ fn overflow_norm_after_moderate_append_reports_non_finite_not_full_rank() {
         inc.append(&backend, &moderate).expect("moderate block"),
         QrAppendOutcome::FullRank
     );
-    let row_norms_before = inc
-        .r_inverse_row_norms()
-        .expect("full-rank append tracks the inverse")
-        .to_vec();
     let outcome = inc
         .append(&backend, &overflow_norm_column())
         .expect("append is Ok: the degeneration is data-dependent, not a backend failure");
-    assert_eq!(outcome, QrAppendOutcome::NonFinite);
+    let QrAppendOutcome::NonFinite { diagnostic } = outcome else {
+        panic!("expected NonFinite, got {outcome:?}");
+    };
+    // Whether the degeneration surfaces as inf (the residual's column
+    // norm overflowing) or NaN (poison inside the projection) is a
+    // backend detail; the contract is only that it is non-finite and
+    // not misread as full rank.
+    assert!(
+        !diagnostic.is_finite(),
+        "the projected overflow block degenerates the diagonal"
+    );
     assert_eq!(inc.ncols(), 2, "the block's columns are still absorbed");
     assert!(
         inc.r_inverse_row_norms().is_none(),
         "termination hides the now-stale inverse state"
-    );
-    // The suppressed inverse update must not have poisoned the stored
-    // half either: the pre-append row norms are still the finite ones.
-    assert!(
-        row_norms_before.iter().all(|r| r.is_finite()),
-        "the moderate append's inverse state was finite"
     );
 }
 
