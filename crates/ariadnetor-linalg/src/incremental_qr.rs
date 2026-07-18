@@ -33,6 +33,14 @@
 //! basis with one plain [`qr`](crate::qr) pass whenever more than a
 //! single block was appended.
 //!
+//! The rank test itself is only meaningful over finite diagonals. A
+//! block whose true column norm exceeds the real type's range comes back
+//! from the backend QR with a non-finite diagonal even when every input
+//! element is finite; such an append is reported as
+//! [`QrAppendOutcome::NonFinite`] (terminating, like rank deficiency)
+//! instead of letting `inf` masquerade as exact rank deficiency or NaN
+//! as full rank.
+//!
 //! Dense-only: the consumer is the randomized MPO-MPS compression sweep,
 //! whose Gaussian sketch has no block-sparse counterpart.
 
@@ -40,7 +48,7 @@ use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
 use ariadnetor_tensor::{
     DenseStorage, DenseTensor, DenseTensorData, OpsFor, add_all, linear_combine,
 };
-use num_traits::{Float, NumCast, One, Zero};
+use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 use crate::error::LinalgError;
 use crate::{inverse_with_backend, qr, tensordot};
@@ -49,7 +57,10 @@ use crate::{inverse_with_backend, qr, tensordot};
 mod tests;
 
 /// Result of one [`IncrementalQr::append`] call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Eq` is intentionally not derived: [`NonFinite`](Self::NonFinite)
+/// carries an `f64` diagnostic, which is `PartialEq` but not `Eq`.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum QrAppendOutcome {
     /// The appended block passed the rank test, so it extended the
     /// factorization and the inverse state (when tracked) was updated.
@@ -63,6 +74,29 @@ pub enum QrAppendOutcome {
     /// terminated: the inverse state is left untouched and further
     /// appends panic.
     RankDeficient,
+    /// The appended block's `R` diagonal came back non-finite from the
+    /// backend QR (a column whose true norm exceeds the real type's
+    /// range yields an infinite diagonal even with elementwise-finite
+    /// input; NaN can appear alongside non-finite `Q` entries). Rank
+    /// information is unavailable in that state — an infinite diagonal
+    /// would satisfy the relative tolerance test (`inf <= inf`) and
+    /// masquerade as exact rank deficiency, while NaN fails every
+    /// comparison and would masquerade as full rank — so the outcome is
+    /// reported separately. The block's columns were still absorbed, and
+    /// the factorization is terminated exactly like
+    /// [`Self::RankDeficient`]: the inverse state is left untouched and
+    /// further appends panic. Unlike the rank-deficient case, the
+    /// absorbed basis carries no span or finiteness claim; consumers
+    /// decide whether the result is salvageable (see
+    /// [`IncrementalQr::into_orthonormal_q`]).
+    NonFinite {
+        /// Magnitude of the first non-finite diagonal entry observed
+        /// (`inf` or NaN — non-finite by construction), reported from
+        /// the detection site so consumers need not reconstruct which
+        /// quantity degenerated. Carried as `f64` (lossless from every
+        /// supported real type) to keep the outcome non-generic.
+        diagnostic: f64,
+    },
 }
 
 /// Incrementally grown thin QR factorization of a logically stacked
@@ -128,8 +162,16 @@ impl<T: Scalar> IncrementalQr<T> {
     ///
     /// `None` when inverse tracking is off, when nothing has been
     /// appended yet, or when the factorization is terminated (a
-    /// rank-deficient append leaves the inverse state stale by design —
-    /// a singular block has no inverse to fold in).
+    /// rank-deficient or non-finite append leaves the inverse state
+    /// stale by design — a singular or degenerated block has no inverse
+    /// to fold in).
+    ///
+    /// The returned entries are not guaranteed finite: a full-rank
+    /// append whose triangular factor is near-singular can overflow the
+    /// maintained inverse, driving row norms to `inf` (or NaN through
+    /// downstream arithmetic on overflowed entries). A non-finite entry
+    /// carries no information about the true row norm — consumers must
+    /// treat it as uninformative rather than fold it into an estimate.
     pub fn r_inverse_row_norms(&self) -> Option<&[T::Real]> {
         // `g` exists only when tracking is on and a full-rank append
         // happened, so it subsumes the tracking flag.
@@ -148,6 +190,14 @@ impl<T: Scalar> IncrementalQr<T> {
     /// gradual block Gram-Schmidt loss and the overlap a rank-deficient
     /// final append can introduce (see the module doc), while keeping
     /// every appended column inside the span.
+    ///
+    /// After a [`QrAppendOutcome::NonFinite`] append the orthonormality
+    /// and span guarantees above do not apply: the degenerated
+    /// factorization can leave the stored basis non-finite or
+    /// non-orthonormal, and a single-append history returns it without
+    /// any repair pass. Consumers that keep such a basis must validate
+    /// the result themselves (the randomized compression sweep's
+    /// result-boundary scans are the model).
     ///
     /// # Errors
     ///
@@ -187,8 +237,9 @@ impl<T: Scalar> IncrementalQr<T> {
     ///
     /// # Panics
     ///
-    /// Panics when called after an append returned
-    /// [`QrAppendOutcome::RankDeficient`].
+    /// Panics when called after an append returned a terminating outcome
+    /// ([`QrAppendOutcome::RankDeficient`] or
+    /// [`QrAppendOutcome::NonFinite`]).
     pub fn append<B: OpsFor<DenseStorage<T>>>(
         &mut self,
         backend: &B,
@@ -196,7 +247,8 @@ impl<T: Scalar> IncrementalQr<T> {
     ) -> Result<QrAppendOutcome, LinalgError> {
         assert!(
             !self.terminated,
-            "append on a terminated IncrementalQr (a prior append returned RankDeficient)"
+            "append on a terminated IncrementalQr (a prior append returned \
+             RankDeficient or NonFinite)"
         );
         let shape = block.shape();
         if shape.len() != 2 || shape[0] != self.nrows {
@@ -263,6 +315,13 @@ impl<T: Scalar> IncrementalQr<T> {
         for i in 0..s {
             new_diag.push(r22.get([i, i]).abs());
         }
+        // Non-finite diagonal entries invalidate the rank test itself: an
+        // infinite entry makes the relative tolerance infinite (`inf <=
+        // inf` reads as deficient), and NaN fails every comparison (reads
+        // as full rank). Only the new entries need scanning — committed
+        // entries are finite by induction, since any append that produced
+        // a non-finite one terminated the factorization.
+        let nonfinite_diag = new_diag.iter().find(|d| !d.is_finite()).copied();
         let p_new = p_old + s;
         let mut max_diag = T::Real::zero();
         for d in self.r_diag.iter().chain(new_diag.iter()) {
@@ -276,7 +335,11 @@ impl<T: Scalar> IncrementalQr<T> {
 
         // Remaining fallible work runs before any state mutation, so an
         // `Err` from any path leaves the factorization exactly as it was.
-        let inverse_update = if self.track_r_inverse && !deficient {
+        // A non-finite diagonal suppresses the inverse update on its own:
+        // the deficiency flag cannot be relied on for that (NaN entries
+        // leave it false), and inverting a non-finite factor would poison
+        // the maintained state.
+        let inverse_update = if self.track_r_inverse && !deficient && nonfinite_diag.is_none() {
             let g22 = inverse_with_backend(backend, &r22, 1)?;
             let x = match (&self.g, &c) {
                 (Some(g), Some(c)) => {
@@ -307,6 +370,16 @@ impl<T: Scalar> IncrementalQr<T> {
         };
         self.q = Some(q_new);
 
+        // Non-finite takes precedence over the deficiency flag: an
+        // infinite diagonal sets both, and reporting it as rank
+        // deficiency would claim exact rank coverage the factor cannot
+        // certify.
+        if let Some(diag) = nonfinite_diag {
+            self.terminated = true;
+            return Ok(QrAppendOutcome::NonFinite {
+                diagnostic: diag.to_f64().unwrap_or(f64::NAN),
+            });
+        }
         if deficient {
             self.terminated = true;
             return Ok(QrAppendOutcome::RankDeficient);

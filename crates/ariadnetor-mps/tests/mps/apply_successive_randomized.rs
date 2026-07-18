@@ -64,6 +64,28 @@ fn relative_error<T: Scalar>(
     diff_sq.sqrt() / norm_sq.sqrt()
 }
 
+/// The state with site 0 scaled by `scale`. Scaling any one site scales
+/// the whole product state, and every sketch column's environment
+/// absorbs site 0, so this is how these tests move the product to an
+/// extreme amplitude without touching its direction.
+fn with_first_site_scaled(
+    psi: &Mps<DenseStorage<f64>, DenseLayout>,
+    scale: f64,
+) -> Mps<DenseStorage<f64>, DenseLayout> {
+    Mps::from_sites(
+        (0..psi.len())
+            .map(|j| {
+                let site = psi.site(j);
+                if j == 0 {
+                    site.scaled(scale)
+                } else {
+                    site.clone()
+                }
+            })
+            .collect(),
+    )
+}
+
 // ===========================================================================
 // Exactness and agreement
 // ===========================================================================
@@ -143,18 +165,7 @@ fn src_adaptive_is_scale_invariant() {
     );
 
     for scale in [1e200, 1e-200] {
-        let scaled: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(
-            (0..psi.len())
-                .map(|j| {
-                    let site = psi.site(j);
-                    if j == 0 {
-                        site.scaled(scale)
-                    } else {
-                        site.clone()
-                    }
-                })
-                .collect(),
-        );
+        let scaled = with_first_site_scaled(&psi, scale);
         let out = apply_ok(&backend, &op, &scaled, None, method);
         for j in 0..unit.len() - 1 {
             assert_eq!(
@@ -163,6 +174,48 @@ fn src_adaptive_is_scale_invariant() {
                 "bond {j} must not depend on the state's scale (scale {scale:e})"
             );
         }
+    }
+}
+
+#[test]
+fn src_adaptive_is_scale_invariant_at_norm_saturation() {
+    let backend = NativeBackend::new();
+    // Beyond the squared-overflow regime above: here the accumulated
+    // sketch norm itself exceeds f64::MAX while every per-round panel
+    // norm stays representable, so a finished running norm would
+    // saturate to inf and `err <= cutoff * inf` would accept the sketch
+    // at that round with the bond stuck below the unit-scale choice.
+    // The scaled `(scale, sumsq)` accumulation keeps the comparison
+    // meaningful, so the same seed must still select the same bonds.
+    //
+    // The scale is tuned against this fixture's measured panel norms
+    // (seed 42): the saturating site's largest per-round panel norm is
+    // ~946.8x the applied scale while its accumulated norm reaches
+    // ~954.1x, so any scale in (MAX / 954.1, MAX / 946.8) — a window of
+    // about 0.8% — saturates the accumulation without pushing any
+    // single panel past the representable range. Re-tune from the
+    // per-round panel norms if the fixture, seed, or random stream ever
+    // changes.
+    let psi = make_4site_mps();
+    let op = make_total_n_dense_mpo(4);
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(1e-6),
+        sketch_dim: 1,
+        sketch_increment: 1,
+        seed: 42,
+        ..Default::default()
+    });
+
+    let unit = apply_ok(&backend, &op, &psi, None, method);
+    let scale = 1.89e305;
+    let scaled = with_first_site_scaled(&psi, scale);
+    let out = apply_ok(&backend, &op, &scaled, None, method);
+    for j in 0..unit.len() - 1 {
+        assert_eq!(
+            out.bond_dim(j),
+            unit.bond_dim(j),
+            "bond {j} must not depend on the state's scale at norm saturation"
+        );
     }
 }
 
@@ -560,6 +613,40 @@ fn src_fixed_mode_surfaces_inf_input_as_error() {
 }
 
 #[test]
+fn src_adaptive_surfaces_panel_norm_overflow_as_error() {
+    let backend = NativeBackend::new();
+    // Past the saturation window of the test above: here a growth
+    // round's panel norm itself exceeds f64::MAX with every element
+    // finite, so the backend QR cannot produce a finite triangular
+    // factor and the stopping rule has nothing to certify against. The
+    // sweep must error instead of accepting the round as rank-deficient
+    // coverage and returning a bond-stuck state as a success.
+    // Tuning (same measured norms): the first processed site's largest
+    // panel norm is ~874.6x the scale — overflowing from ~2.06e305 up —
+    // and its elements stay finite until ~2.5e305; beyond that the
+    // elementwise panel scan fires first (same error, older path).
+    // Re-tune if the fixture, seed, or random stream ever changes.
+    let psi = make_4site_mps();
+    let op = make_total_n_dense_mpo(4);
+    let scale = 2.2e305;
+    let scaled = with_first_site_scaled(&psi, scale);
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(1e-6),
+        sketch_dim: 1,
+        sketch_increment: 1,
+        seed: 42,
+        ..Default::default()
+    });
+    let (site, norm) =
+        expect_non_finite(mps::apply_with_method(&backend, &op, &scaled, None, method));
+    // The right-to-left sweep hits the overflowing growth round at the
+    // first processed site; the diagnostic carries the degenerated QR
+    // diagonal (inf or NaN is a backend detail).
+    assert_eq!(site, 3, "detection happens at the first processed site");
+    assert!(!norm.is_finite(), "the diagnostic carries the degeneration");
+}
+
+#[test]
 fn src_single_site_surfaces_nan_as_error() {
     let backend = NativeBackend::new();
     // The n == 1 path has no sketch: the exact local product itself is
@@ -574,12 +661,52 @@ fn src_single_site_surfaces_nan_as_error() {
     assert!(norm.is_nan(), "the diagnostic carries the offending norm");
 }
 
-// The remaining error return — the assembled-sites scan — has no
-// deterministic test: with all panels finite it fires only when the QR
-// factorization's internals, the final cap update, or the first-site
-// contraction alone produce a non-finite value, and the margin between
-// those sums and the (scanned) panel sums is set by the Gaussian
-// samples, so any triggering fixture would encode magic magnitudes tied
+#[test]
+fn src_fixed_mode_tolerates_degenerated_qr_factor() {
+    let backend = NativeBackend::new();
+    // At this amplitude the sweep's panel keeps every element finite
+    // while its column norm exceeds f64::MAX, so the QR append reports a
+    // degenerated (non-finite-diagonal) factor. Fixed mode never claims
+    // certification, so it must NOT surface that as the adaptive
+    // certification error at the panel's site (site 1 here); it
+    // continues the sweep and lets the elementwise result-boundary
+    // scans govern — which catch the overflowed weight in the assembled
+    // site 0. Removing the tolerance (erroring on the degenerated
+    // factor in fixed mode too) would move the detection locus to
+    // site 1 and fail this test. The amplitude sits mid-window
+    // (roughly 1e308 to 1.5e308 for this fixture and seed): elements at
+    // 0.7 to 1.0 times the scale stay finite by construction, and the
+    // panel-norm overflow has a wide margin; re-tune if the fixture or
+    // random stream ever changes.
+    let scale = 1.2e308;
+    let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
+        cm_dense_tensor(
+            vec![1.0 * scale, 0.8 * scale, 0.9 * scale, 0.7 * scale],
+            vec![1, 2, 2],
+        ),
+        cm_dense_tensor(vec![0.9, 0.5, 0.6, 1.0, 0.7, 0.8, 0.9, 0.6], vec![2, 2, 2]),
+        cm_dense_tensor(vec![1.0, 0.6, 0.7, 1.0], vec![2, 2, 1]),
+    ]);
+    let op = make_identity_mpo(3, 2);
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        output_dim: Some(1),
+        seed: 42,
+        ..Default::default()
+    });
+    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
+    assert_eq!(
+        site, 0,
+        "fixed mode tolerates the degenerated factor; the assembled-sites scan reports"
+    );
+    assert!(norm.is_infinite(), "the diagnostic carries the overflow");
+}
+
+// Beyond the fixed-mode test above (whose site-0 detection exercises the
+// assembled-sites scan), the scan has no adaptive-mode deterministic
+// test: with all panels finite and the factorization healthy it fires
+// only when the QR internals, the cap update, or the first-site
+// contraction alone go non-finite — a margin set by the Gaussian
+// samples, so a triggering fixture would encode magic magnitudes tied
 // to the RNG stream and break on a `rand` upgrade. That scan is defense
 // in depth behind the panel scans.
 

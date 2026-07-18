@@ -263,9 +263,11 @@ pub enum ApplyMethod {
     ///
     /// The only method whose dispatch can currently return an error:
     /// [`ApplyError::NonFinite`] when a non-finite element reaches a
-    /// result boundary, in both adaptive and fixed mode. See the variant
-    /// doc for the exact scope (pre-finishing-pass, detection locus,
-    /// elementwise detector).
+    /// result boundary (both adaptive and fixed mode), or when adaptive
+    /// mode's certification machinery degenerates on a panel whose
+    /// column norm overflows the real type. See the variant doc for the
+    /// exact scope (pre-finishing-pass, detection locus, elementwise
+    /// state scans vs the adaptive certification check).
     ///
     /// # Panics
     ///
@@ -295,7 +297,7 @@ impl Default for ApplyMethod {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ApplyError {
-    /// A non-finite element (NaN/inf) reached a result boundary: an
+    /// A non-finite quantity (NaN/inf) reached a result boundary: an
     /// overflowed contraction produced `inf`, or `inf - inf` /
     /// `0 * inf` produced NaN downstream. For
     /// [`ApplyMethod::SuccessiveRandomized`] the scanned quantities are
@@ -309,11 +311,18 @@ pub enum ApplyError {
     ///
     /// The scan runs before the optional finishing pass, so it does not
     /// cover non-finite values arising only inside a requested
-    /// `canonicalize` + `truncate`. The detector is elementwise: a
-    /// finite state whose Frobenius norm merely overflows the scalar's
-    /// real type is not rejected. The diagnostic is carried as `f64` so
-    /// the error type stays non-generic.
-    #[error("MPO-MPS apply produced a non-finite element (detected at site {site}): norm = {norm}")]
+    /// `canonicalize` + `truncate`. The elementwise state scans do not
+    /// reject a finite state whose Frobenius norm merely overflows the
+    /// scalar's real type; adaptive mode additionally reports this error
+    /// when a sketch panel's column norm overflow leaves the QR
+    /// factorization without a finite triangular factor — a
+    /// certification quantity, not a state element — because its
+    /// stopping rule cannot certify anything against that factor (see
+    /// the successive-randomized module doc). The diagnostic is carried
+    /// as `f64` so the error type stays non-generic.
+    #[error(
+        "MPO-MPS apply produced a non-finite quantity (detected at site {site}): norm = {norm}"
+    )]
     NonFinite {
         /// Site index (0-based) where the sweep detected the poison.
         /// This is the detection locus, not the poison's origin: the
@@ -323,8 +332,11 @@ pub enum ApplyError {
         /// sweep's internal check placement and is informational, not a
         /// stable contract.
         site: usize,
-        /// Frobenius norm of the offending tensor — non-finite by
-        /// construction (lossily cast to `f64`).
+        /// The offending non-finite quantity (lossily cast to `f64`,
+        /// non-finite by construction): the offending tensor's
+        /// Frobenius norm when an elementwise scan fired, or the
+        /// degenerated QR diagonal magnitude when adaptive mode's
+        /// certification check fired.
         norm: f64,
     },
 }

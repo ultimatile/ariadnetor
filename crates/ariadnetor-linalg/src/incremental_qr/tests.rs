@@ -520,3 +520,86 @@ fn backend_failure_mid_append_leaves_state_unchanged() {
         .expect("state is intact after the failed append");
     assert_eq!(inc.ncols(), ncols + 2);
 }
+
+/// A column whose true norm exceeds the real type's range with every
+/// element finite: the backend QR returns a non-finite diagonal for it
+/// (measured; a 4 x 1 column of 1e308 has true norm 2e308 > f64::MAX).
+fn overflow_norm_column() -> DenseTensor<f64> {
+    let mut m = DenseTensor::<f64>::zeros(vec![4, 1]);
+    for i in 0..4 {
+        m.set([i, 0], 1.0e308);
+    }
+    m
+}
+
+#[test]
+fn overflow_norm_first_append_reports_non_finite_not_rank_deficient() {
+    // Without the diagonal finiteness scan this block reads as
+    // RankDeficient: the infinite diagonal drives the relative tolerance
+    // to inf and `inf <= inf` holds, claiming exact rank coverage that
+    // the degenerated factor cannot certify.
+    let backend = NativeBackend::new();
+    let mut inc = IncrementalQr::<f64>::new(4, true);
+    let outcome = inc
+        .append(&backend, &overflow_norm_column())
+        .expect("append is Ok: the degeneration is data-dependent, not a backend failure");
+    let QrAppendOutcome::NonFinite { diagnostic } = outcome else {
+        panic!("expected NonFinite, got {outcome:?}");
+    };
+    assert!(
+        diagnostic.is_infinite(),
+        "the overflow column's degenerated diagonal is infinite"
+    );
+    assert_eq!(inc.ncols(), 1, "the block's columns are still absorbed");
+    assert!(
+        inc.r_inverse_row_norms().is_none(),
+        "a non-finite append must leave no consumable inverse state"
+    );
+}
+
+#[test]
+fn overflow_norm_after_moderate_append_reports_non_finite_not_full_rank() {
+    // Orthogonalizing an overflow-norm block against an existing basis
+    // pushes NaN into the candidate diagonal (measured). NaN fails every
+    // comparison, so the plain deficiency test would report FullRank and
+    // then invert the degenerated factor into the maintained inverse.
+    let backend = NativeBackend::new();
+    let mut inc = IncrementalQr::<f64>::new(4, true);
+    let mut moderate = DenseTensor::<f64>::zeros(vec![4, 1]);
+    moderate.set([0, 0], 1.0);
+    moderate.set([1, 0], 2.0);
+    assert_eq!(
+        inc.append(&backend, &moderate).expect("moderate block"),
+        QrAppendOutcome::FullRank
+    );
+    let outcome = inc
+        .append(&backend, &overflow_norm_column())
+        .expect("append is Ok: the degeneration is data-dependent, not a backend failure");
+    let QrAppendOutcome::NonFinite { diagnostic } = outcome else {
+        panic!("expected NonFinite, got {outcome:?}");
+    };
+    // Whether the degeneration surfaces as inf (the residual's column
+    // norm overflowing) or NaN (poison inside the projection) is a
+    // backend detail; the contract is only that it is non-finite and
+    // not misread as full rank.
+    assert!(
+        !diagnostic.is_finite(),
+        "the projected overflow block degenerates the diagonal"
+    );
+    assert_eq!(inc.ncols(), 2, "the block's columns are still absorbed");
+    assert!(
+        inc.r_inverse_row_norms().is_none(),
+        "termination hides the now-stale inverse state"
+    );
+}
+
+#[test]
+#[should_panic(expected = "terminated")]
+fn append_after_non_finite_panics() {
+    let backend = NativeBackend::new();
+    let mut inc = IncrementalQr::<f64>::new(4, false);
+    let _ = inc
+        .append(&backend, &overflow_norm_column())
+        .expect("first append succeeds with a NonFinite outcome");
+    let _ = inc.append(&backend, &pseudo_random::<f64>(4, 1, 7));
+}
