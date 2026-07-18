@@ -667,6 +667,54 @@ fn test_trunc_svd_target_err_keeps_at_least_one() {
 }
 
 #[test]
+fn test_trunc_svd_error_stays_finite_at_f64_overflow_scale() {
+    // Equal (well-conditioned) SVs 1e200; discarding one gives error 1e200,
+    // where a naive sum of squares saturates 1e400 to inf.
+    let mut data = vec![0.0_f64; 2 * 2];
+    data[0] = 1e200;
+    data[3] = 1e200;
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    };
+    let (_, s, _, trunc_err) = cm(data, vec![2, 2]).trunc_svd(1, &params).unwrap();
+    assert_eq!(s.len(), 1);
+    assert!(trunc_err.is_finite() && (trunc_err - 1e200).abs() < 1e190);
+}
+
+#[test]
+fn test_trunc_svd_error_nonzero_at_f32_underflow_scale() {
+    // Diagonal input: the SVD returns the magnitudes [1, 1e-23] without mixing.
+    // Discarding 1e-23 gives a nonzero error; the naive f32 square underflows.
+    let mut data = vec![0.0_f32; 2 * 2];
+    data[0] = 1.0;
+    data[3] = 1e-23;
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    };
+    let (_, s, _, trunc_err) = cm(data, vec![2, 2]).trunc_svd(1, &params).unwrap();
+    assert_eq!(s.len(), 1);
+    assert!(trunc_err > 0.0 && (trunc_err - 1e-23).abs() < 1e-24);
+}
+
+#[test]
+fn test_trunc_svd_target_err_scan_survives_f32_square_overflow() {
+    // SVs [2e20, 1e20] as f32 both exceed sqrt(f32::MAX), so the scan's
+    // `si * si` overflows to inf. The 1e20 tail is discardable (norm far below
+    // target 1e25); the scale-safe scan drops it, the naive scan keeps it.
+    let mut data = vec![0.0_f32; 2 * 2];
+    data[0] = 2e20;
+    data[3] = 1e20;
+    let params = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1e25),
+    };
+    let (_, s, _, _) = cm(data, vec![2, 2]).trunc_svd(1, &params).unwrap();
+    assert_eq!(s.len(), 1, "the discardable 1e20 value must be dropped");
+}
+
+#[test]
 fn test_trunc_svd_slicing_u_times_s_times_vt_approximation() {
     // Verify truncated U*S*Vt approximates original within trunc_err,
     // using a non-trivial non-diagonal matrix

@@ -17,12 +17,12 @@ pub(crate) mod fused_sector;
 pub(crate) use eig::eig_block_sparse_with_policy_dense;
 pub(crate) use eigh::eigh_block_sparse_with_policy_dense;
 
-use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
+use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
 use ariadnetor_tensor::{
     BlockSparseTensor, BlockSparseTensorData, DenseTensorData, Sector, reorder_data,
 };
-use num_traits::{Float, ToPrimitive, Zero};
+use num_traits::{ToPrimitive, Zero};
 
 use crate::decomposition::TruncSvdParams;
 use crate::error::LinalgError;
@@ -479,31 +479,34 @@ fn cross_sector_truncate<T: Scalar>(
     }
 
     if let Some(target_err) = params.target_trunc_err {
-        let target_sq = target_err * target_err;
-        let mut discarded_sq = 0.0_f64;
+        // Fold the discarded norm from the smallest singular value upward,
+        // scale-safely, comparing the running norm directly against the
+        // (finite) target rather than squaring either side. See the dense twin
+        // in `decomposition::trunc_svd_with_policy_dense` for the overflow /
+        // underflow the naive sum of squares runs into here.
+        let mut discarded = 0.0_f64;
         let mut chi_err = total_sv;
         for i in (0..total_sv).rev() {
-            let si_sq = sorted_sv[i].0.to_f64().unwrap().powi(2);
-            if discarded_sq + si_sq > target_sq {
+            let si = sorted_sv[i].0.to_f64().unwrap();
+            let candidate = combine_norms(discarded, si);
+            if candidate > target_err {
                 break;
             }
-            discarded_sq += si_sq;
+            discarded = candidate;
             chi_err = i;
         }
         chi = chi.min(chi_err).max(1);
     }
 
-    let mut err_sq = T::Real::zero();
-    for &(sv, _) in &sorted_sv[chi..] {
-        err_sq = err_sq + sv * sv;
-    }
+    // Frobenius norm of the discarded singular values, accumulated scale-safely.
+    let trunc_err = scale_safe_norm(sorted_sv[chi..].iter().map(|&(sv, _)| sv));
 
     let mut k_per_sector = vec![0usize; num_sectors];
     for &(_, si) in &sorted_sv[..chi] {
         k_per_sector[si] += 1;
     }
 
-    Ok((k_per_sector, err_sq.sqrt()))
+    Ok((k_per_sector, trunc_err))
 }
 
 /// Extract tensor data in `order`. `reorder_data` is a no-op clone

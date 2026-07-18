@@ -249,7 +249,7 @@ fn test_truncate_absorb_right_isometry_structure() {
 }
 
 // --------------------------------------------------------------------------
-// Truncation error: squared-error accumulation arithmetic
+// Truncation error: Frobenius-norm error accumulation
 // --------------------------------------------------------------------------
 
 #[test]
@@ -328,6 +328,40 @@ fn test_truncate_single_site_returns_zero_error() {
 
     assert_abs_diff_eq!(result.error, 0.0, epsilon = 1e-12);
     assert_eq!(*mps.canonical_form(), CanonicalForm::Mixed { center: 0 });
+}
+
+// --------------------------------------------------------------------------
+// Sweep error accumulation stays finite at overflow scale
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_truncation_error_stays_finite_at_overflow_scale() {
+    // Two-site chain whose bond carries two equal Schmidt values 1e200: site 0
+    // is the 2x2 identity and site 1 is 1e200 times the identity, so the state
+    // is 1e200 * I with singular values [1e200, 1e200]. Truncating to chi=1
+    // discards one 1e200; the swept error folds it scale-safely and stays
+    // finite, where the old sum of squared step errors would square 1e200 to
+    // 1e400 and saturate the total to inf.
+    let backend = NativeBackend::new();
+    let storages = vec![
+        cm_dense_tensor(vec![1.0_f64, 0.0, 0.0, 1.0], vec![1, 2, 2]),
+        cm_dense_tensor(vec![1e200_f64, 0.0, 0.0, 1e200], vec![2, 2, 1]),
+    ];
+    let mut mps = Mps::from_sites(storages);
+    mps.canonicalize(&backend, 0);
+
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+    let result = mps.truncate(&backend, &params);
+
+    assert!(
+        result.error.is_finite(),
+        "swept error {} must stay finite",
+        result.error
+    );
+    assert!((result.error - 1e200).abs() < 1e190);
 }
 
 // --------------------------------------------------------------------------

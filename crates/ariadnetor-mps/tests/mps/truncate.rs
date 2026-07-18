@@ -314,7 +314,8 @@ fn test_truncate_right_canonical_auto() {
 fn test_truncate_error_accumulates_correctly() {
     // Verify truncation error is positive and consistent across sweeps.
     // Truncating to chi_max=1 forces maximal truncation, so error must be
-    // strictly positive and the squared-error accumulation (err*err) matters.
+    // strictly positive and the scale-safe error accumulation across sweeps
+    // must aggregate every step's contribution.
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
     mps.canonicalize(&backend, 1);
