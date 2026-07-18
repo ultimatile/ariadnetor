@@ -98,9 +98,9 @@ pub(super) fn random_unit_vector<T: Scalar>(dim: usize, rng: &mut StdRng) -> Den
         .map(|_| {
             let re_f64: f64 = rng.random_range(-0.5..0.5);
             let im_f64: f64 = rng.random_range(-0.5..0.5);
-            let re = crate::numeric::try_real_from_f64::<T>(re_f64)
+            let re = ariadnetor_core::try_real_from_f64::<T>(re_f64)
                 .expect("uniform [-0.5, 0.5) sample fits in Scalar::Real");
-            let im = crate::numeric::try_real_from_f64::<T>(im_f64)
+            let im = ariadnetor_core::try_real_from_f64::<T>(im_f64)
                 .expect("uniform [-0.5, 0.5) sample fits in Scalar::Real");
             T::from_real_imag(re, im)
         })
@@ -156,7 +156,7 @@ mod tests {
     use rand::SeedableRng;
 
     fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
-        crate::numeric::try_real_from_f64::<T>(x)
+        ariadnetor_core::try_real_from_f64::<T>(x)
             .expect("test value must be representable in T::Real")
     }
 

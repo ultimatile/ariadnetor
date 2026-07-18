@@ -243,3 +243,28 @@ fn variational_ignores_target_trunc_err() {
         "target_trunc_err must not truncate the variational result",
     );
 }
+
+#[test]
+#[should_panic(expected = "representable as a finite value")]
+fn variational_f32_rejects_unrepresentable_tol() {
+    let backend = NativeBackend::new();
+    let psi: Mps<DenseStorage<f32>, DenseLayout> = Mps::from_sites(vec![
+        cm_dense_tensor(vec![1.0_f32, 0.0, 0.5, 0.5], vec![1, 2, 2]),
+        cm_dense_tensor(vec![1.0_f32, 0.0, 0.0, 1.0], vec![2, 2, 1]),
+    ]);
+    let op = mps::Mpo::from_sites(vec![
+        cm_dense_tensor(vec![1.0_f32, 0.0, 0.0, 1.0], vec![1, 2, 2, 1]),
+        cm_dense_tensor(vec![1.0_f32, 0.0, 0.0, 1.0], vec![1, 2, 2, 1]),
+    ]);
+
+    // 1e300 is finite in f64 (passes the API's plain-f64 signature) but
+    // overflows f32; the tolerance cast must reject it instead of casting to
+    // infinity and reporting convergence after one sweep. Two sites are needed
+    // because the single-site path returns before reaching the cast.
+    let method = ApplyMethod::Variational {
+        init: VariationalInit::ZipUp,
+        max_sweeps: 10,
+        tol: 1e300,
+    };
+    let _ = mps::apply_with_method(&backend, &op, &psi, None, method);
+}

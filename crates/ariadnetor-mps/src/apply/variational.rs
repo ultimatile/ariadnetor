@@ -22,7 +22,7 @@ use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
     DenseTensor, Host, OpsFor, Sector,
 };
-use num_traits::{Float, NumCast, Zero};
+use num_traits::{Float, Zero};
 
 use crate::canonicalize::{
     canonicalize_bsp, canonicalize_dense, left_qr_step, left_qr_step_bsp, right_lq_step,
@@ -141,12 +141,17 @@ where
         return phi;
     }
 
+    // Validate the tolerance before the canonicalize + environment build, so an
+    // unrepresentable tol fails fast rather than after that setup work; the cast
+    // is independent of the environments.
+    let tol_real: T::Real = ariadnetor_core::try_real_from_f64::<T>(tol)
+        .expect("tol must be representable as a finite value in the scalar's real type");
+
     // Right-canonicalize so the L→R sweep starts against valid right envs.
     canonicalize_dense(h, &mut phi, 0);
     let mut envs = BraketEnvs::<DenseStorage<T>, DenseLayout>::build::<T>(&phi, op, psi)
         .expect("braket env build: validated by entry point");
 
-    let tol_real: T::Real = NumCast::from(tol).expect("tol representable in real scalar type");
     let mut last: Option<T::Real> = None;
 
     for _ in 0..max_sweeps {
@@ -268,12 +273,17 @@ where
         return phi;
     }
 
+    // Validate the tolerance before the canonicalize + environment build, so an
+    // unrepresentable tol fails fast rather than after that setup work; the cast
+    // is independent of the environments.
+    let tol_real: T::Real = ariadnetor_core::try_real_from_f64::<T>(tol)
+        .expect("tol must be representable as a finite value in the scalar's real type");
+
     canonicalize_bsp(h, &mut phi, 0);
     let mut envs =
         BraketEnvs::<BlockSparseStorage<T>, BlockSparseLayout<S>>::build::<T>(&phi, op, psi)
             .expect("braket env build: validated by entry point");
 
-    let tol_real: T::Real = NumCast::from(tol).expect("tol representable in real scalar type");
     let mut last: Option<T::Real> = None;
 
     for _ in 0..max_sweeps {

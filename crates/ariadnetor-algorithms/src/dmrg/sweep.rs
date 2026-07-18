@@ -36,7 +36,7 @@ use ariadnetor_linalg::LinalgError;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, MpsOps, TensorChain, braket};
 use ariadnetor_tensor::{Host, OpsFor, Storage, StorageFor, TensorLayout};
 
-use crate::numeric::try_real_from_f64;
+use ariadnetor_core::try_real_from_f64;
 
 use super::dispatch::{DmrgOps, FullStepError};
 use super::heff_error::DmrgHeffError;

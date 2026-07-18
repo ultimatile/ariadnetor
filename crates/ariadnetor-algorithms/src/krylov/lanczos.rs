@@ -181,7 +181,7 @@ where
     let max_iter = params.max_iter.min(dim);
 
     let tol_real: T::Real =
-        crate::numeric::try_real_from_f64::<T>(params.tol).unwrap_or_else(|| {
+        ariadnetor_core::try_real_from_f64::<T>(params.tol).unwrap_or_else(|| {
             panic!(
                 "try_real_from_f64: tol = {} is not representable in T::Real",
                 params.tol

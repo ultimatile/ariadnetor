@@ -66,8 +66,7 @@ use super::check_finite;
 /// post-cast finiteness check, a comparison like `err <= cutoff * norm`
 /// would always hold and report spurious convergence.
 fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
-    <T::Real as NumCast>::from(x)
-        .filter(|c| c.is_finite())
+    ariadnetor_core::try_real_from_f64::<T>(x)
         .expect("cutoff must be representable as a finite value in the scalar's real type")
 }
 
