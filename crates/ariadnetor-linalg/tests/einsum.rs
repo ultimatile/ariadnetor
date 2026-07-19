@@ -530,3 +530,117 @@ fn multi_tensor_honors_requested_output_order() {
         }
     }
 }
+
+/// Batched contraction with TWO batch labels (`a`, `b`), asymmetric GEMM
+/// dimensions (`m=2`, `n=4`, `k=3` all distinct), and an interleaved output
+/// order (`baji` — batch labels swapped, free legs reversed). This exercises
+/// the batch-product flatten and the per-slice offset arithmetic together:
+/// a single-batch or square-dimension case would let a stride or transpose
+/// mixup cancel silently.
+#[test]
+fn test_einsum_batched_two_batch_labels_asymmetric() {
+    // a=2, b=2, i(m)=2, k=3, j(n)=4
+    let lhs = cm((1..=24).map(|x| x as f64).collect(), vec![2, 2, 2, 3]); // abik
+    let rhs = cm((1..=48).map(|x| x as f64).collect(), vec![2, 2, 3, 4]); // abkj
+
+    let result = to_rm(&einsum(&[&lhs, &rhs], "abik,abkj->baji").unwrap());
+    let lhs_rm = to_rm(&lhs);
+    let rhs_rm = to_rm(&rhs);
+
+    assert_eq!(result.shape(), &[2, 2, 4, 2]); // baji
+    for a in 0..2 {
+        for b in 0..2 {
+            for i in 0..2 {
+                for j in 0..4 {
+                    let mut expected = 0.0;
+                    for k in 0..3 {
+                        expected += lhs_rm.get([a, b, i, k]) * rhs_rm.get([a, b, k, j]);
+                    }
+                    assert!(
+                        (result.get([b, a, j, i]) - expected).abs() < 1e-10,
+                        "mismatch at b={b},a={a},j={j},i={i}: got {} expected {expected}",
+                        result.get([b, a, j, i])
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// A batched contraction whose contracted extent disagrees across operands
+/// must be rejected up front with `InvalidArgument`, not sliced into the
+/// wrong region. Locks the validation that replaced the per-slice
+/// `contract_dense` extent check.
+#[test]
+fn test_einsum_batched_mismatched_contracted_extent_errors() {
+    let lhs = cm((1..=12).map(|x| x as f64).collect(), vec![2, 2, 3]); // bik, k=3
+    let rhs = cm((1..=16).map(|x| x as f64).collect(), vec![2, 4, 2]); // bkj, k=4
+
+    let result = einsum(&[&lhs, &rhs], "bik,bkj->bij");
+    assert!(
+        matches!(result, Err(LinalgError::InvalidArgument(_))),
+        "expected InvalidArgument on mismatched contracted extent, got {result:?}"
+    );
+}
+
+/// A batched notation whose operand rank exceeds its index count must be
+/// rejected with `InvalidArgument` before the permute / slice arithmetic runs
+/// on the extra axis. Locks the up-front rank guard.
+#[test]
+fn test_einsum_batched_rank_exceeds_arity_errors() {
+    // "bik" names 3 indices but the operand is rank 4.
+    let lhs = cm((1..=60).map(|x| x as f64).collect(), vec![2, 2, 3, 5]);
+    let rhs = cm((1..=12).map(|x| x as f64).collect(), vec![2, 3, 2]); // bkj
+
+    let result = einsum(&[&lhs, &rhs], "bik,bkj->bij");
+    assert!(
+        matches!(result, Err(LinalgError::InvalidArgument(_))),
+        "expected InvalidArgument on operand rank / notation arity mismatch, got {result:?}"
+    );
+}
+
+/// A batched contraction over a zero-extent contracted axis is an empty sum:
+/// the result is the zeros of the output shape, not a slicing error. Exercises
+/// the degenerate short-circuit in the batched path.
+#[test]
+fn test_einsum_batched_zero_contracted_extent_is_zeros() {
+    let lhs = cm(Vec::<f64>::new(), vec![2, 2, 0]); // bik, k=0
+    let rhs = cm(Vec::<f64>::new(), vec![2, 0, 3]); // bkj, k=0
+
+    let result = to_rm(&einsum(&[&lhs, &rhs], "bik,bkj->bij").unwrap());
+    assert_eq!(result.shape(), &[2, 2, 3]);
+    assert!(
+        result.data_slice().iter().all(|&x| x == 0.0),
+        "empty contracted sum must be all zeros"
+    );
+}
+
+/// A batched contraction whose free and contracted axes are all size 1 must
+/// still route through the batched GEMM and keep those axes in the output —
+/// not collapse to Hadamard (which would build the shape from the batch axes
+/// alone and drop them).
+#[test]
+fn test_einsum_batched_unit_free_axes_are_kept() {
+    let lhs = cm(vec![2.0_f64, 3.0], vec![2, 1, 1]); // aij: a=2, i=1, j=1
+    let rhs = cm(vec![5.0_f64, 7.0], vec![2, 1, 1]); // ajk: a=2, j=1, k=1
+
+    let out = to_rm(&einsum(&[&lhs, &rhs], "aij,ajk->aik").unwrap());
+    assert_eq!(out.shape(), &[2, 1, 1]);
+    assert!((out.get([0, 0, 0]) - 10.0).abs() < 1e-10); // 2 * 5
+    assert!((out.get([1, 0, 0]) - 21.0).abs() < 1e-10); // 3 * 7
+}
+
+/// A batched notation whose operand rank is *below* its index count must return
+/// `InvalidArgument`, not panic in the dimension lookup that computes the GEMM
+/// sizes.
+#[test]
+fn test_einsum_batched_rank_below_arity_errors() {
+    let lhs = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]); // rank 2, "bik" has 3 indices
+    let rhs = cm((1..=12).map(|x| x as f64).collect(), vec![2, 3, 2]); // bkj
+
+    let result = einsum(&[&lhs, &rhs], "bik,bkj->bij");
+    assert!(
+        matches!(result, Err(LinalgError::InvalidArgument(_))),
+        "expected InvalidArgument on operand rank below arity, got {result:?}"
+    );
+}

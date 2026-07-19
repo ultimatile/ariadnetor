@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use ariadnetor_core::Scalar;
-use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_core::backend::{ComputeBackend, GemmDescriptor, MemoryOrder};
 use ariadnetor_core::{ContractionPlan, EinsumExpr, compute_permutation};
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData, normalize_to_data};
 
@@ -50,7 +50,7 @@ pub(crate) fn einsum_dense<T: Scalar>(
 ///
 /// - Pure contraction (no batch indices) -> [`contract_dense`]
 /// - Hadamard product (all batch, no free/contracted) -> element-wise multiply
-/// - Batched contraction -> slice-and-loop over [`contract_dense`]
+/// - Batched contraction -> one GEMM per batch slice
 fn einsum_pair<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &DenseTensorData<T>,
@@ -67,33 +67,28 @@ fn einsum_pair<T: Scalar>(
         return contract_dense(backend, lhs, rhs, notation);
     }
 
-    // Compute dimension sizes for each category
-    let m: usize = plan
-        .free_lhs
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .product::<usize>()
-        .max(1);
+    // Validate ranks before any `dim_of` lookup: both the Hadamard and batched
+    // paths index `shape[pos]`, which would panic out of bounds on a rank
+    // mismatch. `contract_dense` performs the same check for the non-batched
+    // path above.
+    if lhs.rank() != expr.lhs_indices().len() || rhs.rank() != expr.rhs_indices().len() {
+        return Err(LinalgError::InvalidArgument(format!(
+            "einsum: operand ranks {}/{} do not match notation arities {}/{}",
+            lhs.rank(),
+            rhs.rank(),
+            expr.lhs_indices().len(),
+            expr.rhs_indices().len(),
+        )));
+    }
 
-    let n: usize = plan
-        .free_rhs
-        .iter()
-        .map(|&idx| dim_of(idx, expr.rhs_indices(), rhs.shape()))
-        .product::<usize>()
-        .max(1);
-
-    let k: usize = plan
-        .contracted
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .product::<usize>()
-        .max(1);
-
-    if m == 1 && n == 1 && k == 1 {
-        // Hadamard product: all indices are batch, no free or contracted
+    // Hadamard product = every index is a batch index (no free or contracted
+    // axes at all). Gate on the index *sets* being empty, not on their extents
+    // being 1: a free or contracted axis of size 1 must still route to the
+    // batched GEMM, which keeps that axis in the output, whereas `hadamard`
+    // builds its output shape from `plan.batch` alone and would drop it.
+    if plan.free_lhs.is_empty() && plan.free_rhs.is_empty() && plan.contracted.is_empty() {
         hadamard(backend, lhs, rhs, &expr, &plan)
     } else {
-        // Batched contraction: slice over batch dims, contract per slice
         batched_contract(backend, lhs, rhs, &expr, &plan)
     }
 }
@@ -150,7 +145,16 @@ fn hadamard<T: Scalar>(
     reorder_batched_output(backend, result, &plan.batch, &[], &[], expr.out_indices())
 }
 
-/// Batched contraction: loop over batch dimensions, call contract() per slice.
+/// Batched contraction: one bare GEMM per batch slice.
+///
+/// Both operands are permuted and reordered once so the batch axes are the
+/// slowest-varying in the backend's preferred order; every per-slice
+/// `(m, k)` / `(k, n)` block is then a contiguous range fed straight to
+/// [`ComputeBackend::gemm`], with the shared `(m, n, k)`, execution policy,
+/// and output buffer computed once — so the per-slice loop itself performs no
+/// copy, reorder, or notation re-parse. The shared batch/contracted extents are
+/// validated up front (ranks by the caller), so the slice offsets are always in
+/// bounds.
 fn batched_contract<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &DenseTensorData<T>,
@@ -160,127 +164,120 @@ fn batched_contract<T: Scalar>(
 ) -> Result<DenseTensorData<T>, LinalgError> {
     let order = backend.preferred_order();
 
-    // Compute batch dimensions
-    let batch_dims: Vec<usize> = plan
-        .batch
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .collect();
-    let batch_size: usize = batch_dims.iter().product::<usize>().max(1);
-
-    // Build permutations to [batch..., free/contracted...] order
-    let lhs_perm = plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices());
-    let rhs_perm = plan.rhs_permutation(expr.rhs_indices());
-
-    let lhs_permuted = if let Some(perm) = lhs_perm {
-        transpose_dense(backend, lhs, &perm)?
-    } else {
-        lhs.clone()
-    };
-
-    let rhs_permuted = if let Some(perm) = rhs_perm {
-        transpose_dense(backend, rhs, &perm)?
-    } else {
-        rhs.clone()
-    };
-
-    // Reorder each operand to RowMajor so batch slices are contiguous memory
-    // ranges. The reorder reads each operand under its own order tag (the
-    // no-permutation branch keeps the caller's), producing the same RowMajor
-    // bytes regardless of that tag — so no separate normalize-to-`order` step
-    // is needed first.
-    let lhs_rm = reorder_via_backend(backend, &lhs_permuted, MemoryOrder::RowMajor)?;
-    let rhs_rm = reorder_via_backend(backend, &rhs_permuted, MemoryOrder::RowMajor)?;
-
-    // Per-slice sizes (after removing batch dimensions)
-    let lhs_slice_size = lhs_rm.len() / batch_size;
-    let rhs_slice_size = rhs_rm.len() / batch_size;
-
-    // Slice shape: drop batch dims from the permuted shape
-    let n_batch = plan.batch.len();
-    let lhs_slice_shape: Vec<usize> = lhs_rm.shape()[n_batch..].to_vec();
-    let rhs_slice_shape: Vec<usize> = rhs_rm.shape()[n_batch..].to_vec();
-
-    // Contracted indices in RHS occurrence order (matching permutation order)
-    let contracted_set: HashSet<u8> = plan.contracted.iter().copied().collect();
-    let contracted_rhs_order: Vec<u8> = expr
-        .rhs_indices()
-        .iter()
-        .filter(|idx| contracted_set.contains(idx))
-        .copied()
-        .collect();
-
-    // Build batch-free notation with canonical [free_lhs, free_rhs] output order
-    let batch_free_notation = build_batch_free_notation(plan, &contracted_rhs_order);
-
-    let lhs_data = lhs_rm.data();
-    let rhs_data = rhs_rm.data();
-
-    // Contract each batch slice
-    let mut result_slices: Vec<DenseTensorData<T>> = Vec::with_capacity(batch_size);
-    for b in 0..batch_size {
-        let lhs_slice_data = &lhs_data[b * lhs_slice_size..(b + 1) * lhs_slice_size];
-        let rhs_slice_data = &rhs_data[b * rhs_slice_size..(b + 1) * rhs_slice_size];
-
-        // Slice data is in RowMajor layout; contract() expects data in
-        // preferred_order, so reorder each slice before contracting.
-        let lhs_slice_preferred = reorder_via_backend(
-            backend,
-            &DenseTensorData::from_raw_parts(
-                lhs_slice_data.to_vec(),
-                lhs_slice_shape.clone(),
-                MemoryOrder::RowMajor,
-            ),
-            order,
-        )?;
-        let rhs_slice_preferred = reorder_via_backend(
-            backend,
-            &DenseTensorData::from_raw_parts(
-                rhs_slice_data.to_vec(),
-                rhs_slice_shape.clone(),
-                MemoryOrder::RowMajor,
-            ),
-            order,
-        )?;
-
-        let slice_result = contract_dense(
-            backend,
-            &lhs_slice_preferred,
-            &rhs_slice_preferred,
-            &batch_free_notation,
-        )?;
-        result_slices.push(slice_result);
+    // Ranks are validated by the caller (`einsum_pair`) before dispatch. Here
+    // we guard the slicing: an unchecked contracted/batch extent disagreement
+    // would let the LHS-derived block boundaries index the wrong RHS region, so
+    // it is reported as `InvalidArgument` rather than mis-slicing.
+    for &idx in plan.batch.iter().chain(&plan.contracted) {
+        let lhs_dim = dim_of(idx, expr.lhs_indices(), lhs.shape());
+        let rhs_dim = dim_of(idx, expr.rhs_indices(), rhs.shape());
+        if lhs_dim != rhs_dim {
+            return Err(LinalgError::InvalidArgument(format!(
+                "batched contraction: shared index '{}' has mismatched extents {lhs_dim} != {rhs_dim}",
+                idx as char
+            )));
+        }
     }
 
-    // Stack results into canonical shape [batch..., free_lhs..., free_rhs...]
-    // Compute output shape from plan, not from contract() output (which adds a
-    // dummy [1] for scalar results).
+    // GEMM extents, unclamped: an empty free/contracted group is a scalar axis
+    // (extent 1), while a genuine zero extent stays zero and drives the
+    // degenerate branch below.
+    let batch_dims = group_dims(&plan.batch, expr.lhs_indices(), lhs.shape());
+    let batch_size: usize = batch_dims.iter().product();
+    let m = group_extent(&plan.free_lhs, expr.lhs_indices(), lhs.shape());
+    let n = group_extent(&plan.free_rhs, expr.rhs_indices(), rhs.shape());
+    let k = group_extent(&plan.contracted, expr.lhs_indices(), lhs.shape());
+
+    // Canonical output shape [batch..., free_lhs..., free_rhs...].
     let mut output_shape = batch_dims;
-    for &idx in &plan.free_lhs {
-        output_shape.push(dim_of(idx, expr.lhs_indices(), lhs.shape()));
-    }
-    for &idx in &plan.free_rhs {
-        output_shape.push(dim_of(idx, expr.rhs_indices(), rhs.shape()));
-    }
-    let total_size: usize = output_shape.iter().product();
+    output_shape.extend(group_dims(&plan.free_lhs, expr.lhs_indices(), lhs.shape()));
+    output_shape.extend(group_dims(&plan.free_rhs, expr.rhs_indices(), rhs.shape()));
 
-    let mut stacked_data: Vec<T> = Vec::with_capacity(total_size);
-    for slice in &result_slices {
-        // Reorder each slice result to RowMajor for consistent stacking
-        let rm = reorder_via_backend(backend, slice, MemoryOrder::RowMajor)?;
-        stacked_data.extend_from_slice(rm.data());
+    // A zero extent on any GEMM axis (or an empty batch) is an empty sum: the
+    // zero tensor of the output shape, reordered to the requested axes. Short-
+    // circuit here rather than issuing degenerate GEMMs, mirroring
+    // `gemm_reshape_dense`.
+    if m == 0 || n == 0 || k == 0 || batch_size == 0 {
+        let total: usize = output_shape.iter().product();
+        let zeros = backend.make_tensor(vec![T::zero(); total], output_shape);
+        return reorder_batched_output(
+            backend,
+            zeros,
+            &plan.batch,
+            &plan.free_lhs,
+            &plan.free_rhs,
+            expr.out_indices(),
+        );
     }
 
-    // Stacked data is in RowMajor; construct in RowMajor, then reorder to
-    // preferred_order for the final result.
-    let stacked_rm =
-        DenseTensorData::from_raw_parts(stacked_data, output_shape, MemoryOrder::RowMajor);
-    let stacked = reorder_via_backend(backend, &stacked_rm, order)?;
+    // Permute each operand to its GEMM order with batch axes first
+    // (LHS `[batch, free_lhs, contracted]`, RHS `[batch, contracted, free_rhs]`),
+    // then lay it out as contiguous per-slice blocks in `order`.
+    let lhs_permuted = match plan.lhs_permutation(expr.lhs_indices(), expr.rhs_indices()) {
+        Some(perm) => transpose_dense(backend, lhs, &perm)?,
+        None => lhs.clone(),
+    };
+    let rhs_permuted = match plan.rhs_permutation(expr.rhs_indices()) {
+        Some(perm) => transpose_dense(backend, rhs, &perm)?,
+        None => rhs.clone(),
+    };
+    let lhs_slices = prepare_batched_operand(backend, &lhs_permuted, batch_size, m, k, order)?;
+    let rhs_slices = prepare_batched_operand(backend, &rhs_permuted, batch_size, k, n, order)?;
 
-    // Reorder to requested output index order
+    // One GEMM per slice into a preallocated buffer. `(m, n, k)` and the
+    // execution policy are shared across slices by construction, so they are
+    // computed once. `chunks_exact` yields exactly `batch_size` blocks because
+    // each buffer is `batch_size` times the per-slice length.
+    let policy = backend.par_for_gemm(m, n, k);
+    let mut c_data = vec![T::zero(); batch_size * m * n];
+    let lhs_data = lhs_slices.data();
+    let rhs_data = rhs_slices.data();
+    debug_assert_eq!(lhs_data.len(), batch_size * m * k);
+    debug_assert_eq!(rhs_data.len(), batch_size * k * n);
+    for ((a, b), c) in lhs_data
+        .chunks_exact(m * k)
+        .zip(rhs_data.chunks_exact(k * n))
+        .zip(c_data.chunks_exact_mut(m * n))
+    {
+        backend.gemm(GemmDescriptor {
+            m,
+            n,
+            k,
+            alpha: T::one(),
+            a,
+            b,
+            beta: T::zero(),
+            c,
+            trans_a: false,
+            trans_b: false,
+            order,
+            policy,
+        })?;
+    }
+
+    // `c_data` holds `batch_size` contiguous `(m, n)` blocks in `order`.
+    // Reinterpret it as the canonical [batch, m, n] tensor (row-major keeps the
+    // batch axis outermost; column-major put it trailing), split the merged
+    // GEMM axes back out via a row-major reshape, and reorder to the requested
+    // output index order.
+    let c_batched = match order {
+        MemoryOrder::RowMajor => {
+            DenseTensorData::from_raw_parts(c_data, vec![batch_size, m, n], MemoryOrder::RowMajor)
+        }
+        MemoryOrder::ColumnMajor => {
+            let laid = DenseTensorData::from_raw_parts(
+                c_data,
+                vec![m, n, batch_size],
+                MemoryOrder::ColumnMajor,
+            );
+            transpose_dense(backend, &laid, &[2, 0, 1])?
+        }
+    };
+    let c_rm = reorder_via_backend(backend, &c_batched, MemoryOrder::RowMajor)?;
+    let c_full = reorder_via_backend(backend, &c_rm.reshape(output_shape), order)?;
     reorder_batched_output(
         backend,
-        stacked,
+        c_full,
         &plan.batch,
         &plan.free_lhs,
         &plan.free_rhs,
@@ -288,34 +285,31 @@ fn batched_contract<T: Scalar>(
     )
 }
 
-/// Build notation string with batch indices removed.
+/// Reorder a permuted operand into contiguous per-slice GEMM blocks.
 ///
-/// Uses `contracted_rhs_order` (contracted indices in RHS occurrence order) to
-/// match the axis order produced by `lhs_permutation`/`rhs_permutation`, which
-/// both place contracted indices in RHS occurrence order.
-///
-/// Output is always in canonical [free_lhs, free_rhs] order so that per-slice
-/// contract() results stack consistently. The final reorder to the user's
-/// requested output order happens after stacking.
-fn build_batch_free_notation(plan: &ContractionPlan, contracted_rhs_order: &[u8]) -> String {
-    let lhs_s: String = plan
-        .free_lhs
-        .iter()
-        .chain(contracted_rhs_order.iter())
-        .map(|&b| b as char)
-        .collect();
-    let rhs_s: String = contracted_rhs_order
-        .iter()
-        .chain(plan.free_rhs.iter())
-        .map(|&b| b as char)
-        .collect();
-    let out_s: String = plan
-        .free_lhs
-        .iter()
-        .chain(plan.free_rhs.iter())
-        .map(|&b| b as char)
-        .collect();
-    format!("{lhs_s},{rhs_s}->{out_s}")
+/// `permuted` is logically `[batch..., rows..., cols...]`. The result lays the
+/// `batch_size` blocks of shape `(rows, cols)` back to back, each contiguous in
+/// `order`, so slice `s` is exactly `data[s * rows * cols .. (s + 1) * rows *
+/// cols]`. Row-major keeps the batch axis outermost; column-major rolls it to
+/// the trailing (slowest) axis, since only there is each slice contiguous.
+fn prepare_batched_operand<T: Scalar>(
+    backend: &impl ComputeBackend,
+    permuted: &DenseTensorData<T>,
+    batch_size: usize,
+    rows: usize,
+    cols: usize,
+    order: MemoryOrder,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    // Row-major reshape merges the free / contracted axis groups correctly.
+    let rm = reorder_via_backend(backend, permuted, MemoryOrder::RowMajor)?;
+    let three_d = rm.reshape(vec![batch_size, rows, cols]);
+    match order {
+        MemoryOrder::RowMajor => Ok(three_d),
+        MemoryOrder::ColumnMajor => {
+            let rolled = transpose_dense(backend, &three_d, &[1, 2, 0])?;
+            reorder_via_backend(backend, &rolled, MemoryOrder::ColumnMajor)
+        }
+    }
 }
 
 /// Reorder output from canonical [batch..., free_lhs..., free_rhs...] to requested order.
@@ -349,6 +343,24 @@ fn dim_of(idx: u8, indices: &[u8], shape: &[usize]) -> usize {
         .position(|&x| x == idx)
         .expect("Index not found in tensor");
     shape[pos]
+}
+
+/// Extents of `group`'s indices, each looked up in `indices` / `shape`.
+fn group_dims(group: &[u8], indices: &[u8], shape: &[usize]) -> Vec<usize> {
+    group
+        .iter()
+        .map(|&idx| dim_of(idx, indices, shape))
+        .collect()
+}
+
+/// Product of the extents of `group`'s indices. An empty group is the empty
+/// product `1` (a scalar axis); a zero-extent index yields `0`. Kept separate
+/// from [`group_dims`] so the hot `m` / `n` / `k` path allocates no `Vec`.
+fn group_extent(group: &[u8], indices: &[u8], shape: &[usize]) -> usize {
+    group
+        .iter()
+        .map(|&idx| dim_of(idx, indices, shape))
+        .product()
 }
 
 /// Sequential left-to-right pairwise contraction for 3+ tensors.
@@ -531,3 +543,6 @@ fn einsum_single<T: Scalar>(
         transpose_dense(backend, &traced, &perm)
     }
 }
+
+#[cfg(test)]
+mod tests;
