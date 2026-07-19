@@ -614,3 +614,33 @@ fn test_einsum_batched_zero_contracted_extent_is_zeros() {
         "empty contracted sum must be all zeros"
     );
 }
+
+/// A batched contraction whose free and contracted axes are all size 1 must
+/// still route through the batched GEMM and keep those axes in the output —
+/// not collapse to Hadamard (which would build the shape from the batch axes
+/// alone and drop them).
+#[test]
+fn test_einsum_batched_unit_free_axes_are_kept() {
+    let lhs = cm(vec![2.0_f64, 3.0], vec![2, 1, 1]); // aij: a=2, i=1, j=1
+    let rhs = cm(vec![5.0_f64, 7.0], vec![2, 1, 1]); // ajk: a=2, j=1, k=1
+
+    let out = to_rm(&einsum(&[&lhs, &rhs], "aij,ajk->aik").unwrap());
+    assert_eq!(out.shape(), &[2, 1, 1]);
+    assert!((out.get([0, 0, 0]) - 10.0).abs() < 1e-10); // 2 * 5
+    assert!((out.get([1, 0, 0]) - 21.0).abs() < 1e-10); // 3 * 7
+}
+
+/// A batched notation whose operand rank is *below* its index count must return
+/// `InvalidArgument`, not panic in the dimension lookup that computes the GEMM
+/// sizes.
+#[test]
+fn test_einsum_batched_rank_below_arity_errors() {
+    let lhs = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]); // rank 2, "bik" has 3 indices
+    let rhs = cm((1..=12).map(|x| x as f64).collect(), vec![2, 3, 2]); // bkj
+
+    let result = einsum(&[&lhs, &rhs], "bik,bkj->bij");
+    assert!(
+        matches!(result, Err(LinalgError::InvalidArgument(_))),
+        "expected InvalidArgument on operand rank below arity, got {result:?}"
+    );
+}

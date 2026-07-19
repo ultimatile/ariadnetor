@@ -67,33 +67,28 @@ fn einsum_pair<T: Scalar>(
         return contract_dense(backend, lhs, rhs, notation);
     }
 
-    // Compute dimension sizes for each category
-    let m: usize = plan
-        .free_lhs
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .product::<usize>()
-        .max(1);
+    // Validate ranks before any `dim_of` lookup: both the Hadamard and batched
+    // paths index `shape[pos]`, which would panic out of bounds on a rank
+    // mismatch. `contract_dense` performs the same check for the non-batched
+    // path above.
+    if lhs.rank() != expr.lhs_indices().len() || rhs.rank() != expr.rhs_indices().len() {
+        return Err(LinalgError::InvalidArgument(format!(
+            "einsum: operand ranks {}/{} do not match notation arities {}/{}",
+            lhs.rank(),
+            rhs.rank(),
+            expr.lhs_indices().len(),
+            expr.rhs_indices().len(),
+        )));
+    }
 
-    let n: usize = plan
-        .free_rhs
-        .iter()
-        .map(|&idx| dim_of(idx, expr.rhs_indices(), rhs.shape()))
-        .product::<usize>()
-        .max(1);
-
-    let k: usize = plan
-        .contracted
-        .iter()
-        .map(|&idx| dim_of(idx, expr.lhs_indices(), lhs.shape()))
-        .product::<usize>()
-        .max(1);
-
-    if m == 1 && n == 1 && k == 1 {
-        // Hadamard product: all indices are batch, no free or contracted
+    // Hadamard product = every index is a batch index (no free or contracted
+    // axes at all). Gate on the index *sets* being empty, not on their extents
+    // being 1: a free or contracted axis of size 1 must still route to the
+    // batched GEMM, which keeps that axis in the output, whereas `hadamard`
+    // builds its output shape from `plan.batch` alone and would drop it.
+    if plan.free_lhs.is_empty() && plan.free_rhs.is_empty() && plan.contracted.is_empty() {
         hadamard(backend, lhs, rhs, &expr, &plan)
     } else {
-        // Batched contraction: one GEMM per batch slice
         batched_contract(backend, lhs, rhs, &expr, &plan)
     }
 }
@@ -157,8 +152,9 @@ fn hadamard<T: Scalar>(
 /// `(m, k)` / `(k, n)` block is then a contiguous range fed straight to
 /// [`ComputeBackend::gemm`], with the shared `(m, n, k)`, execution policy,
 /// and output buffer computed once — so the per-slice loop itself performs no
-/// copy, reorder, or notation re-parse. Ranks and shared batch/contracted
-/// extents are validated up front, so the slice offsets are always in bounds.
+/// copy, reorder, or notation re-parse. The shared batch/contracted extents are
+/// validated up front (ranks by the caller), so the slice offsets are always in
+/// bounds.
 fn batched_contract<T: Scalar>(
     backend: &impl ComputeBackend,
     lhs: &DenseTensorData<T>,
@@ -168,19 +164,10 @@ fn batched_contract<T: Scalar>(
 ) -> Result<DenseTensorData<T>, LinalgError> {
     let order = backend.preferred_order();
 
-    // Validate before slicing: `dim_of` would panic on a rank mismatch, and
-    // an unchecked contracted/batch extent disagreement would let the
-    // LHS-derived block boundaries index the wrong RHS region. Both are
-    // reported as `InvalidArgument` rather than reaching a panic.
-    if lhs.rank() != expr.lhs_indices().len() || rhs.rank() != expr.rhs_indices().len() {
-        return Err(LinalgError::InvalidArgument(format!(
-            "batched contraction: operand ranks {}/{} do not match notation arities {}/{}",
-            lhs.rank(),
-            rhs.rank(),
-            expr.lhs_indices().len(),
-            expr.rhs_indices().len(),
-        )));
-    }
+    // Ranks are validated by the caller (`einsum_pair`) before dispatch. Here
+    // we guard the slicing: an unchecked contracted/batch extent disagreement
+    // would let the LHS-derived block boundaries index the wrong RHS region, so
+    // it is reported as `InvalidArgument` rather than mis-slicing.
     for &idx in plan.batch.iter().chain(&plan.contracted) {
         let lhs_dim = dim_of(idx, expr.lhs_indices(), lhs.shape());
         let rhs_dim = dim_of(idx, expr.rhs_indices(), rhs.shape());
