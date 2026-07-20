@@ -297,10 +297,13 @@ where
 
     let mut rng = StdRng::seed_from_u64(src.seed);
     let maxdim_global = src.max_dim.unwrap_or_else(|| {
+        // Saturating: an overflowed cap must pin at "effectively
+        // unbounded" rather than wrap to a small bound that would silently
+        // truncate ranks.
         terms
             .iter()
-            .map(|(op, psi)| op.max_bond_dim() * psi.max_bond_dim())
-            .sum()
+            .map(|(op, psi)| op.max_bond_dim().saturating_mul(psi.max_bond_dim()))
+            .fold(0usize, usize::saturating_add)
     });
     // Adaptive mode reads the estimator off the incremental QR; fixed mode
     // does a single append and never consults it, so it skips the tracking.
@@ -326,10 +329,12 @@ where
         // each term's exactly representable rank), nor the QR row count.
         // Left legs, not `bond_dim(j)` (the right bond), bound the rank of
         // the matrix this site's QB step sees.
+        // Saturating for the same reason as the `max_dim` default: a
+        // wrapped sum would masquerade as a small rank cap.
         let left_rank_sum: usize = terms
             .iter()
-            .map(|(op, psi)| op.site(j).shape()[0] * psi.site(j).shape()[0])
-            .sum();
+            .map(|(op, psi)| op.site(j).shape()[0].saturating_mul(psi.site(j).shape()[0]))
+            .fold(0usize, usize::saturating_add);
         let current_maxdim = left_rank_sum.min(maxdim_global).min(rows);
         let current_mindim = src.min_dim.min(current_maxdim);
         let mut target_p = match src.output_dim {

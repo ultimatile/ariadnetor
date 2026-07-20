@@ -235,6 +235,9 @@ pub(crate) fn relative_frobenius<T: ariadnetor_core::Scalar>(
         diff_sq += d * d;
         norm_sq += n * n;
     }
+    // The metric is undefined against a zero reference; fail loudly
+    // instead of returning inf/NaN that obscures the actual mismatch.
+    assert!(norm_sq > 0.0, "reference state must have nonzero norm");
     diff_sq.sqrt() / norm_sq.sqrt()
 }
 
