@@ -1,5 +1,6 @@
-//! Successive randomized compression (SRC): apply an MPO to an MPS via a
-//! single right-to-left randomized-QB sweep, without materializing the
+//! Successive randomized compression (SRC): apply an MPO to an MPS — or a
+//! coefficient-weighted sum of MPO-MPS products — via a single
+//! right-to-left randomized-QB sweep, without materializing any
 //! `w_R * chi_R` product MPS (algorithm from arXiv:2504.06475).
 //!
 //! Each output site is the Q factor of a randomized QB decomposition of the
@@ -15,17 +16,32 @@
 //! column-block update rather than a full restack, refactorization, and
 //! inversion of everything sketched so far.
 //!
+//! For a linear combination `sum_t coeff_t * H_t psi_t` the sweep keeps one
+//! environment store and one cap per term but shares each site's Gaussian
+//! block across the terms' recursions. Sharing is a correctness
+//! requirement, not an optimization: the test matrix lives on the output
+//! physical legs, which the terms share, so the coefficient-weighted sum of
+//! per-term panels is exactly the sketch of the summed operand — with
+//! independent per-term draws a cancelling sum would sketch as nonzero.
+//! Coefficients enter only where per-term tensors are summed — the sketch
+//! panels and the deterministic site assembly (the first site, or the
+//! whole chain on the single-site path); a cap is a projection of one
+//! term's remaining network through the shared Q, so scaling it would
+//! reapply the coefficient at every later site. All certification
+//! machinery (QR, norm accumulator, stopping rule) sees only the summed
+//! quantities and is unchanged from the single-pair sweep.
+//!
 //! Dense-only: a Gaussian sketch mixes symmetry sectors, so there is no
 //! block-sparse twin (the dispatch arm panics instead).
 //!
 //! Non-finite poisoning (an overflowed contraction producing `inf`, or
 //! `inf - inf` / `0 * inf` producing NaN) is surfaced as
 //! [`ApplyError::NonFinite`] at the result boundary instead of flowing
-//! on as a success: every growth round scans its sketch panel for
-//! non-finite elements, and every assembled site tensor is scanned
+//! on as a success: every growth round scans its (summed) sketch panel
+//! for non-finite elements, and every assembled site tensor is scanned
 //! before the state is returned (see
-//! [`apply_successive_randomized_dense`]). The adaptive stopping rule is
-//! additionally hardened against representational extremes that carry
+//! [`apply_sum_successive_randomized_dense`]). The adaptive stopping rule
+//! is additionally hardened against representational extremes that carry
 //! finite elements but degenerate the certification quantities: the
 //! accumulated sketch norm is kept in a saturation-free scaled form, an
 //! overflowed error estimator counts as "not converged" rather than
@@ -38,21 +54,28 @@
 //! module is written from the published algorithm against this crate's
 //! primitives. Behavioral choices that the paper leaves open — real
 //! Gaussian sketches for complex scalars, clamping rather than rejecting
-//! out-of-range dimensions — follow that implementation, and "the
-//! reference implementation" in comments below refers to it.
+//! out-of-range dimensions, and the linear-combination structure (shared
+//! per-site Gaussian blocks, per-term environments and caps, coefficients
+//! applied at sketch accumulation and first-site assembly only) — follow
+//! that implementation and its matured successor
+//! (TNrandNLA, <https://github.com/chriscamano/TNrandNLA>), and "the
+//! reference implementation" in comments below refers to them.
 
 use ariadnetor_core::{NormAccumulator, Scalar, scale_safe_norm};
-use ariadnetor_linalg::{
-    IncrementalQr, QrAppendOutcome, einsum_with_backend, permute_with_backend, tensordot,
-};
-use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, DenseTensorData, OpsFor};
+use ariadnetor_linalg::{IncrementalQr, QrAppendOutcome, permute_with_backend, tensordot};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, OpsFor};
 use num_traits::{Float, NumCast, Zero};
+use rand::SeedableRng;
 use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
-use rand_distr::StandardNormal;
 
+mod env;
+mod terms;
 #[cfg(test)]
 mod tests;
+
+use env::{EnvStore, extend_new_columns, sketch_panel_block};
+pub(crate) use terms::DenseTerm;
+use terms::{prune_zero_terms, validate_terms, weighted_sum};
 
 use super::super::chain::TensorChain;
 use super::super::types::{
@@ -68,173 +91,6 @@ use super::check_finite;
 fn real_from_f64<T: Scalar>(x: f64) -> T::Real {
     ariadnetor_core::try_real_from_f64::<T>(x)
         .expect("cutoff must be representable as a finite value in the scalar's real type")
-}
-
-/// A `(cols, len)` block of i.i.d. standard Gaussians, one row per sketch
-/// column. Entries are real even for complex scalars: the leave-one-out
-/// estimator only needs sketch columns satisfying the isotropy condition
-/// `E[w w^dagger] = I`, which real standard normals provide for complex
-/// operands too (the reference implementation makes the same choice; see
-/// the module doc). Each column's vector is drawn contiguously, so a
-/// single-column block consumes the stream exactly like a lone vector.
-fn gaussian_block<T: Scalar, R: RngExt>(cols: usize, len: usize, rng: &mut R) -> DenseTensor<T> {
-    let mut m = DenseTensor::<T>::zeros(vec![cols, len]);
-    for c in 0..cols {
-        for i in 0..len {
-            let x: f64 = rng.sample(StandardNormal);
-            let re = <T::Real as NumCast>::from(x)
-                .expect("a standard normal sample is representable in every supported real type");
-            m.set([c, i], T::from_real_imag(re, T::Real::zero()));
-        }
-    }
-    m
-}
-
-/// One site's batched environment buffer: physical shape
-/// `(w, chi, capacity)` with the batch axis last, holding the environments
-/// of the first `filled` sketch columns. Capacity grows geometrically so
-/// appends cost amortized `O(block)`, not `O(buffer)`.
-struct EnvBuf<T: Scalar> {
-    data: DenseTensorData<T>,
-    filled: usize,
-}
-
-impl<T: Scalar> EnvBuf<T> {
-    /// Append a `(w, chi, s)` column block. The block's memory order sets
-    /// the buffer's order at creation and must match on later appends
-    /// (`replace_slice` enforces it); every block comes from the same
-    /// einsum pipeline, so the orders agree by construction.
-    fn append(&mut self, block: &DenseTensorData<T>) {
-        let s = block.shape()[2];
-        let (w, chi, cap) = (
-            self.data.shape()[0],
-            self.data.shape()[1],
-            self.data.shape()[2],
-        );
-        if self.filled + s > cap {
-            let new_cap = (cap * 2).max(self.filled + s);
-            let mut grown =
-                DenseTensorData::zeros_in_order(vec![w, chi, new_cap], self.data.order());
-            let prefix = self.data.slice(&[(0, w), (0, chi), (0, self.filled)]);
-            grown.replace_slice(&prefix, &[0, 0, 0]);
-            self.data = grown;
-        }
-        self.data.replace_slice(block, &[0, 0, self.filled]);
-        self.filled += s;
-    }
-
-    /// Copy out the environments of columns `c0..c1` as a `(w, chi, c1-c0)`
-    /// tensor.
-    fn range(&self, c0: usize, c1: usize) -> DenseTensorData<T> {
-        assert!(c0 < c1 && c1 <= self.filled, "column range out of bounds");
-        let (w, chi) = (self.data.shape()[0], self.data.shape()[1]);
-        self.data.slice(&[(0, w), (0, chi), (c0, c1)])
-    }
-}
-
-/// Per-site batched environment storage. `bufs[i]` holds, for every sketch
-/// column created so far, the environment absorbing sites `0..=i` — shape
-/// `(w, chi)` over the MPO / MPS bonds to the right of site `i`, stacked
-/// along a trailing batch axis. Site `j` of the sweep consumes `bufs[j-1]`;
-/// because the sweep moves right to left and every column is recursed
-/// through `0..=j-1` at creation, the prefix a later (more-left) site needs
-/// is always present.
-struct EnvStore<T: Scalar> {
-    bufs: Vec<Option<EnvBuf<T>>>,
-}
-
-impl<T: Scalar> EnvStore<T> {
-    /// One slot per site for uniform indexing; the last slot stays `None`
-    /// forever, because the recursion stops at site `n - 2` (site `n - 1`,
-    /// the sweep's starting point, consumes `bufs[n - 2]`).
-    fn new(n: usize) -> Self {
-        Self {
-            bufs: (0..n).map(|_| None).collect(),
-        }
-    }
-
-    /// Number of sketch columns created so far. Every column's recursion
-    /// starts at site 0, so the first buffer's fill count is the global
-    /// column count.
-    fn ncols(&self) -> usize {
-        self.bufs[0].as_ref().map_or(0, |b| b.filled)
-    }
-
-    /// Drop a site's buffer once the sweep has moved past its last reader.
-    fn release(&mut self, site: usize) {
-        self.bufs[site] = None;
-    }
-
-    fn append(&mut self, site: usize, block: &DenseTensorData<T>) {
-        match &mut self.bufs[site] {
-            Some(buf) => buf.append(block),
-            None => {
-                self.bufs[site] = Some(EnvBuf {
-                    data: block.clone(),
-                    filled: block.shape()[2],
-                });
-            }
-        }
-    }
-
-    fn range(&self, site: usize, c0: usize, c1: usize) -> DenseTensorData<T> {
-        self.bufs[site]
-            .as_ref()
-            .expect("environments are recursed through a site before it is read")
-            .range(c0, c1)
-    }
-}
-
-/// Create `s` fresh sketch columns and run their environment recursion
-/// through sites `0..=last` in one batched contraction per site, appending
-/// each site's `(w, chi, s)` block to the store. Gaussians are drawn on the
-/// fly and fully absorbed, so only the environments persist.
-///
-/// Of the pairwise contractions only the environment-carrying step has the
-/// batch index on both operands; the Gaussian absorption and the MPS-site
-/// contraction fold it into a free GEMM dimension.
-fn extend_new_columns<T, B>(
-    backend: &B,
-    op: &Mpo<DenseStorage<T>, DenseLayout>,
-    psi: &Mps<DenseStorage<T>, DenseLayout>,
-    envs: &mut EnvStore<T>,
-    last: usize,
-    s: usize,
-    rng: &mut StdRng,
-) where
-    T: Scalar,
-    B: OpsFor<DenseStorage<T>>,
-{
-    // Left boundary: dummy (w = 1, chi = 1) environments for every column.
-    let mut cur = DenseTensor::<T>::ones(vec![1, 1, s]);
-    for i in 0..=last {
-        let w = op.site(i);
-        let a = psi.site(i);
-        let omega = gaussian_block::<T, _>(s, w.shape()[2], rng);
-        // (c, b) x (w, k, b, w') x (w, chi, c) x (chi, k, chi') -> (w', chi', c).
-        let next = einsum_with_backend(backend, &[&omega, w, &cur, a], "cb,wkbv,wxc,xky->vyc")
-            .expect("sketch recursion: MPO/MPS site legs must be compatible");
-        envs.append(i, next.data());
-        cur = next;
-    }
-}
-
-/// Batched sketch panels for one column block at site `j`: contract the
-/// columns' environments with the site pair and the cap in one pass,
-/// yielding a `(d_bra * cap_dim, s)` matrix whose fused row leg matches the
-/// `split_leg` applied to the Q factor.
-fn sketch_panel_block<T: Scalar, B: OpsFor<DenseStorage<T>>>(
-    backend: &B,
-    env_block: &DenseTensor<T>,
-    w: &DenseTensor<T>,
-    a: &DenseTensor<T>,
-    cap: &DenseTensor<T>,
-) -> DenseTensor<T> {
-    // (w, chi, c) x (w, k, b, w') x (chi, k, chi') x (z, w', chi') -> (b, z, c);
-    // the batch index rides through as a free GEMM dimension at every step.
-    let t = einsum_with_backend(backend, &[env_block, w, a, cap], "wxc,wkbv,xky,zvy->bzc")
-        .expect("sketch contraction: MPO/MPS site legs must be compatible");
-    t.fuse_legs(0..2)
 }
 
 /// Leave-one-out error estimate from the row norms of `R^-1` maintained by
@@ -303,19 +159,62 @@ fn validate(src: &SuccessiveRandomizedParams) {
 
 /// Apply a Dense MPO to a Dense MPS via successive randomized compression.
 ///
-/// Single right-to-left sweep; sites `1..n` of the result are
-/// right-orthogonal by construction (each is a thin-QR Q factor over its
-/// physical and right legs), so the result is `Mixed { center: 0 }`. When
-/// `params` is `Some`, the standard `canonicalize` + `truncate` finishing
-/// pass runs afterwards, matching the streaming-naive convention.
+/// Thin wrapper over [`apply_sum_successive_randomized_dense`] with a
+/// single coefficient-one term; the sum kernel's coefficient-one bypass
+/// keeps the arithmetic — and therefore the output — bit-identical to a
+/// dedicated single-pair sweep at equal seeds.
 ///
 /// See [`super::super::types::ApplyMethod::SuccessiveRandomized`] and
 /// [`SuccessiveRandomizedParams`] for semantics and panics.
 ///
 /// # Errors
 ///
+/// See [`apply_sum_successive_randomized_dense`].
+pub(crate) fn apply_successive_randomized_dense<T, B>(
+    backend: &B,
+    op: &Mpo<DenseStorage<T>, DenseLayout>,
+    psi: &Mps<DenseStorage<T>, DenseLayout>,
+    params: Option<&TruncateParams>,
+    src: SuccessiveRandomizedParams,
+) -> Result<Mps<DenseStorage<T>, DenseLayout>, ApplyError>
+where
+    T: Scalar,
+    B: OpsFor<DenseStorage<T>>,
+{
+    apply_sum_successive_randomized_dense(backend, &[(op, psi)], &[T::one()], params, src)
+}
+
+/// Apply a coefficient-weighted sum of Dense MPO-MPS products via
+/// successive randomized compression: `eta ~ sum_t coeffs[t] * H_t psi_t`
+/// in one sweep, sharing each site's Gaussian block across terms (see the
+/// module doc for why sharing is a correctness requirement).
+///
+/// Single right-to-left sweep; sites `1..n` of the result are
+/// right-orthogonal by construction (each is a thin-QR Q factor over its
+/// physical and right legs), so the result is `Mixed { center: 0 }`. When
+/// `params` is `Some`, the standard `canonicalize` + `truncate` finishing
+/// pass runs afterwards, matching the streaming-naive convention.
+///
+/// The default per-bond cap (`max_dim = None`) is the sum over terms of
+/// the products of maximum MPO and MPS bond dimensions — the rank bound
+/// rank subadditivity puts on the summed product — in both stopping modes.
+///
+/// Zero-weighted terms are validated but otherwise behave as absent: they
+/// are pruned before the sweep (see [`prune_zero_terms`]), and an
+/// all-zero coefficient list yields the bond-dimension-1 zero state.
+///
+/// # Panics
+///
+/// Panics on an empty term list, zero-length chains, mismatched chain
+/// lengths, a coefficient count differing from the term count, non-finite
+/// coefficients, a within-term MPO-ket / MPS-physical dimension mismatch,
+/// or MPO output dimensions differing across terms — and on the parameter
+/// violations documented in [`SuccessiveRandomizedParams`].
+///
+/// # Errors
+///
 /// Returns [`ApplyError::NonFinite`] when a non-finite element (NaN/inf)
-/// reaches a result boundary — a growth round's sketch panel or an
+/// reaches a result boundary — a growth round's summed sketch panel or an
 /// assembled site tensor — instead of letting the poisoned state flow on
 /// as a success. Every returned site tensor is scanned, so an `Ok` state
 /// contains only finite elements before the optional finishing pass.
@@ -330,10 +229,10 @@ fn validate(src: &SuccessiveRandomizedParams) {
 /// would silently return a bond-stuck state. Fixed mode never certifies,
 /// so it tolerates the degenerated factor and relies on the elementwise
 /// scans alone.
-pub(crate) fn apply_successive_randomized_dense<T, B>(
+pub(crate) fn apply_sum_successive_randomized_dense<T, B>(
     backend: &B,
-    op: &Mpo<DenseStorage<T>, DenseLayout>,
-    psi: &Mps<DenseStorage<T>, DenseLayout>,
+    terms: &[DenseTerm<'_, T>],
+    coeffs: &[T],
     params: Option<&TruncateParams>,
     src: SuccessiveRandomizedParams,
 ) -> Result<Mps<DenseStorage<T>, DenseLayout>, ApplyError>
@@ -341,23 +240,52 @@ where
     T: Scalar,
     B: OpsFor<DenseStorage<T>>,
 {
-    let n = psi.len();
-    assert_eq!(n, op.len(), "MPO and MPS lengths must match");
-    assert!(n > 0, "must have at least one site");
+    let n = validate_terms(terms, coeffs);
     validate(&src);
     // Converted up front so an unrepresentable cutoff fails fast in every
     // mode, not only on the adaptive path.
     let cutoff_real: Option<T::Real> = src.cutoff.map(real_from_f64::<T>);
 
+    // Zero-weighted terms behave as absent (see `prune_zero_terms`). When
+    // everything is pruned the sum is the zero state, represented at bond
+    // dimension 1 over the validated output physical dimensions. Only the
+    // center site is a zero tensor; the off-center sites are normalized
+    // basis tensors, which are genuine right-isometries — the claimed
+    // `Mixed { center: 0 }` form must hold structurally, because
+    // downstream consumers (`truncate` among them) trust the metadata and
+    // skip re-canonicalization.
+    let (terms_kept, coeffs_kept) = prune_zero_terms(terms, coeffs);
+    if terms_kept.is_empty() {
+        let sites = (0..n)
+            .map(|i| {
+                let d = terms[0].0.site(i).shape()[2];
+                let mut site = DenseTensor::<T>::zeros(vec![1, d, 1]);
+                if i > 0 {
+                    site.set([0, 0, 0], num_traits::One::one());
+                }
+                site
+            })
+            .collect();
+        let mut result: Mps<DenseStorage<T>, DenseLayout> = Mps::from_sites(sites);
+        result.set_canonical_form(CanonicalForm::Mixed { center: 0 });
+        super::finish_dense(backend, &mut result, params);
+        return Ok(result);
+    }
+    let (terms, coeffs) = (&terms_kept[..], &coeffs_kept[..]);
+
     if n == 1 {
-        // No bond to compress: the exact local product is the answer.
-        let w = op.site(0);
-        let a = psi.site(0);
-        let t = tensordot(backend, w, a, &[0, 1], &[0, 1])
-            .expect("single-site product: MPO/MPS site legs must be compatible");
+        // No bond to compress: the exact weighted sum of local products is
+        // the answer.
+        let locals: Vec<DenseTensor<T>> = terms
+            .iter()
+            .map(|(op, psi)| {
+                tensordot(backend, op.site(0), psi.site(0), &[0, 1], &[0, 1])
+                    .expect("single-site product: MPO/MPS site legs must be compatible")
+            })
+            .collect();
         // (b, w_r = 1, chi_r = 1) -> (1, d, 1).
-        let d = w.shape()[2];
-        let site = t.reshape_logical(vec![1, d, 1]);
+        let d = terms[0].0.site(0).shape()[2];
+        let site = weighted_sum(locals, coeffs).reshape_logical(vec![1, d, 1]);
         // No sketch exists on this path, so the exact product itself is
         // the boundary quantity to check.
         check_finite(0, &site)?;
@@ -368,31 +296,46 @@ where
     }
 
     let mut rng = StdRng::seed_from_u64(src.seed);
-    let maxdim_global = src
-        .max_dim
-        .unwrap_or_else(|| op.max_bond_dim() * psi.max_bond_dim());
+    let maxdim_global = src.max_dim.unwrap_or_else(|| {
+        // Saturating: an overflowed cap must pin at "effectively
+        // unbounded" rather than wrap to a small bound that would silently
+        // truncate ranks.
+        terms
+            .iter()
+            .map(|(op, psi)| op.max_bond_dim().saturating_mul(psi.max_bond_dim()))
+            .fold(0usize, usize::saturating_add)
+    });
     // Adaptive mode reads the estimator off the incremental QR; fixed mode
     // does a single append and never consults it, so it skips the tracking.
     let adaptive = src.output_dim.is_none();
 
-    let mut envs = EnvStore::<T>::new(n);
-    // Right boundary cap: dummy (c = 1, w' = 1, chi' = 1) so the last site
-    // goes through the same code path as the interior ones.
-    let mut cap = DenseTensor::<T>::ones(vec![1, 1, 1]);
+    let mut envs: Vec<EnvStore<T>> = (0..terms.len()).map(|_| EnvStore::new(n)).collect();
+    // Right boundary caps: dummy (c = 1, w' = 1, chi' = 1) per term so the
+    // last site goes through the same code path as the interior ones.
+    let mut caps: Vec<DenseTensor<T>> = (0..terms.len())
+        .map(|_| DenseTensor::<T>::ones(vec![1, 1, 1]))
+        .collect();
     // Sites n-1 down to 1, collected right to left.
     let mut rev_sites: Vec<DenseTensor<T>> = Vec::with_capacity(n - 1);
 
     for j in (1..n).rev() {
-        let w = op.site(j);
-        let a = psi.site(j);
-        let d = w.shape()[2];
-        let cap_dim = cap.shape()[0];
+        // Output dimension and cap rank are shared across terms, so every
+        // term's panel has the same `rows` fused row count.
+        let d = terms[0].0.site(j).shape()[2];
+        let cap_dim = caps[0].shape()[0];
         let rows = d * cap_dim;
-        // The compressed product's bond at this cut cannot exceed the left
-        // bond product of the site pair (its exactly representable rank),
-        // nor the QR row count. Left legs, not `bond_dim(j)` (the right
-        // bond), bound the rank of the matrix this site's QB step sees.
-        let current_maxdim = (w.shape()[0] * a.shape()[0]).min(maxdim_global).min(rows);
+        // The compressed product's bond at this cut cannot exceed the sum
+        // over terms of the left bond products (rank subadditivity over
+        // each term's exactly representable rank), nor the QR row count.
+        // Left legs, not `bond_dim(j)` (the right bond), bound the rank of
+        // the matrix this site's QB step sees.
+        // Saturating for the same reason as the `max_dim` default: a
+        // wrapped sum would masquerade as a small rank cap.
+        let left_rank_sum: usize = terms
+            .iter()
+            .map(|(op, psi)| op.site(j).shape()[0].saturating_mul(psi.site(j).shape()[0]))
+            .fold(0usize, usize::saturating_add);
+        let current_maxdim = left_rank_sum.min(maxdim_global).min(rows);
         let current_mindim = src.min_dim.min(current_maxdim);
         let mut target_p = match src.output_dim {
             Some(k) => k.min(current_maxdim),
@@ -400,7 +343,7 @@ where
         };
 
         let mut inc = IncrementalQr::<T>::new(rows, adaptive);
-        // Accumulated Frobenius norm of the sketch, kept in the
+        // Accumulated Frobenius norm of the summed sketch, kept in the
         // accumulator's `(scale, sumsq)` form instead of a finished
         // scalar: panels are elementwise finite (enforced below), so the
         // scale stays finite and the representation never saturates —
@@ -412,12 +355,11 @@ where
         // modulus must not be formed first.
         let mut norm_acc = NormAccumulator::new();
         loop {
-            let columns_created = envs.ncols();
+            let columns_created = envs[0].ncols();
             if target_p > columns_created {
                 extend_new_columns(
                     backend,
-                    op,
-                    psi,
+                    terms,
                     &mut envs,
                     j - 1,
                     target_p - columns_created,
@@ -425,13 +367,20 @@ where
                 );
             }
             let c0 = inc.ncols();
-            let env_block = DenseTensor::from_data(envs.range(j - 1, c0, target_p));
-            let panel = sketch_panel_block(backend, &env_block, w, a, &cap);
+            let panels: Vec<DenseTensor<T>> = terms
+                .iter()
+                .enumerate()
+                .map(|(t, (op, psi))| {
+                    let env_block = DenseTensor::from_data(envs[t].range(j - 1, c0, target_p));
+                    sketch_panel_block(backend, &env_block, op.site(j), psi.site(j), &caps[t])
+                })
+                .collect();
+            let panel = weighted_sum(panels, coeffs);
             // Poison detector: any non-finite value that entered this
-            // round's sketch is caught here, in both adaptive and fixed
-            // mode. Scanning per round (rather than only the assembled
-            // result) fails on the round the poison appears instead of
-            // growing the sketch to its bound first.
+            // round's summed sketch is caught here, in both adaptive and
+            // fixed mode. Scanning per round (rather than only the
+            // assembled result) fails on the round the poison appears
+            // instead of growing the sketch to its bound first.
             check_finite(j, &panel)?;
             // Fixed mode breaks before either consumer of the accumulated
             // norm (the zero-norm break and the estimator), so the panel
@@ -472,7 +421,9 @@ where
                 break;
             }
             if norm_acc.scale().is_zero() {
-                // Zero product at this cut: any orthonormal basis is exact.
+                // Zero summed product at this cut (including exact
+                // cancellation between terms): any orthonormal basis is
+                // exact.
                 break;
             }
             if outcome == QrAppendOutcome::RankDeficient {
@@ -546,41 +497,49 @@ where
         let site = permute_with_backend(backend, &q_site, &[2, 0, 1])
             .expect("site permute: rank-3 permutation is always well-formed");
 
-        // Cap update: absorb the conjugated new site into the running
-        // right environment, (c_new = k, w, chi) for the next site.
-        let t1 = tensordot(backend, &site.conj(), &cap, &[2], &[0])
-            .expect("cap contraction: MPO/MPS site legs must be compatible");
-        let t2 = tensordot(backend, &t1, w, &[1, 2], &[2, 3])
-            .expect("cap contraction: MPO/MPS site legs must be compatible");
-        cap = tensordot(backend, &t2, a, &[1, 3], &[2, 1])
-            .expect("cap contraction: MPO/MPS site legs must be compatible");
-        debug_assert_eq!(cap.shape()[0], k);
-
+        // Cap updates: absorb the conjugated new site into each term's
+        // running right environment, (c_new = k, w_t, chi_t) for the next
+        // site. The shared Q keeps the leading rank `k` common to all
+        // terms.
+        for (t, (op, psi)) in terms.iter().enumerate() {
+            let t1 = tensordot(backend, &site.conj(), &caps[t], &[2], &[0])
+                .expect("cap contraction: MPO/MPS site legs must be compatible");
+            let t2 = tensordot(backend, &t1, op.site(j), &[1, 2], &[2, 3])
+                .expect("cap contraction: MPO/MPS site legs must be compatible");
+            caps[t] = tensordot(backend, &t2, psi.site(j), &[1, 3], &[2, 1])
+                .expect("cap contraction: MPO/MPS site legs must be compatible");
+            debug_assert_eq!(caps[t].shape()[0], k);
+            // This iteration was `bufs[j - 1]`'s last reader (site j - 1
+            // reads `bufs[j - 2]`), so its environments can be freed now
+            // instead of holding every site's buffer until the sweep ends.
+            envs[t].release(j - 1);
+        }
         rev_sites.push(site);
-        // This iteration was `bufs[j - 1]`'s last reader (site j - 1 reads
-        // `bufs[j - 2]`), so its environments can be freed now instead of
-        // holding every site's buffer until the sweep ends.
-        envs.release(j - 1);
     }
 
-    // First site: deterministic contraction with the final cap; it carries
-    // whatever weight the orthonormal sites cannot, i.e. the center.
-    let w0 = op.site(0);
-    let a0 = psi.site(0);
-    let t1 = tensordot(backend, w0, a0, &[0, 1], &[0, 1])
-        .expect("first-site contraction: MPO/MPS site legs must be compatible");
-    let site0_mat = tensordot(backend, &t1, &cap, &[1, 2], &[1, 2])
-        .expect("first-site contraction: MPO/MPS site legs must be compatible");
-    let d0 = w0.shape()[2];
-    let c0 = cap.shape()[0];
-    let site0 = site0_mat.reshape_logical(vec![1, d0, c0]);
+    // First site: deterministic weighted sum of per-term contractions with
+    // the final caps; it carries whatever weight the orthonormal sites
+    // cannot, i.e. the center.
+    let mats: Vec<DenseTensor<T>> = terms
+        .iter()
+        .enumerate()
+        .map(|(t, (op, psi))| {
+            let t1 = tensordot(backend, op.site(0), psi.site(0), &[0, 1], &[0, 1])
+                .expect("first-site contraction: MPO/MPS site legs must be compatible");
+            tensordot(backend, &t1, &caps[t], &[1, 2], &[1, 2])
+                .expect("first-site contraction: MPO/MPS site legs must be compatible")
+        })
+        .collect();
+    let d0 = terms[0].0.site(0).shape()[2];
+    let c0 = caps[0].shape()[0];
+    let site0 = weighted_sum(mats, coeffs).reshape_logical(vec![1, d0, c0]);
 
     let mut sites = Vec::with_capacity(n);
     sites.push(site0);
     sites.extend(rev_sites.into_iter().rev());
     // Single enforcement point for the returned-state invariant: every
     // assembled site is scanned, so poison arising past the last panel
-    // check — inside the QR factorization, the final cap update, or the
+    // check — inside the QR factorization, the final cap updates, or the
     // first-site contraction — cannot reach an `Ok`. A new emission path
     // added to the sweep is covered here without needing its own check.
     for (idx, s) in sites.iter().enumerate() {

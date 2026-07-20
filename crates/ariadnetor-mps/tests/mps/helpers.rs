@@ -209,18 +209,65 @@ pub(crate) fn mps_to_dense(mps: &Mps<DenseStorage<f64>, DenseLayout>) -> DenseTe
     densify(&NativeBackend::new(), mps)
 }
 
-/// Build an identity MPO for a given number of sites and physical dimension.
+/// Relative Frobenius distance ‖a − e‖ / ‖e‖ over dense state tensors.
+///
+/// Elementwise over the densified states keeps full floating-point
+/// resolution; the inner-product form `‖a‖² + ‖e‖² − 2 Re⟨e|a⟩` cancels
+/// catastrophically and cannot resolve relative errors below
+/// ~sqrt(machine epsilon).
+pub(crate) fn relative_frobenius<T: ariadnetor_core::Scalar>(
+    a: &DenseTensor<T>,
+    e: &DenseTensor<T>,
+) -> f64 {
+    use num_traits::NumCast;
+    assert_eq!(a.shape(), e.shape(), "state shapes must agree");
+    // Both operands come from the same contraction pipeline, so their
+    // physical orders match and zipping raw storage is element-correct
+    // (the assert_dense_close precedent).
+    assert_eq!(a.order(), e.order(), "storage orders must agree");
+    let mut diff_sq = 0.0_f64;
+    let mut norm_sq = 0.0_f64;
+    for (&av, &ev) in a.data_slice().iter().zip(e.data_slice().iter()) {
+        // Scalar carries Add but not Sub; negate through scale_real.
+        let neg_one = -<T::Real as num_traits::One>::one();
+        let d: f64 = <f64 as NumCast>::from((av + ev.scale_real(neg_one)).abs()).expect("fits f64");
+        let n: f64 = <f64 as NumCast>::from(ev.abs()).expect("fits f64");
+        diff_sq += d * d;
+        norm_sq += n * n;
+    }
+    // The metric is undefined against a zero reference; fail loudly
+    // instead of returning inf/NaN that obscures the actual mismatch.
+    assert!(norm_sq > 0.0, "reference state must have nonzero norm");
+    diff_sq.sqrt() / norm_sq.sqrt()
+}
+
+/// The chain with site `j` scaled by `factor` and every other site cloned.
+/// Scaling any one site scales the whole product state, so this moves a
+/// state's amplitude (or applies a complex phase) without touching its
+/// direction.
+pub(crate) fn with_site_scaled<T: ariadnetor_core::Scalar>(
+    mps: &Mps<DenseStorage<T>, DenseLayout>,
+    j: usize,
+    factor: T,
+) -> Mps<DenseStorage<T>, DenseLayout> {
+    Mps::from_sites(
+        (0..mps.len())
+            .map(|i| {
+                let site = mps.site(i);
+                if i == j {
+                    site.scaled(factor)
+                } else {
+                    site.clone()
+                }
+            })
+            .collect(),
+    )
+}
+
+/// Build an identity MPO for a given number of sites and a uniform
+/// physical dimension (thin wrapper over the library constructor).
 pub(crate) fn make_identity_mpo(n: usize, d: usize) -> Mpo<DenseStorage<f64>, DenseLayout> {
-    let sites = (0..n)
-        .map(|_| {
-            let mut data = vec![0.0; d * d];
-            for i in 0..d {
-                data[i * d + i] = 1.0;
-            }
-            rm_dense_tensor(data, vec![1, d, d, 1])
-        })
-        .collect();
-    Mpo::from_sites(sites)
+    Mpo::identity(&vec![d; n])
 }
 
 // ============================================================================

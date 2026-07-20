@@ -7,6 +7,8 @@ mod helpers;
 mod apply;
 #[path = "mps/apply_block_sparse.rs"]
 mod apply_block_sparse;
+#[path = "mps/apply_src_sum.rs"]
+mod apply_src_sum;
 #[path = "mps/apply_successive_randomized.rs"]
 mod apply_successive_randomized;
 #[path = "mps/apply_variational.rs"]

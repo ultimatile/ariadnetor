@@ -16,12 +16,11 @@ use ariadnetor_mps::{
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage};
-use num_traits::NumCast;
 
 use super::helpers::{
     apply_ok, assert_dense_close, cm_dense_tensor, densify, is_right_canonical,
     make_3site_test_mpo, make_3site_test_mps, make_4site_mps, make_identity_mpo,
-    make_total_n_dense_mpo, mps_to_dense, rm_dense_tensor,
+    make_total_n_dense_mpo, mps_to_dense, relative_frobenius, rm_dense_tensor, with_site_scaled,
 };
 
 /// Fixed-rank SRC at a rank high enough to be clamped to the exactly
@@ -44,46 +43,7 @@ fn relative_error<T: Scalar>(
     approx: &Mps<DenseStorage<T>, DenseLayout>,
     exact: &Mps<DenseStorage<T>, DenseLayout>,
 ) -> f64 {
-    let a = densify(backend, approx);
-    let e = densify(backend, exact);
-    assert_eq!(a.shape(), e.shape(), "state shapes must agree");
-    // Both operands come from the same contraction pipeline, so their
-    // physical orders match and zipping raw storage is element-correct
-    // (the assert_dense_close precedent).
-    assert_eq!(a.order(), e.order(), "storage orders must agree");
-    let mut diff_sq = 0.0_f64;
-    let mut norm_sq = 0.0_f64;
-    for (&av, &ev) in a.data_slice().iter().zip(e.data_slice().iter()) {
-        // Scalar carries Add but not Sub; negate through scale_real.
-        let neg_one = -<T::Real as num_traits::One>::one();
-        let d: f64 = <f64 as NumCast>::from((av + ev.scale_real(neg_one)).abs()).expect("fits f64");
-        let n: f64 = <f64 as NumCast>::from(ev.abs()).expect("fits f64");
-        diff_sq += d * d;
-        norm_sq += n * n;
-    }
-    diff_sq.sqrt() / norm_sq.sqrt()
-}
-
-/// The state with site 0 scaled by `scale`. Scaling any one site scales
-/// the whole product state, and every sketch column's environment
-/// absorbs site 0, so this is how these tests move the product to an
-/// extreme amplitude without touching its direction.
-fn with_first_site_scaled(
-    psi: &Mps<DenseStorage<f64>, DenseLayout>,
-    scale: f64,
-) -> Mps<DenseStorage<f64>, DenseLayout> {
-    Mps::from_sites(
-        (0..psi.len())
-            .map(|j| {
-                let site = psi.site(j);
-                if j == 0 {
-                    site.scaled(scale)
-                } else {
-                    site.clone()
-                }
-            })
-            .collect(),
-    )
+    relative_frobenius(&densify(backend, approx), &densify(backend, exact))
 }
 
 // ===========================================================================
@@ -165,7 +125,7 @@ fn src_adaptive_is_scale_invariant() {
     );
 
     for scale in [1e200, 1e-200] {
-        let scaled = with_first_site_scaled(&psi, scale);
+        let scaled = with_site_scaled(&psi, 0, scale);
         let out = apply_ok(&backend, &op, &scaled, None, method);
         for j in 0..unit.len() - 1 {
             assert_eq!(
@@ -208,7 +168,7 @@ fn src_adaptive_is_scale_invariant_at_norm_saturation() {
 
     let unit = apply_ok(&backend, &op, &psi, None, method);
     let scale = 1.89e305;
-    let scaled = with_first_site_scaled(&psi, scale);
+    let scaled = with_site_scaled(&psi, 0, scale);
     let out = apply_ok(&backend, &op, &scaled, None, method);
     for j in 0..unit.len() - 1 {
         assert_eq!(
@@ -629,7 +589,7 @@ fn src_adaptive_surfaces_panel_norm_overflow_as_error() {
     let psi = make_4site_mps();
     let op = make_total_n_dense_mpo(4);
     let scale = 2.2e305;
-    let scaled = with_first_site_scaled(&psi, scale);
+    let scaled = with_site_scaled(&psi, 0, scale);
     let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
         cutoff: Some(1e-6),
         sketch_dim: 1,
