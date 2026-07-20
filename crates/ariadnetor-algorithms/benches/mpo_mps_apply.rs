@@ -12,6 +12,10 @@
 //!   exercises the multi-append path.
 //! - `fixed`: one QB pass at a fixed output rank; a single QR per site, no
 //!   estimator. Expected to be insensitive to the adaptive-loop internals.
+//! - `sum`: the linear-combination entry over two Heisenberg terms with
+//!   distinct couplings and states, adaptive mode. Exercises the per-term
+//!   environment / cap plumbing end to end; no performance claim rides on
+//!   it (the multi-term path is a feature, not an optimization).
 //!
 //! The bench lives here rather than in `ariadnetor-mps` because the shared
 //! input builders (`algorithms_fixtures`) depend on that crate — hosting it
@@ -19,7 +23,8 @@
 
 use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use ariadnetor_mps::{
-    ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TensorChain, apply_with_method,
+    ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TensorChain,
+    apply_sum_successive_randomized, apply_with_method,
 };
 use ariadnetor_tensor::{DenseLayout, DenseStorage, Host, OpsFor};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
@@ -122,6 +127,32 @@ fn bench_mpo_mps_apply(c: &mut Criterion) {
             &(&mpo, &psi),
             |b, (mpo, psi)| {
                 b.iter(|| apply_ok(backend, mpo, psi, fixed_method(case.chi)));
+            },
+        );
+
+        let mpo2 = heisenberg_mpo_f64(case.n_sites, 0.5);
+        let psi2 = random_mps_unknown_f64(case.n_sites, 2, case.chi, RNG_SEED ^ 1);
+        let adaptive_src = SuccessiveRandomizedParams {
+            cutoff: Some(1e-8),
+            sketch_dim: SKETCH_DIM,
+            sketch_increment: 4,
+            seed: RNG_SEED,
+            ..Default::default()
+        };
+        group.bench_with_input(
+            BenchmarkId::new("sum", case.label),
+            &[(&mpo, &psi), (&mpo2, &psi2)],
+            |b, terms| {
+                b.iter(|| {
+                    apply_sum_successive_randomized(
+                        backend,
+                        terms,
+                        &[1.0, -0.5],
+                        None,
+                        adaptive_src,
+                    )
+                    .expect("apply must succeed on finite inputs")
+                });
             },
         );
     }

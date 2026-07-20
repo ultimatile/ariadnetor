@@ -10,7 +10,9 @@ mod successive_randomized;
 mod variational;
 
 pub(crate) use density_matrix::{apply_density_matrix_bsp, apply_density_matrix_dense};
-pub(crate) use successive_randomized::apply_successive_randomized_dense;
+pub(crate) use successive_randomized::{
+    apply_successive_randomized_dense, apply_sum_successive_randomized_dense,
+};
 pub(crate) use variational::{apply_variational_bsp, apply_variational_dense};
 
 use std::num::NonZeroUsize;

@@ -10,12 +10,13 @@
 //! reachable only as its sealed associated types rather than as free
 //! `Storage` / `Layout` bounds on a public surface.
 //!
-//! The public entry points are the multi-arg free functions below
-//! ([`inner`], [`braket`], [`apply`], [`apply_with_method`]) plus the
-//! single-chain inherent methods on [`Mps`] (`canonicalize`, `truncate`,
-//! `norm`). Both are generic over `Mps<St, L>` and dispatch through the
-//! sealed trait; neither names a storage or layout primitive on its own
-//! bounds beyond the chain's own type parameters.
+//! The public entry points are the multi-arg free functions in
+//! [`entries`] ([`inner`], [`braket`], [`apply`], [`apply_with_method`],
+//! [`apply_sum_successive_randomized`]) plus the single-chain inherent
+//! methods on [`Mps`] (`canonicalize`, `truncate`, `norm`,
+//! `round_successive_randomized`). Both are generic over `Mps<St, L>` and
+//! dispatch through the sealed trait; neither names a storage or layout
+//! primitive on its own bounds beyond the chain's own type parameters.
 //!
 //! # Operation authority
 //!
@@ -33,6 +34,7 @@
 
 use std::num::NonZeroUsize;
 
+use crate::chain::TensorChain;
 use ariadnetor_core::Scalar;
 use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, DenseLayout, DenseStorage, OpsFor, Sector, Storage,
@@ -40,9 +42,12 @@ use ariadnetor_tensor::{
 };
 
 use super::types::{
-    ApplyError, ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TruncResult, TruncateParams,
+    ApplyError, Mpo, Mps, SuccessiveRandomizedParams, SumTerm, TruncResult, TruncateParams,
     VariationalInit,
 };
+
+mod entries;
+pub use entries::{apply, apply_sum_successive_randomized, apply_with_method, braket, inner};
 
 mod sealed {
     use ariadnetor_core::Scalar;
@@ -175,6 +180,30 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
     where
         Self: Sized;
 
+    /// Apply a coefficient-weighted sum of MPO-MPS products via SRC in one
+    /// sweep, sharing the Gaussian sketch across terms (see
+    /// [`apply_sum_successive_randomized`]). Dense-only: the block-sparse
+    /// impl panics because the Gaussian sketch mixes symmetry sectors.
+    fn apply_sum_successive_randomized_k<B: OpsFor<Self::Storage>>(
+        backend: &B,
+        terms: &[SumTerm<'_, Self::Storage, Self::Layout>],
+        coeffs: &[T],
+        params: Option<&TruncateParams>,
+        src: SuccessiveRandomizedParams,
+    ) -> Result<Self, ApplyError>
+    where
+        Self: Sized;
+
+    /// Round (compress) the chain in place via SRC with an identity MPO
+    /// (see [`Mps::round_successive_randomized`]). Dense-only: the
+    /// block-sparse impl panics because the Gaussian sketch mixes
+    /// symmetry sectors.
+    fn round_successive_randomized_k<B: OpsFor<Self::Storage>>(
+        backend: &B,
+        chain: &mut Self,
+        src: SuccessiveRandomizedParams,
+    ) -> Result<(), ApplyError>;
+
     /// Position the orthogonality center at `center`.
     fn canon_k<B: OpsFor<Self::Storage>>(backend: &B, chain: &mut Self, center: usize);
 
@@ -263,6 +292,34 @@ impl<T: Scalar> MpsOps<T> for Mps<DenseStorage<T>, DenseLayout> {
         super::apply::apply_successive_randomized_dense(backend, op, psi, params, src)
     }
 
+    fn apply_sum_successive_randomized_k<B: OpsFor<DenseStorage<T>>>(
+        backend: &B,
+        terms: &[SumTerm<'_, DenseStorage<T>, DenseLayout>],
+        coeffs: &[T],
+        params: Option<&TruncateParams>,
+        src: SuccessiveRandomizedParams,
+    ) -> Result<Self, ApplyError> {
+        super::apply::apply_sum_successive_randomized_dense(backend, terms, coeffs, params, src)
+    }
+
+    fn round_successive_randomized_k<B: OpsFor<DenseStorage<T>>>(
+        backend: &B,
+        chain: &mut Self,
+        src: SuccessiveRandomizedParams,
+    ) -> Result<(), ApplyError> {
+        assert!(
+            chain.len() > 0,
+            "round_successive_randomized: chain must have at least one site"
+        );
+        // The identity MPO is built once per call from the chain's own
+        // physical dimensions; rounding is the truncation, so the sweep
+        // runs without a finishing pass.
+        let phys_dims: Vec<usize> = (0..chain.len()).map(|i| chain.site(i).shape()[1]).collect();
+        let id = Mpo::identity(&phys_dims);
+        *chain = super::apply::apply_successive_randomized_dense(backend, &id, chain, None, src)?;
+        Ok(())
+    }
+
     fn canon_k<B: OpsFor<DenseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
         super::canonicalize::canonicalize_dense(backend, chain, center);
     }
@@ -279,6 +336,16 @@ impl<T: Scalar> MpsOps<T> for Mps<DenseStorage<T>, DenseLayout> {
 // ---------------------------------------------------------------------------
 // BlockSparse implementation
 // ---------------------------------------------------------------------------
+
+/// Shared panic for the block-sparse arms of the SRC-based entries, which
+/// are dense-only for one common reason.
+fn src_dense_only_panic(entry: &str) -> ! {
+    panic!(
+        "{entry} is dense-only: the Gaussian sketch mixes symmetry sectors, \
+         so a block-sparse product would not preserve the chain's \
+         quantum-number structure"
+    );
+}
 
 impl<T: Scalar, S: Sector> MpsOps<T> for Mps<BlockSparseStorage<T>, BlockSparseLayout<S>> {
     type Storage = BlockSparseStorage<T>;
@@ -350,11 +417,25 @@ impl<T: Scalar, S: Sector> MpsOps<T> for Mps<BlockSparseStorage<T>, BlockSparseL
         _params: Option<&TruncateParams>,
         _src: SuccessiveRandomizedParams,
     ) -> Result<Self, ApplyError> {
-        panic!(
-            "ApplyMethod::SuccessiveRandomized is dense-only: the Gaussian sketch \
-             mixes symmetry sectors, so a block-sparse product would not preserve \
-             the chain's quantum-number structure"
-        );
+        src_dense_only_panic("ApplyMethod::SuccessiveRandomized");
+    }
+
+    fn apply_sum_successive_randomized_k<B: OpsFor<BlockSparseStorage<T>>>(
+        _backend: &B,
+        _terms: &[SumTerm<'_, BlockSparseStorage<T>, BlockSparseLayout<S>>],
+        _coeffs: &[T],
+        _params: Option<&TruncateParams>,
+        _src: SuccessiveRandomizedParams,
+    ) -> Result<Self, ApplyError> {
+        src_dense_only_panic("apply_sum_successive_randomized");
+    }
+
+    fn round_successive_randomized_k<B: OpsFor<BlockSparseStorage<T>>>(
+        _backend: &B,
+        _chain: &mut Self,
+        _src: SuccessiveRandomizedParams,
+    ) -> Result<(), ApplyError> {
+        src_dense_only_panic("round_successive_randomized");
     }
 
     fn canon_k<B: OpsFor<BlockSparseStorage<T>>>(backend: &B, chain: &mut Self, center: usize) {
@@ -401,6 +482,47 @@ where
         <Self as MpsOps<T>>::trunc_k(backend, self, params)
     }
 
+    /// Round (compress) the MPS in place via successive randomized
+    /// compression: apply an identity MPO — built once per call from the
+    /// chain's own physical dimensions — through the SRC sweep, selecting
+    /// each output bond adaptively (or at the fixed rank) per `src`. This
+    /// is the adaptive counterpart of [`truncate`](Self::truncate): the
+    /// bond is chosen by the sweep's leave-one-out error estimate instead
+    /// of a pre-canonicalized SVD cut, and no prior canonicalization of
+    /// the input is required. The result is left in `Mixed { center: 0 }`.
+    ///
+    /// The sweep runs without a finishing pass (rounding is the
+    /// truncation); callers wanting a specific gauge or a further SVD cut
+    /// compose [`canonicalize`](Self::canonicalize) /
+    /// [`truncate`](Self::truncate) afterwards.
+    ///
+    /// # Panics
+    ///
+    /// Panics on block-sparse chains (the Gaussian sketch mixes symmetry
+    /// sectors, so this method is dense-only), on an empty chain, and on
+    /// the parameter violations documented in
+    /// [`SuccessiveRandomizedParams`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApplyError::NonFinite`] when a non-finite element
+    /// reaches a result boundary of the underlying SRC sweep; `self` is
+    /// left unmodified in that case. See
+    /// [`ApplyMethod::SuccessiveRandomized`](super::types::ApplyMethod::SuccessiveRandomized)
+    /// for the exact contract.
+    pub fn round_successive_randomized<T, B>(
+        &mut self,
+        backend: &B,
+        src: SuccessiveRandomizedParams,
+    ) -> Result<(), ApplyError>
+    where
+        T: Scalar,
+        Mps<St, L>: MpsOps<T, Storage = St, Layout = L>,
+        B: OpsFor<St>,
+    {
+        <Self as MpsOps<T>>::round_successive_randomized_k(backend, self, src)
+    }
+
     /// Compute the norm ‖ψ‖.
     pub fn norm<T, B>(&self, backend: &B) -> T::Real
     where
@@ -409,131 +531,5 @@ where
         B: OpsFor<St>,
     {
         <Self as MpsOps<T>>::norm_k(backend, self)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Multi-arg public free functions — dispatch via the sealed `MpsOps` trait
-// so callers write `inner(backend, psi, phi)` over `Mps<St, L>` without
-// naming the storage explicitly.
-// ---------------------------------------------------------------------------
-
-/// Compute the inner product ⟨ψ|φ⟩.
-pub fn inner<T, St, L, B>(backend: &B, psi: &Mps<St, L>, phi: &Mps<St, L>) -> T
-where
-    T: Scalar,
-    St: Storage + StorageFor<L>,
-    L: TensorLayout,
-    Mps<St, L>: MpsOps<T, Storage = St, Layout = L>,
-    B: OpsFor<St>,
-{
-    <Mps<St, L> as MpsOps<T>>::inner_k(backend, psi, phi)
-}
-
-/// Compute the expectation value ⟨ψ|O|φ⟩.
-pub fn braket<T, St, L, B>(backend: &B, psi: &Mps<St, L>, op: &Mpo<St, L>, phi: &Mps<St, L>) -> T
-where
-    T: Scalar,
-    St: Storage + StorageFor<L>,
-    L: TensorLayout,
-    Mps<St, L>: MpsOps<T, Storage = St, Layout = L>,
-    B: OpsFor<St>,
-{
-    <Mps<St, L> as MpsOps<T>>::braket_k(backend, psi, op, phi)
-}
-
-/// Apply an MPO to an MPS with the default method: O|ψ⟩ via the
-/// streaming-naive algorithm with the default lossless forward sweep
-/// (`forward_cap = None`).
-///
-/// Computes the same state as
-/// `apply_with_method(backend, op, psi, params, ApplyMethod::default())`,
-/// but stays infallible: the current default method has no failure path,
-/// so there is no error to surface. Should the default ever change to a
-/// fallible method, this signature changes with it.
-pub fn apply<T, St, L, B>(
-    backend: &B,
-    op: &Mpo<St, L>,
-    psi: &Mps<St, L>,
-    params: Option<&TruncateParams>,
-) -> Mps<St, L>
-where
-    T: Scalar,
-    St: Storage + StorageFor<L>,
-    L: TensorLayout,
-    Mps<St, L>: MpsOps<T, Storage = St, Layout = L>,
-    B: OpsFor<St>,
-{
-    <Mps<St, L> as MpsOps<T>>::apply_k(backend, op, psi, params, None)
-}
-
-/// Apply an MPO to an MPS using the requested algorithm.
-///
-/// - `ApplyMethod::StreamingNaive` runs the per-site product with a streaming
-///   forward QR/SVD sweep followed by an optional `canonicalize` + `truncate`.
-/// - `ApplyMethod::ZipUp` selects the Stoudenmire-White single-pass zip-up
-///   algorithm (right-canonicalize, then one forward sweep with per-site
-///   truncation to `chi_max` and no backward pass).
-/// - `ApplyMethod::DensityMatrix` materializes the untruncated product,
-///   accumulates the `⟨φ|φ⟩` right environment, then a single forward sweep
-///   truncating each bond's reduced density matrix to `chi_max` via its
-///   dominant eigenvectors.
-/// - `ApplyMethod::Variational` seeds from zip-up or density-matrix and refines
-///   the fit at the fixed seed bond via single-site DMRG-style sweeps. This
-///   method is **host-pinned**: it builds on the host-resident `BraketEnvs`
-///   primitive, so `backend` is not consulted for it.
-/// - `ApplyMethod::SuccessiveRandomized` computes the compressed product
-///   directly via a single right-to-left randomized-QB sweep with adaptive
-///   or fixed-rank bond selection. **Dense-only** (panics on block-sparse
-///   chains).
-///
-/// # Errors
-///
-/// Returns [`ApplyError::NonFinite`] when the computation was poisoned by
-/// non-finite values (NaN/inf) and the poison reached a result boundary.
-/// The scan runs before the optional `canonicalize` + `truncate`
-/// finishing pass, so `Ok` certifies the state as assembled, not the
-/// finishing pass's output (see [`ApplyError::NonFinite`] for the exact
-/// contract). Currently only `ApplyMethod::SuccessiveRandomized` performs
-/// this check; the other methods have no failure path and always return
-/// `Ok`.
-pub fn apply_with_method<T, St, L, B>(
-    backend: &B,
-    op: &Mpo<St, L>,
-    psi: &Mps<St, L>,
-    params: Option<&TruncateParams>,
-    method: ApplyMethod,
-) -> Result<Mps<St, L>, ApplyError>
-where
-    T: Scalar,
-    St: Storage + StorageFor<L>,
-    L: TensorLayout,
-    Mps<St, L>: MpsOps<T, Storage = St, Layout = L>,
-    B: OpsFor<St>,
-{
-    match method {
-        ApplyMethod::StreamingNaive { forward_cap } => Ok(<Mps<St, L> as MpsOps<T>>::apply_k(
-            backend,
-            op,
-            psi,
-            params,
-            forward_cap,
-        )),
-        ApplyMethod::ZipUp => Ok(<Mps<St, L> as MpsOps<T>>::apply_zipup_k(
-            backend, op, psi, params,
-        )),
-        ApplyMethod::DensityMatrix => Ok(<Mps<St, L> as MpsOps<T>>::apply_density_matrix_k(
-            backend, op, psi, params,
-        )),
-        ApplyMethod::Variational {
-            init,
-            max_sweeps,
-            tol,
-        } => Ok(<Mps<St, L> as MpsOps<T>>::apply_variational_k(
-            backend, op, psi, params, init, max_sweeps, tol,
-        )),
-        ApplyMethod::SuccessiveRandomized(src) => {
-            <Mps<St, L> as MpsOps<T>>::apply_successive_randomized_k(backend, op, psi, params, src)
-        }
     }
 }

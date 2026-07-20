@@ -7,7 +7,9 @@
 
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::TruncSvdParams;
-use ariadnetor_tensor::{Storage, StorageFor, Tensor, TensorLayout};
+use ariadnetor_tensor::{
+    DenseLayout, DenseStorage, DenseTensor, Storage, StorageFor, Tensor, TensorLayout,
+};
 use serde::{Deserialize, Serialize};
 
 /// Canonical form of a tensor chain.
@@ -117,7 +119,10 @@ pub struct SuccessiveRandomizedParams {
     pub min_dim: usize,
     /// Upper bound on every output bond. `None` defaults to the product
     /// of the maximum MPO and MPS bond dimensions (the rank beyond which
-    /// the product is exactly representable).
+    /// the product is exactly representable); for the linear-combination
+    /// entry
+    /// ([`apply_sum_successive_randomized`](crate::apply_sum_successive_randomized))
+    /// the default is that product summed over the terms.
     pub max_dim: Option<usize>,
     /// Initial sketch size for adaptive mode.
     pub sketch_dim: usize,
@@ -287,7 +292,11 @@ impl Default for ApplyMethod {
 }
 
 /// Errors from applying an MPO to an MPS
-/// ([`apply_with_method`](crate::apply_with_method)).
+/// ([`apply_with_method`](crate::apply_with_method)), a linear
+/// combination of MPO-MPS products
+/// ([`apply_sum_successive_randomized`](crate::apply_sum_successive_randomized)),
+/// or an SRC-based rounding
+/// ([`Mps::round_successive_randomized`]).
 ///
 /// This carries only genuine runtime failures the caller can recover
 /// from. Caller-side contract violations (mismatched chain lengths,
@@ -304,10 +313,12 @@ pub enum ApplyError {
     /// each growth round's sketch panel and every assembled site tensor,
     /// so an `Ok` state contains only finite elements. A poisoned state
     /// must not flow on as a normal result, where it would silently
-    /// corrupt every downstream computation. Only methods that perform
-    /// the scan can report this error — currently
-    /// `ApplyMethod::SuccessiveRandomized` alone; the other methods
-    /// return a poisoned state as `Ok`, as they always have.
+    /// corrupt every downstream computation. Only entry points that
+    /// perform the scan can report this error — currently the
+    /// SRC-based ones alone (`ApplyMethod::SuccessiveRandomized`, the
+    /// linear-combination apply, and the SRC rounding, which all run
+    /// the same sweep); the other apply methods return a poisoned
+    /// state as `Ok`, as they always have.
     ///
     /// The scan runs before the optional finishing pass, so it does not
     /// cover non-finite values arising only inside a requested
@@ -434,5 +445,44 @@ where
             sites: Vec::new(),
             canonical_form: CanonicalForm::Unknown,
         })
+    }
+}
+
+/// One term of an SRC linear combination: an MPO paired with the MPS it
+/// applies to (see
+/// [`apply_sum_successive_randomized`](crate::apply_sum_successive_randomized)).
+pub type SumTerm<'a, St, L> = (&'a Mpo<St, L>, &'a Mps<St, L>);
+
+impl<T: Scalar> Mpo<DenseStorage<T>, DenseLayout> {
+    /// Identity MPO over the given per-site physical dimensions: every
+    /// site is the `(1, d, d, 1)` reshaped `d x d` identity matrix, so
+    /// applying the operator to any MPS with matching physical dimensions
+    /// reproduces the state exactly. All bond dimensions are 1.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `phys_dims` is empty or contains a zero dimension: an
+    /// identity over zero sites (or a zero-dimensional site space) has no
+    /// consumer, and failing here beats failing later at an apply entry.
+    pub fn identity(phys_dims: &[usize]) -> Self {
+        assert!(
+            !phys_dims.is_empty(),
+            "Mpo::identity: pass at least one physical dimension"
+        );
+        let sites = phys_dims
+            .iter()
+            .map(|&d| {
+                assert!(
+                    d >= 1,
+                    "Mpo::identity: physical dimensions must be at least 1"
+                );
+                let mut w = DenseTensor::<T>::zeros(vec![1, d, d, 1]);
+                for k in 0..d {
+                    w.set([0, k, k, 0], num_traits::One::one());
+                }
+                w
+            })
+            .collect();
+        Self::from_sites(sites)
     }
 }
