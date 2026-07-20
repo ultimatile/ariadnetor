@@ -248,11 +248,23 @@ where
 
     // Zero-weighted terms behave as absent (see `prune_zero_terms`). When
     // everything is pruned the sum is the zero state, represented at bond
-    // dimension 1 over the validated output physical dimensions.
+    // dimension 1 over the validated output physical dimensions. Only the
+    // center site is a zero tensor; the off-center sites are normalized
+    // basis tensors, which are genuine right-isometries — the claimed
+    // `Mixed { center: 0 }` form must hold structurally, because
+    // downstream consumers (`truncate` among them) trust the metadata and
+    // skip re-canonicalization.
     let (terms_kept, coeffs_kept) = prune_zero_terms(terms, coeffs);
     if terms_kept.is_empty() {
         let sites = (0..n)
-            .map(|i| DenseTensor::<T>::zeros(vec![1, terms[0].0.site(i).shape()[2], 1]))
+            .map(|i| {
+                let d = terms[0].0.site(i).shape()[2];
+                let mut site = DenseTensor::<T>::zeros(vec![1, d, 1]);
+                if i > 0 {
+                    site.set([0, 0, 0], num_traits::One::one());
+                }
+                site
+            })
             .collect();
         let mut result: Mps<DenseStorage<T>, DenseLayout> = Mps::from_sites(sites);
         result.set_canonical_form(CanonicalForm::Mixed { center: 0 });

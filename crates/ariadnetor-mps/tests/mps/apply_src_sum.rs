@@ -300,6 +300,11 @@ fn src_sum_all_zero_coefficients_yield_zero_state() {
 
     assert_eq!(out.max_bond_dim(), 1);
     assert_eq!(out.canonical_form(), &CanonicalForm::Mixed { center: 0 });
+    // The claimed Mixed form must hold structurally: off-center sites are
+    // genuine right-isometries even though the state is zero.
+    for j in 1..out.len() {
+        assert!(is_right_canonical(out.site(j), 1e-14), "site {j}");
+    }
     for x in densify(&backend, &out).data_slice() {
         assert_eq!(*x, 0.0);
     }
