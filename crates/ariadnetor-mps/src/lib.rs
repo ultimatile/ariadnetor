@@ -28,8 +28,9 @@ mod types;
 pub use dispatch::MpsOps;
 
 // Multi-arg free functions (dispatch via the MpsOps trait). The single-chain
-// operations `canonicalize` / `truncate` / `norm` are inherent methods on
-// `Mps` rather than free functions.
+// operations `canonicalize` / `truncate` / `norm` /
+// `round_successive_randomized` are inherent methods on `Mps` rather than
+// free functions.
 pub use dispatch::{apply, apply_sum_successive_randomized, apply_with_method, braket, inner};
 
 // Three-layer ⟨bra|W|ket⟩ environment primitive (Dense / BlockSparse),

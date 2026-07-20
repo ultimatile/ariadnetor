@@ -166,7 +166,9 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
 
     /// Apply an MPO to an MPS via successive randomized compression (SRC):
     /// a single right-to-left randomized-QB sweep with adaptive or fixed-rank
-    /// bond selection (see [`ApplyMethod::SuccessiveRandomized`]). Dense-only:
+    /// bond selection (see
+    /// [`ApplyMethod::SuccessiveRandomized`](super::types::ApplyMethod::SuccessiveRandomized)).
+    /// Dense-only:
     /// the block-sparse impl panics because the Gaussian sketch mixes
     /// symmetry sectors. Returns [`ApplyError::NonFinite`] when non-finite
     /// elements reach the sweep's result boundaries.

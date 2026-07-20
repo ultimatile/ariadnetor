@@ -3,7 +3,7 @@
 //! Build / run:
 //!   cargo bench -p ariadnetor-algorithms --bench mpo_mps_apply
 //!
-//! Two arms per case over identical Heisenberg-MPO / random-MPS inputs:
+//! Three arms per case over Heisenberg-MPO / random-MPS inputs:
 //! - `adaptive`: cutoff-driven sketch growth. A random MPS times a
 //!   Heisenberg MPO is essentially incompressible, so the sketch grows from
 //!   `sketch_dim` to the per-site cap in `sketch_increment` steps — the
