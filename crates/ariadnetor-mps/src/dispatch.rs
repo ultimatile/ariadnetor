@@ -75,8 +75,10 @@ mod sealed {
 /// associated types rather than exposing them on a `pub` bound surface.
 ///
 /// The methods are the kernels the public free functions ([`inner`],
-/// [`braket`], [`apply`]) and the [`Mps`] inherent methods (`canonicalize`,
-/// `truncate`, `norm`) forward to; they are not called directly.
+/// [`braket`], [`apply`], [`apply_sum_successive_randomized`]) and the
+/// [`Mps`] inherent methods (`canonicalize`, `truncate`, `norm`,
+/// `round_successive_randomized`) forward to; they are not called
+/// directly.
 pub trait MpsOps<T: Scalar>: sealed::Sealed {
     /// Layout type paired with this chain. Needed to name the sibling
     /// chain type [`Mpo<Self::Storage, Self::Layout>`](Mpo) in the
@@ -501,8 +503,9 @@ where
     /// # Panics
     ///
     /// Panics on block-sparse chains (the Gaussian sketch mixes symmetry
-    /// sectors, so this method is dense-only), on an empty chain, and on
-    /// the parameter violations documented in
+    /// sectors, so this method is dense-only), on an empty chain, on a
+    /// site with a zero physical dimension (via the [`Mpo::identity`]
+    /// construction), and on the parameter violations documented in
     /// [`SuccessiveRandomizedParams`].
     ///
     /// # Errors
