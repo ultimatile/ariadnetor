@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "algorithms-fixtures"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "ariadnetor-core",
  "ariadnetor-mps",
@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "ariadnetor"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "ariadnetor-core",
  "ariadnetor-linalg",
@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "ariadnetor-algorithms"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "algorithms-fixtures",
  "approx",
@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "ariadnetor-core"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "approx",
  "dashmap",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "ariadnetor-linalg"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "ariadnetor-core",
  "ariadnetor-native",
@@ -125,7 +125,7 @@ dependencies = [
 
 [[package]]
 name = "ariadnetor-mps"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "approx",
  "ariadnetor-core",
@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "ariadnetor-native"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "ariadnetor-core",
  "faer",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "ariadnetor-tensor"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "aligned-vec",
  "approx",
