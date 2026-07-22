@@ -10,13 +10,16 @@ follow when adding or modifying code in this repository.
 ```bash
 cargo make build       # Build the whole workspace (debug)
 cargo make test        # Run unit + integration + doctests
-cargo make gate        # Local pre-PR gate: fmt-check + clippy + test
+cargo make gate        # Local pre-PR gate: fmt-check + clippy + test + doc-check
 ```
 
 `cargo make gate` is the local pre-PR gate. Its `clippy --all-targets`
 step compiles benches; its `test` step runs unit, integration, and
-doctests but does not compile or run benches. Run
-`cargo make --list-all-steps` for the full task surface.
+doctests but does not compile or run benches; its `doc-check` step builds
+the workspace docs with rustdoc warnings denied, catching broken or
+private intra-doc links and invalid-HTML doc comments that `clippy` and
+the doctests do not. Run `cargo make --list-all-steps` for the full task
+surface.
 
 ### Ad-hoc QA tools (outside the gate)
 

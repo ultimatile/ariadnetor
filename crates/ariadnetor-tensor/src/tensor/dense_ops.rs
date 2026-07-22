@@ -242,7 +242,7 @@ where
     }
 
     /// Element-wise complex conjugate. Symmetric with
-    /// [`BlockSparseTensor::conj`].
+    /// [`BlockSparseTensor::conj`](crate::BlockSparseTensor::conj).
     pub fn conj(&self) -> Self {
         Self {
             data: self.data.conj(),

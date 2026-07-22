@@ -16,8 +16,11 @@
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
-# integration + doctests but does NOT compile benches. No step in `gate`
-# runs benchmarks — those are on demand via the bench* tasks.
+# integration + doctests but does NOT compile benches; its doc-check step
+# builds the workspace docs with rustdoc warnings denied, catching broken
+# / private intra-doc links and invalid-HTML doc comments that clippy and
+# doctests do not. No step in `gate` runs benchmarks — those are on demand
+# via the bench* tasks.
 
 [config]
 default_to_workspace = false
@@ -88,6 +91,24 @@ description = "Build workspace docs (no deps) and open them in a browser"
 command = "cargo"
 args = ["doc", "--workspace", "--no-deps", "--open"]
 
+# Gate step: build workspace docs with rustdoc warnings denied, so a
+# broken / private intra-doc link or invalid-HTML doc comment fails the
+# gate deterministically instead of surfacing in review. rustdoc resolves
+# intra-doc links against each item's scope, so a module split or trimmed
+# import can invalidate a link with no compiler or clippy diagnostic; the
+# `test` step's doctests run rustdoc too, but only as a test compiler —
+# they do not lint intra-doc links or HTML, which is what this step adds.
+# RUSTDOCFLAGS carries the warnings-as-errors flag because there is no
+# equivalent `cargo doc` CLI switch. Default features only, matching the
+# rest of the gate, so doc warnings inside the feature-gated arpack / hptt
+# regions are out of scope here (nothing doc-builds them under -D warnings).
+# No --open, unlike the sibling `doc` task.
+[tasks.doc-check]
+description = "Build workspace docs denying rustdoc warnings (broken/private intra-doc links, invalid HTML); no browser. Gate step."
+env = { RUSTDOCFLAGS = "-D warnings" }
+command = "cargo"
+args = ["doc", "--workspace", "--no-deps"]
+
 # ============================================================================
 # Benchmark tasks
 # ============================================================================
@@ -147,8 +168,8 @@ args = ["release", "${@}"]
 # ============================================================================
 
 [tasks.gate]
-description = "Local pre-PR gate: fmt-check + clippy (--all-targets, compiles benches) + test (unit/integration/doctests); does not run benchmarks"
-dependencies = ["fmt-check", "clippy", "test"]
+description = "Local pre-PR gate: fmt-check + clippy (--all-targets, compiles benches) + test (unit/integration/doctests) + doc-check (rustdoc warnings denied); does not run benchmarks"
+dependencies = ["fmt-check", "clippy", "test", "doc-check"]
 
 [tasks.dev]
 description = "Fast local loop: fmt + check + test (skips clippy and benches)"

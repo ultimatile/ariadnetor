@@ -1,7 +1,7 @@
 //! Core traits and types for ariadnetor tensor library
 //!
 //! This crate provides backend-agnostic abstractions:
-//! - `Scalar`: Element type trait (sealed to f32, f64, Complex<f32>, Complex<f64>)
+//! - `Scalar`: Element type trait (sealed to f32, f64, `Complex<f32>`, `Complex<f64>`)
 //! - `ComputeBackend`: Pluggable backend trait
 //! - `LabelId`: Interned tensor index labels
 //! - `EinsumExpr`, `ContractionPlan`: Einsum parsing and analysis

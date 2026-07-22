@@ -109,7 +109,7 @@ impl ThresholdTable {
     ///
     /// Reads the logical-core count (falling back to the conservative `1`
     /// when the query fails) and delegates the profile choice to
-    /// [`Self::profile_for_parallelism`].
+    /// `Self::profile_for_parallelism`.
     pub fn detect() -> Self {
         let n = std::thread::available_parallelism()
             .map(|v| v.get())
