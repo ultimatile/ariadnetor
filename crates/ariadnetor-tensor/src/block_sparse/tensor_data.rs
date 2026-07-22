@@ -185,7 +185,7 @@ where
     /// flux.
     ///
     /// Block coordinates and packed offsets are preserved
-    /// ([`BlockSparseLayout::dagger_layout`] reuses them). Involution:
+    /// (`BlockSparseLayout::dagger_layout` reuses them). Involution:
     /// `x.dagger().dagger() == x`.
     pub fn dagger(&self) -> Self {
         let new_layout = self.layout().dagger_layout();
