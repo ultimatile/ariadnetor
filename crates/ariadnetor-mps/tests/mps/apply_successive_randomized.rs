@@ -18,19 +18,16 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage};
 
 use super::helpers::{
-    apply_ok, assert_dense_close, cm_dense_tensor, densify, is_right_canonical,
-    make_3site_test_mpo, make_3site_test_mps, make_4site_mps, make_identity_mpo,
-    make_total_n_dense_mpo, mps_to_dense, relative_frobenius, rm_dense_tensor, with_site_scaled,
+    apply_ok, assert_dense_close, cm_dense_tensor, densify, fixed_rank_src_params,
+    is_right_canonical, make_3site_test_mpo, make_3site_test_mps, make_4site_mps,
+    make_identity_mpo, make_total_n_dense_mpo, mps_to_dense, relative_frobenius, rm_dense_tensor,
+    with_site_scaled,
 };
 
 /// Fixed-rank SRC at a rank high enough to be clamped to the exactly
 /// representable rank at every bond.
 fn exact_rank_method(seed: u64) -> ApplyMethod {
-    ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
-        output_dim: Some(usize::MAX),
-        seed,
-        ..Default::default()
-    })
+    ApplyMethod::SuccessiveRandomized(fixed_rank_src_params(usize::MAX, seed))
 }
 
 /// Relative Frobenius distance ‖a − e‖ / ‖e‖ over the densified states.
@@ -516,159 +513,6 @@ fn src_finishing_pass_truncates() {
         "finishing pass must truncate to chi_max"
     );
 }
-
-// ===========================================================================
-// Non-finite surfacing
-// ===========================================================================
-
-/// Unpack the expected `NonFinite` error into its `(site, norm)`
-/// diagnostics, panicking on `Ok` or any other variant.
-fn expect_non_finite(
-    res: Result<Mps<DenseStorage<f64>, DenseLayout>, mps::ApplyError>,
-) -> (usize, f64) {
-    match res {
-        Ok(_) => panic!("a poisoned input must not be returned as a success"),
-        Err(mps::ApplyError::NonFinite { site, norm }) => (site, norm),
-        Err(other) => panic!("expected NonFinite, got {other:?}"),
-    }
-}
-
-#[test]
-fn src_adaptive_surfaces_nan_input_as_error() {
-    let backend = NativeBackend::new();
-    let mut psi = make_3site_test_mps();
-    let op = make_3site_test_mpo();
-    psi.site_mut(0).set([0, 0, 0], f64::NAN);
-
-    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams::default());
-    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
-    // Every sketch panel folds the environments of all sites to its
-    // left, so input poison anywhere surfaces at the first processed
-    // site of the right-to-left sweep.
-    assert_eq!(site, 2, "detection happens at the first processed site");
-    assert!(norm.is_nan(), "the diagnostic carries the offending norm");
-}
-
-#[test]
-fn src_fixed_mode_surfaces_inf_input_as_error() {
-    let backend = NativeBackend::new();
-    let psi = make_3site_test_mps();
-    let mut op = make_3site_test_mpo();
-    op.site_mut(1).set([0, 0, 0, 0], f64::INFINITY);
-
-    // Fixed mode never consults the adaptive stopping rule, so the check
-    // must fire on the single panel pass itself.
-    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
-        output_dim: Some(2),
-        ..Default::default()
-    });
-    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
-    assert_eq!(site, 2, "detection happens at the first processed site");
-    // The inf may surface as inf directly or as NaN through an
-    // `inf - inf` / `0 * inf` in the contraction sums.
-    assert!(
-        !norm.is_finite(),
-        "the diagnostic carries the offending norm"
-    );
-}
-
-#[test]
-fn src_adaptive_surfaces_panel_norm_overflow_as_error() {
-    let backend = NativeBackend::new();
-    // Past the saturation window of the test above: here a growth
-    // round's panel norm itself exceeds f64::MAX with every element
-    // finite, so the backend QR cannot produce a finite triangular
-    // factor and the stopping rule has nothing to certify against. The
-    // sweep must error instead of accepting the round as rank-deficient
-    // coverage and returning a bond-stuck state as a success.
-    // Tuning (same measured norms): the first processed site's largest
-    // panel norm is ~874.6x the scale — overflowing from ~2.06e305 up —
-    // and its elements stay finite until ~2.5e305; beyond that the
-    // elementwise panel scan fires first (same error, older path).
-    // Re-tune if the fixture, seed, or random stream ever changes.
-    let psi = make_4site_mps();
-    let op = make_total_n_dense_mpo(4);
-    let scale = 2.2e305;
-    let scaled = with_site_scaled(&psi, 0, scale);
-    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
-        cutoff: Some(1e-6),
-        sketch_dim: 1,
-        sketch_increment: 1,
-        seed: 42,
-        ..Default::default()
-    });
-    let (site, norm) =
-        expect_non_finite(mps::apply_with_method(&backend, &op, &scaled, None, method));
-    // The right-to-left sweep hits the overflowing growth round at the
-    // first processed site; the diagnostic carries the degenerated QR
-    // diagonal (inf or NaN is a backend detail).
-    assert_eq!(site, 3, "detection happens at the first processed site");
-    assert!(!norm.is_finite(), "the diagnostic carries the degeneration");
-}
-
-#[test]
-fn src_single_site_surfaces_nan_as_error() {
-    let backend = NativeBackend::new();
-    // The n == 1 path has no sketch: the exact local product itself is
-    // the checked boundary quantity.
-    let psi: Mps<DenseStorage<f64>, DenseLayout> =
-        Mps::from_sites(vec![cm_dense_tensor(vec![1.0, f64::NAN], vec![1, 2, 1])]);
-    let op = make_identity_mpo(1, 2);
-
-    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams::default());
-    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
-    assert_eq!(site, 0, "the single site is site 0");
-    assert!(norm.is_nan(), "the diagnostic carries the offending norm");
-}
-
-#[test]
-fn src_fixed_mode_tolerates_degenerated_qr_factor() {
-    let backend = NativeBackend::new();
-    // At this amplitude the sweep's panel keeps every element finite
-    // while its column norm exceeds f64::MAX, so the QR append reports a
-    // degenerated (non-finite-diagonal) factor. Fixed mode never claims
-    // certification, so it must NOT surface that as the adaptive
-    // certification error at the panel's site (site 1 here); it
-    // continues the sweep and lets the elementwise result-boundary
-    // scans govern — which catch the overflowed weight in the assembled
-    // site 0. Removing the tolerance (erroring on the degenerated
-    // factor in fixed mode too) would move the detection locus to
-    // site 1 and fail this test. The amplitude sits mid-window
-    // (roughly 1e308 to 1.5e308 for this fixture and seed): elements at
-    // 0.7 to 1.0 times the scale stay finite by construction, and the
-    // panel-norm overflow has a wide margin; re-tune if the fixture or
-    // random stream ever changes.
-    let scale = 1.2e308;
-    let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
-        cm_dense_tensor(
-            vec![1.0 * scale, 0.8 * scale, 0.9 * scale, 0.7 * scale],
-            vec![1, 2, 2],
-        ),
-        cm_dense_tensor(vec![0.9, 0.5, 0.6, 1.0, 0.7, 0.8, 0.9, 0.6], vec![2, 2, 2]),
-        cm_dense_tensor(vec![1.0, 0.6, 0.7, 1.0], vec![2, 2, 1]),
-    ]);
-    let op = make_identity_mpo(3, 2);
-    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
-        output_dim: Some(1),
-        seed: 42,
-        ..Default::default()
-    });
-    let (site, norm) = expect_non_finite(mps::apply_with_method(&backend, &op, &psi, None, method));
-    assert_eq!(
-        site, 0,
-        "fixed mode tolerates the degenerated factor; the assembled-sites scan reports"
-    );
-    assert!(norm.is_infinite(), "the diagnostic carries the overflow");
-}
-
-// Beyond the fixed-mode test above (whose site-0 detection exercises the
-// assembled-sites scan), the scan has no adaptive-mode deterministic
-// test: with all panels finite and the factorization healthy it fires
-// only when the QR internals, the cap update, or the first-site
-// contraction alone go non-finite — a margin set by the Gaussian
-// samples, so a triggering fixture would encode magic magnitudes tied
-// to the RNG stream and break on a `rand` upgrade. That scan is defense
-// in depth behind the panel scans.
 
 // ===========================================================================
 // Validation panics

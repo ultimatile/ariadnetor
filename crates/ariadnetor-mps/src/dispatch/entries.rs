@@ -83,13 +83,15 @@ where
 /// # Errors
 ///
 /// Returns [`ApplyError::NonFinite`] when the computation was poisoned by
-/// non-finite values (NaN/inf) and the poison reached a result boundary.
-/// The scan runs before the optional `canonicalize` + `truncate`
-/// finishing pass, so `Ok` certifies the state as assembled, not the
-/// finishing pass's output (see [`ApplyError::NonFinite`] for the exact
-/// contract). Currently only `ApplyMethod::SuccessiveRandomized` performs
-/// this check; the other methods have no failure path and always return
-/// `Ok`.
+/// non-finite values (NaN/inf) and the poison reached a result boundary,
+/// and — with elements everywhere finite — when a sketch panel's column
+/// norm overflows past the point where the backend QR can return a
+/// usable factor. The checks run before the optional `canonicalize` +
+/// `truncate` finishing pass, so `Ok` certifies the state as assembled,
+/// not the finishing pass's output (see [`ApplyError::NonFinite`] for
+/// the exact contract). Currently only
+/// `ApplyMethod::SuccessiveRandomized` performs them; the other methods
+/// have no failure path and always return `Ok`.
 pub fn apply_with_method<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -171,7 +173,8 @@ where
 ///
 /// Returns [`ApplyError::NonFinite`] when a non-finite element reaches a
 /// result boundary of the sweep (a growth round's summed sketch panel or
-/// an assembled site tensor). See
+/// an assembled site tensor), or when an elementwise-finite panel's
+/// column norm overflow degenerates the sweep's QR factorization. See
 /// [`ApplyMethod::SuccessiveRandomized`] for the exact contract.
 pub fn apply_sum_successive_randomized<T, St, L, B>(
     backend: &B,

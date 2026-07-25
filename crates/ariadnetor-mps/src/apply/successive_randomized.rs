@@ -40,14 +40,17 @@
 //! on as a success: every growth round scans its (summed) sketch panel
 //! for non-finite elements, and every assembled site tensor is scanned
 //! before the state is returned (see
-//! [`apply_sum_successive_randomized_dense`]). The adaptive stopping rule
-//! is additionally hardened against representational extremes that carry
-//! finite elements but degenerate the certification quantities: the
-//! accumulated sketch norm is kept in a saturation-free scaled form, an
-//! overflowed error estimator counts as "not converged" rather than
-//! certifying, and a non-finite QR diagonal (a panel column norm past
-//! the real type's range) surfaces as [`ApplyError::NonFinite`] instead
-//! of masquerading as rank deficiency.
+//! [`apply_sum_successive_randomized_dense`]). A panel whose elements
+//! are all finite can still carry a column norm past the real type's
+//! range, which the backend QR answers with a non-finite diagonal
+//! rather than a usable factor; that surfaces as
+//! [`ApplyError::NonFinite`] too, in both stopping modes, because the
+//! basis built from such a factor no longer spans the sketch. The
+//! adaptive stopping rule is separately hardened against
+//! representational extremes that leave its certification quantities
+//! finite but uninformative: the accumulated sketch norm is kept in a
+//! saturation-free scaled form, and an overflowed error estimator
+//! counts as "not converged" rather than certifying.
 //!
 //! No code is ported from the paper's reference implementation
 //! (RandomMPOMPS, <https://github.com/chriscamano/RandomMPOMPS>); this
@@ -221,14 +224,16 @@ where
 /// Non-finite values arising only inside that finishing pass
 /// (`canonicalize` + `truncate`) are the truncation machinery's concern
 /// and are not checked here. The element detector itself does not reject
-/// a finite state whose Frobenius norm merely overflows `T::Real`, but
-/// adaptive mode additionally errors when a sketch panel's column norm
-/// overflow degenerates the QR factorization
-/// ([`QrAppendOutcome::NonFinite`]) — the stopping rule cannot certify
-/// anything against a factor that does not exist, and stopping there
-/// would silently return a bond-stuck state. Fixed mode never certifies,
-/// so it tolerates the degenerated factor and relies on the elementwise
-/// scans alone.
+/// a finite state whose Frobenius norm merely overflows `T::Real`; the
+/// second error source is a sketch panel whose column norm overflow
+/// degenerates the QR factorization ([`QrAppendOutcome::NonFinite`]),
+/// which both stopping modes surface. What that factorization returns
+/// can be elementwise finite and still column-orthonormal, leaving the
+/// scans nothing to fire on, while spanning an arbitrary subspace
+/// instead of the sketch's — continuing would emit site tensors that
+/// are silently wrong. Adaptive mode additionally has nothing left to
+/// certify against, since its rank test and estimator both read the
+/// factor the append could not produce.
 pub(crate) fn apply_sum_successive_randomized_dense<T, B>(
     backend: &B,
     terms: &[DenseTerm<'_, T>],
@@ -399,14 +404,19 @@ where
             );
             // A non-finite QR diagonal (a panel column whose true norm
             // exceeds the real type's range) degenerates the
-            // certification machinery itself: the rank test and the
-            // estimator both read the factor this append could not
-            // produce. In adaptive mode that must not escape through any
-            // of the successful-coverage exits below (max-dimension,
-            // zero-norm, rank-deficient), so it errors here; fixed mode
-            // never claims certification and keeps relying on the
-            // elementwise result-boundary scans instead.
-            if adaptive && let QrAppendOutcome::NonFinite { diagnostic } = outcome {
+            // factorization itself, and the basis the accessor would
+            // then hand back spans an arbitrary subspace rather than the
+            // sketch's. A Householder pass can collapse the overflowed
+            // column onto an axis vector, so those columns can come back
+            // orthonormal and elementwise finite while pointing the
+            // wrong way — the elementwise scans have nothing to fire on,
+            // and neither stopping mode has anything to salvage;
+            // adaptive mode additionally loses the rank test and the
+            // estimator, which both read the factor this append could
+            // not produce. So the sweep errors here in both modes rather
+            // than emitting a state whose site tensors are silently
+            // wrong.
+            if let QrAppendOutcome::NonFinite { diagnostic } = outcome {
                 // The diagnostic is the degenerated diagonal magnitude,
                 // reported from the detection site (non-finite by
                 // construction).
@@ -479,12 +489,9 @@ where
         // isometry regardless of how block Gram-Schmidt fared across the
         // growth rounds. The cost is at most one O(rows p^2) factorization
         // per site — the same as a single full QR over the accumulated
-        // sketch. One reachable exception: after a NonFinite append —
-        // fixed mode only, since adaptive mode errored above — the
-        // degenerated factorization voids the accessor's isometry claim,
-        // and the result-boundary scans below bound the damage to finite
-        // values without restoring orthonormality (see the fixed-mode
-        // tolerance note at the append site).
+        // sketch. The accessor's caveat about a degenerated append does
+        // not apply here: such an append errors above, in either mode,
+        // so only factorizations that completed reach this point.
         let q = inc
             .into_orthonormal_q(backend)
             .expect("terminal re-orthonormalization: Q is a valid matrix");

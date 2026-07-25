@@ -192,12 +192,16 @@ impl<T: Scalar> IncrementalQr<T> {
     /// every appended column inside the span.
     ///
     /// After a [`QrAppendOutcome::NonFinite`] append the orthonormality
-    /// and span guarantees above do not apply: the degenerated
-    /// factorization can leave the stored basis non-finite or
-    /// non-orthonormal, and a single-append history returns it without
-    /// any repair pass. Consumers that keep such a basis must validate
-    /// the result themselves (the randomized compression sweep's
-    /// result-boundary scans are the model).
+    /// and span guarantees above do not apply, and a single-append
+    /// history returns the degenerated basis without any repair pass.
+    /// An elementwise-finite result is not evidence that the basis
+    /// survived: a backend whose QR overflows on a column can collapse
+    /// that column onto an axis vector, returning entries that are
+    /// finite and columns that are still mutually orthonormal while
+    /// spanning something other than the appended data. Screening such
+    /// a basis by scanning its elements therefore proves nothing — a
+    /// consumer that cannot afford an arbitrary span has to treat the
+    /// outcome itself as terminal.
     ///
     /// # Errors
     ///
