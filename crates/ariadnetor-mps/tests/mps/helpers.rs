@@ -26,9 +26,10 @@ pub(crate) fn cm_dense_tensor<T: ariadnetor_core::Scalar>(
 /// Fixed-rank SRC parameters pinned to `output_dim` and `seed`, leaving
 /// the rest at their defaults. Fixed mode reads only `output_dim`,
 /// `max_dim`, and `seed` for its behavior, though every field is still
-/// validated; the defaults leave `max_dim` unbounded, so `usize::MAX`
-/// selects the clamp-to-exactly-representable-rank regime while a small
-/// value selects that rank directly.
+/// validated. The default `max_dim` of `None` does not mean "no cap": it
+/// selects the computed per-bond rank bound, so `output_dim: usize::MAX`
+/// clamps to the exactly representable rank, while a small value selects
+/// that rank directly.
 pub(crate) fn fixed_rank_src_params(output_dim: usize, seed: u64) -> SuccessiveRandomizedParams {
     SuccessiveRandomizedParams {
         output_dim: Some(output_dim),
