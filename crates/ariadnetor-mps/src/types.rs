@@ -267,12 +267,12 @@ pub enum ApplyMethod {
     /// # Errors
     ///
     /// The only method whose dispatch can currently return an error:
-    /// [`ApplyError::NonFinite`] when a non-finite element reaches a
-    /// result boundary (both adaptive and fixed mode), or when adaptive
-    /// mode's certification machinery degenerates on a panel whose
-    /// column norm overflows the real type. See the variant doc for the
-    /// exact scope (pre-finishing-pass, detection locus, elementwise
-    /// state scans vs the adaptive certification check).
+    /// [`ApplyError::NonFinite`], in both adaptive and fixed mode, when
+    /// a non-finite element reaches a result boundary or when a sketch
+    /// panel whose column norm overflows the real type degenerates the
+    /// QR factorization. See the variant doc for the exact scope
+    /// (pre-finishing-pass, detection locus, elementwise state scans vs
+    /// the degenerated-factor check).
     ///
     /// # Panics
     ///
@@ -324,12 +324,14 @@ pub enum ApplyError {
     /// cover non-finite values arising only inside a requested
     /// `canonicalize` + `truncate`. The elementwise state scans do not
     /// reject a finite state whose Frobenius norm merely overflows the
-    /// scalar's real type; adaptive mode additionally reports this error
-    /// when a sketch panel's column norm overflow leaves the QR
-    /// factorization without a finite triangular factor — a
-    /// certification quantity, not a state element — because its
-    /// stopping rule cannot certify anything against that factor (see
-    /// the successive-randomized module doc). The diagnostic is carried
+    /// scalar's real type. Both stopping modes additionally report this
+    /// error when a sketch panel's column norm overflow leaves the QR
+    /// factorization without a finite triangular factor: the basis such
+    /// a factorization yields can be elementwise finite and still
+    /// column-orthonormal, leaving no state scan able to reject it,
+    /// while spanning an arbitrary subspace rather than the sketch's, so
+    /// the sites built from it would be silently wrong (see the
+    /// successive-randomized module doc). The diagnostic is carried
     /// as `f64` so the error type stays non-generic.
     #[error(
         "MPO-MPS apply produced a non-finite quantity (detected at site {site}): norm = {norm}"
@@ -346,8 +348,8 @@ pub enum ApplyError {
         /// The offending non-finite quantity (lossily cast to `f64`,
         /// non-finite by construction): the offending tensor's
         /// Frobenius norm when an elementwise scan fired, or the
-        /// degenerated QR diagonal magnitude when adaptive mode's
-        /// certification check fired.
+        /// degenerated QR diagonal magnitude when the degenerated-factor
+        /// check fired.
         norm: f64,
     },
 }

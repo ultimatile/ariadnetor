@@ -2,7 +2,8 @@
 
 use ariadnetor_linalg::{contract, permute_with_backend, tensordot};
 use ariadnetor_mps::{
-    ApplyMethod, Mpo, Mps, MpsOps, TensorChain, TruncateParams, apply_with_method,
+    ApplyMethod, Mpo, Mps, MpsOps, SuccessiveRandomizedParams, TensorChain, TruncateParams,
+    apply_with_method,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::MemoryOrder;
@@ -22,9 +23,26 @@ pub(crate) fn cm_dense_tensor<T: ariadnetor_core::Scalar>(
     Host::shared().dense(data, shape)
 }
 
-/// `apply_with_method` unwrapped: shared by tests whose inputs are finite,
-/// where an `Err` can only mean the apply contract itself broke. Tests that
-/// exercise the error path call `apply_with_method` directly.
+/// Fixed-rank SRC parameters pinned to `output_dim` and `seed`, leaving
+/// the rest at their defaults. Fixed mode reads only `output_dim`,
+/// `max_dim`, and `seed` for its behavior, though every field is still
+/// validated; the defaults leave `max_dim` unbounded, so `usize::MAX`
+/// selects the clamp-to-exactly-representable-rank regime while a small
+/// value selects that rank directly.
+pub(crate) fn fixed_rank_src_params(output_dim: usize, seed: u64) -> SuccessiveRandomizedParams {
+    SuccessiveRandomizedParams {
+        output_dim: Some(output_dim),
+        seed,
+        ..Default::default()
+    }
+}
+
+/// `apply_with_method` unwrapped: shared by tests whose inputs are finite
+/// and at ordinary magnitude, where an `Err` can only mean the apply
+/// contract itself broke. Finiteness alone is not enough — a sketch panel
+/// whose column norm outruns the scalar's range degenerates the SRC
+/// sweep's QR and errors on elementwise-finite input. Tests that exercise
+/// the error path call `apply_with_method` directly.
 pub(crate) fn apply_ok<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -40,7 +58,7 @@ where
     B: OpsFor<St>,
 {
     apply_with_method(backend, op, psi, params, method)
-        .expect("apply must succeed on finite inputs")
+        .expect("apply must succeed on finite inputs of ordinary magnitude")
 }
 
 /// Build a `DenseTensor<f64>` whose logical content matches `data` read

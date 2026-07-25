@@ -29,15 +29,19 @@ use ariadnetor_mps::{
 use ariadnetor_tensor::{DenseLayout, DenseStorage, Host, OpsFor};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
-/// `apply_with_method` unwrapped: the bench inputs are finite, so an `Err`
-/// can only mean the apply contract itself broke.
+/// `apply_with_method` unwrapped: the bench inputs are finite and at
+/// ordinary magnitude, so an `Err` can only mean the apply contract itself
+/// broke. Finiteness alone would not be enough — the SRC sweep also errors
+/// when a panel's column norm outruns the scalar's range, which no input
+/// here approaches.
 fn apply_ok<B: OpsFor<DenseStorage<f64>>>(
     backend: &B,
     mpo: &Mpo<DenseStorage<f64>, DenseLayout>,
     psi: &Mps<DenseStorage<f64>, DenseLayout>,
     method: ApplyMethod,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    apply_with_method(backend, mpo, psi, None, method).expect("apply must succeed on finite inputs")
+    apply_with_method(backend, mpo, psi, None, method)
+        .expect("apply must succeed on finite inputs of ordinary magnitude")
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +155,7 @@ fn bench_mpo_mps_apply(c: &mut Criterion) {
                         None,
                         adaptive_src,
                     )
-                    .expect("apply must succeed on finite inputs")
+                    .expect("apply must succeed on finite inputs of ordinary magnitude")
                 });
             },
         );

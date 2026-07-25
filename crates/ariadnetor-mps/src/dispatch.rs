@@ -172,8 +172,9 @@ pub trait MpsOps<T: Scalar>: sealed::Sealed {
     /// [`ApplyMethod::SuccessiveRandomized`](super::types::ApplyMethod::SuccessiveRandomized)).
     /// Dense-only:
     /// the block-sparse impl panics because the Gaussian sketch mixes
-    /// symmetry sectors. Returns [`ApplyError::NonFinite`] when non-finite
-    /// elements reach the sweep's result boundaries.
+    /// symmetry sectors. Returns [`ApplyError::NonFinite`] when
+    /// non-finite elements reach the sweep's result boundaries, or when
+    /// a panel's column norm overflow degenerates its QR factorization.
     fn apply_successive_randomized_k<B: OpsFor<Self::Storage>>(
         backend: &B,
         op: &Mpo<Self::Storage, Self::Layout>,
@@ -511,8 +512,10 @@ where
     /// # Errors
     ///
     /// Returns [`ApplyError::NonFinite`] when a non-finite element
-    /// reaches a result boundary of the underlying SRC sweep; `self` is
-    /// left unmodified in that case. See
+    /// reaches a result boundary of the underlying SRC sweep, or when an
+    /// elementwise-finite panel's column norm overflow degenerates that
+    /// sweep's QR factorization; `self` is left unmodified in either
+    /// case. See
     /// [`ApplyMethod::SuccessiveRandomized`](super::types::ApplyMethod::SuccessiveRandomized)
     /// for the exact contract.
     pub fn round_successive_randomized<T, B>(

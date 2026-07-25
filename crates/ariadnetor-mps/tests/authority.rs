@@ -39,9 +39,11 @@ use ariadnetor_tensor::{
     DenseStorage, DenseTensor, Direction, OpsFor, Storage, StorageFor, TensorLayout, U1Sector,
 };
 
-/// `apply_with_method` unwrapped: the fixtures are finite, so an `Err`
-/// can only mean the apply contract itself broke. These tests assert on
-/// the backend's dispatch count, not the returned state.
+/// `apply_with_method` unwrapped: the fixtures are finite and at ordinary
+/// magnitude, so an `Err` can only mean the apply contract itself broke —
+/// finiteness alone would not be enough, since the SRC sweep also errors
+/// when a panel's column norm outruns the scalar's range. These tests
+/// assert on the backend's dispatch count, not the returned state.
 fn apply_ok<T, St, L, B>(
     backend: &B,
     op: &Mpo<St, L>,
@@ -57,7 +59,7 @@ where
     B: OpsFor<St>,
 {
     apply_with_method(backend, op, psi, params, method)
-        .expect("apply must succeed on finite inputs")
+        .expect("apply must succeed on finite inputs of ordinary magnitude")
 }
 
 // ---------------------------------------------------------------------------

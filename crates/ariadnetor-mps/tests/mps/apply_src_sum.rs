@@ -18,9 +18,9 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, linear_combine};
 
 use super::helpers::{
-    apply_ok, cm_dense_tensor, densify, is_right_canonical, make_3site_test_mpo,
-    make_3site_test_mps, make_4site_mps, make_total_n_dense_mpo, relative_frobenius,
-    with_site_scaled,
+    apply_ok, cm_dense_tensor, densify, fixed_rank_src_params, is_right_canonical,
+    make_3site_test_mpo, make_3site_test_mps, make_4site_mps, make_total_n_dense_mpo,
+    relative_frobenius, with_site_scaled,
 };
 
 type DenseMps<T> = Mps<DenseStorage<T>, DenseLayout>;
@@ -29,11 +29,7 @@ type DenseMpo<T> = Mpo<DenseStorage<T>, DenseLayout>;
 /// Fixed-rank params clamped to the exactly representable rank at every
 /// bond, where the sum is exact with probability one.
 fn exact_rank_params(seed: u64) -> SuccessiveRandomizedParams {
-    SuccessiveRandomizedParams {
-        output_dim: Some(usize::MAX),
-        seed,
-        ..Default::default()
-    }
+    fixed_rank_src_params(usize::MAX, seed)
 }
 
 /// Densified reference for `sum_t coeffs[t] * H_t psi_t`: each term goes

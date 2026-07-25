@@ -558,6 +558,47 @@ fn overflow_norm_first_append_reports_non_finite_not_rank_deficient() {
 }
 
 #[test]
+fn overflow_norm_basis_is_finite_and_orthonormal_but_spans_elsewhere() {
+    // The property `into_orthonormal_q`'s doc warns about, and the reason
+    // consumers cannot screen a degenerated append by scanning elements:
+    // the overflowed column collapses onto an axis vector, so the basis
+    // comes back finite and orthonormal — passing any elementwise or
+    // isometry test — while spanning a direction the input never had.
+    // Pinning it here keeps the prose on this accessor, and the consumers
+    // that rely on it, from resting on an unobserved backend behavior.
+    let backend = NativeBackend::new();
+    let block = overflow_norm_column();
+    let mut inc = IncrementalQr::<f64>::new(4, false);
+    let outcome = inc.append(&backend, &block).expect("append is Ok");
+    assert!(
+        matches!(outcome, QrAppendOutcome::NonFinite { .. }),
+        "expected NonFinite, got {outcome:?}"
+    );
+    let q = inc
+        .into_orthonormal_q(&backend)
+        .expect("single-append basis");
+
+    assert!(
+        q.data_slice().iter().all(|x| x.is_finite()),
+        "the degenerated basis is elementwise finite, so no scan rejects it"
+    );
+    let self_overlap: f64 = (0..4).map(|i| q.get([i, 0]) * q.get([i, 0])).sum();
+    assert!(
+        (self_overlap - 1.0).abs() < 1e-12,
+        "the degenerated basis is still orthonormal: got {self_overlap}"
+    );
+
+    // The input's direction is the uniform vector, so a basis that spanned
+    // it would overlap every coordinate equally. Instead one coordinate
+    // carries the whole column.
+    let max_component = (0..4).map(|i| q.get([i, 0]).abs()).fold(0.0, f64::max);
+    assert!(
+        (max_component - 1.0).abs() < 1e-12,
+        "the overflowed column collapses onto an axis vector: got {max_component}"
+    );
+}
+
+#[test]
 fn overflow_norm_after_moderate_append_reports_non_finite_not_full_rank() {
     // Orthogonalizing an overflow-norm block against an existing basis
     // pushes NaN into the candidate diagonal (measured). NaN fails every
