@@ -7,12 +7,12 @@
 # discoverable; or when it has a canonical form that must not drift
 # run-to-run. Short commands whose flags are routinely varied stay ad hoc
 # (a fixed task there only removes flexibility). Genuinely ad-hoc QA
-# tools that sit outside the gate (semver-checks, the bare shipped
-# `cargo mutants` pass) are listed in CONTRIBUTING.md rather than
-# registered here; composite QA loops with a canonical form
-# (external-types, public-api) and the feature-gated mutation passes
-# (mutants-arpack, mutants-hptt — whose non-obvious, order-sensitive
-# flags must not drift) earn a task.
+# tools that sit outside the gate (semver-checks) are listed in
+# CONTRIBUTING.md rather than registered here; composite QA loops with a
+# canonical form (external-types, public-api) and the mutation passes
+# (mutants, mutants-arpack, mutants-hptt) earn a task: their scratch
+# redirect must not drift, and the two scoped passes carry non-obvious
+# flags besides.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
@@ -24,6 +24,16 @@
 
 [config]
 default_to_workspace = false
+
+# cargo-mutants copies the workspace into $TMPDIR and mutates the copy; the
+# OS temp cleaner deletes that copy by age (3 days on macOS) while a long
+# pass is still using it. Under target/ nothing sweeps it — but `cargo
+# clean` does, which reclaims a killed run's leftovers and destroys a live
+# pass's copies alike, and reaches neither if CARGO_TARGET_DIR moves cargo's
+# target elsewhere. Each of the three passes below sets TMPDIR from this;
+# dropping that reintroduces the failure.
+[env]
+MUTANTS_SCRATCH = "${CARGO_MAKE_WORKING_DIRECTORY}/target/mutants-scratch"
 
 # ============================================================================
 # Build tasks
@@ -58,7 +68,7 @@ args = ["test", "--workspace", "--lib"]
 # ============================================================================
 
 [tasks.clean]
-description = "Remove build artifacts (cargo clean)"
+description = "Remove build artifacts (cargo clean). Also deletes a running mutation pass's scratch copies — do not run one while a pass is in flight"
 command = "cargo"
 args = ["clean"]
 
@@ -237,8 +247,28 @@ for crate in ariadnetor-core ariadnetor-tensor ariadnetor-linalg ariadnetor-nati
 done
 '''
 
-# Faithful mutation passes for code the shipped `cargo mutants` run cannot
-# reach. The shipped run (.cargo/mutants.toml, default features) builds
+# cargo-mutants exits with "create temp dir" if TMPDIR does not exist.
+[tasks.mutants-scratch]
+private = true
+script_runner = "@shell"
+script = 'mkdir -p "${MUTANTS_SCRATCH}"'
+
+# The shipped pass, with the scratch redirect a bare `cargo mutants` lacks.
+# `${@}` keeps this a drop-in for the bare command: without it cargo-make
+# drops whatever follows the task name in silence, so `cargo make mutants
+# --list` would launch the full multi-day pass. Pass flags WITHOUT a `--`
+# separator, for the reason the release task's comment gives — here a
+# forwarded `--` would additionally make cargo-mutants read the rest as
+# cargo-test arguments.
+[tasks.mutants]
+description = "Shipped mutation pass (default features, hptt off, arpack off); extra cargo-mutants flags forward, no -- separator"
+env = { TMPDIR = "${MUTANTS_SCRATCH}" }
+dependencies = ["mutants-scratch"]
+command = "cargo"
+args = ["mutants", "${@}"]
+
+# Faithful mutation passes for code the shipped `cargo make mutants` run
+# cannot reach. The shipped run (.cargo/mutants.toml, default features) builds
 # hptt OFF and arpack OFF, so two regions never see a live mutant: the
 # ARPACK backend (never compiled) and the HPTT transpose kernels (not
 # compiled under the hptt-off default). These two passes restore them. Each
@@ -264,8 +294,13 @@ done
 # kill these mutants; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
+# Neither scoped pass takes `${@}`, unlike the shipped one: cargo-mutants
+# treats a repeated `--file` / `--re` as an addition, so forwarding here
+# would turn an attempt to narrow the pass into a silent widening.
 [tasks.mutants-arpack]
 description = "Mutation pass over the feature-gated ARPACK backend (cargo mutants --features arpack); requires the system ARPACK library"
+env = { TMPDIR = "${MUTANTS_SCRATCH}" }
+dependencies = ["mutants-scratch"]
 command = "cargo"
 args = [
     "mutants",
@@ -300,6 +335,8 @@ args = [
 # default mutants.out.
 [tasks.mutants-hptt]
 description = "Mutation pass over the feature-gated HPTT transpose kernels (cargo mutants --features hptt)"
+env = { TMPDIR = "${MUTANTS_SCRATCH}" }
+dependencies = ["mutants-scratch"]
 command = "cargo"
 args = [
     "mutants",

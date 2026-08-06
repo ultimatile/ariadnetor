@@ -29,7 +29,7 @@ These are run on demand, not wired into `gate`:
 cargo make external-types  # layer-leak gate: no lower-layer/foreign type leaks through a public API
 cargo make public-api      # print the public API surface per crate (review surface changes)
 cargo semver-checks        # semver-compatibility check (once a baseline is published)
-cargo mutants              # mutation testing (shipped pass; faithful run is all three below)
+cargo make mutants         # mutation testing (shipped pass; faithful run is all three below)
 cargo make litmus          # pluggability litmus: host-pinned crates against the alternate Host substrate
 ```
 
@@ -59,17 +59,24 @@ repo — it is a `PATH` tool like the other ad-hoc QA commands. If a future
 nightly outpaces the tool's supported format, bump the tool or pin a
 compatible nightly.
 
-`cargo mutants` runs the shipped mutation pass with default features, so
-hptt is OFF and arpack OFF. Two feature-gated regions fall outside that
+`cargo make mutants` runs the shipped mutation pass with default features,
+so hptt is OFF and arpack OFF. Two feature-gated regions fall outside that
 pass by construction — the ARPACK backend is never compiled, and the HPTT
 transpose kernels are not compiled (hptt off by default) — so each has a
 companion task and the faithful run is all three:
 
 ```bash
-cargo mutants              # shipped pass: default features (hptt off, arpack off)
+cargo make mutants         # shipped pass: default features (hptt off, arpack off)
 cargo make mutants-arpack  # the #[cfg(feature = "arpack")] krylov backend
 cargo make mutants-hptt    # the #[cfg(feature = "hptt")] HPTT transpose kernels
 ```
+
+A bare `cargo mutants` keeps its working copies in the system temp
+directory, which the OS deletes by age, so a run long enough to cross that
+threshold breaks partway through. `cargo make mutants` puts them under
+`target/` instead — use it for the shipped pass. A run that finishes cleans
+up after itself; a killed one leaves its copies in `target/mutants-scratch`
+for you to remove.
 
 `mutants-arpack` builds with `--features arpack`, compiling the ARPACK
 backend that the shipped pass (arpack off by default) never builds — which

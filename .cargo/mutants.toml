@@ -12,6 +12,15 @@
 # CONTRIBUTING.md). Read this run's missed.txt knowing those regions are
 # audited there, not here.
 
+# Pinned, not merely left at the default: the mutants tasks put cargo-mutants'
+# scratch directory under target/ (Makefile.toml explains why), so copying
+# target/ into each new build directory would pull the scratch — and every
+# build directory already inside it — along with it, until the path runs out
+# of length. Pinning survives a change to cargo-mutants' own default; it does
+# not survive `--copy-target true` on the command line, which the shipped
+# `cargo make mutants` task forwards, so do not pass that either.
+copy_target = false
+
 # Reduce timeout from default 5x to 2x baseline.
 # Most timeouts are FFI glue mutations (gemm/qr/lq/svd/solve/transpose)
 # that cause LAPACK to hang on garbage input — 2x is enough to detect them.

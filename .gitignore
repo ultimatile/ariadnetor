@@ -4,5 +4,12 @@
 # Runtime artifacts produced by calibration sweep scripts
 /sweep_*.log
 
+# Shipped mutation pass output. Kept at the repo root rather than under
+# target/ on purpose: a pass costs days, and `cargo clean` would throw the
+# results away with the build artifacts. The scoped arpack / hptt passes do
+# write under target/ — they are small enough to just regenerate.
+/mutants.out
+/mutants.out.old
+
 # Python bytecode cache from the pre-commit audit scripts
 __pycache__/
