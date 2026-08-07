@@ -6,24 +6,24 @@
 # here. ariadnetor-native is a dev-dependency only, so no native type may
 # appear; the absence of any ariadnetor_native entry is the enforced invariant.
 allowed_external_types = [
-    "ariadnetor_core::backend::BackendError",
-    "ariadnetor_core::backend::ComputeBackend",
-    "ariadnetor_core::backend::ExecPolicy",
-    "ariadnetor_core::scalar::Scalar",
-    "ariadnetor_tensor::block_sparse::Direction",
-    "ariadnetor_tensor::block_sparse::storage::BlockSparseStorage",
-    "ariadnetor_tensor::capability::OpsFor",
-    "ariadnetor_tensor::dense::storage::DenseStorage",
-    "ariadnetor_tensor::error::TensorError",
-    "ariadnetor_tensor::sector::Sector",
-    # The sealed dispatch traits keep `type Storage: Storage`, exposing this
-    # ariadnetor_tensor storage trait (same layer; mirrors the `MpsOps` bound shape).
-    "ariadnetor_tensor::storage::Storage",
-    # The tensor-keyed dispatch traits (svd / trunc_svd / qr / lq / contract /
-    # diagonal_scale) take `&Self` and return `Tensor` outputs, so the generic
-    # form of the already-allowed `DenseTensor` / `BlockSparseTensor` aliases
-    # appears in the public API.
-    "ariadnetor_tensor::tensor::Tensor",
-    "ariadnetor_tensor::tensor::BlockSparseTensor",
-    "ariadnetor_tensor::tensor::DenseTensor",
+  "ariadnetor_core::backend::BackendError",
+  "ariadnetor_core::backend::ComputeBackend",
+  "ariadnetor_core::backend::ExecPolicy",
+  "ariadnetor_core::scalar::Scalar",
+  "ariadnetor_tensor::block_sparse::Direction",
+  "ariadnetor_tensor::block_sparse::storage::BlockSparseStorage",
+  "ariadnetor_tensor::capability::OpsFor",
+  "ariadnetor_tensor::dense::storage::DenseStorage",
+  "ariadnetor_tensor::error::TensorError",
+  "ariadnetor_tensor::sector::Sector",
+  # The sealed dispatch traits keep `type Storage: Storage`, exposing this
+  # ariadnetor_tensor storage trait (same layer; mirrors the `MpsOps` bound shape).
+  "ariadnetor_tensor::storage::Storage",
+  # The tensor-keyed dispatch traits (svd / trunc_svd / qr / lq / contract /
+  # diagonal_scale) take `&Self` and return `Tensor` outputs, so the generic
+  # form of the already-allowed `DenseTensor` / `BlockSparseTensor` aliases
+  # appears in the public API.
+  "ariadnetor_tensor::tensor::Tensor",
+  "ariadnetor_tensor::tensor::BlockSparseTensor",
+  "ariadnetor_tensor::tensor::DenseTensor",
 ]

@@ -2,11 +2,37 @@
 name = "ariadnetor-mps"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 description = "Matrix Product State / Operator (MPS / MPO) data structures and operations for ariadnetor"
-keywords = ["tensor-network", "mps", "mpo", "dmrg"]
-categories = ["science", "mathematics"]
+repository.workspace = true
+license.workspace = true
+keywords = ["dmrg", "mpo", "mps", "tensor-network"]
+categories = ["mathematics", "science"]
+
+[lib]
+name = "ariadnetor_mps"
+path = "src/lib.rs"
+
+[dependencies]
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.6" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
+ciborium = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+# Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
+# keeps the test-only feature out of normal builds. See ariadnetor-tensor's
+# `test-fixtures` feature.
+ariadnetor-tensor = {
+  path = "../ariadnetor-tensor",
+  features = ["test-fixtures"]
+}
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel (off by default
@@ -15,29 +41,6 @@ hptt = ["ariadnetor-native/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
-
-[dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
-ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.6" }
-ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
-num-traits = { workspace = true }
-thiserror = { workspace = true }
-serde = { workspace = true }
-ciborium = { workspace = true }
-rand = { workspace = true }
-rand_distr = { workspace = true }
-
-[dev-dependencies]
-approx = { workspace = true }
-# Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
-# keeps the test-only feature out of normal builds. See ariadnetor-tensor's
-# `test-fixtures` feature.
-ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"] }
-
-[lib]
-name = "ariadnetor_mps"
-path = "src/lib.rs"
 
 [lints]
 workspace = true

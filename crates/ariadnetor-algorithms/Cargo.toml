@@ -2,11 +2,49 @@
 name = "ariadnetor-algorithms"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 description = "Tensor-network algorithms built on ariadnetor"
-keywords = ["tensor-network", "dmrg", "mps", "physics"]
-categories = ["science", "mathematics"]
+repository.workspace = true
+license.workspace = true
+keywords = ["dmrg", "mps", "physics", "tensor-network"]
+categories = ["mathematics", "science"]
+
+[lib]
+name = "ariadnetor_algorithms"
+path = "src/lib.rs"
+
+[[bench]]
+harness = false
+name = "dmrg_local_eigensolver"
+
+[[bench]]
+harness = false
+name = "mpo_mps_apply"
+
+[dependencies]
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.6" }
+ariadnetor-mps = { path = "../ariadnetor-mps", version = "0.0.6" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
+arpack = { version = "0.0.3", optional = true }
+num-complex = { workspace = true, optional = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+algorithms-fixtures = { path = "../../algorithms-fixtures" }
+approx = { workspace = true }
+# Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
+# keeps the test-only feature out of normal builds. See ariadnetor-tensor's
+# `test-fixtures` feature.
+ariadnetor-tensor = {
+  path = "../ariadnetor-tensor",
+  features = ["test-fixtures"]
+}
+criterion = { workspace = true }
+num-complex = { workspace = true }
+rand = { workspace = true }
 
 [features]
 default = []
@@ -17,41 +55,6 @@ hptt = ["ariadnetor-native/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
-
-[dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
-ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.6" }
-ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
-ariadnetor-mps = { path = "../ariadnetor-mps", version = "0.0.6" }
-num-traits = { workspace = true }
-num-complex = { workspace = true, optional = true }
-rand = { workspace = true }
-arpack = { version = "0.0.3", optional = true }
-thiserror = { workspace = true }
-
-[dev-dependencies]
-approx = { workspace = true }
-# Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
-# keeps the test-only feature out of normal builds. See ariadnetor-tensor's
-# `test-fixtures` feature.
-ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"] }
-criterion = { workspace = true }
-num-complex = { workspace = true }
-rand = { workspace = true }
-algorithms-fixtures = { path = "../../algorithms-fixtures" }
-
-[lib]
-name = "ariadnetor_algorithms"
-path = "src/lib.rs"
-
-[[bench]]
-name = "dmrg_local_eigensolver"
-harness = false
-
-[[bench]]
-name = "mpo_mps_apply"
-harness = false
 
 [lints]
 workspace = true

@@ -2,25 +2,25 @@
 name = "ariadnetor-core"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 description = "Core traits and types for ariadnetor tensor library"
-keywords = ["tensor", "tensor-network", "backend", "traits"]
-categories = ["science", "mathematics"]
+repository.workspace = true
+license.workspace = true
+keywords = ["backend", "tensor", "tensor-network", "traits"]
+categories = ["mathematics", "science"]
+
+[lib]
+name = "ariadnetor_core"
+path = "src/lib.rs"
 
 [dependencies]
+dashmap = "6.1"
 num-complex = { workspace = true }
 num-traits = { workspace = true }
-dashmap = "6.1"
 once_cell = "1.20"
 thiserror = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
-
-[lib]
-name = "ariadnetor_core"
-path = "src/lib.rs"
 
 [lints]
 workspace = true

@@ -10,6 +10,13 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+      - id: tombi-format
+        name: tombi format
+        description: Format staged TOML files with Tombi
+        entry: uvx tombi==1.2.7 format
+        language: system
+        types: [toml]
+        exclude: (^|/)Cargo\.lock$
       - id: cargo-clippy
         name: cargo clippy
         description: Lint Rust code via the shared `cargo make clippy` gate (denies warnings; covers all targets including tests)

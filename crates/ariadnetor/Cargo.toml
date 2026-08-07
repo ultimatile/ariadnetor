@@ -2,11 +2,28 @@
 name = "ariadnetor"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 description = "Tensor network library in Rust"
-keywords = ["tensor", "tensor-network", "linear-algebra", "physics", "mps"]
-categories = ["science", "mathematics"]
+repository.workspace = true
+license.workspace = true
+keywords = ["linear-algebra", "mps", "physics", "tensor", "tensor-network"]
+categories = ["mathematics", "science"]
+
+[lib]
+name = "ariadnetor"
+path = "src/lib.rs"
+
+[dependencies]
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.6" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
+
+[dev-dependencies]
+# Enables `ariadnetor_tensor::test_fixtures` for this crate's integration tests.
+ariadnetor-tensor = {
+  path = "../ariadnetor-tensor",
+  features = ["test-fixtures"]
+}
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel (off by default
@@ -15,20 +32,6 @@ hptt = ["ariadnetor-native/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches the umbrella's
 # public-API host-ergonomic tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
-
-[dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
-ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.6" }
-ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
-
-[dev-dependencies]
-# Enables `ariadnetor_tensor::test_fixtures` for this crate's integration tests.
-ariadnetor-tensor = { path = "../ariadnetor-tensor", features = ["test-fixtures"] }
-
-[lib]
-name = "ariadnetor"
-path = "src/lib.rs"
 
 [lints]
 workspace = true

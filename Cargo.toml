@@ -1,25 +1,21 @@
 [workspace]
-members = [
-  "crates/ariadnetor-core",
-  "crates/ariadnetor-tensor",
-  "crates/ariadnetor-linalg",
-  "crates/ariadnetor-native",
-  "crates/ariadnetor-mps",
-  "crates/ariadnetor-algorithms",
-  "crates/ariadnetor",
-  "algorithms-fixtures",
-]
 resolver = "2"
+members = [
+  "algorithms-fixtures",
+  "crates/ariadnetor",
+  "crates/ariadnetor-algorithms",
+  "crates/ariadnetor-core",
+  "crates/ariadnetor-linalg",
+  "crates/ariadnetor-mps",
+  "crates/ariadnetor-native",
+  "crates/ariadnetor-tensor",
+]
 
 [workspace.package]
 version = "0.0.6"
 edition = "2024"
-license = "MIT OR Apache-2.0"
 repository = "https://github.com/ultimatile/ariadnetor"
-
-[workspace.lints.rust]
-dead_code = "forbid"
-unreachable_pub = "warn"
+license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 # Linear algebra
@@ -43,9 +39,9 @@ rayon = "1"
 # Error handling
 thiserror = "2"
 
+ciborium = "0.2"
 # Serialization (self-describing metadata via CBOR; numeric bodies are raw LE)
 serde = { version = "1", features = ["derive"] }
-ciborium = "0.2"
 
 # Dev dependencies
 approx = "0.5"
@@ -53,6 +49,10 @@ criterion = { version = "0.8", features = ["html_reports"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 rstest = "0.26"
 syn = { version = "3", features = ["full", "visit"] }
+
+[workspace.lints.rust]
+dead_code = "forbid"
+unreachable_pub = "warn"
 
 [profile.bench]
 debug = "line-tables-only"

@@ -7,24 +7,24 @@
 # type path (not by use site), so any OTHER ariadnetor_native type reaching the
 # public API is flagged as a layer leak to fix, not to whitelist.
 allowed_external_types = [
-    "ariadnetor_core::backend::ComputeBackend",
-    "ariadnetor_core::backend::MemoryOrder",
-    "ariadnetor_core::contraction_error::ContractionError",
-    "ariadnetor_core::einsum::compute_permutation",
-    "ariadnetor_core::einsum::ContractionPlan",
-    "ariadnetor_core::einsum::EinsumExpr",
-    "ariadnetor_core::scalar::Scalar",
-    "ariadnetor_native::NativeBackend",
-    "num_complex::Complex",
-    "num_traits::identities::One",
-    "num_traits::identities::Zero",
-    "rand_core::Rng",
-    "rand::distr::distribution::Distribution",
-    # The Mid-layer serialization DTOs (ScalarTag / SectorTag / BodyMeta / …)
-    # derive serde for the self-describing CBOR metadata, so serde's traits
-    # surface on this crate's Mid-layer API. Deliberate: serde is the codec's
-    # metadata format. The end-user save/load surface (ariadnetor-mps) stays
-    # serde-free (impl Write / impl Read).
-    "serde::ser::Serialize",
-    "serde::de::Deserialize",
+  "ariadnetor_core::backend::ComputeBackend",
+  "ariadnetor_core::backend::MemoryOrder",
+  "ariadnetor_core::contraction_error::ContractionError",
+  "ariadnetor_core::einsum::compute_permutation",
+  "ariadnetor_core::einsum::ContractionPlan",
+  "ariadnetor_core::einsum::EinsumExpr",
+  "ariadnetor_core::scalar::Scalar",
+  "ariadnetor_native::NativeBackend",
+  "num_complex::Complex",
+  "num_traits::identities::One",
+  "num_traits::identities::Zero",
+  "rand_core::Rng",
+  "rand::distr::distribution::Distribution",
+  # The Mid-layer serialization DTOs (ScalarTag / SectorTag / BodyMeta / …)
+  # derive serde for the self-describing CBOR metadata, so serde's traits
+  # surface on this crate's Mid-layer API. Deliberate: serde is the codec's
+  # metadata format. The end-user save/load surface (ariadnetor-mps) stays
+  # serde-free (impl Write / impl Read).
+  "serde::ser::Serialize",
+  "serde::de::Deserialize",
 ]

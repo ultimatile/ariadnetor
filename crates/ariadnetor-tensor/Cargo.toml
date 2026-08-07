@@ -2,11 +2,45 @@
 name = "ariadnetor-tensor"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 description = "Tensor library with support for dense and block-sparse tensors"
-keywords = ["tensor", "block-sparse", "tensor-network", "symmetry"]
-categories = ["science", "mathematics"]
+repository.workspace = true
+license.workspace = true
+keywords = ["block-sparse", "symmetry", "tensor", "tensor-network"]
+categories = ["mathematics", "science"]
+
+[lib]
+name = "ariadnetor_tensor"
+path = "src/lib.rs"
+
+[[bench]]
+harness = false
+name = "dense_ops"
+
+[[bench]]
+harness = false
+name = "dense_tensor_scalar_ops"
+
+[dependencies]
+aligned-vec = { workspace = true }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
+# Plain dependency: `ariadnetor-native` defaults to no `hptt`, so this stays
+# pure-Rust unless a consumer opts into this crate's `hptt` feature.
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
+ciborium = { workspace = true }
+num-complex = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+# Self dev-dependency enabling `test-fixtures` for this crate's own
+# integration tests (`tests/*.rs`): they are separate crates that link the
+# non-`cfg(test)` lib build, so they reach `test_fixtures` only via the feature.
+ariadnetor-tensor = { path = ".", features = ["test-fixtures"] }
+criterion = { workspace = true }
+rand = { workspace = true }
 
 [features]
 # Opt-in passthrough enabling the native HPTT transpose kernel (off by default
@@ -20,40 +54,6 @@ pluggability-litmus = []
 # crates' tests can dev-depend on them. Test-only: under resolver v2 a
 # dev-dependency feature stays out of normal/published builds.
 test-fixtures = []
-
-[dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
-# Plain dependency: `ariadnetor-native` defaults to no `hptt`, so this stays
-# pure-Rust unless a consumer opts into this crate's `hptt` feature.
-ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
-aligned-vec = { workspace = true }
-num-complex = { workspace = true }
-num-traits = { workspace = true }
-rand = { workspace = true }
-thiserror = { workspace = true }
-serde = { workspace = true }
-ciborium = { workspace = true }
-
-[dev-dependencies]
-approx = { workspace = true }
-criterion = { workspace = true }
-rand = { workspace = true }
-# Self dev-dependency enabling `test-fixtures` for this crate's own
-# integration tests (`tests/*.rs`): they are separate crates that link the
-# non-`cfg(test)` lib build, so they reach `test_fixtures` only via the feature.
-ariadnetor-tensor = { path = ".", features = ["test-fixtures"] }
-
-[[bench]]
-name = "dense_ops"
-harness = false
-
-[[bench]]
-name = "dense_tensor_scalar_ops"
-harness = false
-
-[lib]
-name = "ariadnetor_tensor"
-path = "src/lib.rs"
 
 [lints]
 workspace = true

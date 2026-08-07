@@ -11,9 +11,9 @@
 # leaking directly into the umbrella is flagged. A lower-layer type laundered
 # through a workspace-crate alias is caught instead at that crate's own gate.
 allowed_external_types = [
-    "ariadnetor_core::*",
-    "ariadnetor_tensor::*",
-    "ariadnetor_linalg::*",
-    "ariadnetor_native::NativeBackend",
-    "num_complex::Complex",
+  "ariadnetor_core::*",
+  "ariadnetor_tensor::*",
+  "ariadnetor_linalg::*",
+  "ariadnetor_native::NativeBackend",
+  "num_complex::Complex",
 ]

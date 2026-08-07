@@ -2,18 +2,15 @@
 name = "ariadnetor-native"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 description = "Native backend for ariadnetor (faer; optional HPTT transpose)"
-keywords = ["tensor", "backend", "faer", "hptt", "transpose"]
-categories = ["science", "mathematics"]
+repository.workspace = true
+license.workspace = true
+keywords = ["backend", "faer", "hptt", "tensor", "transpose"]
+categories = ["mathematics", "science"]
 
-[features]
-# `hptt` is opt-in: the HPTT transpose kernel pulls a C++/CMake build, so the
-# default stays pure-Rust. Enable it directly or via a dependent crate's `hptt`
-# passthrough to use the accelerated kernel.
-default = []
-hptt = ["dep:hptt"]
+[lib]
+name = "ariadnetor_native"
+path = "src/lib.rs"
 
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
@@ -26,9 +23,12 @@ rayon = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 
-[lib]
-name = "ariadnetor_native"
-path = "src/lib.rs"
+[features]
+# `hptt` is opt-in: the HPTT transpose kernel pulls a C++/CMake build, so the
+# default stays pure-Rust. Enable it directly or via a dependent crate's `hptt`
+# passthrough to use the accelerated kernel.
+default = []
+hptt = ["dep:hptt"]
 
 [lints]
 workspace = true

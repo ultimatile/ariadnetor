@@ -138,7 +138,19 @@ args = ["bench", "-p", "ariadnetor-tensor"]
 [tasks.bench-linalg]
 description = "Run the linalg Criterion regression benches (scalar_ops, block_sparse_ops, reorder_sandwich, tridiag_eigh); excludes the on-demand sweep_* instruments"
 command = "cargo"
-args = ["bench", "-p", "ariadnetor-linalg", "--bench", "scalar_ops", "--bench", "block_sparse_ops", "--bench", "reorder_sandwich", "--bench", "tridiag_eigh"]
+args = [
+  "bench",
+  "-p",
+  "ariadnetor-linalg",
+  "--bench",
+  "scalar_ops",
+  "--bench",
+  "block_sparse_ops",
+  "--bench",
+  "reorder_sandwich",
+  "--bench",
+  "tridiag_eigh"
+]
 
 # Lanczos arm by default; the ARPACK arm is feature-gated, run ad hoc via
 # `cargo bench -p ariadnetor-algorithms --features arpack`.
@@ -200,13 +212,19 @@ dependencies = ["fmt", "check", "test"]
 description = "Pluggability litmus: build + test the host-pinned crates with the alternate Host substrate (cargo make litmus)"
 command = "cargo"
 args = [
-    "test",
-    "-p", "ariadnetor-tensor",
-    "-p", "ariadnetor-linalg",
-    "-p", "ariadnetor-mps",
-    "-p", "ariadnetor-algorithms",
-    "-p", "ariadnetor",
-    "--features", "pluggability-litmus",
+  "test",
+  "-p",
+  "ariadnetor-tensor",
+  "-p",
+  "ariadnetor-linalg",
+  "-p",
+  "ariadnetor-mps",
+  "-p",
+  "ariadnetor-algorithms",
+  "-p",
+  "ariadnetor",
+  "--features",
+  "pluggability-litmus",
 ]
 
 # Layer-leak gate: cargo-check-external-types verifies that no lower-layer or
@@ -303,13 +321,19 @@ env = { TMPDIR = "${MUTANTS_SCRATCH}" }
 dependencies = ["mutants-scratch"]
 command = "cargo"
 args = [
-    "mutants",
-    "-p", "ariadnetor-algorithms",
-    "--features", "arpack",
-    "--file", "crates/ariadnetor-algorithms/src/krylov/arpack.rs",
-    "--file", "crates/ariadnetor-algorithms/src/dmrg/solver.rs",
-    "--test-workspace", "false",
-    "--output", "target/mutants-arpack",
+  "mutants",
+  "-p",
+  "ariadnetor-algorithms",
+  "--features",
+  "arpack",
+  "--file",
+  "crates/ariadnetor-algorithms/src/krylov/arpack.rs",
+  "--file",
+  "crates/ariadnetor-algorithms/src/dmrg/solver.rs",
+  "--test-workspace",
+  "false",
+  "--output",
+  "target/mutants-arpack",
 ]
 
 # HPTT-kernel pass: to_hptt_order / to_hptt_num_threads / hptt_f64 / hptt_f32
@@ -339,11 +363,17 @@ env = { TMPDIR = "${MUTANTS_SCRATCH}" }
 dependencies = ["mutants-scratch"]
 command = "cargo"
 args = [
-    "mutants",
-    "-p", "ariadnetor-native",
-    "--features", "hptt",
-    "--file", "crates/ariadnetor-native/src/transpose.rs",
-    "--re", "hptt_f64|hptt_f32|hptt_c64|hptt_c32|to_hptt_order|to_hptt_num_threads",
-    "--test-workspace", "false",
-    "--output", "target/mutants-hptt",
+  "mutants",
+  "-p",
+  "ariadnetor-native",
+  "--features",
+  "hptt",
+  "--file",
+  "crates/ariadnetor-native/src/transpose.rs",
+  "--re",
+  "hptt_f64|hptt_f32|hptt_c64|hptt_c32|to_hptt_order|to_hptt_num_threads",
+  "--test-workspace",
+  "false",
+  "--output",
+  "target/mutants-hptt",
 ]
