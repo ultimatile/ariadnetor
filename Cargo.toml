@@ -47,7 +47,7 @@ serde = { version = "1", features = ["derive"] }
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
-rstest = "0.26"
+rstest = "0.27"
 syn = { version = "3", features = ["full", "visit"] }
 
 [workspace.lints.rust]
