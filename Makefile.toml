@@ -12,7 +12,7 @@
 # canonical form (external-types, public-api) and the mutation passes
 # (mutants, mutants-arpack, mutants-hptt) earn a task: their scratch
 # redirect must not drift, and the two scoped passes carry non-obvious
-# flags besides.
+# flags besides. mutants-sharded earns one as the entry point to a script.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
@@ -290,61 +290,19 @@ args = ["mutants", "${@}"]
 # the slow path: file scanners that watch the user area (endpoint security,
 # Spotlight) inspect every build product under target/mutants-scratch. This
 # task leaves TMPDIR alone, so the copies go back to the system temp
-# directory, and stays under the temp cleaner's age threshold by splitting
-# the pass into MUTANTS_SHARDS consecutive `--shard k/n` runs — each run
-# makes a fresh copy, so no copy lives longer than one shard takes. Pick n
-# so that one shard finishes well inside the threshold.
-# `--sharding round-robin` is REQUIRED for a faithful result. The baseline
-# tests only the packages that own the shard's mutants, and the test timeout
-# is derived from that baseline, while test_workspace = true runs the whole
-# workspace against every mutant. The default `slice` sharding hands most
-# shards a single package, whose baseline is far shorter than the workspace
-# suite, so a large share of the mutants there is reported as a timeout.
-# Round-robin spreads each package over all shards, so each baseline covers
-# them all.
-# Resumable: a shard that ran to a verdict (exit 0, 2 or 3) leaves a
-# `complete` marker and is skipped on the next invocation; any other exit
-# stops the task with that shard unmarked, to be redone whole. The markers
-# are removed once the lists are merged, so they span one pass only. Shards
-# agree on how to divide the mutants only if the tree and n are unchanged,
-# so after editing the source mid-pass remove target/mutants-shards and
-# start over. No `${@}`: a flag forwarded to a resumed pass would differ
-# from the one its finished shards ran with.
+# directory, and splits the pass into MUTANTS_SHARDS consecutive `--shard
+# k/n` runs, each in a copy of its own, so that no copy is in use for longer
+# than one shard takes. Pick n so that one shard finishes well inside the
+# cleaner's age threshold above, and raise it if a shard still breaks
+# partway. The script's header covers the sharding method, the resume state
+# and what it refuses to run.
+# `${@}` is forwarded only so that the script can refuse it: without it
+# cargo-make drops whatever follows the task name in silence, and
+# `cargo make mutants-sharded --list` would launch the full pass.
 [tasks.mutants-sharded]
-description = "Shipped mutation pass split into MUTANTS_SHARDS (default 40) resumable shards, scratch in the system temp directory; results merge into target/mutants-shards/<n>/"
-script_runner = "@shell"
-script = '''
-set -e
-n="${MUTANTS_SHARDS:-40}"
-root="target/mutants-shards/${n}"
-k=0
-while [ "${k}" -lt "${n}" ]; do
-    dir="${root}/${k}"
-    if [ -e "${dir}/complete" ]; then
-        echo "== mutants shard ${k}/${n}: complete, skipping =="
-    else
-        echo "== mutants shard ${k}/${n} =="
-        mkdir -p "${dir}"
-        status=0
-        cargo mutants --shard "${k}/${n}" --sharding round-robin --output "${dir}" || status=$?
-        case "${status}" in
-            0|2|3) touch "${dir}/complete" ;;
-            *)
-                echo "mutants shard ${k}/${n} exited with ${status}; rerun to resume from it" >&2
-                exit "${status}"
-                ;;
-        esac
-    fi
-    k=$((k + 1))
-done
-for list in caught missed timeout unviable; do
-    cat "${root}"/[0-9]*/mutants.out/"${list}.txt" > "${root}/${list}.txt"
-done
-rm -f "${root}"/[0-9]*/complete
-wc -l "${root}"/*.txt
-if [ -s "${root}/missed.txt" ]; then exit 2; fi
-if [ -s "${root}/timeout.txt" ]; then exit 3; fi
-'''
+description = "Shipped mutation pass split into MUTANTS_SHARDS (default 40) resumable shards, scratch in the system temp directory; results merge into mutants-shards/<n>/; takes no arguments"
+command = "scripts/mutants-sharded.sh"
+args = ["${@}"]
 
 # Faithful mutation passes for code the shipped `cargo make mutants` run
 # cannot reach. The shipped run (.cargo/mutants.toml, default features) builds
@@ -373,7 +331,7 @@ if [ -s "${root}/timeout.txt" ]; then exit 3; fi
 # kill these mutants; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
-# Neither scoped pass takes `${@}`, unlike the shipped one: cargo-mutants
+# Neither scoped pass takes `${@}`, unlike `mutants`: cargo-mutants
 # treats a repeated `--file` / `--re` as an addition, so forwarding here
 # would turn an attempt to narrow the pass into a silent widening.
 [tasks.mutants-arpack]

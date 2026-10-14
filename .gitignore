@@ -10,6 +10,7 @@
 # write under target/ — they are small enough to just regenerate.
 /mutants.out
 /mutants.out.old
+/mutants-shards
 
 # Python bytecode cache from the pre-commit audit scripts
 __pycache__/

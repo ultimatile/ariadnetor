@@ -12,8 +12,9 @@
 # CONTRIBUTING.md). Read this run's missed.txt knowing those regions are
 # audited there, not here.
 
-# Pinned, not merely left at the default: the mutants tasks put cargo-mutants'
-# scratch directory under target/ (Makefile.toml explains why), so copying
+# Pinned, not merely left at the default: the single-run mutants tasks put
+# cargo-mutants' scratch directory under target/ (Makefile.toml explains why;
+# `mutants-sharded` is the one task that does not), so copying
 # target/ into each new build directory would pull the scratch — and every
 # build directory already inside it — along with it, until the path runs out
 # of length. Pinning survives a change to cargo-mutants' own default; it does

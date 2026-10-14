@@ -82,12 +82,18 @@ Where a file scanner watches the user area (endpoint security, Spotlight),
 the copies under `target/` are the slow path: every build product gets
 inspected. `cargo make mutants-sharded` runs the same shipped pass with the
 copies back in the system temp directory, split into `MUTANTS_SHARDS`
-(default 40) consecutive shards so that no copy lives long enough to be
-deleted. A shard that reaches a verdict is skipped when the task is rerun,
-so an interrupted pass resumes at the shard it stopped in. The merged
-`caught.txt` / `missed.txt` / `timeout.txt` / `unviable.txt` land in
-`target/mutants-shards/<n>/`. Keep the source tree unchanged for the length
-of the pass, and remove `target/mutants-shards` before starting over.
+(default 40) shards run one after another, each in a copy of its own, so
+that no copy is in use for longer than one shard takes. Keep one shard well
+inside the age threshold, and raise `MUTANTS_SHARDS` if a shard still
+breaks partway. A shard that reaches a verdict is
+skipped when the task is rerun, so an interrupted pass resumes at the shard
+it stopped in. The merged `caught.txt` / `missed.txt` / `timeout.txt` /
+`unviable.txt` land in `mutants-shards/<n>/` at the repository root, next to
+the resume state and out of `cargo clean`'s reach. The task refuses to
+resume once a tracked file or the mutant list has changed — remove
+`mutants-shards` to start over — refuses a shard count too large for every
+shard to hold a mutant of every package that has mutants, and refuses any
+argument.
 
 `mutants-arpack` builds with `--features arpack`, compiling the ARPACK
 backend that the shipped pass (arpack off by default) never builds — which
@@ -105,8 +111,8 @@ only crate whose tests can kill the mutants; for `mutants-hptt` it is an
 optimization — with `--features hptt`, feature unification keeps the HPTT
 path compiled under a workspace test too, so package-scoped testing only
 trims cross-crate noise rather than being required for correctness. Each
-pass writes to its own `target/mutants-{arpack,hptt}` directory so all
-three result sets coexist; triage each pass's `missed.txt` independently —
+pass writes to its own `target/mutants-{arpack,hptt}` directory so its
+results coexist with the shipped pass's; triage each pass's `missed.txt` independently —
 there, as in the shipped run, "missed" means untested.
 
 ## Releasing
