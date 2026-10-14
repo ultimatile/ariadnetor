@@ -78,6 +78,17 @@ threshold breaks partway through. `cargo make mutants` puts them under
 up after itself; a killed one leaves its copies in `target/mutants-scratch`
 for you to remove.
 
+Where a file scanner watches the user area (endpoint security, Spotlight),
+the copies under `target/` are the slow path: every build product gets
+inspected. `cargo make mutants-sharded` runs the same shipped pass with the
+copies back in the system temp directory, split into `MUTANTS_SHARDS`
+(default 40) consecutive shards so that no copy lives long enough to be
+deleted. A shard that reaches a verdict is skipped when the task is rerun,
+so an interrupted pass resumes at the shard it stopped in. The merged
+`caught.txt` / `missed.txt` / `timeout.txt` / `unviable.txt` land in
+`target/mutants-shards/<n>/`. Keep the source tree unchanged for the length
+of the pass, and remove `target/mutants-shards` before starting over.
+
 `mutants-arpack` builds with `--features arpack`, compiling the ARPACK
 backend that the shipped pass (arpack off by default) never builds — which
 is why its mutants trivially pass the shipped run; the pass itself needs
