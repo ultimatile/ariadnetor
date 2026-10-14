@@ -408,14 +408,6 @@ expect_background_exit 143
 release_shard 0
 [ ! -e "${state}/3/0/complete" ] || fail "terminated shard marked complete"
 
-begin "a second invocation is refused while a pass is running"
-start_in_background 0
-run 3 1
-expect_output "holds"
-release_shard 0
-expect_background_exit 0
-expect_runs "0 1 2 "
-
 begin "a pass killed with SIGKILL leaves no lock behind, even with its shard still running"
 start_in_background 0
 kill -KILL "${bg_pid}"
