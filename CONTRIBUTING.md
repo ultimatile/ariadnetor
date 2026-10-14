@@ -85,15 +85,19 @@ copies back in the system temp directory, split into `MUTANTS_SHARDS`
 (default 40) shards run one after another, each in a copy of its own, so
 that no copy is in use for longer than one shard takes. Keep one shard well
 inside the age threshold, and raise `MUTANTS_SHARDS` if a shard still
-breaks partway. A shard that reaches a verdict is
-skipped when the task is rerun, so an interrupted pass resumes at the shard
-it stopped in. The merged `caught.txt` / `missed.txt` / `timeout.txt` /
-`unviable.txt` land in `mutants-shards/<n>/` at the repository root, next to
-the resume state and out of `cargo clean`'s reach. The task refuses to
-resume once a tracked file or the mutant list has changed — remove
-`mutants-shards` to start over — refuses a shard count too large for every
-shard to hold a mutant of every package that has mutants, and refuses any
-argument.
+breaks partway. A shard that reaches a verdict is skipped when the task is
+rerun, so an interrupted pass resumes at the shard it stopped in, even
+after a reboot, or after a kill once the shard that was running has ended.
+The merged `caught.txt` / `missed.txt` /
+`timeout.txt` / `unviable.txt` land in `mutants-shards/<n>/` at the
+repository root, next to the resume state and out of `cargo clean`'s
+reach. The task refuses to resume once the tree (tracked or untracked,
+short of git-ignored files) or the mutant list has changed — remove
+`mutants-shards/<n>` to start over — refuses to run while another pass with
+the same shard count is running (where `flock` or `lockf` is installed;
+without either it warns and runs unlocked), refuses a shard count too large
+for every shard to hold a mutant of every package that has mutants, and
+refuses any argument.
 
 `mutants-arpack` builds with `--features arpack`, compiling the ARPACK
 backend that the shipped pass (arpack off by default) never builds — which

@@ -5,13 +5,33 @@
 # The stand-in reads, from $FAKE:
 #   list      the mutant list, one `crates/<package>/...` line per mutant
 #   exit-<k>  if present, shard k's exit status; consumed by that run
+#   hang-<k>  if present, shard k's run records `started` in $FAKE and
+#             sleeps for two seconds before finishing
 #   list-fails  if present, the listings it names fail: `json` (the
 #             whole-workspace JSON listing), `shard` (a per-shard listing)
 #             or `plain` (the plain-text listing)
 # and appends every shard run's index to $FAKE/runs. A shard run writes one
 # caught and one unviable mutant, plus one missed (exit 2) or timed-out
-# (exit 3) mutant when its status says so.
+# (exit 3) mutant when its status says so. A stand-in `git` passes every
+# call to the real one, except that `git ls-files` fails while
+# $FAKE/ls-files-fails exists.
+#
+# The script runs under its own `#!/bin/sh`; when dash is installed,
+# MUTANTS_SHARDED_TEST_SHELL is unset and every case passed, the suite then
+# runs again with the script under dash, whose signal handling differs from
+# bash's.
 set -eu
+
+# Git exports these to its hooks, and this test runs as one; left set, they
+# would point the fixture repositories' git calls at the outer repository.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES
+# Keep the contributor's own git config (commit signing, hooks) out of the
+# fixture commits, including config passed to the outer git with `-c`.
+unset GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+GIT_CONFIG_GLOBAL=/dev/null
+GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM
 
 work=$(mktemp -d)
 trap 'rm -rf "${work}"' EXIT
@@ -60,6 +80,10 @@ if [ "${list}" = 1 ]; then
     exit 0
 fi
 echo "${k}" >> "${FAKE}/runs"
+if [ -e "${FAKE}/hang-${k}" ]; then
+    touch "${FAKE}/started"
+    sleep 2
+fi
 mkdir -p "${out}/mutants.out"
 for l in missed timeout; do : > "${out}/mutants.out/${l}.txt"; done
 echo "caught-${k}" > "${out}/mutants.out/caught.txt"
@@ -76,7 +100,23 @@ esac
 exit "${status}"
 EOF
 chmod +x "${FAKE}/bin/cargo"
+real_git=$(command -v git)
+cat > "${FAKE}/bin/git" <<EOF
+#!/bin/sh
+if [ -e "\${FAKE}/ls-files-fails" ]; then
+    for arg in "\$@"; do
+        if [ "\${arg}" = ls-files ]; then
+            echo "ls-files failed" >&2
+            exit 128
+        fi
+    done
+fi
+exec "${real_git}" "\$@"
+EOF
+chmod +x "${FAKE}/bin/git"
 PATH="${FAKE}/bin:${PATH}"
+real_flock=$(command -v flock || true)
+real_lockf=$(command -v lockf || true)
 export PATH
 
 failures=0
@@ -100,7 +140,8 @@ mutants() {
 # each.
 begin() {
     case_name="$1"
-    rm -rf "${work}/ws" "${FAKE}"/exit-* "${FAKE}/list-fails"
+    rm -rf "${work}/ws" "${FAKE}"/exit-* "${FAKE}"/hang-* "${FAKE}/started" \
+        "${FAKE}/list-fails" "${FAKE}/ls-files-fails"
     mkdir -p "${work}/ws/scripts"
     cp "$(dirname "$0")/mutants-sharded.sh" "${work}/ws/scripts/"
     echo "fn main() {}" > "${work}/ws/main.rs"
@@ -114,6 +155,81 @@ begin() {
     mutants b 3
 }
 
+# Run the workspace's copy of the script with the given arguments, under
+# MUTANTS_SHARDED_TEST_SHELL when it is set.
+run_script() {
+    if [ -n "${MUTANTS_SHARDED_TEST_SHELL:-}" ]; then
+        "${MUTANTS_SHARDED_TEST_SHELL}" "${work}/ws/scripts/mutants-sharded.sh" "$@"
+    else
+        "${work}/ws/scripts/mutants-sharded.sh" "$@"
+    fi
+}
+
+# Start a three-shard pass in the background with shard $1 marked hang-<k>,
+# its output in ${work}/bg-out and its process id in bg_pid, and wait (up to
+# 10 s) until that shard has started. The script is started directly rather than through run_script,
+# so that bg_pid is the script's own process and not a subshell around it.
+start_in_background() {
+    touch "${FAKE}/hang-$1"
+    if [ -n "${MUTANTS_SHARDED_TEST_SHELL:-}" ]; then
+        MUTANTS_SHARDS=3 "${MUTANTS_SHARDED_TEST_SHELL}" "${work}/ws/scripts/mutants-sharded.sh" > "${work}/bg-out" 2>&1 &
+    else
+        MUTANTS_SHARDS=3 "${work}/ws/scripts/mutants-sharded.sh" > "${work}/bg-out" 2>&1 &
+    fi
+    bg_pid=$!
+    tries=0
+    while [ ! -e "${FAKE}/started" ]; do
+        tries=$((tries + 1))
+        if [ "${tries}" -gt 100 ]; then
+            fail "no shard started within 10 s: $(cat "${work}/bg-out")"
+            return
+        fi
+        sleep 0.1
+    done
+}
+
+# Switch PATH to a directory holding only what the script and the stand-ins
+# call, plus, when $1 is `flock` or `lockf`, a stand-in for that lock tool;
+# with $1 `none` neither lock tool is found. The stand-in checks that it is
+# called the way the script calls the real tool, then locks descriptor 9
+# with whichever real tool this host has. restore_path switches back.
+use_minimal_path() {
+    minbin="${work}/minbin-$1"
+    mkdir -p "${minbin}"
+    for tool in awk cat cksum dirname grep mkdir rm sleep sort touch wc xargs; do
+        ln -sf "$(command -v "${tool}")" "${minbin}/${tool}"
+    done
+    ln -sf "${FAKE}/bin/cargo" "${minbin}/cargo"
+    ln -sf "${FAKE}/bin/git" "${minbin}/git"
+    case "$1" in
+        flock) expected_args="-n 9" ;;
+        lockf) expected_args="-s -t 0 9" ;;
+        none) expected_args="" ;;
+    esac
+    if [ -n "${expected_args}" ]; then
+        if [ -n "${real_lockf}" ]; then
+            lock_with="${real_lockf} -s -t 0 9"
+        else
+            lock_with="${real_flock} -n 9"
+        fi
+        cat > "${minbin}/$1" <<EOF
+#!/bin/sh
+if [ "\$*" != "${expected_args}" ]; then
+    echo "unexpected: \$0 \$*" >&2
+    exit 99
+fi
+exec ${lock_with}
+EOF
+        chmod +x "${minbin}/$1"
+    fi
+    saved_path="${PATH}"
+    PATH="${minbin}"
+}
+
+restore_path() {
+    PATH="${saved_path}"
+}
+
 # Run the script with MUTANTS_SHARDS=$1 (left unset when $1 is `unset`) and
 # the remaining arguments from an unrelated directory, expecting exit status
 # $2.
@@ -125,7 +241,7 @@ run() {
     (
         cd /
         if [ "${shards}" = unset ]; then unset MUTANTS_SHARDS; else export MUTANTS_SHARDS="${shards}"; fi
-        "${work}/ws/scripts/mutants-sharded.sh" "$@"
+        run_script "$@"
     ) > "${work}/out" 2>&1 || status=$?
     [ "${status}" = "${expected}" ] || fail "exit ${status}, expected ${expected}: $(cat "${work}/out")"
 }
@@ -254,6 +370,87 @@ interrupt_at_shard_1
 echo "// edited" >> "${work}/ws/main.rs"
 expect_resume_refused
 
+begin "an untracked file added mid-pass refuses to resume"
+interrupt_at_shard_1
+echo "#[test] fn new() {}" > "${work}/ws/new_test.rs"
+expect_resume_refused
+
+begin "an untracked file edited mid-pass refuses to resume"
+echo "#[test] fn new() {}" > "${work}/ws/new_test.rs"
+interrupt_at_shard_1
+echo "#[test] fn changed() {}" > "${work}/ws/new_test.rs"
+expect_resume_refused
+
+begin "untracked files with unusual names are compared, not tripped over"
+odd_name='qu"ote \ü.rs'
+echo "#[test] fn new() {}" > "${work}/ws/${odd_name}"
+interrupt_at_shard_1
+run 3 0
+expect_runs "0 1 1 2 "
+begin "an untracked file with an unusual name edited mid-pass refuses to resume"
+echo "#[test] fn new() {}" > "${work}/ws/${odd_name}"
+interrupt_at_shard_1
+echo "#[test] fn changed() {}" > "${work}/ws/${odd_name}"
+expect_resume_refused
+
+begin "a terminated pass leaves the running shard unmarked"
+start_in_background 0
+kill -TERM "${bg_pid}"
+status=0
+wait "${bg_pid}" 2> /dev/null || status=$?
+[ "${status}" = 143 ] || fail "exit ${status}, expected 143: $(cat "${work}/bg-out")"
+[ ! -e "${state}/3/0/complete" ] || fail "terminated shard marked complete"
+
+begin "a second invocation is refused while a pass is running"
+start_in_background 0
+run 3 1
+expect_refusal "holds"
+status=0
+wait "${bg_pid}" 2> /dev/null || status=$?
+[ "${status}" = 0 ] || fail "the running pass exited ${status}"
+expect_runs "0 1 2 "
+
+begin "a pass killed with SIGKILL leaves no lock behind once its shard ends"
+start_in_background 0
+kill -KILL "${bg_pid}"
+wait "${bg_pid}" 2> /dev/null || true
+# The orphaned shard inherited the lock's descriptor and still holds it.
+run 3 1
+expect_refusal "holds"
+sleep 3
+run 3 0
+expect_runs "0 0 1 2 "
+
+begin "without flock or lockf the pass runs unlocked, with a warning"
+use_minimal_path none
+run 3 0
+restore_path
+expect_refusal "running without a lock"
+expect_runs "0 1 2 "
+
+if [ -n "${real_lockf}${real_flock}" ]; then
+    for tool in flock lockf; do
+        begin "with only ${tool}, a second invocation is refused while a pass runs"
+        use_minimal_path "${tool}"
+        start_in_background 0
+        run 3 1
+        status=0
+        wait "${bg_pid}" 2> /dev/null || status=$?
+        restore_path
+        expect_refusal "holds"
+        [ "${status}" = 0 ] || fail "the running pass exited ${status}"
+        expect_runs "0 1 2 "
+    done
+else
+    echo "note: neither flock nor lockf is installed; the per-tool lock cases did not run" >&2
+fi
+
+begin "a lock file left on disk is not a lock"
+mkdir -p "${state}"
+: > "${state}/3.lock"
+run 3 0
+expect_runs "0 1 2 "
+
 begin "a commit made mid-pass refuses to resume"
 interrupt_at_shard_1
 echo "// edited" >> "${work}/ws/main.rs"
@@ -280,6 +477,11 @@ run 3 128
 expect_runs ""
 [ ! -e "${state}/3/pass.id" ] || fail "recorded a pass"
 
+begin "a failing git ls-files stops the script rather than skipping untracked files"
+touch "${FAKE}/ls-files-fails"
+run 3 128
+expect_clean_refusal "ls-files failed"
+
 for kind in json shard plain; do
     begin "a failing ${kind} listing stops the script with cargo's status"
     echo "${kind}" > "${FAKE}/list-fails"
@@ -289,7 +491,10 @@ for kind in json shard plain; do
 done
 
 if [ "${failures}" -gt 0 ]; then
-    echo "${failures} failure(s)" >&2
+    echo "${failures} failure(s)${MUTANTS_SHARDED_TEST_SHELL:+ under ${MUTANTS_SHARDED_TEST_SHELL}}" >&2
     exit 1
 fi
-echo "mutants-sharded: all cases passed"
+echo "mutants-sharded: all cases passed${MUTANTS_SHARDED_TEST_SHELL:+ under ${MUTANTS_SHARDED_TEST_SHELL}}"
+if [ -z "${MUTANTS_SHARDED_TEST_SHELL:-}" ] && command -v dash > /dev/null; then
+    MUTANTS_SHARDED_TEST_SHELL=$(command -v dash) "$0"
+fi

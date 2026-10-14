@@ -69,7 +69,7 @@ args = ["test", "--workspace", "--lib"]
 # ============================================================================
 
 [tasks.clean]
-description = "Remove build artifacts (cargo clean). Also deletes a running mutation pass's scratch copies — do not run one while a pass is in flight"
+description = "Remove build artifacts (cargo clean). Also deletes a running single-run mutation pass's scratch copies — do not run one while such a pass is in flight"
 command = "cargo"
 args = ["clean"]
 

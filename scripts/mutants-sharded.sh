@@ -13,20 +13,23 @@
 # timeout. Round-robin spreads each package over the shards.
 #
 # Refused, each before a shard runs:
-#   - any argument: cargo-make would otherwise drop a forwarded flag in
-#     silence, and a flag that reached a resumed pass would differ from the
-#     one its finished shards ran with;
+#   - any argument: a flag that reached a resumed pass would differ from
+#     the one its finished shards ran with, and the task forwards arguments
+#     here (cargo-make would drop them in silence otherwise) only so that
+#     they are refused rather than ignored;
 #   - a MUTANTS_SHARDS that is not a positive integer of at most six digits
 #     written without a leading zero;
 #   - a mutant listing that names no package at all;
 #   - an n so large that some shard holds no mutant of some package that
 #     has mutants, which is where the round-robin argument above stops
 #     holding;
+#   - running while another invocation with the same n holds its lock,
+#     since both would run the same shards into the same directories;
 #   - resuming once the tree or its mutant list differs from the one the
 #     pass started from: shards divide that list by position, and a shard
-#     run against other code (an edited test, say) would not be comparable.
-#     The tree is compared by HEAD and `git diff HEAD`, so untracked files
-#     are not covered.
+#     run against other code (an edited or added test, say) would not be
+#     comparable. The tree is compared by HEAD, `git diff HEAD` and the
+#     untracked files that git does not ignore.
 #
 # State lives in mutants-shards/<n>/ at the workspace root — outside target/,
 # like `cargo make mutants`' mutants.out, so `cargo clean` does not take days
@@ -37,14 +40,19 @@
 #                     started from
 #   {caught,missed,timeout,unviable}.txt  the merged lists, once all are done
 # The markers and pass.id are removed after the merge, so they span one
-# pass only; the merged lists stay until the next pass starts.
+# pass only; the merged lists stay until the next pass starts. Beside the
+# directory, mutants-shards/<n>.lock is only the file the lock is taken on:
+# its existence means nothing.
 # cargo-mutants leaves every directory named mutants.out out of its scratch
 # copies, so of the state above only the small files are copied along.
 #
 # Exit status: 1 for a refusal; a shard's own status when it stops without
-# a verdict (that shard is redone on the next invocation); the failing
+# a verdict (that shard is redone on the next invocation; cargo-mutants
+# exits 1 on most errors of its own, so a 1 alone does not say whether
+# shards ran, and the message on stderr tells a refusal apart); the failing
 # command's status when anything else fails under `set -e` (a listing, git,
-# the merge). Once every shard has a verdict, it follows cargo-mutants over
+# the merge). A signal that ends the script leaves the running shard
+# unmarked. Once every shard has a verdict, it follows cargo-mutants over
 # the merged lists: 3 if any mutant timed out, else 2 if any was missed,
 # else 0.
 set -eu
@@ -89,8 +97,37 @@ done
 root="mutants-shards/${n}"
 head=$(git rev-parse HEAD)
 changes=$(git diff HEAD)
+# The pass's own state is untracked too, and changes between invocations.
+# NUL-separated, since git quotes unusual file names in its plain output.
+# The first call only surfaces a git failure, which the pipeline would hide.
+git ls-files --others --exclude-standard -- . ':!mutants-shards' > /dev/null
+untracked=$(git ls-files -z --others --exclude-standard -- . ':!mutants-shards' |
+    xargs -0 cksum)
 mutant_list=$(cargo mutants --list)
-id=$(printf '%s\n' "${head}" "${changes}" "${mutant_list}" | cksum)
+id=$(printf '%s\n' "${head}" "${changes}" "${untracked}" "${mutant_list}" | cksum)
+
+mkdir -p mutants-shards
+# A kernel lock (flock(2), through flock(1) or BSD lockf(1)) on an open
+# descriptor rather than a lock file: the kernel drops it once no process
+# holds the descriptor, however they ended, so a killed pass or a reboot
+# leaves nothing to clean up. The shards inherit the descriptor, so a shard
+# still running after its parent was killed keeps the lock until it ends.
+lock="mutants-shards/${n}.lock"
+exec 9> "${lock}"
+if command -v flock > /dev/null; then
+    take_lock() { flock -n 9; }
+elif command -v lockf > /dev/null; then
+    take_lock() { lockf -s -t 0 9; }
+else
+    take_lock() {
+        echo "neither flock nor lockf found; running without a lock against concurrent passes" >&2
+    }
+fi
+if ! take_lock; then
+    echo "could not lock ${lock}: another pass with MUTANTS_SHARDS=${n} holds it, or the lock tool failed" >&2
+    exit 1
+fi
+
 if [ -e "${root}/pass.id" ]; then
     if [ "$(cat "${root}/pass.id")" != "${id}" ]; then
         echo "the tree or its mutant list changed since this pass started; remove ${root} and start over" >&2
