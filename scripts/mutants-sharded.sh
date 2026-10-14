@@ -12,6 +12,14 @@
 # workspace suite, so a large share of the mutants there is reported as a
 # timeout. Round-robin spreads each package over the shards.
 #
+# A pass is only as consistent as the conditions it runs under: its shards
+# are comparable when they all see the same tree and environment. Keeping
+# those fixed for the length of a pass is the caller's job (a worktree of
+# its own is the easy way); the checks below catch the common slips between
+# invocations, and nothing more. In particular, untracked files, edits made
+# while an invocation runs, and changes to the environment, the toolchain or
+# cargo-mutants itself are not detected.
+#
 # Refused, each before a shard runs:
 #   - any argument: a flag that reached a resumed pass would differ from
 #     the one its finished shards ran with, and the task forwards arguments
@@ -20,29 +28,27 @@
 #   - a MUTANTS_SHARDS that is not a positive integer of at most six digits
 #     written without a leading zero;
 #   - a mutant listing that names no package at all;
-#   - an n so large that some shard holds no mutant of some package that
-#     has mutants, which is where the round-robin argument above stops
-#     holding;
 #   - running while another invocation with the same n holds its lock,
 #     since both would run the same shards into the same directories;
-#   - resuming once the tree or its mutant list differs from the one the
-#     pass started from: shards divide that list by position, and a shard
-#     run against other code (an edited or added test, say) would not be
-#     comparable. The tree is compared by HEAD, `git diff HEAD` and the
-#     untracked files that git does not ignore.
+#   - resuming once HEAD, `git diff HEAD` or the mutant list differ from
+#     what the pass started from;
+#   - starting a pass with an n so large that some shard holds no mutant of
+#     some package that has mutants, which is where the round-robin argument
+#     above stops holding.
 #
 # State lives in mutants-shards/<n>/ at the workspace root — outside target/,
 # like `cargo make mutants`' mutants.out, so `cargo clean` does not take days
 # of results with it:
 #   <k>/mutants.out/  shard k's cargo-mutants output
 #   <k>/complete      shard k ran to a verdict; skipped on the next invocation
-#   pass.id           a checksum of the tree and mutant list the pass
-#                     started from
+#   pass.id           a checksum of what the pass in progress started from
+#   finished.id       the same, kept once the pass has finished
 #   {caught,missed,timeout,unviable}.txt  the merged lists, once all are done
-# The markers and pass.id are removed after the merge, so they span one
-# pass only; the merged lists stay until the next pass starts. Beside the
-# directory, mutants-shards/<n>.lock is only the file the lock is taken on:
-# its existence means nothing.
+# The markers are removed after the merge and pass.id becomes finished.id.
+# Invoked again over the same tree, a finished pass re-reports its merged
+# lists instead of running again; over a changed tree, a new pass replaces
+# them. Beside the directory, mutants-shards/<n>.lock is only the file the
+# lock is taken on: its existence means nothing.
 # cargo-mutants leaves every directory named mutants.out out of its scratch
 # copies, so of the state above only the small files are copied along.
 #
@@ -71,6 +77,8 @@ case "${n}" in
         exit 1
         ;;
 esac
+root="mutants-shards/${n}"
+lists="caught missed timeout unviable"
 
 # Each listing is captured on its own first, so that a failing cargo stops
 # the script under `set -e` instead of reaching `packages` as empty input.
@@ -83,35 +91,18 @@ if [ -z "${all}" ]; then
     echo "found no package in \`cargo mutants --list --json\`" >&2
     exit 1
 fi
-k=0
-while [ "${k}" -lt "${n}" ]; do
-    listing=$(cargo mutants --list --json --shard "${k}/${n}" --sharding round-robin)
-    held=$(packages "${listing}")
-    if [ "${held}" != "${all}" ]; then
-        echo "shard ${k}/${n} does not hold a mutant of every mutated package, so its baseline would not cover them; lower MUTANTS_SHARDS" >&2
-        exit 1
-    fi
-    k=$((k + 1))
-done
 
-root="mutants-shards/${n}"
 head=$(git rev-parse HEAD)
 changes=$(git diff HEAD)
-# The pass's own state is untracked too, and changes between invocations.
-# NUL-separated, since git quotes unusual file names in its plain output.
-# The first call only surfaces a git failure, which the pipeline would hide.
-git ls-files --others --exclude-standard -- . ':!mutants-shards' > /dev/null
-untracked=$(git ls-files -z --others --exclude-standard -- . ':!mutants-shards' |
-    xargs -0 cksum)
 mutant_list=$(cargo mutants --list)
-id=$(printf '%s\n' "${head}" "${changes}" "${untracked}" "${mutant_list}" | cksum)
+id=$(printf '%s\n' "${head}" "${changes}" "${mutant_list}" | cksum)
 
 mkdir -p mutants-shards
 # A kernel lock (flock(2), through flock(1) or BSD lockf(1)) on an open
 # descriptor rather than a lock file: the kernel drops it once no process
 # holds the descriptor, however they ended, so a killed pass or a reboot
-# leaves nothing to clean up. The shards inherit the descriptor, so a shard
-# still running after its parent was killed keeps the lock until it ends.
+# leaves nothing to clean up. The shards are started with the descriptor
+# closed, so nothing they leave running (a build server, say) holds the lock.
 lock="mutants-shards/${n}.lock"
 exec 9> "${lock}"
 if command -v flock > /dev/null; then
@@ -128,14 +119,41 @@ if ! take_lock; then
     exit 1
 fi
 
+# Report the merged lists and exit with the verdict they carry.
+report() {
+    set --
+    for list in ${lists}; do
+        set -- "$@" "${root}/${list}.txt"
+    done
+    wc -l "$@"
+    if [ -s "${root}/timeout.txt" ]; then exit 3; fi
+    if [ -s "${root}/missed.txt" ]; then exit 2; fi
+    exit 0
+}
+
+if [ -e "${root}/finished.id" ] && [ "$(cat "${root}/finished.id")" = "${id}" ]; then
+    echo "== this pass already finished over the same tree; remove ${root} to run it again =="
+    report
+fi
 if [ -e "${root}/pass.id" ]; then
     if [ "$(cat "${root}/pass.id")" != "${id}" ]; then
         echo "the tree or its mutant list changed since this pass started; remove ${root} and start over" >&2
         exit 1
     fi
 else
+    k=0
+    while [ "${k}" -lt "${n}" ]; do
+        listing=$(cargo mutants --list --json --shard "${k}/${n}" --sharding round-robin)
+        held=$(packages "${listing}")
+        if [ "${held}" != "${all}" ]; then
+            echo "shard ${k}/${n} does not hold a mutant of every mutated package, so its baseline would not cover them; lower MUTANTS_SHARDS" >&2
+            exit 1
+        fi
+        k=$((k + 1))
+    done
     mkdir -p "${root}"
-    for list in caught missed timeout unviable; do
+    rm -f "${root}/finished.id" "${root}"/[0-9]*/complete
+    for list in ${lists}; do
         rm -f "${root}/${list}.txt"
     done
     printf '%s\n' "${id}" > "${root}/pass.id"
@@ -150,7 +168,7 @@ while [ "${k}" -lt "${n}" ]; do
         echo "== mutants shard ${k}/${n} =="
         mkdir -p "${dir}"
         status=0
-        cargo mutants --shard "${k}/${n}" --sharding round-robin --output "${dir}" || status=$?
+        cargo mutants --shard "${k}/${n}" --sharding round-robin --output "${dir}" 9>&- || status=$?
         # 0, 2 and 3 are cargo-mutants' verdicts (nothing missed or timed
         # out, some missed, some timed out); anything else means the shard
         # did not finish.
@@ -165,10 +183,9 @@ while [ "${k}" -lt "${n}" ]; do
     k=$((k + 1))
 done
 
-for list in caught missed timeout unviable; do
+for list in ${lists}; do
     cat "${root}"/[0-9]*/mutants.out/"${list}.txt" > "${root}/${list}.txt"
 done
-rm -f "${root}"/[0-9]*/complete "${root}/pass.id"
-wc -l "${root}"/*.txt
-if [ -s "${root}/timeout.txt" ]; then exit 3; fi
-if [ -s "${root}/missed.txt" ]; then exit 2; fi
+mv "${root}/pass.id" "${root}/finished.id"
+rm -f "${root}"/[0-9]*/complete
+report

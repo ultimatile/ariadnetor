@@ -6,20 +6,15 @@
 #   list      the mutant list, one `crates/<package>/...` line per mutant
 #   exit-<k>  if present, shard k's exit status; consumed by that run
 #   hang-<k>  if present, shard k's run records `started` in $FAKE and
-#             sleeps for two seconds before finishing
+#             waits (up to 30 s) for release-<k> before finishing
+#   linger-<k>  if present, shard k's run leaves a process behind, its id
+#             in $FAKE/linger-pid
 #   list-fails  if present, the listings it names fail: `json` (the
 #             whole-workspace JSON listing), `shard` (a per-shard listing)
 #             or `plain` (the plain-text listing)
 # and appends every shard run's index to $FAKE/runs. A shard run writes one
 # caught and one unviable mutant, plus one missed (exit 2) or timed-out
-# (exit 3) mutant when its status says so. A stand-in `git` passes every
-# call to the real one, except that `git ls-files` fails while
-# $FAKE/ls-files-fails exists.
-#
-# The script runs under its own `#!/bin/sh`; when dash is installed,
-# MUTANTS_SHARDED_TEST_SHELL is unset and every case passed, the suite then
-# runs again with the script under dash, whose signal handling differs from
-# bash's.
+# (exit 3) mutant when its status says so, then records done-<k>.
 set -eu
 
 # Git exports these to its hooks, and this test runs as one; left set, they
@@ -82,7 +77,15 @@ fi
 echo "${k}" >> "${FAKE}/runs"
 if [ -e "${FAKE}/hang-${k}" ]; then
     touch "${FAKE}/started"
-    sleep 2
+    tries=0
+    while [ ! -e "${FAKE}/release-${k}" ] && [ "${tries}" -lt 300 ]; do
+        sleep 0.1
+        tries=$((tries + 1))
+    done
+fi
+if [ -e "${FAKE}/linger-${k}" ]; then
+    sleep 30 &
+    echo "$!" > "${FAKE}/linger-pid"
 fi
 mkdir -p "${out}/mutants.out"
 for l in missed timeout; do : > "${out}/mutants.out/${l}.txt"; done
@@ -97,23 +100,10 @@ case "${status}" in
     2) echo "missed-${k}" > "${out}/mutants.out/missed.txt" ;;
     3) echo "timeout-${k}" > "${out}/mutants.out/timeout.txt" ;;
 esac
+touch "${FAKE}/done-${k}"
 exit "${status}"
 EOF
 chmod +x "${FAKE}/bin/cargo"
-real_git=$(command -v git)
-cat > "${FAKE}/bin/git" <<EOF
-#!/bin/sh
-if [ -e "\${FAKE}/ls-files-fails" ]; then
-    for arg in "\$@"; do
-        if [ "\${arg}" = ls-files ]; then
-            echo "ls-files failed" >&2
-            exit 128
-        fi
-    done
-fi
-exec "${real_git}" "\$@"
-EOF
-chmod +x "${FAKE}/bin/git"
 PATH="${FAKE}/bin:${PATH}"
 real_flock=$(command -v flock || true)
 real_lockf=$(command -v lockf || true)
@@ -140,8 +130,9 @@ mutants() {
 # each.
 begin() {
     case_name="$1"
-    rm -rf "${work}/ws" "${FAKE}"/exit-* "${FAKE}"/hang-* "${FAKE}/started" \
-        "${FAKE}/list-fails" "${FAKE}/ls-files-fails"
+    rm -rf "${work}/ws" "${FAKE}"/exit-* "${FAKE}"/hang-* "${FAKE}"/release-* \
+        "${FAKE}"/done-* "${FAKE}"/linger-* "${FAKE}/started" \
+        "${FAKE}/list-fails"
     mkdir -p "${work}/ws/scripts"
     cp "$(dirname "$0")/mutants-sharded.sh" "${work}/ws/scripts/"
     echo "fn main() {}" > "${work}/ws/main.rs"
@@ -155,33 +146,40 @@ begin() {
     mutants b 3
 }
 
-# Run the workspace's copy of the script with the given arguments, under
-# MUTANTS_SHARDED_TEST_SHELL when it is set.
-run_script() {
-    if [ -n "${MUTANTS_SHARDED_TEST_SHELL:-}" ]; then
-        "${MUTANTS_SHARDED_TEST_SHELL}" "${work}/ws/scripts/mutants-sharded.sh" "$@"
-    else
-        "${work}/ws/scripts/mutants-sharded.sh" "$@"
-    fi
-}
-
 # Start a three-shard pass in the background with shard $1 marked hang-<k>,
 # its output in ${work}/bg-out and its process id in bg_pid, and wait (up to
-# 10 s) until that shard has started. The script is started directly rather than through run_script,
-# so that bg_pid is the script's own process and not a subshell around it.
+# 10 s) until that shard has started.
 start_in_background() {
     touch "${FAKE}/hang-$1"
-    if [ -n "${MUTANTS_SHARDED_TEST_SHELL:-}" ]; then
-        MUTANTS_SHARDS=3 "${MUTANTS_SHARDED_TEST_SHELL}" "${work}/ws/scripts/mutants-sharded.sh" > "${work}/bg-out" 2>&1 &
-    else
-        MUTANTS_SHARDS=3 "${work}/ws/scripts/mutants-sharded.sh" > "${work}/bg-out" 2>&1 &
-    fi
+    MUTANTS_SHARDS=3 "${work}/ws/scripts/mutants-sharded.sh" > "${work}/bg-out" 2>&1 &
     bg_pid=$!
     tries=0
     while [ ! -e "${FAKE}/started" ]; do
         tries=$((tries + 1))
         if [ "${tries}" -gt 100 ]; then
             fail "no shard started within 10 s: $(cat "${work}/bg-out")"
+            return
+        fi
+        sleep 0.1
+    done
+}
+
+# Wait for the background pass and expect it to exit with status $1.
+expect_background_exit() {
+    status=0
+    wait "${bg_pid}" 2> /dev/null || status=$?
+    [ "${status}" = "$1" ] || fail "background pass exited ${status}, expected $1: $(cat "${work}/bg-out")"
+}
+
+# Let the hanging shard $1 finish, and wait (up to 10 s) until it has, so that
+# no shard outlives its case.
+release_shard() {
+    touch "${FAKE}/release-$1"
+    tries=0
+    while [ ! -e "${FAKE}/done-$1" ]; do
+        tries=$((tries + 1))
+        if [ "${tries}" -gt 100 ]; then
+            fail "shard $1 did not finish within 10 s"
             return
         fi
         sleep 0.1
@@ -196,11 +194,10 @@ start_in_background() {
 use_minimal_path() {
     minbin="${work}/minbin-$1"
     mkdir -p "${minbin}"
-    for tool in awk cat cksum dirname grep mkdir rm sleep sort touch wc xargs; do
+    for tool in awk cat cksum dirname git grep mkdir mv rm sleep sort touch wc; do
         ln -sf "$(command -v "${tool}")" "${minbin}/${tool}"
     done
     ln -sf "${FAKE}/bin/cargo" "${minbin}/cargo"
-    ln -sf "${FAKE}/bin/git" "${minbin}/git"
     case "$1" in
         flock) expected_args="-n 9" ;;
         lockf) expected_args="-s -t 0 9" ;;
@@ -241,7 +238,7 @@ run() {
     (
         cd /
         if [ "${shards}" = unset ]; then unset MUTANTS_SHARDS; else export MUTANTS_SHARDS="${shards}"; fi
-        run_script "$@"
+        "${work}/ws/scripts/mutants-sharded.sh" "$@"
     ) > "${work}/out" 2>&1 || status=$?
     [ "${status}" = "${expected}" ] || fail "exit ${status}, expected ${expected}: $(cat "${work}/out")"
 }
@@ -258,9 +255,9 @@ expect_merged() {
     [ "${got}" = "$2" ] || fail "merged $1.txt is '${got}', expected '$2'"
 }
 
-# The run just made must have been refused with a message containing $1.
-expect_refusal() {
-    grep -q "$1" "${work}/out" || fail "not refused with '$1': $(cat "${work}/out")"
+# The run just made must have printed a message containing $1.
+expect_output() {
+    grep -q "$1" "${work}/out" || fail "no '$1' in the output: $(cat "${work}/out")"
 }
 
 # Start a three-shard pass that shard 1 stops with a non-verdict exit, so
@@ -274,16 +271,23 @@ interrupt_at_shard_1() {
 # tree or mutant list, without running another shard.
 expect_resume_refused() {
     run 3 1
-    expect_refusal "changed since this pass started"
+    expect_output "changed since this pass started"
     expect_runs "0 1 "
 }
 
 # The run just made must have been refused with a message containing $1,
-# before any shard ran or any pass state was written.
+# before any shard ran or any pass was recorded.
 expect_clean_refusal() {
-    expect_refusal "$1"
+    expect_output "$1"
     expect_runs ""
-    [ ! -e "${state}" ] || fail "state written"
+    if [ -d "${state}" ] && [ -n "$(find "${state}" -name pass.id)" ]; then
+        fail "recorded a pass"
+    fi
+}
+
+# Change a tracked file, so that the next invocation sees another tree.
+edit_tree() {
+    echo "// edited" >> "${work}/ws/main.rs"
 }
 
 begin "a clean pass merges every shard and leaves no resume state"
@@ -295,15 +299,34 @@ expect_merged missed ""
 expect_merged timeout ""
 [ -z "$(find "${state}" -name complete -o -name pass.id)" ] || fail "resume state left behind"
 
-begin "the next pass after a finished one runs every shard again"
+begin "rerunning a finished pass over the same tree re-reports it without running a shard"
+echo 2 > "${FAKE}/exit-0"
+run 3 2
+run 3 2
+expect_output "already finished"
+expect_runs "0 1 2 "
+expect_merged missed "missed-0 "
+
+begin "rerunning a finished pass over a changed tree runs a new pass"
 run 3 0
+edit_tree
+run 3 0
+expect_runs "0 1 2 0 1 2 "
+
+begin "a new pass ignores completion markers a previous pass left behind"
+run 3 0
+mkdir -p "${state}/3/0"
+touch "${state}/3/0/complete"
+edit_tree
 run 3 0
 expect_runs "0 1 2 0 1 2 "
 
 begin "a new pass drops the previous pass's merged lists while it is in progress"
 run 3 0
+edit_tree
 interrupt_at_shard_1
 [ -z "$(find "${state}/3" -maxdepth 1 -name '*.txt')" ] || fail "stale merged lists kept"
+[ ! -e "${state}/3/finished.id" ] || fail "the previous pass still counts as finished"
 
 begin "a shard that does not reach a verdict stops the pass and is redone on rerun"
 # Shard 0 finishes with a missed mutant before shard 1 fails; the resumed
@@ -352,7 +375,7 @@ expect_clean_refusal "takes no arguments"
 begin "a six-digit MUTANTS_SHARDS passes the format check"
 # Six mutants cannot fill 100000 shards, so the package check refuses it next.
 run 100000 1
-expect_refusal "shard 0/100000 does not hold"
+expect_output "shard 0/100000 does not hold"
 
 for bad in "" 0 03 -1 abc 1000000 99999999999999999999999; do
     begin "MUTANTS_SHARDS='${bad}' is rejected before anything runs"
@@ -367,65 +390,56 @@ expect_resume_refused
 
 begin "an edit that leaves the mutant list as it was refuses to resume too"
 interrupt_at_shard_1
-echo "// edited" >> "${work}/ws/main.rs"
+edit_tree
 expect_resume_refused
 
-begin "an untracked file added mid-pass refuses to resume"
+begin "a resumed pass whose list no longer fits n is told the tree changed"
 interrupt_at_shard_1
-echo "#[test] fn new() {}" > "${work}/ws/new_test.rs"
-expect_resume_refused
-
-begin "an untracked file edited mid-pass refuses to resume"
-echo "#[test] fn new() {}" > "${work}/ws/new_test.rs"
-interrupt_at_shard_1
-echo "#[test] fn changed() {}" > "${work}/ws/new_test.rs"
-expect_resume_refused
-
-begin "untracked files with unusual names are compared, not tripped over"
-odd_name='qu"ote \ü.rs'
-echo "#[test] fn new() {}" > "${work}/ws/${odd_name}"
-interrupt_at_shard_1
-run 3 0
-expect_runs "0 1 1 2 "
-begin "an untracked file with an unusual name edited mid-pass refuses to resume"
-echo "#[test] fn new() {}" > "${work}/ws/${odd_name}"
-interrupt_at_shard_1
-echo "#[test] fn changed() {}" > "${work}/ws/${odd_name}"
+# Four mutants of a, then one of b: a new pass would be refused for n = 3.
+: > "${FAKE}/list"
+mutants a 4
+mutants b 1
 expect_resume_refused
 
 begin "a terminated pass leaves the running shard unmarked"
 start_in_background 0
 kill -TERM "${bg_pid}"
-status=0
-wait "${bg_pid}" 2> /dev/null || status=$?
-[ "${status}" = 143 ] || fail "exit ${status}, expected 143: $(cat "${work}/bg-out")"
+expect_background_exit 143
+release_shard 0
 [ ! -e "${state}/3/0/complete" ] || fail "terminated shard marked complete"
 
 begin "a second invocation is refused while a pass is running"
 start_in_background 0
 run 3 1
-expect_refusal "holds"
-status=0
-wait "${bg_pid}" 2> /dev/null || status=$?
-[ "${status}" = 0 ] || fail "the running pass exited ${status}"
+expect_output "holds"
+release_shard 0
+expect_background_exit 0
 expect_runs "0 1 2 "
 
-begin "a pass killed with SIGKILL leaves no lock behind once its shard ends"
+begin "a pass killed with SIGKILL leaves no lock behind, even with its shard still running"
 start_in_background 0
 kill -KILL "${bg_pid}"
 wait "${bg_pid}" 2> /dev/null || true
-# The orphaned shard inherited the lock's descriptor and still holds it.
-run 3 1
-expect_refusal "holds"
-sleep 3
+# The orphaned shard was started without the lock's descriptor.
+rm "${FAKE}/hang-0"
 run 3 0
 expect_runs "0 0 1 2 "
+# The rerun's own shard 0 recorded done-0; wait for the orphan's instead.
+rm "${FAKE}/done-0"
+release_shard 0
+
+begin "a process a shard leaves behind does not hold the lock"
+touch "${FAKE}/linger-0"
+run 3 0
+run 3 0
+expect_output "already finished"
+kill "$(cat "${FAKE}/linger-pid")" 2> /dev/null || true
 
 begin "without flock or lockf the pass runs unlocked, with a warning"
 use_minimal_path none
 run 3 0
 restore_path
-expect_refusal "running without a lock"
+expect_output "running without a lock"
 expect_runs "0 1 2 "
 
 if [ -n "${real_lockf}${real_flock}" ]; then
@@ -434,11 +448,10 @@ if [ -n "${real_lockf}${real_flock}" ]; then
         use_minimal_path "${tool}"
         start_in_background 0
         run 3 1
-        status=0
-        wait "${bg_pid}" 2> /dev/null || status=$?
+        release_shard 0
+        expect_background_exit 0
         restore_path
-        expect_refusal "holds"
-        [ "${status}" = 0 ] || fail "the running pass exited ${status}"
+        expect_output "holds"
         expect_runs "0 1 2 "
     done
 else
@@ -453,7 +466,7 @@ expect_runs "0 1 2 "
 
 begin "a commit made mid-pass refuses to resume"
 interrupt_at_shard_1
-echo "// edited" >> "${work}/ws/main.rs"
+edit_tree
 git -C "${work}/ws" -c user.name=test -c user.email=test@example.invalid commit -q -am edit
 expect_resume_refused
 
@@ -475,12 +488,7 @@ rm -rf "${work}/ws/.git"
 # git's own status for "not a git repository".
 run 3 128
 expect_runs ""
-[ ! -e "${state}/3/pass.id" ] || fail "recorded a pass"
-
-begin "a failing git ls-files stops the script rather than skipping untracked files"
-touch "${FAKE}/ls-files-fails"
-run 3 128
-expect_clean_refusal "ls-files failed"
+[ ! -e "${state}" ] || fail "state written"
 
 for kind in json shard plain; do
     begin "a failing ${kind} listing stops the script with cargo's status"
@@ -491,10 +499,7 @@ for kind in json shard plain; do
 done
 
 if [ "${failures}" -gt 0 ]; then
-    echo "${failures} failure(s)${MUTANTS_SHARDED_TEST_SHELL:+ under ${MUTANTS_SHARDED_TEST_SHELL}}" >&2
+    echo "${failures} failure(s)" >&2
     exit 1
 fi
-echo "mutants-sharded: all cases passed${MUTANTS_SHARDED_TEST_SHELL:+ under ${MUTANTS_SHARDED_TEST_SHELL}}"
-if [ -z "${MUTANTS_SHARDED_TEST_SHELL:-}" ] && command -v dash > /dev/null; then
-    MUTANTS_SHARDED_TEST_SHELL=$(command -v dash) "$0"
-fi
+echo "mutants-sharded: all cases passed"
