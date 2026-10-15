@@ -12,7 +12,7 @@
 # canonical form (external-types, public-api) and the mutation passes
 # (mutants, mutants-arpack, mutants-hptt) earn a task: their scratch
 # redirect must not drift, and the two scoped passes carry non-obvious
-# flags besides.
+# flags besides. mutants-sharded earns one as the entry point to a script.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
@@ -30,8 +30,9 @@ default_to_workspace = false
 # pass is still using it. Under target/ nothing sweeps it — but `cargo
 # clean` does, which reclaims a killed run's leftovers and destroys a live
 # pass's copies alike, and reaches neither if CARGO_TARGET_DIR moves cargo's
-# target elsewhere. Each of the three passes below sets TMPDIR from this;
-# dropping that reintroduces the failure.
+# target elsewhere. The three single-run passes below set TMPDIR from this;
+# dropping that reintroduces the failure. `mutants-sharded` avoids the
+# cleaner by run length instead and does not use it.
 [env]
 MUTANTS_SCRATCH = "${CARGO_MAKE_WORKING_DIRECTORY}/target/mutants-scratch"
 
@@ -68,7 +69,7 @@ args = ["test", "--workspace", "--lib"]
 # ============================================================================
 
 [tasks.clean]
-description = "Remove build artifacts (cargo clean). Also deletes a running mutation pass's scratch copies — do not run one while a pass is in flight"
+description = "Remove build artifacts (cargo clean). Also deletes a running single-run mutation pass's scratch copies — do not run one while such a pass is in flight"
 command = "cargo"
 args = ["clean"]
 
@@ -285,6 +286,24 @@ dependencies = ["mutants-scratch"]
 command = "cargo"
 args = ["mutants", "${@}"]
 
+# The shipped pass again, for a machine where the scratch redirect above is
+# the slow path: file scanners that watch the user area (endpoint security,
+# Spotlight) inspect every build product under target/mutants-scratch. This
+# task leaves TMPDIR alone, so the copies go back to the system temp
+# directory, and splits the pass into MUTANTS_SHARDS consecutive `--shard
+# k/n` runs, each in a copy of its own, so that no copy is in use for longer
+# than one shard takes. Pick n so that one shard finishes well inside the
+# cleaner's age threshold above, and raise it if a shard still breaks
+# partway. The script's header covers the sharding method, the resume state
+# and what it refuses to run.
+# `${@}` is forwarded only so that the script can refuse it: without it
+# cargo-make drops whatever follows the task name in silence, and
+# `cargo make mutants-sharded --list` would launch the full pass.
+[tasks.mutants-sharded]
+description = "Shipped mutation pass split into MUTANTS_SHARDS (default 40) resumable shards, scratch in the system temp directory; results merge into mutants-shards/<n>/; takes no arguments"
+command = "scripts/mutants-sharded.sh"
+args = ["${@}"]
+
 # Faithful mutation passes for code the shipped `cargo make mutants` run
 # cannot reach. The shipped run (.cargo/mutants.toml, default features) builds
 # hptt OFF and arpack OFF, so two regions never see a live mutant: the
@@ -312,7 +331,7 @@ args = ["mutants", "${@}"]
 # kill these mutants; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
-# Neither scoped pass takes `${@}`, unlike the shipped one: cargo-mutants
+# Neither scoped pass takes `${@}`, unlike `mutants`: cargo-mutants
 # treats a repeated `--file` / `--re` as an addition, so forwarding here
 # would turn an attempt to narrow the pass into a silent widening.
 [tasks.mutants-arpack]

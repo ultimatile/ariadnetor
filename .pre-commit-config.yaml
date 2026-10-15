@@ -58,6 +58,13 @@ repos:
         language: script
         types: [python]
         pass_filenames: false
+      - id: mutants-sharded-selftest
+        name: mutants-sharded contract tests
+        description: lock the sharded mutation pass's resume, refusal and exit-status behavior
+        entry: scripts/test-mutants-sharded.sh
+        language: script
+        files: ^scripts/(test-)?mutants-sharded\.sh$
+        pass_filenames: false
       - id: protect-default-branch
         name: refuse pushes to default branch
         entry: scripts/protect-default-branch.sh
