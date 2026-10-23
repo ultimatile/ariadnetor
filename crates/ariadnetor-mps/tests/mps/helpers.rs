@@ -2,8 +2,8 @@
 
 use ariadnetor_linalg::{contract, permute_with_backend, tensordot};
 use ariadnetor_mps::{
-    ApplyMethod, Mpo, Mps, MpsOps, SuccessiveRandomizedParams, TensorChain, TruncateParams,
-    apply_with_method,
+    ApplyMethod, Mpo, Mps, MpsOps, SuccessiveRandomizedParams, TensorChain, TruncSvdParams,
+    TruncateParams, apply_with_method,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::legs;
@@ -34,6 +34,14 @@ pub(crate) fn fixed_rank_src_params(output_dim: usize, seed: u64) -> SuccessiveR
         output_dim: Some(output_dim),
         seed,
         ..Default::default()
+    }
+}
+
+/// Truncation to at most `chi_max` singular values, with no error target.
+pub(crate) fn cap(chi_max: usize) -> TruncSvdParams {
+    TruncSvdParams {
+        chi_max: Some(chi_max),
+        target_trunc_err: None,
     }
 }
 
@@ -170,21 +178,27 @@ pub(crate) fn is_right_canonical(site: &DenseTensor<f64>, tol: f64) -> bool {
     is_isometric(site, false, tol)
 }
 
-/// Whether a rank-3 dense site is left-isometric (`left`, `A^H A ≈ I` over
-/// its trailing bond) or right-isometric (`A A^H ≈ I` over its leading
-/// bond), each Gram entry within `tol`. Conjugates, so it holds for complex
-/// sites too.
+/// Whether a dense site of rank 2 or more is left-isometric (`left`: `A^H A ≈ I`
+/// with every leg but the last fused into rows) or right-isometric
+/// (`A A^H ≈ I` with every leg but the first fused into columns), each Gram
+/// entry within `tol`. Conjugates, so it holds for complex sites too.
 pub(crate) fn is_isometric<T: ariadnetor_core::Scalar<Real = f64>>(
     site: &DenseTensor<T>,
     left: bool,
     tol: f64,
 ) -> bool {
-    let spec = if left { "abc,abd->cd" } else { "cab,dab->cd" };
-    let gram = contract(&NativeBackend::new(), &site.conj(), site, spec).expect("gram");
+    let rank = site.rank();
+    let (mat, spec) = if left {
+        (site.fuse_legs(0..rank - 1), "ab,ac->bc")
+    } else {
+        (site.fuse_legs(1..rank), "ab,cb->ac")
+    };
+    let gram = contract(&NativeBackend::new(), &mat.conj(), &mat, spec).expect("gram");
     let k = gram.shape()[0];
     (0..k).all(|i| {
         (0..k).all(|j| {
             let expected = if i == j { 1.0 } else { 0.0 };
+            // Scalar carries Add but not Sub; subtract by adding the negation.
             (gram.get([i, j]) + T::from_real_imag(-expected, 0.0)).abs() <= tol
         })
     })
@@ -218,6 +232,25 @@ pub(crate) fn relative_frobenius<T: ariadnetor_core::Scalar>(
     a: &DenseTensor<T>,
     e: &DenseTensor<T>,
 ) -> f64 {
+    let (diff, norm) = diff_and_norm(a, e);
+    // The metric is undefined against a zero reference; fail loudly
+    // instead of returning inf/NaN that obscures the actual mismatch.
+    assert!(norm > 0.0, "reference state must have nonzero norm");
+    diff / norm
+}
+
+/// Absolute Frobenius distance ‖a − e‖ over dense state tensors, computed
+/// elementwise like [`relative_frobenius`] but with no reference-norm
+/// division.
+pub(crate) fn frobenius_distance<T: ariadnetor_core::Scalar>(
+    a: &DenseTensor<T>,
+    e: &DenseTensor<T>,
+) -> f64 {
+    diff_and_norm(a, e).0
+}
+
+/// `(‖a − e‖, ‖e‖)`, accumulated elementwise.
+fn diff_and_norm<T: ariadnetor_core::Scalar>(a: &DenseTensor<T>, e: &DenseTensor<T>) -> (f64, f64) {
     use num_traits::NumCast;
     assert_eq!(a.shape(), e.shape(), "state shapes must agree");
     // Both operands come from the same contraction pipeline, so their
@@ -234,10 +267,7 @@ pub(crate) fn relative_frobenius<T: ariadnetor_core::Scalar>(
         diff_sq += d * d;
         norm_sq += n * n;
     }
-    // The metric is undefined against a zero reference; fail loudly
-    // instead of returning inf/NaN that obscures the actual mismatch.
-    assert!(norm_sq > 0.0, "reference state must have nonzero norm");
-    diff_sq.sqrt() / norm_sq.sqrt()
+    (diff_sq.sqrt(), norm_sq.sqrt())
 }
 
 /// The chain with site `j` scaled by `factor` and every other site cloned.

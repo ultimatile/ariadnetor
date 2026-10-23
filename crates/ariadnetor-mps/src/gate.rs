@@ -5,7 +5,7 @@ use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{TruncSvdParams, contract, diagonal_scale, trunc_svd};
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, OpsFor};
 
-use super::canonicalize::canonicalize_dense;
+use super::canonicalize::{left_qr_step, right_lq_step};
 use super::chain::TensorChain;
 use super::types::{CanonicalForm, Mps, TruncResult};
 
@@ -29,10 +29,12 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
     /// orientation of the [`SiteOps`](crate::SiteOps) matrices. It need not
     /// be unitary.
     ///
-    /// If the canonical form does not already put the orthogonality center
-    /// on `site` or `site + 1`, the chain is first canonicalized to `site`.
-    /// On return the form is `Mixed` with the center on the site `center`
-    /// selects.
+    /// The sites outside the pair must be isometric toward it. Whatever part
+    /// of that the canonical form does not already guarantee is established
+    /// first by QR / LQ steps that move the gauge toward the pair, so a center
+    /// `k` sites away costs `k` steps and a center on the pair costs none
+    /// (`Unknown` canonicalizes the whole chain). On return the form is
+    /// `Mixed` with the center on the site `center` selects.
     ///
     /// Returns the Frobenius norm of the discarded singular values. Because
     /// the sites around the pair are isometric, this equals the absolute
@@ -43,7 +45,9 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
     ///
     /// Panics if `site + 1 >= self.len()`, if `gate.shape()` is not
     /// `[d_site, d_site+1, d_site, d_site+1]` for the physical dimensions of
-    /// the two sites, or if `svd.chi_max` is `Some(0)`.
+    /// the two sites, if `svd.chi_max` is `Some(0)`, or if the stored
+    /// canonical form puts its right-isometric region past the end of the
+    /// chain (a `Mixed` center or a `Partial` `right_start` beyond it).
     pub fn apply_two_site_gate<B: OpsFor<DenseStorage<T>>>(
         &mut self,
         backend: &B,
@@ -69,14 +73,21 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
             "apply_two_site_gate: chi_max must be at least 1",
         );
 
-        // The error identity needs isometric environments on both sides of
-        // the pair; a center on the pair guarantees them.
-        let centered = matches!(
-            self.canonical_form().center_site(n),
-            Some(c) if c == site || c == site + 1
+        // The error identity needs sites `0..site` left-isometric and
+        // `site + 2..n` right-isometric. Extend whichever side the form does
+        // not already guarantee, one state-preserving step at a time, so the
+        // cost scales with the distance to the pair rather than with `n`.
+        let (left, right) = self.canonical_form().isometric_bounds(n);
+        assert!(
+            right <= n,
+            "apply_two_site_gate: canonical form {:?} names a site outside the chain of length {n}",
+            self.canonical_form(),
         );
-        if !centered {
-            canonicalize_dense(backend, self, site);
+        for j in left..site {
+            left_qr_step(self, j, backend);
+        }
+        for j in (site + 2..right).rev() {
+            right_lq_step(self, j, backend);
         }
 
         let theta = contract(

@@ -20,7 +20,9 @@ use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, MemoryOrder};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use super::helpers::{densify, is_isometric, relative_frobenius, with_site_scaled};
+use super::helpers::{
+    cap, densify, frobenius_distance, is_isometric, relative_frobenius, with_site_scaled,
+};
 
 type DenseMps<T> = Mps<DenseStorage<T>, DenseLayout>;
 
@@ -33,14 +35,6 @@ const NO_TRUNC: TruncSvdParams = TruncSvdParams {
     chi_max: None,
     target_trunc_err: None,
 };
-
-/// Truncation to at most `chi_max` singular values, with no error target.
-fn cap(chi_max: usize) -> TruncSvdParams {
-    TruncSvdParams {
-        chi_max: Some(chi_max),
-        target_trunc_err: None,
-    }
-}
 
 fn random_scalar<T: Scalar<Real = f64>>(rng: &mut StdRng) -> T {
     let re = rand::RngExt::random_range(rng, -0.5_f64..0.5);
@@ -134,11 +128,6 @@ fn apply_gate_dense<T: Scalar>(
         .reordered(MemoryOrder::ColumnMajor)
 }
 
-/// Absolute Frobenius distance between two column-major tensors.
-fn distance<T: Scalar<Real = f64>>(a: &DenseTensor<T>, e: &DenseTensor<T>) -> f64 {
-    relative_frobenius(a, e) * e.norm()
-}
-
 fn centered<T: Scalar<Real = f64>>(mut mps: DenseMps<T>, center: usize) -> DenseMps<T> {
     mps.canonicalize(&NativeBackend::new(), center);
     mps
@@ -205,7 +194,7 @@ fn check_truncated<T: Scalar<Real = f64>>(
         let err = out
             .apply_two_site_gate(&backend, site, gate, &svd, center)
             .error;
-        let actual = distance(&dense_state(&out), &expected);
+        let actual = frobenius_distance(&dense_state(&out), &expected);
         assert!(
             err > 1e-3,
             "{label}: fixture must actually truncate, got {err}"
@@ -241,21 +230,17 @@ fn truncation_error_equals_state_error() {
     check_truncated("c64", &unitary_gate(PHYS[1], PHYS[2], 3), &psi, 1);
 }
 
-/// The error identity holds for every input form: forms whose center is off
-/// the pair are canonicalized first, and forms whose center is on the pair
-/// already have isometric environments. Off-by-one centers on either side
-/// fall in the first group.
+/// The error identity holds for every input form, at pair sites where the
+/// form already makes the outside of the pair isometric and at sites where
+/// the gauge has to be moved first (off-pair and off-by-one centers,
+/// `Unknown`, a `Partial` region wider than the pair, `Left` / `Right` away
+/// from their center).
 #[test]
 fn error_identity_holds_for_every_input_form() {
     let n = PHYS.len();
     let gate = unitary_gate(PHYS[2], PHYS[3], 5);
     let base = random_mps::<Complex<f64>>(&PHYS, &BONDS, 13);
     let mixed = |c| centered(base.clone(), c);
-    let mut partial = mixed(2);
-    partial.set_canonical_form(CanonicalForm::Partial {
-        left_end: 2,
-        right_start: 4,
-    });
     let inputs = [
         ("Unknown", base.clone()),
         ("Mixed{0}", mixed(0)),
@@ -263,7 +248,8 @@ fn error_identity_holds_for_every_input_form() {
         ("Mixed{2}", mixed(2)),
         ("Mixed{3}", mixed(3)),
         ("Mixed{4}", mixed(4)),
-        ("Partial{2,4}", partial),
+        ("Partial{2,4}", tagged_partial(mixed(2), 2, 4)),
+        ("Partial{1,4}", tagged_partial(mixed(1), 1, 4)),
     ];
     for (label, psi) in &inputs {
         check_truncated(label, &gate, psi, 2);
@@ -279,6 +265,20 @@ fn error_identity_holds_for_every_input_form() {
     }
 }
 
+/// `psi` re-tagged `Partial { left_end, right_start }`; callers pass a chain
+/// whose actual isometric sites cover at least that much.
+fn tagged_partial(
+    mut psi: DenseMps<Complex<f64>>,
+    left_end: usize,
+    right_start: usize,
+) -> DenseMps<Complex<f64>> {
+    psi.set_canonical_form(CanonicalForm::Partial {
+        left_end,
+        right_start,
+    });
+    psi
+}
+
 /// `base` canonicalized to its last site, normalized and tagged `Left`; and
 /// canonicalized to its first site, normalized and tagged `Right`.
 fn left_and_right(
@@ -292,41 +292,56 @@ fn left_and_right(
     (left, right)
 }
 
-/// A center already on the pair skips canonicalization, so every site
-/// outside the pair comes back untouched; a center off the pair rewrites
-/// the sites the canonicalization sweeps over.
+/// Only the sites between the form's isometric bounds and the pair are
+/// rewritten before the gate: none when the form already makes the outside
+/// isometric, and only the near side when the center is off the pair.
 #[test]
-fn center_on_the_pair_leaves_other_sites_untouched() {
+fn moves_the_gauge_only_where_the_form_requires() {
     let backend = NativeBackend::new();
     let base = random_mps::<Complex<f64>>(&PHYS, &BONDS, 37);
     let n = base.len();
     let (left, right) = left_and_right(&base);
-    let on_pair = [
-        ("Mixed{2}, site 2", centered(base.clone(), 2), 2),
-        ("Mixed{3}, site 2", centered(base.clone(), 3), 2),
-        ("Left, site N-2", left, n - 2),
-        ("Right, site 0", right, 0),
+    let mixed = |c| centered(base.clone(), c);
+    // (label, input, pair site, sites the gauge move must rewrite)
+    type Case<'a> = (&'a str, DenseMps<Complex<f64>>, usize, &'a [usize]);
+    let cases: [Case; 9] = [
+        ("Mixed{2}, site 2", mixed(2), 2, &[]),
+        ("Mixed{3}, site 2", mixed(3), 2, &[]),
+        (
+            "Partial{2,4}, site 2",
+            tagged_partial(mixed(2), 2, 4),
+            2,
+            &[],
+        ),
+        ("Left, site N-2", left, n - 2, &[]),
+        ("Right, site 0", right, 0, &[]),
+        ("Mixed{0}, site 2", mixed(0), 2, &[0, 1]),
+        ("Mixed{4}, site 1", mixed(4), 1, &[3, 4]),
+        (
+            "Partial{1,4}, site 2",
+            tagged_partial(mixed(1), 1, 4),
+            2,
+            &[1],
+        ),
+        (
+            "Partial{2,4}, site 1",
+            tagged_partial(mixed(2), 2, 4),
+            1,
+            &[3],
+        ),
     ];
-    for (label, psi, site) in &on_pair {
+    for (label, psi, site, moved) in &cases {
         let gate = unitary_gate(PHYS[*site], PHYS[site + 1], 41);
         let mut out = psi.clone();
         out.apply_two_site_gate(&backend, *site, &gate, &NO_TRUNC, GateCenter::Right);
         for j in (0..n).filter(|&j| j != *site && j != site + 1) {
-            assert!(
-                same_site(out.site(j), psi.site(j)),
-                "{label}: site {j} changed"
+            assert_eq!(
+                !same_site(out.site(j), psi.site(j)),
+                moved.contains(&j),
+                "{label}: site {j}"
             );
         }
     }
-
-    let psi = centered(base, 0);
-    let gate = unitary_gate(PHYS[2], PHYS[3], 41);
-    let mut out = psi.clone();
-    out.apply_two_site_gate(&backend, 2, &gate, &NO_TRUNC, GateCenter::Right);
-    assert!(
-        !same_site(out.site(0), psi.site(0)),
-        "Mixed{{0}}, site 2: the off-pair center must be moved"
-    );
 }
 
 fn same_site(a: &DenseTensor<Complex<f64>>, b: &DenseTensor<Complex<f64>>) -> bool {
@@ -388,7 +403,7 @@ fn norm_and_truncate_trust_the_resulting_form() {
 
     let before = dense_state(&psi);
     let res = psi.truncate(&backend, &TruncateParams::from(svd));
-    let actual = distance(&dense_state(&psi), &before);
+    let actual = frobenius_distance(&dense_state(&psi), &before);
     assert!(res.error > 1e-3, "fixture must actually truncate");
     assert!((res.error - actual).abs() < 1e-10 * (1.0 + actual));
 }
@@ -453,4 +468,20 @@ fn panics_on_swapped_gate_dimensions() {
 #[should_panic(expected = "apply_two_site_gate: chi_max must be at least 1")]
 fn panics_on_zero_chi_max() {
     apply_to_fixture(0, &real_gate(2, 3, 1), &cap(0));
+}
+
+#[test]
+#[should_panic(
+    expected = "apply_two_site_gate: canonical form Mixed { center: 5 } names a site outside"
+)]
+fn panics_on_a_form_naming_a_site_outside_the_chain() {
+    let mut psi = random_mps::<f64>(&PHYS, &BONDS, 1);
+    psi.set_canonical_form(CanonicalForm::Mixed { center: PHYS.len() });
+    psi.apply_two_site_gate(
+        &NativeBackend::new(),
+        0,
+        &real_gate(2, 3, 1),
+        &NO_TRUNC,
+        GateCenter::Left,
+    );
 }

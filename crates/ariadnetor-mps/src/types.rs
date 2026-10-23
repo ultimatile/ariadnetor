@@ -46,14 +46,44 @@ pub enum CanonicalForm {
 impl CanonicalForm {
     /// The single orthogonality-center site this form pins down on a
     /// chain of `len` sites: `Mixed` names it, and `Left` / `Right` put
-    /// it on the last / first site. `None` for `Unknown` and `Partial`.
+    /// it on the last / first site. `None` for `Unknown`, for `Partial`,
+    /// and for `Left` / `Right` on an empty chain, which has no site.
     pub(crate) fn center_site(&self, len: usize) -> Option<usize> {
         match self {
             CanonicalForm::Mixed { center } => Some(*center),
-            CanonicalForm::Left => Some(len - 1),
-            CanonicalForm::Right => Some(0),
+            CanonicalForm::Left => len.checked_sub(1),
+            CanonicalForm::Right => (len > 0).then_some(0),
             CanonicalForm::Unknown | CanonicalForm::Partial { .. } => None,
         }
+    }
+
+    /// The bounds `(left, right)` this form guarantees on a chain of `len`
+    /// sites: sites `0..left` are left-isometric and `right..len` are
+    /// right-isometric. `Unknown` guarantees nothing, `(0, len)`.
+    pub(crate) fn isometric_bounds(&self, len: usize) -> (usize, usize) {
+        match self {
+            CanonicalForm::Mixed { center } => (*center, center.saturating_add(1)),
+            CanonicalForm::Left => (len, len),
+            CanonicalForm::Right => (0, 0),
+            CanonicalForm::Partial {
+                left_end,
+                right_start,
+            } => (*left_end, *right_start),
+            CanonicalForm::Unknown => (0, len),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CanonicalForm;
+
+    #[test]
+    fn center_site_is_none_on_an_empty_chain() {
+        assert_eq!(CanonicalForm::Left.center_site(0), None);
+        assert_eq!(CanonicalForm::Right.center_site(0), None);
+        assert_eq!(CanonicalForm::Left.center_site(3), Some(2));
+        assert_eq!(CanonicalForm::Right.center_site(3), Some(0));
     }
 }
 
