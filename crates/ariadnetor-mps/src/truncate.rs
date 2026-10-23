@@ -20,7 +20,9 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 /// directions, applying truncation at each bond. Returns the total
 /// truncation error (Frobenius norm of discarded singular values).
 ///
-/// If the chain is not in `Mixed` canonical form, auto-canonicalizes first.
+/// If the canonical form names no orthogonality center (`Unknown` or
+/// `Partial`), auto-canonicalizes first; `Left` / `Right` take the last /
+/// first site as the center.
 pub(super) fn truncate_dense<T, B, C>(
     backend: &B,
     chain: &mut C,

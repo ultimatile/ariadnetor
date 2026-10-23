@@ -70,7 +70,7 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
         );
 
         // The error identity needs isometric environments on both sides of
-        // the pair, which holds only when the center is inside it.
+        // the pair; a center on the pair guarantees them.
         let centered = matches!(
             self.canonical_form().center_site(n),
             Some(c) if c == site || c == site + 1
@@ -85,7 +85,7 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
             self.site(site + 1),
             "lar,rbs->labs",
         )
-        .expect("pair contraction: validated by entry point");
+        .expect("pair contraction: adjacent sites of a well-formed chain share their bond");
         let theta = contract(backend, gate, &theta, "xyab,labr->lxyr")
             .expect("gate contraction: validated by entry point");
         let chi_l = theta.shape()[0];

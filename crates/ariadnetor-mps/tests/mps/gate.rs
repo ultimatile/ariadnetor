@@ -2,9 +2,10 @@
 //!
 //! References are dense: the chain is contracted to its full state tensor
 //! and the gate is applied to the two physical axes directly. Gates are
-//! deliberately not transpose-symmetric and the pair's physical dimensions
-//! differ, so swapped input / output legs or swapped sites change the
-//! result instead of cancelling out.
+//! random draws with no imposed transpose symmetry, so generically not
+//! transpose-symmetric, and the pair's physical dimensions differ, so
+//! swapped input / output legs or swapped sites change the result instead
+//! of cancelling out.
 
 use ariadnetor_core::{Complex, Scalar};
 use ariadnetor_linalg::{
@@ -19,7 +20,7 @@ use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, MemoryOrder};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use super::helpers::{densify, relative_frobenius};
+use super::helpers::{densify, is_isometric, relative_frobenius, with_site_scaled};
 
 type DenseMps<T> = Mps<DenseStorage<T>, DenseLayout>;
 
@@ -32,6 +33,14 @@ const NO_TRUNC: TruncSvdParams = TruncSvdParams {
     chi_max: None,
     target_trunc_err: None,
 };
+
+/// Truncation to at most `chi_max` singular values, with no error target.
+fn cap(chi_max: usize) -> TruncSvdParams {
+    TruncSvdParams {
+        chi_max: Some(chi_max),
+        target_trunc_err: None,
+    }
+}
 
 fn random_scalar<T: Scalar<Real = f64>>(rng: &mut StdRng) -> T {
     let re = rand::RngExt::random_range(rng, -0.5_f64..0.5);
@@ -65,8 +74,8 @@ fn random_mps<T: Scalar<Real = f64>>(phys: &[usize], bonds: &[usize], seed: u64)
     Mps::from_sites(sites)
 }
 
-/// `exp(-0.3 h)` for a random real `h` with no symmetry: real and neither
-/// unitary nor transpose-symmetric.
+/// `exp(-0.3 h)` for a random real `h` with no imposed symmetry: real, and
+/// for a generic draw neither unitary nor transpose-symmetric.
 fn real_gate(d_l: usize, d_r: usize, seed: u64) -> DenseTensor<f64> {
     let dim = d_l * d_r;
     let mut rng = StdRng::seed_from_u64(seed);
@@ -75,8 +84,8 @@ fn real_gate(d_l: usize, d_r: usize, seed: u64) -> DenseTensor<f64> {
     g.reshape_logical(vec![d_l, d_r, d_l, d_r])
 }
 
-/// `exp(-0.3 i h)` for a random complex Hermitian `h`: unitary but not
-/// transpose-symmetric.
+/// `exp(-0.3 i h)` for a random complex Hermitian `h`: unitary, and for a
+/// generic draw not transpose-symmetric.
 fn unitary_gate(d_l: usize, d_r: usize, seed: u64) -> DenseTensor<Complex<f64>> {
     let dim = d_l * d_r;
     let mut rng = StdRng::seed_from_u64(seed);
@@ -126,31 +135,8 @@ fn apply_gate_dense<T: Scalar>(
 }
 
 /// Absolute Frobenius distance between two column-major tensors.
-fn distance<T: Scalar>(a: &DenseTensor<T>, e: &DenseTensor<T>) -> f64 {
-    relative_frobenius(a, e) * frobenius(e)
-}
-
-fn frobenius<T: Scalar>(t: &DenseTensor<T>) -> f64 {
-    use num_traits::ToPrimitive;
-    t.data_slice()
-        .iter()
-        .map(|v| v.abs().to_f64().expect("fits f64").powi(2))
-        .sum::<f64>()
-        .sqrt()
-}
-
-/// Whether `site` is left-isometric (`left`) or right-isometric, with the
-/// conjugate taken so the check holds for complex sites too.
-fn is_isometric<T: Scalar<Real = f64>>(site: &DenseTensor<T>, left: bool) -> bool {
-    let spec = if left { "abc,abd->cd" } else { "cab,dab->cd" };
-    let gram = contract(&NativeBackend::new(), &site.conj(), site, spec).expect("gram");
-    let k = gram.shape()[0];
-    (0..k).all(|i| {
-        (0..k).all(|j| {
-            let expected = if i == j { 1.0 } else { 0.0 };
-            (gram.get([i, j]) + T::from_real_imag(-expected, 0.0)).abs() < 1e-10
-        })
-    })
+fn distance<T: Scalar<Real = f64>>(a: &DenseTensor<T>, e: &DenseTensor<T>) -> f64 {
+    relative_frobenius(a, e) * e.norm()
 }
 
 fn centered<T: Scalar<Real = f64>>(mut mps: DenseMps<T>, center: usize) -> DenseMps<T> {
@@ -158,8 +144,19 @@ fn centered<T: Scalar<Real = f64>>(mut mps: DenseMps<T>, center: usize) -> Dense
     mps
 }
 
+/// `psi`, already centered at `center`, with that site rescaled to unit
+/// norm and tagged `Mixed { center }` again (the rebuilt chain starts out
+/// `Unknown`).
+fn normalized_at(psi: &DenseMps<Complex<f64>>, center: usize) -> DenseMps<Complex<f64>> {
+    let nrm = psi.norm::<Complex<f64>, _>(&NativeBackend::new());
+    let mut out = with_site_scaled(psi, center, Complex::new(1.0 / nrm, 0.0));
+    out.set_canonical_form(CanonicalForm::Mixed { center });
+    out
+}
+
 /// Without truncation, every bond and both center choices reproduce the
-/// dense application exactly, with zero error and the requested center.
+/// dense application to within 1e-12 relative error, with zero returned
+/// error and the requested center.
 fn check_exact<T: Scalar<Real = f64>>(gate_for: impl Fn(usize, usize, u64) -> DenseTensor<T>) {
     let backend = NativeBackend::new();
     for site in 0..PHYS.len() - 1 {
@@ -202,10 +199,7 @@ fn check_truncated<T: Scalar<Real = f64>>(
 ) {
     let backend = NativeBackend::new();
     let expected = apply_gate_dense(&dense_state(psi), gate, site);
-    let svd = TruncSvdParams {
-        chi_max: Some(1),
-        target_trunc_err: None,
-    };
+    let svd = cap(1);
     for center in [GateCenter::Left, GateCenter::Right] {
         let mut out = psi.clone();
         let err = out
@@ -233,7 +227,7 @@ fn check_truncated<T: Scalar<Real = f64>>(
             "{label} {center:?}"
         );
         assert!(
-            is_isometric(out.site(bare), left),
+            is_isometric(out.site(bare), left, 1e-10),
             "{label} {center:?}: site {bare}"
         );
     }
@@ -247,11 +241,12 @@ fn truncation_error_equals_state_error() {
     check_truncated("c64", &unitary_gate(PHYS[1], PHYS[2], 3), &psi, 1);
 }
 
-/// Forms whose center is not on the pair are canonicalized first, so the
-/// error identity still holds; forms whose center is on the pair are used
-/// as they are. Off-by-one centers on either side fall in the first group.
+/// The error identity holds for every input form: forms whose center is off
+/// the pair are canonicalized first, and forms whose center is on the pair
+/// already have isometric environments. Off-by-one centers on either side
+/// fall in the first group.
 #[test]
-fn input_forms_with_center_off_the_pair_are_canonicalized() {
+fn error_identity_holds_for_every_input_form() {
     let n = PHYS.len();
     let gate = unitary_gate(PHYS[2], PHYS[3], 5);
     let base = random_mps::<Complex<f64>>(&PHYS, &BONDS, 13);
@@ -276,22 +271,66 @@ fn input_forms_with_center_off_the_pair_are_canonicalized() {
 
     // `Left` / `Right` are normalized forms; build them from a normalized
     // state and test both the on-pair and the off-pair boundary site.
-    let normalized = |c: usize| {
-        let mut psi = mixed(c);
-        let nrm = psi.norm::<Complex<f64>, _>(&NativeBackend::new());
-        let scaled = psi.site(c).scaled(Complex::new(1.0 / nrm, 0.0));
-        *psi.site_mut(c) = scaled;
-        psi
-    };
-    let mut left = normalized(n - 1);
-    left.set_canonical_form(CanonicalForm::Left);
-    let mut right = normalized(0);
-    right.set_canonical_form(CanonicalForm::Right);
+    let (left, right) = left_and_right(&base);
     for site in [0, n - 2] {
         let g = unitary_gate(PHYS[site], PHYS[site + 1], 9);
         check_truncated(&format!("Left, site {site}"), &g, &left, site);
         check_truncated(&format!("Right, site {site}"), &g, &right, site);
     }
+}
+
+/// `base` canonicalized to its last site, normalized and tagged `Left`; and
+/// canonicalized to its first site, normalized and tagged `Right`.
+fn left_and_right(
+    base: &DenseMps<Complex<f64>>,
+) -> (DenseMps<Complex<f64>>, DenseMps<Complex<f64>>) {
+    let n = base.len();
+    let mut left = normalized_at(&centered(base.clone(), n - 1), n - 1);
+    left.set_canonical_form(CanonicalForm::Left);
+    let mut right = normalized_at(&centered(base.clone(), 0), 0);
+    right.set_canonical_form(CanonicalForm::Right);
+    (left, right)
+}
+
+/// A center already on the pair skips canonicalization, so every site
+/// outside the pair comes back untouched; a center off the pair rewrites
+/// the sites the canonicalization sweeps over.
+#[test]
+fn center_on_the_pair_leaves_other_sites_untouched() {
+    let backend = NativeBackend::new();
+    let base = random_mps::<Complex<f64>>(&PHYS, &BONDS, 37);
+    let n = base.len();
+    let (left, right) = left_and_right(&base);
+    let on_pair = [
+        ("Mixed{2}, site 2", centered(base.clone(), 2), 2),
+        ("Mixed{3}, site 2", centered(base.clone(), 3), 2),
+        ("Left, site N-2", left, n - 2),
+        ("Right, site 0", right, 0),
+    ];
+    for (label, psi, site) in &on_pair {
+        let gate = unitary_gate(PHYS[*site], PHYS[site + 1], 41);
+        let mut out = psi.clone();
+        out.apply_two_site_gate(&backend, *site, &gate, &NO_TRUNC, GateCenter::Right);
+        for j in (0..n).filter(|&j| j != *site && j != site + 1) {
+            assert!(
+                same_site(out.site(j), psi.site(j)),
+                "{label}: site {j} changed"
+            );
+        }
+    }
+
+    let psi = centered(base, 0);
+    let gate = unitary_gate(PHYS[2], PHYS[3], 41);
+    let mut out = psi.clone();
+    out.apply_two_site_gate(&backend, 2, &gate, &NO_TRUNC, GateCenter::Right);
+    assert!(
+        !same_site(out.site(0), psi.site(0)),
+        "Mixed{{0}}, site 2: the off-pair center must be moved"
+    );
+}
+
+fn same_site(a: &DenseTensor<Complex<f64>>, b: &DenseTensor<Complex<f64>>) -> bool {
+    a.shape() == b.shape() && a.order() == b.order() && a.data_slice() == b.data_slice()
 }
 
 /// The gate split into a two-site MPO in the `(chi_L, ket, bra, chi_R)`
@@ -328,17 +367,15 @@ fn matches_the_two_site_mpo_route() {
     assert!(rel < 1e-12, "relative error {rel}");
 }
 
-/// `norm` reads only the center tensor the gate tagged, and `truncate`
-/// starts from that tag; both must agree with dense evaluation.
+/// `norm` reads only the center tensor the gate tagged and must agree with
+/// the full `inner` contraction; `truncate` starts from that tag and its
+/// returned error must equal the state error measured on dense states.
 #[test]
 fn norm_and_truncate_trust_the_resulting_form() {
     let backend = NativeBackend::new();
     let gate = unitary_gate(PHYS[2], PHYS[3], 31);
     let mut psi = centered(random_mps::<Complex<f64>>(&PHYS, &BONDS, 23), 0);
-    let svd = TruncSvdParams {
-        chi_max: Some(2),
-        target_trunc_err: None,
-    };
+    let svd = cap(2);
     psi.apply_two_site_gate(&backend, 2, &gate, &svd, GateCenter::Right);
 
     let full: Complex<f64> = inner(&backend, &psi, &psi);
@@ -359,11 +396,10 @@ fn norm_and_truncate_trust_the_resulting_form() {
 #[test]
 fn unitary_gate_without_truncation_preserves_norm() {
     let backend = NativeBackend::new();
-    let mut psi = centered(random_mps::<Complex<f64>>(&PHYS, &BONDS, 29), 3);
-    let nrm = psi.norm::<Complex<f64>, _>(&backend);
-    let scaled = psi.site(3).scaled(Complex::new(1.0 / nrm, 0.0));
-    *psi.site_mut(3) = scaled;
-    psi.set_canonical_form(CanonicalForm::Mixed { center: 3 });
+    let mut psi = normalized_at(
+        &centered(random_mps::<Complex<f64>>(&PHYS, &BONDS, 29), 3),
+        3,
+    );
     for site in 0..PHYS.len() - 1 {
         let gate = unitary_gate(PHYS[site], PHYS[site + 1], 40 + site as u64);
         psi.apply_two_site_gate(&backend, site, &gate, &NO_TRUNC, GateCenter::Right);
@@ -375,70 +411,46 @@ fn unitary_gate_without_truncation_preserves_norm() {
     );
 }
 
-fn panic_fixture() -> DenseMps<f64> {
-    random_mps::<f64>(&PHYS, &BONDS, 1)
+/// Apply `gate` at `site` to a fresh 5-site `f64` fixture, for the panic
+/// tests: each one fails at the entry guards before any computation.
+fn apply_to_fixture(site: usize, gate: &DenseTensor<f64>, svd: &TruncSvdParams) {
+    random_mps::<f64>(&PHYS, &BONDS, 1).apply_two_site_gate(
+        &NativeBackend::new(),
+        site,
+        gate,
+        svd,
+        GateCenter::Left,
+    );
 }
 
 #[test]
 #[should_panic(expected = "apply_two_site_gate: site 4 has no right neighbor")]
 fn panics_on_last_site() {
-    let gate = real_gate(2, 2, 1);
-    panic_fixture().apply_two_site_gate(
-        &NativeBackend::new(),
-        4,
-        &gate,
-        &NO_TRUNC,
-        GateCenter::Left,
-    );
+    apply_to_fixture(4, &real_gate(2, 2, 1), &NO_TRUNC);
 }
 
 #[test]
 #[should_panic(expected = "has no right neighbor")]
 fn panics_on_overflowing_site() {
-    let gate = real_gate(2, 2, 1);
-    panic_fixture().apply_two_site_gate(
-        &NativeBackend::new(),
-        usize::MAX,
-        &gate,
-        &NO_TRUNC,
-        GateCenter::Left,
-    );
+    apply_to_fixture(usize::MAX, &real_gate(2, 2, 1), &NO_TRUNC);
 }
 
 #[test]
 #[should_panic(expected = "apply_two_site_gate: gate shape must be")]
 fn panics_on_wrong_rank_gate() {
     let gate = real_gate(2, 3, 1).reshape_logical(vec![6, 6]);
-    panic_fixture().apply_two_site_gate(
-        &NativeBackend::new(),
-        0,
-        &gate,
-        &NO_TRUNC,
-        GateCenter::Left,
-    );
+    apply_to_fixture(0, &gate, &NO_TRUNC);
 }
 
 #[test]
 #[should_panic(expected = "apply_two_site_gate: gate shape must be")]
 fn panics_on_swapped_gate_dimensions() {
     // Sites 0 and 1 have dimensions (2, 3); a (3, 2) gate is rejected.
-    let gate = real_gate(3, 2, 1);
-    panic_fixture().apply_two_site_gate(
-        &NativeBackend::new(),
-        0,
-        &gate,
-        &NO_TRUNC,
-        GateCenter::Left,
-    );
+    apply_to_fixture(0, &real_gate(3, 2, 1), &NO_TRUNC);
 }
 
 #[test]
 #[should_panic(expected = "apply_two_site_gate: chi_max must be at least 1")]
 fn panics_on_zero_chi_max() {
-    let gate = real_gate(2, 3, 1);
-    let svd = TruncSvdParams {
-        chi_max: Some(0),
-        target_trunc_err: None,
-    };
-    panic_fixture().apply_two_site_gate(&NativeBackend::new(), 0, &gate, &svd, GateCenter::Left);
+    apply_to_fixture(0, &real_gate(2, 3, 1), &cap(0));
 }
