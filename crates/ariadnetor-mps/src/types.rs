@@ -43,6 +43,20 @@ pub enum CanonicalForm {
     },
 }
 
+impl CanonicalForm {
+    /// The single orthogonality-center site this form pins down on a
+    /// chain of `len` sites: `Mixed` names it, and `Left` / `Right` put
+    /// it on the last / first site. `None` for `Unknown` and `Partial`.
+    pub(crate) fn center_site(&self, len: usize) -> Option<usize> {
+        match self {
+            CanonicalForm::Mixed { center } => Some(*center),
+            CanonicalForm::Left => Some(len - 1),
+            CanonicalForm::Right => Some(0),
+            CanonicalForm::Unknown | CanonicalForm::Partial { .. } => None,
+        }
+    }
+}
+
 /// How singular values are distributed during truncation sweeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SvdAbsorb {

@@ -17,6 +17,7 @@ mod chain;
 mod dispatch;
 mod env;
 mod env_block_sparse;
+mod gate;
 mod inner;
 mod serialize;
 mod site_ops;
@@ -30,8 +31,10 @@ pub use dispatch::MpsOps;
 // Multi-arg free functions (dispatch via the MpsOps trait). The single-chain
 // operations `canonicalize` / `truncate` / `norm` /
 // `round_successive_randomized` are inherent methods on `Mps` rather than
-// free functions.
+// free functions, as is the Dense-only `apply_two_site_gate`.
 pub use dispatch::{apply, apply_sum_successive_randomized, apply_with_method, braket, inner};
+
+pub use gate::GateCenter;
 
 // Three-layer ⟨bra|W|ket⟩ environment primitive (Dense / BlockSparse),
 // consumed by DMRG (bra = ket) and, later, variational fitting (distinct

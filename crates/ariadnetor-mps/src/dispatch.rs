@@ -17,6 +17,8 @@
 //! `round_successive_randomized`). Both are generic over `Mps<St, L>` and
 //! dispatch through the sealed trait; neither names a storage or layout
 //! primitive on its own bounds beyond the chain's own type parameters.
+//! Storage-specific inherent methods (the Dense-only
+//! `apply_two_site_gate`) sit outside this trait.
 //!
 //! # Operation authority
 //!
