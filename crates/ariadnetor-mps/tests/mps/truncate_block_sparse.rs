@@ -431,10 +431,10 @@ fn truncate_bsp_error_pins_step_arithmetic_3site() {
 }
 
 // --------------------------------------------------------------------------
-// CanonicalForm::Left / Right match arms
+// CanonicalForm::Left / Right center mapping (`CanonicalForm::center_site`)
 // --------------------------------------------------------------------------
 
-/// Catches: delete match arm CanonicalForm::Left, `n - 1` → `n + 1`/`n / 1`.
+/// Catches: Left mapped to no center, `len - 1` → `len + 1`/`len / 1`.
 #[test]
 fn truncate_bsp_left_form_center_is_last_site() {
     let backend = NativeBackend::new();
@@ -461,7 +461,7 @@ fn truncate_bsp_left_form_center_is_last_site() {
     }
 }
 
-/// Catches: delete match arm CanonicalForm::Right.
+/// Catches: Right mapped to no center.
 /// Right form uses center=0 regardless of params.center.
 #[test]
 fn truncate_bsp_right_form_ignores_center_param() {

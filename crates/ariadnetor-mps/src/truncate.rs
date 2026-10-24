@@ -20,7 +20,9 @@ use super::types::{CanonicalForm, SvdAbsorb, TruncResult, TruncateParams};
 /// directions, applying truncation at each bond. Returns the total
 /// truncation error (Frobenius norm of discarded singular values).
 ///
-/// If the chain is not in `Mixed` canonical form, auto-canonicalizes first.
+/// If the canonical form names no orthogonality center (`Unknown` or
+/// `Partial`), auto-canonicalizes first; `Left` / `Right` take the last /
+/// first site as the center.
 pub(super) fn truncate_dense<T, B, C>(
     backend: &B,
     chain: &mut C,
@@ -34,11 +36,9 @@ where
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
 
-    let center = match chain.canonical_form() {
-        CanonicalForm::Mixed { center } => *center,
-        CanonicalForm::Left => n - 1,
-        CanonicalForm::Right => 0,
-        _ => {
+    let center = match chain.canonical_form().center_site(n) {
+        Some(center) => center,
+        None => {
             let c = params.center.unwrap_or(0);
             canonicalize_dense(backend, chain, c);
             c
@@ -231,11 +231,9 @@ where
     let n = chain.len();
     assert!(n > 0, "truncate requires a non-empty chain");
 
-    let center = match chain.canonical_form() {
-        CanonicalForm::Mixed { center } => *center,
-        CanonicalForm::Left => n - 1,
-        CanonicalForm::Right => 0,
-        _ => {
+    let center = match chain.canonical_form().center_site(n) {
+        Some(center) => center,
+        None => {
             let c = params.center.unwrap_or(0);
             canonicalize_bsp(backend, chain, c);
             c

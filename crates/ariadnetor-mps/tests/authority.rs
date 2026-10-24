@@ -16,7 +16,8 @@
 //! that historically derived authority from an operand tensor —
 //! `canonicalize` / `truncate` (per-site decompositions) and `apply`
 //! (the MPO-MPS contraction) — are the load-bearing cases and are the
-//! ones exercised below.
+//! ones exercised below, together with `apply_two_site_gate` (pair
+//! contraction and SVD).
 
 use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 use std::num::NonZeroUsize;
@@ -29,7 +30,7 @@ use ariadnetor_core::backend::{
 use ariadnetor_core::{ComputeBackend, Scalar};
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::{
-    ApplyMethod, CanonicalForm, Mpo, Mps, MpsOps, TensorChain, TruncateParams, apply,
+    ApplyMethod, CanonicalForm, GateCenter, Mpo, Mps, MpsOps, TensorChain, TruncateParams, apply,
     apply_with_method,
 };
 use ariadnetor_native::NativeBackend;
@@ -325,6 +326,28 @@ fn truncate_bsp_routes_kernels_to_call_site_backend() {
     assert!(
         backend.count() > 0,
         "truncate (block-sparse): call-site backend recorded no kernel dispatch",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// apply_two_site_gate
+// ---------------------------------------------------------------------------
+//
+// The chain is stamped with its center on the pair so the gate's own
+// contraction and SVD are what dispatch, not a preceding canonicalize.
+
+#[test]
+fn apply_two_site_gate_routes_kernels_to_call_site_backend() {
+    let backend = CountingBackend::new();
+    let mut mps = dense_mps();
+    mps.set_canonical_form(CanonicalForm::Mixed { center: 1 });
+    let gate = dense_site(vec![2, 2, 2, 2]);
+
+    mps.apply_two_site_gate(&backend, 1, &gate, &trunc_params(2).svd, GateCenter::Right);
+
+    assert!(
+        backend.count() > 0,
+        "apply_two_site_gate: call-site backend recorded no kernel dispatch",
     );
 }
 
