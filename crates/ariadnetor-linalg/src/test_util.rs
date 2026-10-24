@@ -20,7 +20,7 @@ use ariadnetor_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
 use crate::error::LinalgError;
 
 /// Whether `result` is an `InvalidArgument` whose message contains `substr`.
-pub(crate) fn is_invalid_argument<T>(result: &Result<T, LinalgError>, substr: &str) -> bool {
+fn is_invalid_argument<T>(result: &Result<T, LinalgError>, substr: &str) -> bool {
     matches!(result, Err(LinalgError::InvalidArgument(msg)) if msg.contains(substr))
 }
 

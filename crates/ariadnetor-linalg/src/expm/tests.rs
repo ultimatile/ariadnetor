@@ -1,9 +1,10 @@
 use super::{
     compute_scaling_decision, expm_antihermitian_dense, expm_hermitian_dense, validate_expm_nrow,
 };
-use crate::test_util::{RowMajorBackend, assert_invalid_argument, is_invalid_argument};
+use crate::error::LinalgError;
+use crate::test_util::{RowMajorBackend, assert_invalid_argument};
 use ariadnetor_core::Complex;
-use ariadnetor_core::backend::MemoryOrder;
+use ariadnetor_core::backend::{BackendError, MemoryOrder};
 use ariadnetor_tensor::DenseTensorData;
 
 /// Entry `(i, j)` of a `6 x 6` complex Hermitian matrix with distinct entries.
@@ -28,6 +29,16 @@ fn grouped_operand(scale: Complex<f64>, offset: f64) -> DenseTensorData<Complex<
     DenseTensorData::from_raw_parts(data, vec![2, 3, 3, 2], MemoryOrder::RowMajor)
 }
 
+/// Whether `result` is the error of [`RowMajorBackend`]'s column-major-only
+/// `eigh`, which an operand reaches only after passing the check.
+fn failed_in_eigh<T>(result: &Result<T, LinalgError>) -> bool {
+    matches!(
+        result,
+        Err(LinalgError::Backend(BackendError::InvalidArgument(msg)))
+            if msg.contains("eigh supports ColumnMajor only")
+    )
+}
+
 /// On a row-major backend the check reads the grouped matrix from the
 /// row-major buffer. `eigh_dense` is column-major only on this backend, so an
 /// operand that passes the check fails afterwards with a different error.
@@ -41,22 +52,14 @@ fn hermiticity_check_on_row_major_backend() {
     let bad = expm_hermitian_dense(&backend, &grouped_operand(one, 0.5), 2);
     assert_invalid_argument(bad, HERMITIAN);
     let good = expm_hermitian_dense(&backend, &grouped_operand(one, 0.0), 2);
-    assert!(
-        !is_invalid_argument(&good, HERMITIAN),
-        "got {:?}",
-        good.as_ref().err()
-    );
+    assert!(failed_in_eigh(&good), "got {:?}", good.as_ref().err());
 
     // `-i H` is anti-Hermitian; the same offset breaks it.
     let minus_i = Complex::new(0.0, -1.0);
     let bad = expm_antihermitian_dense(&backend, &grouped_operand(minus_i, 0.5), 2);
     assert_invalid_argument(bad, ANTI);
     let good = expm_antihermitian_dense(&backend, &grouped_operand(minus_i, 0.0), 2);
-    assert!(
-        !is_invalid_argument(&good, ANTI),
-        "got {:?}",
-        good.as_ref().err()
-    );
+    assert!(failed_in_eigh(&good), "got {:?}", good.as_ref().err());
 }
 
 #[test]
