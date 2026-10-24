@@ -26,15 +26,13 @@
 //! sector with a *different* right sector (`s_l.dual().fuse(flux)`), so every
 //! per-sector block is off-diagonal and generally rectangular — there is no
 //! square operator to exponentiate; and the universe must be square so each
-//! per-sector block is square. The specialized variants additionally apply the
-//! dense Hermitian / anti-Hermitian exponential's check to the operator as a
-//! whole: the deviation is combined from all sector blocks and the Frobenius
-//! norm is taken over all stored elements, so a sector whose own norm is tiny
-//! is judged against the operator rather than against itself.
+//! per-sector block is square. The specialized variants additionally require
+//! each per-sector block to be Hermitian / anti-Hermitian: the dense kernel
+//! they call checks every block against its own Frobenius norm, because each
+//! sector's exponential depends on that block alone.
 
 use ariadnetor_core::Scalar;
-use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
-use ariadnetor_core::scale_safe_norm;
+use ariadnetor_core::backend::ComputeBackend;
 use ariadnetor_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::block_sparse_decomp::fused_sector::{
@@ -43,25 +41,19 @@ use crate::block_sparse_decomp::fused_sector::{
 };
 use crate::block_sparse_decomp::{to_vec_in_order, validate_nrow};
 use crate::error::LinalgError;
-use crate::expm::{
-    Adjoint, adjoint_deviation, ensure_complex, ensure_within_tolerance,
-    expm_antihermitian_unchecked_dense, expm_dense, expm_hermitian_unchecked_dense,
-};
-use crate::reorder_route::reorder_via_backend;
+use crate::expm::{ensure_complex, expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
 
 /// Run a per-sector dense exponential and reassemble into a same-shape tensor.
 ///
 /// Validates the square-operator preconditions (`nrow` range, identity flux,
-/// QN-square universe) and, when `check` is given, the whole operator's
-/// (anti-)Hermiticity; then for each fused sector assembles the dense block,
-/// applies `exp`, and scatters the result back. `exp` is the dense kernel for the
-/// chosen variant; `op` names the operation in rejection messages.
+/// QN-square universe), then for each fused sector assembles the dense block,
+/// applies `exp`, and scatters the result back. `exp` is the dense kernel for
+/// the chosen variant; `op` names the operation in rejection messages.
 fn expm_per_sector<T, S, B, F>(
     backend: &B,
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
     op: &str,
-    check: Option<Adjoint>,
     exp: F,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError>
 where
@@ -83,26 +75,6 @@ where
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
     validate_square_universe(tensor, &groups, nrow, op)?;
-
-    if let Some(kind) = check {
-        let mut deviations = Vec::with_capacity(groups.len());
-        for group in &groups {
-            // Blocks are stored in the backend's order, which is what the
-            // assembly reads them in; the deviation reads row-major.
-            let matrix = assemble_sector_matrix(tensor, group, order);
-            let block = DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order);
-            let rm = reorder_via_backend(backend, &block, MemoryOrder::RowMajor)?;
-            deviations.push(adjoint_deviation(&rm, group.m, kind));
-        }
-        // Every stored block lies in some fused sector, so the norm of the
-        // stored elements is the operator's.
-        ensure_within_tolerance::<T>(
-            scale_safe_norm(deviations),
-            tensor.norm_frobenius(),
-            op,
-            kind,
-        )?;
-    }
 
     let mut result_matrices = Vec::with_capacity(groups.len());
     for group in &groups {
@@ -134,7 +106,7 @@ pub(crate) fn expm_block_sparse_dense<T: Scalar, S: Sector>(
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
-    expm_per_sector(backend, tensor, nrow, "expm", None, |dense| {
+    expm_per_sector(backend, tensor, nrow, "expm", |dense| {
         expm_dense(backend, dense, 1)
     })
 }
@@ -146,21 +118,16 @@ pub(crate) fn expm_block_sparse_dense<T: Scalar, S: Sector>(
 /// # Errors
 ///
 /// Returns [`LinalgError::InvalidArgument`] if `nrow` is out of range, the flux
-/// is non-identity, the fused-sector universe is asymmetric, or the operator
-/// fails the Hermiticity check described in the module doc.
+/// is non-identity, the fused-sector universe is asymmetric, or a per-sector
+/// block fails the dense kernel's Hermiticity check.
 pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
-    expm_per_sector(
-        backend,
-        tensor,
-        nrow,
-        "expm_hermitian",
-        Some(Adjoint::Hermitian),
-        |dense| expm_hermitian_unchecked_dense(backend, dense, 1),
-    )
+    expm_per_sector(backend, tensor, nrow, "expm_hermitian", |dense| {
+        expm_hermitian_dense(backend, dense, 1)
+    })
 }
 
 /// Internal kernel for the block-sparse anti-Hermitian matrix exponential on
@@ -174,22 +141,17 @@ pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
 ///
 /// Returns [`LinalgError::InvalidArgument`] if the element type is real, `nrow`
 /// is out of range, the flux is non-identity, the fused-sector universe is
-/// asymmetric, or the operator fails the anti-Hermiticity check described in
-/// the module doc.
+/// asymmetric, or a per-sector block fails the dense kernel's anti-Hermiticity
+/// check.
 pub(crate) fn expm_antihermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
     ensure_complex::<T>()?;
-    expm_per_sector(
-        backend,
-        tensor,
-        nrow,
-        "expm_antihermitian",
-        Some(Adjoint::AntiHermitian),
-        |dense| expm_antihermitian_unchecked_dense(backend, dense, 1),
-    )
+    expm_per_sector(backend, tensor, nrow, "expm_antihermitian", |dense| {
+        expm_antihermitian_dense(backend, dense, 1)
+    })
 }
 
 #[cfg(test)]

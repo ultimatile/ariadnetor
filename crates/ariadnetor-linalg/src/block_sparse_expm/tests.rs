@@ -390,27 +390,39 @@ fn nrow_out_of_range_rejected() {
     expect_invalid_argument(expm_block_sparse_dense(&backend(), &a, 2), Some("nrow"));
 }
 
-/// The tolerance is relative to the whole operator. Sector 1 is a `1 x 1`
-/// block of rounding-level noise, `1e-17 (1 + i)`: against its own norm it is
-/// far from (anti-)Hermitian, but its deviation `2e-17` is far below
-/// `sqrt(epsilon)` times the operator's norm (`sqrt(17)` and `3` for the two
-/// fixtures).
-#[test]
-fn tiny_sector_is_judged_against_the_whole_operator() {
-    let mut herm = hermitian_rank2_c64();
-    fill_block(&mut herm, &[1, 1], &[c(1e-17, 1e-17)], 1, 1, order());
-    assert!(expm_hermitian_block_sparse_dense(&backend(), &herm, 1).is_ok());
+/// `bs` with its `1 x 1` sector 1 set to `v`.
+fn with_sector_1(
+    mut bs: BlockSparseTensorData<Complex<f64>, U1Sector>,
+    v: Complex<f64>,
+) -> BlockSparseTensorData<Complex<f64>, U1Sector> {
+    fill_block(&mut bs, &[1, 1], &[v], 1, 1, order());
+    bs
+}
 
-    let mut anti = antihermitian_rank2_c64();
-    fill_block(&mut anti, &[1, 1], &[c(1e-17, 1e-17)], 1, 1, order());
-    assert!(expm_antihermitian_block_sparse_dense(&backend(), &anti, 1).is_ok());
+/// Each sector block is judged against its own norm. Sector 1 is the `1 x 1`
+/// block `1e-17 (1 + i)`, whose deviation `2e-17` is small next to the other
+/// sector but not next to its own norm, so it is rejected; each sector's
+/// exponential depends on that block alone.
+#[test]
+fn tiny_sector_is_judged_against_its_own_norm() {
+    let herm = with_sector_1(hermitian_rank2_c64(), c(1e-17, 1e-17));
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &herm, 1),
+        Some("requires a Hermitian matrix"),
+    );
+
+    let anti = with_sector_1(antihermitian_rank2_c64(), c(1e-17, 1e-17));
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
+        Some("requires an anti-Hermitian matrix"),
+    );
 }
 
 /// Rank-4 operator, `nrow = 2`, whose charge-1 fused sector is `5 x 5`, built
 /// from the tuples `(0, 1)` and `(1, 0)` with sub-blocks `2 x 2`, `2 x 3`,
 /// `3 x 2` and `3 x 3`. Entry `(i, j)` of that sector is `scale * s(i, j)` with
 /// `s` symmetric, plus `offset` at `(0, 3)`, inside the `2 x 3` sub-block; the
-/// `1 x 1` sectors of charge 0 and 2 stay zero.
+/// `2 x 2` and `3 x 3` sectors of charge 0 and 2 stay zero.
 fn rank4_nonsquare_subblocks(
     scale: Complex<f64>,
     offset: f64,
@@ -469,37 +481,18 @@ fn multi_tuple_sector_with_nonsquare_subblocks() {
     );
 }
 
-/// A NaN in one sector, and sector norms that are each finite but overflow
-/// once combined, both make the operator's norm non-finite.
+/// A NaN in a later sector makes that block's norm non-finite.
 #[test]
-fn non_finite_operator_norm_rejected() {
+fn non_finite_sector_norm_rejected() {
     const NOT_FINITE: &str = "requires an operand with a finite Frobenius norm";
 
-    let mut nan = hermitian_rank2_c64();
-    fill_block(&mut nan, &[1, 1], &[c(f64::NAN, 0.0)], 1, 1, order());
+    let nan = with_sector_1(hermitian_rank2_c64(), c(f64::NAN, 0.0));
     expect_invalid_argument(
         expm_hermitian_block_sparse_dense(&backend(), &nan, 1),
         Some(NOT_FINITE),
     );
 
-    let big = 0.8 * f64::MAX;
-    let mut overflow = hermitian_rank2_c64();
-    fill_block(
-        &mut overflow,
-        &[0, 0],
-        &[c(big, 0.0), c(0.0, 0.0), c(0.0, 0.0), c(0.0, 0.0)],
-        2,
-        2,
-        order(),
-    );
-    fill_block(&mut overflow, &[1, 1], &[c(big, 0.0)], 1, 1, order());
-    expect_invalid_argument(
-        expm_hermitian_block_sparse_dense(&backend(), &overflow, 1),
-        Some(NOT_FINITE),
-    );
-
-    let mut anti = antihermitian_rank2_c64();
-    fill_block(&mut anti, &[1, 1], &[c(0.0, f64::NAN)], 1, 1, order());
+    let anti = with_sector_1(antihermitian_rank2_c64(), c(0.0, f64::NAN));
     expect_invalid_argument(
         expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
         Some(NOT_FINITE),
@@ -510,16 +503,14 @@ fn non_finite_operator_norm_rejected() {
 /// component that breaks it, so only a check that reaches every sector rejects.
 #[test]
 fn non_hermitian_later_sector_rejected() {
-    let mut herm = hermitian_rank2_c64();
-    fill_block(&mut herm, &[1, 1], &[c(4.0, 0.5)], 1, 1, order());
+    let herm = with_sector_1(hermitian_rank2_c64(), c(4.0, 0.5));
     expect_invalid_argument(
         expm_hermitian_block_sparse_dense(&backend(), &herm, 1),
         Some("requires a Hermitian matrix"),
     );
     assert!(expm_block_sparse_dense(&backend(), &herm, 1).is_ok());
 
-    let mut anti = antihermitian_rank2_c64();
-    fill_block(&mut anti, &[1, 1], &[c(0.5, 3.0)], 1, 1, order());
+    let anti = with_sector_1(antihermitian_rank2_c64(), c(0.5, 3.0));
     expect_invalid_argument(
         expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
         Some("requires an anti-Hermitian matrix"),
