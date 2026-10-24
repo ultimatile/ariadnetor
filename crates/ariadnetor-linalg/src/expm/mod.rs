@@ -7,7 +7,8 @@ use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
 mod hermiticity;
 
-use hermiticity::ensure_hermitian;
+use hermiticity::ensure_adjoint;
+pub(crate) use hermiticity::{Adjoint, adjoint_deviation, ensure_within_tolerance};
 
 use crate::contract::contract_dense;
 use crate::eigen::eigh_dense;
@@ -49,8 +50,18 @@ pub(crate) fn expm_hermitian_dense<T: Scalar>(
 ) -> Result<DenseTensorData<T>, LinalgError> {
     let n = validate_square_operand(tensor.shape(), nrow, "expm_hermitian")?;
     let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
-    ensure_hermitian(&rm, n, "expm_hermitian requires a Hermitian matrix")?;
+    ensure_adjoint(&rm, n, "expm_hermitian", Adjoint::Hermitian)?;
+    expm_hermitian_unchecked_dense(backend, tensor, nrow)
+}
 
+/// [`expm_hermitian_dense`] without the Hermiticity check, for a caller that
+/// has already established it. The `nrow` and squareness errors still come
+/// from [`eigh_dense`].
+pub(crate) fn expm_hermitian_unchecked_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    nrow: usize,
+) -> Result<DenseTensorData<T>, LinalgError> {
     let (w, v) = eigh_dense(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(lambda_j)
@@ -95,15 +106,35 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
     tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<DenseTensorData<T>, LinalgError> {
-    // Reject real types -- multiplication by i is not representable
+    ensure_complex::<T>()?;
+    let n = validate_square_operand(tensor.shape(), nrow, "expm_antihermitian")?;
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
+    ensure_adjoint(&rm, n, "expm_antihermitian", Adjoint::AntiHermitian)?;
+    expm_antihermitian_unchecked_dense(backend, tensor, nrow)
+}
+
+/// Reject a real element type for the anti-Hermitian exponential, whose `iA`
+/// is not representable in it.
+pub(crate) fn ensure_complex<T: Scalar>() -> Result<(), LinalgError> {
     let tid = TypeId::of::<T>();
     if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
         return Err(LinalgError::InvalidArgument(
             "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
         ));
     }
+    Ok(())
+}
 
-    let n = validate_square_operand(tensor.shape(), nrow, "expm_antihermitian")?;
+/// [`expm_antihermitian_dense`] without the anti-Hermiticity check, for a
+/// caller that has already established it. A real element type is still
+/// rejected, and the `nrow` and squareness errors still come from
+/// [`eigh_dense`].
+pub(crate) fn expm_antihermitian_unchecked_dense<T: Scalar>(
+    backend: &impl ComputeBackend,
+    tensor: &DenseTensorData<T>,
+    nrow: usize,
+) -> Result<DenseTensorData<T>, LinalgError> {
+    ensure_complex::<T>()?;
     let order = backend.preferred_order();
 
     // Reorder to RowMajor for element-wise iA computation
@@ -119,11 +150,6 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
         .collect();
     // ia data is in RowMajor; reorder to preferred_order for backend consumption
     let ia_rm = DenseTensorData::from_raw_parts(ia_data, shape.to_vec(), MemoryOrder::RowMajor);
-    ensure_hermitian(
-        &ia_rm,
-        n,
-        "expm_antihermitian requires an anti-Hermitian matrix",
-    )?;
     let ia = reorder_via_backend(backend, &ia_rm, order)?;
 
     // eigh(iA) -> real eigenvalues lambda, eigenvectors V

@@ -17,6 +17,7 @@ use num_traits::{Float, NumCast};
 
 const NOT_HERMITIAN: &str = "expm_hermitian requires a Hermitian matrix";
 const NOT_ANTIHERMITIAN: &str = "expm_antihermitian requires an anti-Hermitian matrix";
+const NOT_FINITE: &str = "requires an operand with a finite Frobenius norm";
 
 type Out<T> = Result<DenseTensor<T>, LinalgError>;
 
@@ -191,12 +192,20 @@ fn non_finite_entries_are_rejected() {
         for at in [0, 1] {
             let mut data = vec![1.0, 0.0, 0.0, 1.0];
             data[at] = bad;
-            assert_rejected(hermitian(&cm(data, vec![2, 2]), 1), NOT_HERMITIAN);
+            assert_rejected(hermitian(&cm(data, vec![2, 2]), 1), NOT_FINITE);
             let mut data = vec![c(0.0, 1.0), c(0.0, 0.0), c(0.0, 0.0), c(0.0, 1.0)];
             data[at] = c(0.0, bad);
-            assert_rejected(antihermitian(&cm(data, vec![2, 2]), 1), NOT_ANTIHERMITIAN);
+            assert_rejected(antihermitian(&cm(data, vec![2, 2]), 1), NOT_FINITE);
         }
     }
+}
+
+#[test]
+fn an_overflowing_norm_is_rejected_as_non_finite() {
+    // Exactly Hermitian with finite entries, but the Frobenius norm overflows.
+    let big = 0.8 * f64::MAX;
+    let a = cm(vec![0.0, big, big, 0.0], vec![2, 2]);
+    assert_rejected(hermitian(&a, 1), NOT_FINITE);
 }
 
 #[test]

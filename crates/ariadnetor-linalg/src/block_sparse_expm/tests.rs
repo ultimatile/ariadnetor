@@ -17,6 +17,10 @@ use crate::block_sparse_decomp::fused_sector::{
 use crate::block_sparse_decomp::to_vec_in_order;
 use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
 
+fn c(re: f64, im: f64) -> Complex<f64> {
+    Complex::new(re, im)
+}
+
 fn backend() -> NativeBackend {
     NativeBackend::new()
 }
@@ -177,7 +181,6 @@ fn general_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// Rank-2 U1, identity flux, complex non-Hermitian blocks. Sector 0 is a 2×2
 /// block not equal to its conjugate transpose; sector 1 is a 1×1 scalar.
 fn general_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
-    let c = |re: f64, im: f64| Complex::new(re, im);
     let mut bs = BlockSparseTensorData::zeros(
         square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
@@ -235,7 +238,6 @@ fn hermitian_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// `[[2, 1+i], [1-i, 3]]` (real diagonal, conjugate off-diagonals, so
 /// `A == A†`); sector 1 is the real scalar `[4]`.
 fn hermitian_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
-    let c = |re: f64, im: f64| Complex::new(re, im);
     let mut bs = BlockSparseTensorData::zeros(
         square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
@@ -257,7 +259,6 @@ fn hermitian_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
 /// `[[i, 1+i], [-1+i, 2i]]` (purely imaginary diagonal, `A[j,i] = -conj(A[i,j])`,
 /// so `A† == -A`); sector 1 is the purely imaginary scalar `[3i]`.
 fn antihermitian_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
-    let c = |re: f64, im: f64| Complex::new(re, im);
     let mut bs = BlockSparseTensorData::zeros(
         square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
@@ -389,12 +390,63 @@ fn nrow_out_of_range_rejected() {
     expect_invalid_argument(expm_block_sparse_dense(&backend(), &a, 2), Some("nrow"));
 }
 
+/// The tolerance is relative to the whole operator. Sector 1 is a `1 x 1`
+/// block of rounding-level noise, `1e-17 (1 + i)`: against its own norm it is
+/// far from (anti-)Hermitian, but its deviation `2e-17` is far below
+/// `sqrt(epsilon)` times the operator's norm (`sqrt(17)` and `3` for the two
+/// fixtures).
+#[test]
+fn tiny_sector_is_judged_against_the_whole_operator() {
+    let mut herm = hermitian_rank2_c64();
+    fill_block(&mut herm, &[1, 1], &[c(1e-17, 1e-17)], 1, 1, order());
+    assert!(expm_hermitian_block_sparse_dense(&backend(), &herm, 1).is_ok());
+
+    let mut anti = antihermitian_rank2_c64();
+    fill_block(&mut anti, &[1, 1], &[c(1e-17, 1e-17)], 1, 1, order());
+    assert!(expm_antihermitian_block_sparse_dense(&backend(), &anti, 1).is_ok());
+}
+
+/// A NaN in one sector, and sector norms that are each finite but overflow
+/// once combined, both make the operator's norm non-finite.
+#[test]
+fn non_finite_operator_norm_rejected() {
+    const NOT_FINITE: &str = "requires an operand with a finite Frobenius norm";
+
+    let mut nan = hermitian_rank2_c64();
+    fill_block(&mut nan, &[1, 1], &[c(f64::NAN, 0.0)], 1, 1, order());
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &nan, 1),
+        Some(NOT_FINITE),
+    );
+
+    let big = 0.8 * f64::MAX;
+    let mut overflow = hermitian_rank2_c64();
+    fill_block(
+        &mut overflow,
+        &[0, 0],
+        &[c(big, 0.0), c(0.0, 0.0), c(0.0, 0.0), c(0.0, 0.0)],
+        2,
+        2,
+        order(),
+    );
+    fill_block(&mut overflow, &[1, 1], &[c(big, 0.0)], 1, 1, order());
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &overflow, 1),
+        Some(NOT_FINITE),
+    );
+
+    let mut anti = antihermitian_rank2_c64();
+    fill_block(&mut anti, &[1, 1], &[c(0.0, f64::NAN)], 1, 1, order());
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
+        Some(NOT_FINITE),
+    );
+}
+
 /// Sector 0 keeps its (anti-)Hermitian block and the `1 x 1` sector 1 gains a
 /// component that breaks it, so only a check that reaches every sector rejects.
 #[test]
 fn non_hermitian_later_sector_rejected() {
-    let c = |re: f64, im: f64| Complex::new(re, im);
-
     let mut herm = hermitian_rank2_c64();
     fill_block(&mut herm, &[1, 1], &[c(4.0, 0.5)], 1, 1, order());
     expect_invalid_argument(

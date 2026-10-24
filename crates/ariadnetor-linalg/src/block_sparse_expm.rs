@@ -26,15 +26,15 @@
 //! sector with a *different* right sector (`s_l.dual().fuse(flux)`), so every
 //! per-sector block is off-diagonal and generally rectangular — there is no
 //! square operator to exponentiate; and the universe must be square so each
-//! per-sector block is square. The specialized variants additionally require
-//! each per-sector block to be Hermitian / anti-Hermitian; the dense kernel
-//! they call rejects a block that is not, within its `sqrt(epsilon)` relative
-//! Frobenius tolerance.
-
-use std::any::TypeId;
+//! per-sector block is square. The specialized variants additionally apply the
+//! dense Hermitian / anti-Hermitian exponential's check to the operator as a
+//! whole: its deviation and Frobenius norm are those of the full block-diagonal
+//! operator, combined from the sector blocks, so a sector whose own norm is
+//! tiny is judged against the operator rather than against itself.
 
 use ariadnetor_core::Scalar;
-use ariadnetor_core::backend::ComputeBackend;
+use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
+use ariadnetor_core::scale_safe_norm;
 use ariadnetor_tensor::{BlockSparseTensorData, DenseTensorData, Sector};
 
 use crate::block_sparse_decomp::fused_sector::{
@@ -43,19 +43,25 @@ use crate::block_sparse_decomp::fused_sector::{
 };
 use crate::block_sparse_decomp::{to_vec_in_order, validate_nrow};
 use crate::error::LinalgError;
-use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
+use crate::expm::{
+    Adjoint, adjoint_deviation, ensure_complex, ensure_within_tolerance,
+    expm_antihermitian_unchecked_dense, expm_dense, expm_hermitian_unchecked_dense,
+};
+use crate::reorder_route::reorder_via_backend;
 
 /// Run a per-sector dense exponential and reassemble into a same-shape tensor.
 ///
 /// Validates the square-operator preconditions (`nrow` range, identity flux,
-/// QN-square universe), then for each fused sector assembles the dense block,
-/// applies `exp`, and scatters the result back. `exp` is the dense kernel for
-/// the chosen variant; `op` names the operation in rejection messages.
+/// QN-square universe), assembles the dense block of each fused sector, checks
+/// the whole operator against `check` when one is given, then applies `exp` to
+/// each block and scatters the results back. `exp` is the dense kernel for the
+/// chosen variant; `op` names the operation in rejection messages.
 fn expm_per_sector<T, S, B, F>(
     backend: &B,
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
     op: &str,
+    check: Option<Adjoint>,
     exp: F,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError>
 where
@@ -78,11 +84,33 @@ where
     let groups = compute_fused_sector_groups(tensor, nrow);
     validate_square_universe(tensor, &groups, nrow, op)?;
 
-    let mut result_matrices = Vec::with_capacity(groups.len());
-    for group in &groups {
-        let matrix = assemble_sector_matrix(tensor, group, order);
-        let dense = DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order);
-        let result = exp(&dense)?;
+    let blocks: Vec<DenseTensorData<T>> = groups
+        .iter()
+        .map(|group| {
+            let matrix = assemble_sector_matrix(tensor, group, order);
+            DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order)
+        })
+        .collect();
+
+    if let Some(kind) = check {
+        let mut deviations = Vec::with_capacity(blocks.len());
+        let mut norms = Vec::with_capacity(blocks.len());
+        for (group, block) in groups.iter().zip(&blocks) {
+            let rm = reorder_via_backend(backend, block, MemoryOrder::RowMajor)?;
+            deviations.push(adjoint_deviation(&rm, group.m, kind));
+            norms.push(rm.norm_frobenius());
+        }
+        ensure_within_tolerance::<T>(
+            scale_safe_norm(deviations),
+            scale_safe_norm(norms),
+            op,
+            kind,
+        )?;
+    }
+
+    let mut result_matrices = Vec::with_capacity(blocks.len());
+    for block in &blocks {
+        let result = exp(block)?;
         result_matrices.push(to_vec_in_order(&result, order));
     }
 
@@ -108,7 +136,7 @@ pub(crate) fn expm_block_sparse_dense<T: Scalar, S: Sector>(
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
-    expm_per_sector(backend, tensor, nrow, "expm", |dense| {
+    expm_per_sector(backend, tensor, nrow, "expm", None, |dense| {
         expm_dense(backend, dense, 1)
     })
 }
@@ -120,47 +148,50 @@ pub(crate) fn expm_block_sparse_dense<T: Scalar, S: Sector>(
 /// # Errors
 ///
 /// Returns [`LinalgError::InvalidArgument`] if `nrow` is out of range, the flux
-/// is non-identity, the fused-sector universe is asymmetric, or a per-sector
-/// block is not Hermitian within the dense kernel's tolerance.
+/// is non-identity, the fused-sector universe is asymmetric, or the operator
+/// fails the Hermiticity check described in the module doc.
 pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
-    expm_per_sector(backend, tensor, nrow, "expm_hermitian", |dense| {
-        expm_hermitian_dense(backend, dense, 1)
-    })
+    expm_per_sector(
+        backend,
+        tensor,
+        nrow,
+        "expm_hermitian",
+        Some(Adjoint::Hermitian),
+        |dense| expm_hermitian_unchecked_dense(backend, dense, 1),
+    )
 }
 
 /// Internal kernel for the block-sparse anti-Hermitian matrix exponential on
 /// joined-form [`BlockSparseTensorData<T, S>`]. The public entry point is
 /// [`crate::expm_antihermitian_block_sparse_with_backend`].
 ///
-/// A real element type is rejected up front — before the sector loop — so an
-/// empty real operand errors consistently rather than succeeding by vacuously
-/// skipping every per-sector check.
+/// A real element type is rejected up front, before any sector is visited, so
+/// an empty real operand errors as well.
 ///
 /// # Errors
 ///
 /// Returns [`LinalgError::InvalidArgument`] if the element type is real, `nrow`
 /// is out of range, the flux is non-identity, the fused-sector universe is
-/// asymmetric, or a per-sector block is not anti-Hermitian within the dense
-/// kernel's tolerance.
+/// asymmetric, or the operator fails the anti-Hermiticity check described in
+/// the module doc.
 pub(crate) fn expm_antihermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
-    let tid = TypeId::of::<T>();
-    if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
-        return Err(LinalgError::InvalidArgument(
-            "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
-        ));
-    }
-
-    expm_per_sector(backend, tensor, nrow, "expm_antihermitian", |dense| {
-        expm_antihermitian_dense(backend, dense, 1)
-    })
+    ensure_complex::<T>()?;
+    expm_per_sector(
+        backend,
+        tensor,
+        nrow,
+        "expm_antihermitian",
+        Some(Adjoint::AntiHermitian),
+        |dense| expm_antihermitian_unchecked_dense(backend, dense, 1),
+    )
 }
 
 #[cfg(test)]
