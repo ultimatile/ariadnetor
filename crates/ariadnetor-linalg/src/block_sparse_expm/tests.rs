@@ -389,6 +389,41 @@ fn nrow_out_of_range_rejected() {
     expect_invalid_argument(expm_block_sparse_dense(&backend(), &a, 2), Some("nrow"));
 }
 
+/// Sector 0 keeps its (anti-)Hermitian block and the `1 x 1` sector 1 gains a
+/// component that breaks it, so only a check that reaches every sector rejects.
+#[test]
+fn non_hermitian_later_sector_rejected() {
+    let c = |re: f64, im: f64| Complex::new(re, im);
+
+    let mut herm = hermitian_rank2_c64();
+    fill_block(&mut herm, &[1, 1], &[c(4.0, 0.5)], 1, 1, order());
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &herm, 1),
+        Some("requires a Hermitian matrix"),
+    );
+    assert!(expm_block_sparse_dense(&backend(), &herm, 1).is_ok());
+
+    let mut anti = antihermitian_rank2_c64();
+    fill_block(&mut anti, &[1, 1], &[c(0.5, 3.0)], 1, 1, order());
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
+        Some("requires an anti-Hermitian matrix"),
+    );
+    assert!(expm_block_sparse_dense(&backend(), &anti, 1).is_ok());
+}
+
+/// The middle fused sector of `general_rank4_f64` merges two tuples into a
+/// non-symmetric `2 x 2` block; sectors 0 and 2 are `1 x 1` and symmetric.
+#[test]
+fn non_hermitian_multi_tuple_sector_rejected() {
+    let a = general_rank4_f64();
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &a, 2),
+        Some("requires a Hermitian matrix"),
+    );
+    assert!(expm_block_sparse_dense(&backend(), &a, 2).is_ok());
+}
+
 #[test]
 fn antihermitian_real_type_rejected() {
     let a = hermitian_rank2_f64();

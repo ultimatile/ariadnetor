@@ -26,9 +26,9 @@
 //! sector with a *different* right sector (`s_l.dual().fuse(flux)`), so every
 //! per-sector block is off-diagonal and generally rectangular — there is no
 //! square operator to exponentiate; and the universe must be square so each
-//! per-sector block is square. Per-sector Hermiticity / anti-Hermiticity (for
-//! the specialized variants) is trusted exactly as dense `expm_hermitian` and
-//! block-sparse `eigh` trust it.
+//! per-sector block is square. The specialized variants additionally require
+//! each per-sector block to be Hermitian / anti-Hermitian; the dense kernel
+//! they call rejects a block that is not.
 
 use std::any::TypeId;
 
@@ -116,12 +116,11 @@ pub(crate) fn expm_block_sparse_dense<T: Scalar, S: Sector>(
 /// joined-form [`BlockSparseTensorData<T, S>`]. The public entry point is
 /// [`crate::expm_hermitian_block_sparse_with_backend`].
 ///
-/// Per-sector Hermiticity is trusted, mirroring dense `expm_hermitian`.
-///
 /// # Errors
 ///
 /// Returns [`LinalgError::InvalidArgument`] if `nrow` is out of range, the flux
-/// is non-identity, or the fused-sector universe is asymmetric.
+/// is non-identity, the fused-sector universe is asymmetric, or a per-sector
+/// block is not Hermitian (checked by the dense kernel).
 pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
@@ -136,16 +135,16 @@ pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
 /// joined-form [`BlockSparseTensorData<T, S>`]. The public entry point is
 /// [`crate::expm_antihermitian_block_sparse_with_backend`].
 ///
-/// Per-sector anti-Hermiticity is trusted, mirroring dense
-/// `expm_antihermitian`. A real element type is rejected up front — before the
-/// sector loop — so an empty real operand errors consistently rather than
-/// succeeding by vacuously skipping every per-sector check.
+/// A real element type is rejected up front — before the sector loop — so an
+/// empty real operand errors consistently rather than succeeding by vacuously
+/// skipping every per-sector check.
 ///
 /// # Errors
 ///
 /// Returns [`LinalgError::InvalidArgument`] if the element type is real, `nrow`
-/// is out of range, the flux is non-identity, or the fused-sector universe is
-/// asymmetric.
+/// is out of range, the flux is non-identity, the fused-sector universe is
+/// asymmetric, or a per-sector block is not anti-Hermitian (checked by the
+/// dense kernel).
 pub(crate) fn expm_antihermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,

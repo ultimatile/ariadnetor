@@ -209,8 +209,8 @@ where
 /// Block-sparse Hermitian matrix exponential, using the supplied backend.
 ///
 /// Like [`expm_block_sparse_with_backend`], but each per-sector block is
-/// exponentiated through the Hermitian dense kernel; per-sector Hermiticity is
-/// trusted, not validated.
+/// exponentiated through the Hermitian dense kernel, which rejects a block that
+/// is not Hermitian under the tolerance of [`crate::expm_hermitian_with_backend`].
 pub fn expm_hermitian_block_sparse_with_backend<T, S, B>(
     backend: &B,
     tensor: &BlockSparseTensor<T, S>,
@@ -229,8 +229,9 @@ where
 /// Block-sparse anti-Hermitian matrix exponential, using the supplied backend.
 ///
 /// Like [`expm_block_sparse_with_backend`], but each per-sector block is
-/// exponentiated through the anti-Hermitian dense kernel; per-sector
-/// anti-Hermiticity is trusted, not validated. A real element type is rejected.
+/// exponentiated through the anti-Hermitian dense kernel, which rejects a block
+/// that is not anti-Hermitian under the tolerance of
+/// [`crate::expm_antihermitian_with_backend`]. A real element type is rejected.
 pub fn expm_antihermitian_block_sparse_with_backend<T, S, B>(
     backend: &B,
     tensor: &BlockSparseTensor<T, S>,

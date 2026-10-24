@@ -175,6 +175,10 @@ pub fn expm_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 }
 
 /// Hermitian matrix exponential, using the supplied backend.
+///
+/// Returns [`LinalgError::InvalidArgument`] if the matrix is not Hermitian:
+/// `‖A − A†‖_F > sqrt(ε) · ‖A‖_F`, with `ε` the machine epsilon of the real
+/// scalar type, or a NaN in either norm.
 pub fn expm_hermitian_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
@@ -185,6 +189,10 @@ pub fn expm_hermitian_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
 }
 
 /// Anti-Hermitian matrix exponential, using the supplied backend.
+///
+/// Returns [`LinalgError::InvalidArgument`] for a real element type, or if the
+/// matrix is not anti-Hermitian: `‖A + A†‖_F > sqrt(ε) · ‖A‖_F`, with `ε` the
+/// machine epsilon of the real scalar type, or a NaN in either norm.
 pub fn expm_antihermitian_with_backend<T: Scalar, B: OpsFor<DenseStorage<T>>>(
     backend: &B,
     tensor: &DenseTensor<T>,
