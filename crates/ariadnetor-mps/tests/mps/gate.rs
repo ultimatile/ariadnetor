@@ -265,13 +265,19 @@ fn error_identity_holds_for_every_input_form() {
     }
 }
 
-/// `psi` re-tagged `Partial { left_end, right_start }`; callers pass a chain
-/// whose actual isometric sites cover at least that much.
+/// `psi` re-tagged `Partial { left_end, right_start }`, after checking that
+/// its actual isometric sites cover at least that much.
 fn tagged_partial(
     mut psi: DenseMps<Complex<f64>>,
     left_end: usize,
     right_start: usize,
 ) -> DenseMps<Complex<f64>> {
+    for j in 0..left_end {
+        assert!(is_isometric(psi.site(j), true, 1e-10), "site {j}");
+    }
+    for j in right_start..psi.len() {
+        assert!(is_isometric(psi.site(j), false, 1e-10), "site {j}");
+    }
     psi.set_canonical_form(CanonicalForm::Partial {
         left_end,
         right_start,
@@ -304,7 +310,7 @@ fn moves_the_gauge_only_where_the_form_requires() {
     let mixed = |c| centered(base.clone(), c);
     // (label, input, pair site, sites the gauge move must rewrite)
     type Case<'a> = (&'a str, DenseMps<Complex<f64>>, usize, &'a [usize]);
-    let cases: [Case; 9] = [
+    let cases: [Case; 11] = [
         ("Mixed{2}, site 2", mixed(2), 2, &[]),
         ("Mixed{3}, site 2", mixed(3), 2, &[]),
         (
@@ -329,17 +335,32 @@ fn moves_the_gauge_only_where_the_form_requires() {
             1,
             &[3],
         ),
+        // Partial regions lying wholly to one side of the pair.
+        (
+            "Partial{0,2}, site 3",
+            tagged_partial(mixed(1), 0, 2),
+            3,
+            &[0, 1, 2],
+        ),
+        (
+            "Partial{3,5}, site 0",
+            tagged_partial(mixed(4), 3, 5),
+            0,
+            &[2, 3, 4],
+        ),
     ];
     for (label, psi, site, moved) in &cases {
         let gate = unitary_gate(PHYS[*site], PHYS[site + 1], 41);
-        let mut out = psi.clone();
-        out.apply_two_site_gate(&backend, *site, &gate, &NO_TRUNC, GateCenter::Right);
-        for j in (0..n).filter(|&j| j != *site && j != site + 1) {
-            assert_eq!(
-                !same_site(out.site(j), psi.site(j)),
-                moved.contains(&j),
-                "{label}: site {j}"
-            );
+        for center in [GateCenter::Left, GateCenter::Right] {
+            let mut out = psi.clone();
+            out.apply_two_site_gate(&backend, *site, &gate, &NO_TRUNC, center);
+            for j in (0..n).filter(|&j| j != *site && j != site + 1) {
+                assert_eq!(
+                    !same_site(out.site(j), psi.site(j)),
+                    moved.contains(&j),
+                    "{label} {center:?}: site {j}"
+                );
+            }
         }
     }
 }
@@ -470,13 +491,10 @@ fn panics_on_zero_chi_max() {
     apply_to_fixture(0, &real_gate(2, 3, 1), &cap(0));
 }
 
-#[test]
-#[should_panic(
-    expected = "apply_two_site_gate: canonical form Mixed { center: 5 } names a site outside"
-)]
-fn panics_on_a_form_naming_a_site_outside_the_chain() {
+/// Apply a valid gate at site 0 of the 5-site `f64` fixture tagged `form`.
+fn apply_with_form(form: CanonicalForm) {
     let mut psi = random_mps::<f64>(&PHYS, &BONDS, 1);
-    psi.set_canonical_form(CanonicalForm::Mixed { center: PHYS.len() });
+    psi.set_canonical_form(form);
     psi.apply_two_site_gate(
         &NativeBackend::new(),
         0,
@@ -484,4 +502,28 @@ fn panics_on_a_form_naming_a_site_outside_the_chain() {
         &NO_TRUNC,
         GateCenter::Left,
     );
+}
+
+#[test]
+#[should_panic(expected = "canonical form Mixed { center: 5 } is inconsistent with a chain")]
+fn panics_on_a_center_outside_the_chain() {
+    apply_with_form(CanonicalForm::Mixed { center: PHYS.len() });
+}
+
+#[test]
+#[should_panic(expected = "is inconsistent with a chain of length 5")]
+fn panics_on_a_partial_right_start_outside_the_chain() {
+    apply_with_form(CanonicalForm::Partial {
+        left_end: 1,
+        right_start: PHYS.len() + 1,
+    });
+}
+
+#[test]
+#[should_panic(expected = "is inconsistent with a chain of length 5")]
+fn panics_on_an_inverted_partial() {
+    apply_with_form(CanonicalForm::Partial {
+        left_end: 4,
+        right_start: 1,
+    });
 }

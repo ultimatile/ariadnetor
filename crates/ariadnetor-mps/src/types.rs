@@ -46,13 +46,20 @@ pub enum CanonicalForm {
 impl CanonicalForm {
     /// The single orthogonality-center site this form pins down on a
     /// chain of `len` sites: `Mixed` names it, and `Left` / `Right` put
-    /// it on the last / first site. `None` for `Unknown`, for `Partial`,
-    /// and for `Left` / `Right` on an empty chain, which has no site.
+    /// it on the last / first site. `None` for `Unknown` and `Partial`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `len` is 0: an empty chain has no center to report.
     pub(crate) fn center_site(&self, len: usize) -> Option<usize> {
+        assert!(
+            len > 0,
+            "center_site: the chain must have at least one site"
+        );
         match self {
             CanonicalForm::Mixed { center } => Some(*center),
-            CanonicalForm::Left => len.checked_sub(1),
-            CanonicalForm::Right => (len > 0).then_some(0),
+            CanonicalForm::Left => Some(len - 1),
+            CanonicalForm::Right => Some(0),
             CanonicalForm::Unknown | CanonicalForm::Partial { .. } => None,
         }
     }
@@ -79,11 +86,9 @@ mod tests {
     use super::CanonicalForm;
 
     #[test]
-    fn center_site_is_none_on_an_empty_chain() {
-        assert_eq!(CanonicalForm::Left.center_site(0), None);
-        assert_eq!(CanonicalForm::Right.center_site(0), None);
-        assert_eq!(CanonicalForm::Left.center_site(3), Some(2));
-        assert_eq!(CanonicalForm::Right.center_site(3), Some(0));
+    #[should_panic(expected = "center_site: the chain must have at least one site")]
+    fn center_site_rejects_an_empty_chain() {
+        CanonicalForm::Left.center_site(0);
     }
 }
 

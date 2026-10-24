@@ -36,9 +36,10 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
     /// (`Unknown` canonicalizes the whole chain). On return the form is
     /// `Mixed` with the center on the site `center` selects.
     ///
-    /// Returns the Frobenius norm of the discarded singular values. Because
-    /// the sites around the pair are isometric, this equals the absolute
-    /// state error the truncation introduced. The state is not
+    /// Returns the Frobenius norm of the discarded singular values. The
+    /// sites the canonical form covers are trusted to be isometric as it
+    /// claims, not re-checked; when they are, this equals the absolute state
+    /// error the truncation introduced. The state is not
     /// renormalized.
     ///
     /// # Panics
@@ -46,8 +47,11 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
     /// Panics if `site + 1 >= self.len()`, if `gate.shape()` is not
     /// `[d_site, d_site+1, d_site, d_site+1]` for the physical dimensions of
     /// the two sites, if `svd.chi_max` is `Some(0)`, or if the stored
-    /// canonical form puts its right-isometric region past the end of the
-    /// chain (a `Mixed` center or a `Partial` `right_start` beyond it).
+    /// canonical form is inconsistent with the chain length `n` (a `Mixed`
+    /// center at or past `n`, a `Partial` `right_start` past `n`, or a
+    /// `Partial` whose `left_end` exceeds its `right_start`). Also panics if the chain is
+    /// malformed (a site that is not rank 3, or adjacent bond dimensions
+    /// that disagree) or if an internal linear-algebra call returns an error.
     pub fn apply_two_site_gate<B: OpsFor<DenseStorage<T>>>(
         &mut self,
         backend: &B,
@@ -79,8 +83,8 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
         // cost scales with the distance to the pair rather than with `n`.
         let (left, right) = self.canonical_form().isometric_bounds(n);
         assert!(
-            right <= n,
-            "apply_two_site_gate: canonical form {:?} names a site outside the chain of length {n}",
+            left <= right && right <= n,
+            "apply_two_site_gate: canonical form {:?} is inconsistent with a chain of length {n}",
             self.canonical_form(),
         );
         for j in left..site {

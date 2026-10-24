@@ -1,7 +1,8 @@
-//! Targeted mutation-testing coverage for truncate.rs.
+//! Targeted mutation-testing coverage for truncate.rs and the form-to-center
+//! mapping it reads through `CanonicalForm::center_site`.
 //!
-//! Covers: CanonicalForm match arms (Left→n-1, Right→0, Mixed→center,
-//! Unknown→auto-canonicalize), SvdAbsorb::Both sets Unknown form, truncation
+//! Covers: that mapping (Left→n-1, Right→0, Mixed→center,
+//! Unknown / Partial→auto-canonicalize), SvdAbsorb::Both sets Unknown form, truncation
 //! error accumulation arithmetic, and isometry verification.
 
 use approx::assert_abs_diff_eq;
@@ -424,13 +425,13 @@ fn test_all_absorb_modes_same_norm() {
 }
 
 // --------------------------------------------------------------------------
-// Kill: delete match arm CanonicalForm::Right (distinguishes from fallback)
+// Kill: CanonicalForm::Right mapped to no center (distinguishes from fallback)
 // --------------------------------------------------------------------------
 
 #[test]
 fn test_truncate_right_form_ignores_center_param() {
-    // Right arm sets center=0, but fallback would use params.center=Some(2).
-    // With the arm deleted, center would be 2 instead of 0.
+    // Right maps to center 0, but the fallback would use params.center=Some(2).
+    // If Right fell through to the fallback, center would be 2 instead of 0.
     let backend = NativeBackend::new();
     let mut mps = make_4site_mps();
     mps.canonicalize(&backend, 0);

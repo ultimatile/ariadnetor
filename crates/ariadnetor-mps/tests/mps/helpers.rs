@@ -253,9 +253,9 @@ pub(crate) fn frobenius_distance<T: ariadnetor_core::Scalar>(
 fn diff_and_norm<T: ariadnetor_core::Scalar>(a: &DenseTensor<T>, e: &DenseTensor<T>) -> (f64, f64) {
     use num_traits::NumCast;
     assert_eq!(a.shape(), e.shape(), "state shapes must agree");
-    // Both operands come from the same contraction pipeline, so their
-    // physical orders match and zipping raw storage is element-correct
-    // (the assert_dense_close precedent).
+    // Zipping raw storage is element-correct only when both operands share
+    // one memory order; callers pass matching orders and the assert below
+    // fails loudly otherwise.
     assert_eq!(a.order(), e.order(), "storage orders must agree");
     let mut diff_sq = 0.0_f64;
     let mut norm_sq = 0.0_f64;
