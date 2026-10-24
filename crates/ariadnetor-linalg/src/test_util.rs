@@ -1,9 +1,10 @@
-//! Test-only compute backend that records descriptor `ExecPolicy` values
-//! while delegating the actual work to a `NativeBackend`.
+//! Test-only helpers: compute backends that record descriptor `ExecPolicy`
+//! values or force the row-major branch while delegating the actual work to a
+//! `NativeBackend`, and an error-message assertion.
 //!
-//! Used to verify policy forwarding: BSp default wrappers hardcode
-//! `Sequential` and BSp `_with_policy` wrappers forward the caller's policy
-//! into every per-sector dense or gemm call.
+//! The recording backend verifies policy forwarding: BSp default wrappers
+//! hardcode `Sequential` and BSp `_with_policy` wrappers forward the caller's
+//! policy into every per-sector dense or gemm call.
 
 use std::sync::Mutex;
 
@@ -15,6 +16,20 @@ use ariadnetor_core::backend::{
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
+
+use crate::error::LinalgError;
+
+/// Assert that `result` is an `InvalidArgument` whose message contains `substr`.
+pub(crate) fn assert_invalid_argument<T>(result: Result<T, LinalgError>, substr: &str) {
+    match result {
+        Err(LinalgError::InvalidArgument(msg)) => assert!(
+            msg.contains(substr),
+            "message {msg:?} does not contain {substr:?}"
+        ),
+        Err(other) => panic!("expected InvalidArgument containing {substr:?}, got {other:?}"),
+        Ok(_) => panic!("expected InvalidArgument containing {substr:?}, got Ok"),
+    }
+}
 
 /// Compute backend that records the `policy` field of every descriptor it
 /// receives, then delegates to an inner `NativeBackend`.

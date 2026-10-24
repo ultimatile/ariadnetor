@@ -3,7 +3,8 @@
 //!
 //! Each case runs through both public entries, the `DenseHostOps` method and
 //! its `*_with_backend` twin, and checks the error message so a case cannot
-//! pass on a different guard firing first.
+//! pass on an earlier validation (element type, `nrow`, squareness) firing
+//! instead.
 
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{
@@ -124,7 +125,7 @@ fn antihermitian_rejects_a_real_diagonal_part() {
     assert_rejected(antihermitian(&a, 1), NOT_ANTIHERMITIAN);
 }
 
-/// A Hermitian matrix of norm about 14 with entry `(0, 1)` shifted by
+/// A Hermitian matrix of norm `sqrt(153)`, about 12.4, with entry `(0, 1)` shifted by
 /// `delta` times the norm, so the relative deviation is about `sqrt(2) * delta`.
 fn perturbed<R>(delta: f64) -> DenseTensor<Complex<R>>
 where
@@ -148,47 +149,53 @@ where
 
 #[test]
 fn tolerance_is_sqrt_epsilon_relative_f64() {
-    // sqrt(epsilon) is about 1.5e-8 for f64.
-    assert_accepted(hermitian(&perturbed::<f64>(1e-12), 1));
-    assert_rejected(hermitian(&perturbed::<f64>(1e-6), 1), NOT_HERMITIAN);
+    // sqrt(epsilon) is about 1.5e-8 for f64; the cases sit a decade either side.
+    assert_accepted(hermitian(&perturbed::<f64>(1e-9), 1));
+    assert_rejected(hermitian(&perturbed::<f64>(1e-7), 1), NOT_HERMITIAN);
 }
 
 #[test]
 fn tolerance_is_sqrt_epsilon_relative_f32() {
-    // sqrt(epsilon) is about 3.5e-4 for f32.
-    assert_accepted(hermitian(&perturbed::<f32>(1e-5), 1));
-    assert_rejected(hermitian(&perturbed::<f32>(1e-2), 1), NOT_HERMITIAN);
+    // sqrt(epsilon) is about 3.5e-4 for f32; the cases sit either side of it.
+    assert_accepted(hermitian(&perturbed::<f32>(1e-4), 1));
+    assert_rejected(hermitian(&perturbed::<f32>(1e-3), 1), NOT_HERMITIAN);
 }
 
 #[test]
 fn rejection_holds_at_extreme_scales() {
-    // A sum of squares would overflow to inf <= inf or underflow to 0 <= 0 here.
+    // The squared entries overflow or underflow in the element type. The
+    // rejection must still be the tolerance one, which needs norms that are
+    // computed without forming those squares.
+    const DEVIATION: &str = "exceeds the tolerance";
     for scale in [1e200_f64, 1e-200] {
         let a = cm(
             vec![scale, 2.0 * scale, 3.0 * scale, 4.0 * scale],
             vec![2, 2],
         );
-        assert_rejected(hermitian(&a, 1), NOT_HERMITIAN);
+        assert_rejected(hermitian(&a, 1), DEVIATION);
     }
-    for scale in [1e18_f32, 1e-18] {
+    for scale in [1e25_f32, 1e-25] {
         let a = cm(
             vec![scale, 2.0 * scale, 3.0 * scale, 4.0 * scale],
             vec![2, 2],
         );
-        assert_rejected(hermitian(&a, 1), NOT_HERMITIAN);
+        assert_rejected(hermitian(&a, 1), DEVIATION);
     }
 }
 
 #[test]
 fn non_finite_entries_are_rejected() {
+    // On the diagonal, and off the diagonal, where an infinite entry would make
+    // the residual and the bound both infinite.
     for bad in [f64::NAN, f64::INFINITY] {
-        let a = cm(vec![bad, 0.0, 0.0, 1.0], vec![2, 2]);
-        assert_rejected(hermitian(&a, 1), NOT_HERMITIAN);
-        let z = cm(
-            vec![c(0.0, bad), c(0.0, 0.0), c(0.0, 0.0), c(0.0, 1.0)],
-            vec![2, 2],
-        );
-        assert_rejected(antihermitian(&z, 1), NOT_ANTIHERMITIAN);
+        for at in [0, 1] {
+            let mut data = vec![1.0, 0.0, 0.0, 1.0];
+            data[at] = bad;
+            assert_rejected(hermitian(&cm(data, vec![2, 2]), 1), NOT_HERMITIAN);
+            let mut data = vec![c(0.0, 1.0), c(0.0, 0.0), c(0.0, 0.0), c(0.0, 1.0)];
+            data[at] = c(0.0, bad);
+            assert_rejected(antihermitian(&cm(data, vec![2, 2]), 1), NOT_ANTIHERMITIAN);
+        }
     }
 }
 
@@ -250,7 +257,7 @@ fn rank4_operand_is_checked_on_its_row_column_grouping() {
 }
 
 #[test]
-fn earlier_validations_keep_their_errors() {
+fn earlier_validations_take_precedence() {
     // A real element type is rejected before shape or Hermiticity.
     let real_nonsquare = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     assert_rejected(

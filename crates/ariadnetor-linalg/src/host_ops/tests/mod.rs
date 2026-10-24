@@ -22,6 +22,7 @@ use ariadnetor_tensor::{
 };
 use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 
+use crate::test_util::assert_invalid_argument;
 use crate::*;
 
 fn tensor(data: Vec<f64>, shape: Vec<usize>) -> DenseTensor<f64> {
@@ -261,31 +262,20 @@ fn expm_hermitian_is_not_cross_wired_to_expm() {
     // real element type) produces.
     let host = NativeBackend::new();
     let t = mat22();
-    for result in [
-        t.expm_hermitian(1),
+    assert_invalid_argument(t.expm_hermitian(1), "requires a Hermitian matrix");
+    assert_invalid_argument(
         expm_hermitian_with_backend(&host, &t, 1),
-    ] {
-        match result {
-            Err(LinalgError::InvalidArgument(msg)) => assert!(
-                msg.contains("requires a Hermitian matrix"),
-                "unexpected message {msg:?}"
-            ),
-            other => panic!("expected the Hermiticity error, got {other:?}"),
-        }
-    }
+        "requires a Hermitian matrix",
+    );
     assert!(expm_with_backend(&host, &t, 1).is_ok());
 }
 
 #[test]
 fn expm_antihermitian_rejects_real_input() {
-    // The anti-Hermitian path rejects real element types; its siblings
-    // accept them, so this discriminates the delegation target.
+    // Only the anti-Hermitian path rejects real element types, so the message
+    // discriminates the delegation target.
     let t = mat22();
-    let err = t.expm_antihermitian(1).unwrap_err();
-    assert!(
-        matches!(err, LinalgError::InvalidArgument(_)),
-        "expected InvalidArgument, got {err:?}"
-    );
+    assert_invalid_argument(t.expm_antihermitian(1), "requires complex input type");
 }
 
 #[test]

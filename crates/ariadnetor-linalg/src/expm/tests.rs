@@ -2,7 +2,7 @@ use super::{
     compute_scaling_decision, expm_antihermitian_dense, expm_hermitian_dense, validate_expm_nrow,
 };
 use crate::error::LinalgError;
-use crate::test_util::RowMajorBackend;
+use crate::test_util::{RowMajorBackend, assert_invalid_argument};
 use ariadnetor_core::Complex;
 use ariadnetor_core::backend::MemoryOrder;
 use ariadnetor_tensor::DenseTensorData;
@@ -29,11 +29,9 @@ fn grouped_operand(scale: Complex<f64>, offset: f64) -> DenseTensorData<Complex<
     DenseTensorData::from_raw_parts(data, vec![2, 3, 3, 2], MemoryOrder::RowMajor)
 }
 
-fn invalid_argument_message<T>(result: Result<T, LinalgError>) -> Option<String> {
-    match result {
-        Err(LinalgError::InvalidArgument(msg)) => Some(msg),
-        _ => None,
-    }
+/// Whether `result` failed with the Hermiticity error naming `requirement`.
+fn hermiticity_error<T>(result: &Result<T, LinalgError>, requirement: &str) -> bool {
+    matches!(result, Err(LinalgError::InvalidArgument(msg)) if msg.contains(requirement))
 }
 
 /// On a row-major backend the check reads the grouped matrix from the
@@ -43,26 +41,28 @@ fn invalid_argument_message<T>(result: Result<T, LinalgError>) -> Option<String>
 fn hermiticity_check_on_row_major_backend() {
     let backend = RowMajorBackend::new();
     let one = Complex::new(1.0, 0.0);
+    const HERMITIAN: &str = "requires a Hermitian matrix";
+    const ANTI: &str = "requires an anti-Hermitian matrix";
 
-    let bad = invalid_argument_message(expm_hermitian_dense(
-        &backend,
-        &grouped_operand(one, 0.5),
-        2,
-    ));
-    assert!(bad.is_some_and(|m| m.contains("requires a Hermitian matrix")));
+    let bad = expm_hermitian_dense(&backend, &grouped_operand(one, 0.5), 2);
+    assert_invalid_argument(bad, HERMITIAN);
     let good = expm_hermitian_dense(&backend, &grouped_operand(one, 0.0), 2);
-    assert!(!invalid_argument_message(good).is_some_and(|m| m.contains("Hermitian matrix")));
+    assert!(
+        !hermiticity_error(&good, HERMITIAN),
+        "got {:?}",
+        good.as_ref().err()
+    );
 
     // `-i H` is anti-Hermitian; the same offset breaks it.
     let minus_i = Complex::new(0.0, -1.0);
-    let bad = invalid_argument_message(expm_antihermitian_dense(
-        &backend,
-        &grouped_operand(minus_i, 0.5),
-        2,
-    ));
-    assert!(bad.is_some_and(|m| m.contains("requires an anti-Hermitian matrix")));
+    let bad = expm_antihermitian_dense(&backend, &grouped_operand(minus_i, 0.5), 2);
+    assert_invalid_argument(bad, ANTI);
     let good = expm_antihermitian_dense(&backend, &grouped_operand(minus_i, 0.0), 2);
-    assert!(!invalid_argument_message(good).is_some_and(|m| m.contains("anti-Hermitian matrix")));
+    assert!(
+        !hermiticity_error(&good, ANTI),
+        "got {:?}",
+        good.as_ref().err()
+    );
 }
 
 #[test]

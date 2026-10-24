@@ -28,7 +28,8 @@
 //! square operator to exponentiate; and the universe must be square so each
 //! per-sector block is square. The specialized variants additionally require
 //! each per-sector block to be Hermitian / anti-Hermitian; the dense kernel
-//! they call rejects a block that is not.
+//! they call rejects a block that is not, within its `sqrt(epsilon)` relative
+//! Frobenius tolerance.
 
 use std::any::TypeId;
 
@@ -120,7 +121,7 @@ pub(crate) fn expm_block_sparse_dense<T: Scalar, S: Sector>(
 ///
 /// Returns [`LinalgError::InvalidArgument`] if `nrow` is out of range, the flux
 /// is non-identity, the fused-sector universe is asymmetric, or a per-sector
-/// block is not Hermitian (checked by the dense kernel).
+/// block is not Hermitian within the dense kernel's tolerance.
 pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
@@ -143,8 +144,8 @@ pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
 ///
 /// Returns [`LinalgError::InvalidArgument`] if the element type is real, `nrow`
 /// is out of range, the flux is non-identity, the fused-sector universe is
-/// asymmetric, or a per-sector block is not anti-Hermitian (checked by the
-/// dense kernel).
+/// asymmetric, or a per-sector block is not anti-Hermitian within the dense
+/// kernel's tolerance.
 pub(crate) fn expm_antihermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,

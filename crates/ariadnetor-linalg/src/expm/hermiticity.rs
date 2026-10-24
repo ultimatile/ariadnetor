@@ -5,8 +5,6 @@
 //! before decomposing it. The anti-Hermitian kernel passes `iA`, which is
 //! Hermitian exactly when `A` is anti-Hermitian, with the same Frobenius norms.
 
-use std::cmp::Ordering;
-
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::MemoryOrder;
 use ariadnetor_core::scale_safe_norm;
@@ -15,11 +13,11 @@ use num_traits::{Float, ToPrimitive};
 
 use crate::error::LinalgError;
 
-/// Reject `matrix` unless `‖A − A†‖_F ≤ √ε · ‖A‖_F`, with `ε` the machine
-/// epsilon of `T::Real`.
+/// Reject `matrix` unless `‖A‖_F` is finite and `‖A − A†‖_F ≤ √ε · ‖A‖_F`,
+/// with `ε` the machine epsilon of `T::Real`.
 ///
-/// `matrix` is the operand flattened to a row-major `n × n` matrix. A NaN in
-/// either norm rejects the input.
+/// `matrix` is the operand flattened to a row-major `n × n` matrix. A NaN or
+/// infinite entry, or a norm that overflows, makes `‖A‖_F` non-finite.
 /// `requirement` names the violated precondition in the error message.
 ///
 /// # Panics
@@ -38,6 +36,12 @@ pub(super) fn ensure_hermitian<T: Scalar>(
     let a = matrix.data();
     assert_eq!(a.len(), n * n, "ensure_hermitian: matrix must be n x n");
 
+    let norm = matrix.norm_frobenius();
+    if !norm.is_finite() {
+        return Err(LinalgError::InvalidArgument(format!(
+            "{requirement}: the Frobenius norm is not finite"
+        )));
+    }
     // Real and imaginary parts of `A[i, j] - conj(A[j, i])`, summed as components.
     let residual = scale_safe_norm((0..n).flat_map(|i| {
         (0..n).flat_map(move |j| {
@@ -45,16 +49,14 @@ pub(super) fn ensure_hermitian<T: Scalar>(
             [x.re() - y.re(), x.im() + y.im()]
         })
     }));
-    let bound = T::Real::epsilon().sqrt() * matrix.norm_frobenius();
-    // `partial_cmp` is `None` when either side is NaN, which rejects.
-    if !matches!(
-        residual.partial_cmp(&bound),
-        Some(Ordering::Less | Ordering::Equal)
-    ) {
-        let (residual, bound) = (residual.to_f64(), bound.to_f64());
+    let bound = T::Real::epsilon().sqrt() * norm;
+    if residual > bound {
+        let as_f64 = |x: T::Real| x.to_f64().unwrap_or(f64::NAN);
         return Err(LinalgError::InvalidArgument(format!(
-            "{requirement}: deviation {residual:?} exceeds the tolerance {bound:?} \
-             (sqrt(epsilon) times the Frobenius norm)"
+            "{requirement}: deviation {} exceeds the tolerance {} \
+             (sqrt(epsilon) times the Frobenius norm)",
+            as_f64(residual),
+            as_f64(bound),
         )));
     }
     Ok(())

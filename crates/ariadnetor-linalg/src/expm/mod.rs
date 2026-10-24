@@ -36,7 +36,7 @@ use crate::transpose::conjugate_transpose_dense;
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
 /// the matrix is not Hermitian (`‖A − A†‖_F > sqrt(ε) · ‖A‖_F`, with `ε` the
-/// machine epsilon of the real scalar type, or a NaN in either norm), or the
+/// machine epsilon of the real scalar type, or `‖A‖_F` not finite), or the
 /// backend fails.
 ///
 /// Internal kernel for the Hermitian matrix-exponential on the joined
@@ -85,7 +85,7 @@ pub(crate) fn expm_hermitian_dense<T: Scalar>(
 /// Returns `LinalgError` if the input is a real type (f32/f64), `nrow` is out of range,
 /// the matrix is non-square, the matrix is not anti-Hermitian
 /// (`‖A + A†‖_F > sqrt(ε) · ‖A‖_F`, with `ε` the machine epsilon of the real
-/// scalar type, or a NaN in either norm), or the backend fails.
+/// scalar type, or `‖A‖_F` not finite), or the backend fails.
 ///
 /// Internal kernel for the anti-Hermitian matrix-exponential on the joined
 /// [`DenseTensorData<T>`] form. The public entry point is
@@ -173,7 +173,7 @@ fn matmul<T: Scalar>(
     contract_dense(backend, a, b, "ij,jk->ik")
 }
 
-/// Validate the `nrow` argument for `expm_dense`: must satisfy `1 <= nrow < rank`.
+/// Validate the `nrow` argument of the matrix exponentials: must satisfy `1 <= nrow < rank`.
 fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
@@ -184,7 +184,8 @@ fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
 }
 
 /// Validate `nrow` and that grouping the first `nrow` axes as rows yields a
-/// square matrix; return its side. `op` names the operation in the error.
+/// square matrix; return its side. `op` names the operation in the squareness
+/// error.
 fn validate_square_operand(shape: &[usize], nrow: usize, op: &str) -> Result<usize, LinalgError> {
     validate_expm_nrow(nrow, shape.len())?;
     let m_dim: usize = shape[..nrow].iter().product();

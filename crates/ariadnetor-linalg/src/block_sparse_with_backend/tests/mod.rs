@@ -23,7 +23,7 @@ use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, U1Sector,
 };
 
-use crate::test_util::RecordingBackend;
+use crate::test_util::{RecordingBackend, assert_invalid_argument};
 use crate::*;
 
 /// Number of kernel descriptors a recording backend has seen across the
@@ -354,17 +354,6 @@ fn expm_antihermitian_routes_to_passed_backend() {
     bsp_eq_complex(&r, &hr);
 }
 
-/// Assert that `result` is an `InvalidArgument` whose message contains `substr`.
-fn assert_invalid_argument<T: std::fmt::Debug>(result: Result<T, LinalgError>, substr: &str) {
-    match result {
-        Err(LinalgError::InvalidArgument(msg)) => assert!(
-            msg.contains(substr),
-            "message {msg:?} does not contain {substr:?}"
-        ),
-        other => panic!("expected InvalidArgument containing {substr:?}, got {other:?}"),
-    }
-}
-
 #[test]
 fn expm_hermitian_is_not_cross_wired_to_expm() {
     // On a Hermitian input the general and Hermitian exponentials coincide, so
@@ -400,15 +389,11 @@ fn expm_antihermitian_rejects_non_antihermitian_input() {
 
 #[test]
 fn expm_antihermitian_host_rejects_real_input() {
-    // The anti-Hermitian host method rejects real element types; its siblings
-    // (`expm` / `expm_hermitian`) accept them, so this discriminates that the
-    // host method delegates to the anti-Hermitian twin and not a sibling.
+    // Only the anti-Hermitian path rejects real element types, so the message
+    // discriminates that the host method delegates to the anti-Hermitian twin
+    // and not a sibling.
     let t = rank2();
-    let err = t.expm_antihermitian(1).unwrap_err();
-    assert!(
-        matches!(err, LinalgError::InvalidArgument(_)),
-        "expected InvalidArgument, got {err:?}"
-    );
+    assert_invalid_argument(t.expm_antihermitian(1), "requires complex input type");
 }
 
 #[test]
