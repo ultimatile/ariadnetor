@@ -1,6 +1,6 @@
 //! Test-only helpers: compute backends that record descriptor `ExecPolicy`
 //! values or force the row-major branch while delegating the actual work to a
-//! `NativeBackend`, and an error-message assertion.
+//! `NativeBackend`, and an error-message predicate with its assertion.
 //!
 //! The recording backend verifies policy forwarding: BSp default wrappers
 //! hardcode `Sequential` and BSp `_with_policy` wrappers forward the caller's
@@ -19,15 +19,16 @@ use ariadnetor_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
 
 use crate::error::LinalgError;
 
+/// Whether `result` is an `InvalidArgument` whose message contains `substr`.
+pub(crate) fn is_invalid_argument<T>(result: &Result<T, LinalgError>, substr: &str) -> bool {
+    matches!(result, Err(LinalgError::InvalidArgument(msg)) if msg.contains(substr))
+}
+
 /// Assert that `result` is an `InvalidArgument` whose message contains `substr`.
 pub(crate) fn assert_invalid_argument<T>(result: Result<T, LinalgError>, substr: &str) {
-    match result {
-        Err(LinalgError::InvalidArgument(msg)) => assert!(
-            msg.contains(substr),
-            "message {msg:?} does not contain {substr:?}"
-        ),
-        Err(other) => panic!("expected InvalidArgument containing {substr:?}, got {other:?}"),
-        Ok(_) => panic!("expected InvalidArgument containing {substr:?}, got Ok"),
+    if !is_invalid_argument(&result, substr) {
+        let got = result.err().map_or("Ok".to_string(), |e| format!("{e:?}"));
+        panic!("expected InvalidArgument containing {substr:?}, got {got}");
     }
 }
 

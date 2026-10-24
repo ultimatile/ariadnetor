@@ -406,6 +406,69 @@ fn tiny_sector_is_judged_against_the_whole_operator() {
     assert!(expm_antihermitian_block_sparse_dense(&backend(), &anti, 1).is_ok());
 }
 
+/// Rank-4 operator, `nrow = 2`, whose charge-1 fused sector is `5 x 5`, built
+/// from the tuples `(0, 1)` and `(1, 0)` with sub-blocks `2 x 2`, `2 x 3`,
+/// `3 x 2` and `3 x 3`. Entry `(i, j)` of that sector is `scale * s(i, j)` with
+/// `s` symmetric, plus `offset` at `(0, 3)`, inside the `2 x 3` sub-block; the
+/// `1 x 1` sectors of charge 0 and 2 stay zero.
+fn rank4_nonsquare_subblocks(
+    scale: Complex<f64>,
+    offset: f64,
+) -> BlockSparseTensorData<Complex<f64>, U1Sector> {
+    let mut bs = BlockSparseTensorData::zeros(
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
+    let s = |i: usize, j: usize| 0.3 * (i.min(j) + 1) as f64 + 0.7 * i.max(j) as f64;
+    // (coord, row offset, column offset, rows, columns) of each sub-block.
+    let sub_blocks = [
+        (vec![0, 1, 0, 1], 0, 0, 2, 2),
+        (vec![0, 1, 1, 0], 0, 2, 2, 3),
+        (vec![1, 0, 0, 1], 2, 0, 3, 2),
+        (vec![1, 0, 1, 0], 2, 2, 3, 3),
+    ];
+    for (coord, ro, co, m, n) in sub_blocks {
+        let logical: Vec<Complex<f64>> = (0..m * n)
+            .map(|k| {
+                let (i, j) = (ro + k / n, co + k % n);
+                let extra = if (i, j) == (0, 3) { offset } else { 0.0 };
+                scale * s(i, j) + c(extra, 0.0)
+            })
+            .collect();
+        fill_block(&mut bs, &coord, &logical, m, n, order());
+    }
+    bs
+}
+
+/// The check reads non-square sub-blocks of a multi-tuple sector in their
+/// stored order: a Hermitian and an anti-Hermitian operator pass, and the same
+/// operators with one entry of the `2 x 3` sub-block shifted fail.
+#[test]
+fn multi_tuple_sector_with_nonsquare_subblocks() {
+    let (one, i) = (c(1.0, 0.0), c(0.0, 1.0));
+    let herm = rank4_nonsquare_subblocks(one, 0.0);
+    assert_adjoint_structure(&herm, 2, order(), 1.0);
+    assert!(expm_hermitian_block_sparse_dense(&backend(), &herm, 2).is_ok());
+    let anti = rank4_nonsquare_subblocks(i, 0.0);
+    assert_adjoint_structure(&anti, 2, order(), -1.0);
+    assert!(expm_antihermitian_block_sparse_dense(&backend(), &anti, 2).is_ok());
+
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &rank4_nonsquare_subblocks(one, 0.5), 2),
+        Some("requires a Hermitian matrix"),
+    );
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &rank4_nonsquare_subblocks(i, 0.5), 2),
+        Some("requires an anti-Hermitian matrix"),
+    );
+}
+
 /// A NaN in one sector, and sector norms that are each finite but overflow
 /// once combined, both make the operator's norm non-finite.
 #[test]

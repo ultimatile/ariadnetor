@@ -28,9 +28,9 @@
 //! square operator to exponentiate; and the universe must be square so each
 //! per-sector block is square. The specialized variants additionally apply the
 //! dense Hermitian / anti-Hermitian exponential's check to the operator as a
-//! whole: its deviation and Frobenius norm are those of the full block-diagonal
-//! operator, combined from the sector blocks, so a sector whose own norm is
-//! tiny is judged against the operator rather than against itself.
+//! whole: the deviation is combined from all sector blocks and the Frobenius
+//! norm is taken over all stored elements, so a sector whose own norm is tiny
+//! is judged against the operator rather than against itself.
 
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
@@ -52,9 +52,9 @@ use crate::reorder_route::reorder_via_backend;
 /// Run a per-sector dense exponential and reassemble into a same-shape tensor.
 ///
 /// Validates the square-operator preconditions (`nrow` range, identity flux,
-/// QN-square universe), assembles the dense block of each fused sector, checks
-/// the whole operator against `check` when one is given, then applies `exp` to
-/// each block and scatters the results back. `exp` is the dense kernel for the
+/// QN-square universe) and, when `check` is given, the whole operator's
+/// (anti-)Hermiticity; then for each fused sector assembles the dense block,
+/// applies `exp`, and scatters the result back. `exp` is the dense kernel for the
 /// chosen variant; `op` names the operation in rejection messages.
 fn expm_per_sector<T, S, B, F>(
     backend: &B,
@@ -84,33 +84,31 @@ where
     let groups = compute_fused_sector_groups(tensor, nrow);
     validate_square_universe(tensor, &groups, nrow, op)?;
 
-    let blocks: Vec<DenseTensorData<T>> = groups
-        .iter()
-        .map(|group| {
-            let matrix = assemble_sector_matrix(tensor, group, order);
-            DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order)
-        })
-        .collect();
-
     if let Some(kind) = check {
-        let mut deviations = Vec::with_capacity(blocks.len());
-        let mut norms = Vec::with_capacity(blocks.len());
-        for (group, block) in groups.iter().zip(&blocks) {
-            let rm = reorder_via_backend(backend, block, MemoryOrder::RowMajor)?;
+        let mut deviations = Vec::with_capacity(groups.len());
+        for group in &groups {
+            // Blocks are stored in the backend's order, which is what the
+            // assembly reads them in; the deviation reads row-major.
+            let matrix = assemble_sector_matrix(tensor, group, order);
+            let block = DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order);
+            let rm = reorder_via_backend(backend, &block, MemoryOrder::RowMajor)?;
             deviations.push(adjoint_deviation(&rm, group.m, kind));
-            norms.push(rm.norm_frobenius());
         }
+        // Every stored block lies in some fused sector, so the norm of the
+        // stored elements is the operator's.
         ensure_within_tolerance::<T>(
             scale_safe_norm(deviations),
-            scale_safe_norm(norms),
+            tensor.norm_frobenius(),
             op,
             kind,
         )?;
     }
 
-    let mut result_matrices = Vec::with_capacity(blocks.len());
-    for block in &blocks {
-        let result = exp(block)?;
+    let mut result_matrices = Vec::with_capacity(groups.len());
+    for group in &groups {
+        let matrix = assemble_sector_matrix(tensor, group, order);
+        let dense = DenseTensorData::from_raw_parts(matrix, vec![group.m, group.n], order);
+        let result = exp(&dense)?;
         result_matrices.push(to_vec_in_order(&result, order));
     }
 

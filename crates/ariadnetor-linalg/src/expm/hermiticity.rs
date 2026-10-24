@@ -4,7 +4,7 @@
 //! Hermitian and anti-Hermitian exponentials validate their operand before
 //! decomposing it. The check is split in two so that a block-sparse operator,
 //! whose sector blocks are exponentiated one by one, can combine the
-//! deviation and the norm of its sectors and judge the operator as a whole.
+//! deviations of its sectors and judge the operator as a whole.
 
 use std::cmp::Ordering;
 
