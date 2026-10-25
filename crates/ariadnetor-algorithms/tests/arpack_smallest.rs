@@ -7,6 +7,7 @@
 
 #![cfg(feature = "arpack")]
 
+use algorithms_fixtures::dense_fixtures::{random_hermitian_complex_f64, random_hermitian_f64};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
 use ariadnetor_core::Scalar;
@@ -15,8 +16,6 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;
 use num_traits::{Float, NumCast, One, Zero};
-use rand::SeedableRng;
-use rand::rngs::StdRng;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,38 +33,6 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
         }
     }
     Host::shared().dense(out, vec![n])
-}
-
-fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensor<f64> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let a = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let mut data = vec![0.0_f64; n * n];
-    let a_data = a.data_slice();
-    for i in 0..n {
-        for j in 0..n {
-            let aij = a_data[i + n * j];
-            let aji = a_data[j + n * i];
-            data[i + n * j] = 0.5 * (aij + aji);
-        }
-    }
-    Host::shared().dense(data, vec![n, n])
-}
-
-fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let real = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let imag = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let r = real.data_slice();
-    let im = imag.data_slice();
-    let mut data = vec![Complex::new(0.0, 0.0); n * n];
-    for i in 0..n {
-        for j in 0..n {
-            let aij = Complex::new(r[i + n * j], im[i + n * j]);
-            let aji = Complex::new(r[j + n * i], im[j + n * i]);
-            data[i + n * j] = (aij + aji.conj()) * 0.5;
-        }
-    }
-    Host::shared().dense(data, vec![n, n])
 }
 
 fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {

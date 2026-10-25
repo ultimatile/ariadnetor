@@ -566,24 +566,6 @@ pub(super) fn validate_params(params: &DmrgSweepParams) -> Result<(), DmrgSweepE
     }
     validate_eigensolver_params(&params.eigensolver)
         .map_err(|detail| DmrgSweepError::InvalidParams { detail })?;
-    if let Some(chi) = params.trunc.chi_max
-        && chi == 0
-    {
-        return Err(DmrgSweepError::InvalidParams {
-            detail: "trunc.chi_max must be > 0 if Some",
-        });
-    }
-    if let Some(te) = params.trunc.target_trunc_err {
-        if !te.is_finite() {
-            return Err(DmrgSweepError::InvalidParams {
-                detail: "trunc.target_trunc_err must be finite",
-            });
-        }
-        if te < 0.0 {
-            return Err(DmrgSweepError::InvalidParams {
-                detail: "trunc.target_trunc_err must be non-negative",
-            });
-        }
-    }
-    Ok(())
+    crate::trunc_params::validate_trunc_params(&params.trunc)
+        .map_err(|detail| DmrgSweepError::InvalidParams { detail })
 }

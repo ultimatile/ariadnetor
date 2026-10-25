@@ -4,6 +4,7 @@
 //! the solver via a closure that does a matrix-vector product, and
 //! compare against `ariadnetor_linalg::eigh` ground truth.
 
+use algorithms_fixtures::dense_fixtures::{random_hermitian_complex_f64, random_hermitian_f64};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
 use ariadnetor_core::Scalar;
@@ -11,8 +12,6 @@ use ariadnetor_linalg::eigh_with_backend;
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -32,40 +31,6 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
         }
     }
     Host::shared().dense(out, vec![n])
-}
-
-/// Build a random Hermitian matrix `H = (A + A^H) / 2` of size `n×n`,
-/// stored in column-major.
-fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensor<f64> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let a = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let a_data = a.data_slice();
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        for j in 0..n {
-            let aij = a_data[i + n * j];
-            let aji = a_data[j + n * i];
-            data[i + n * j] = 0.5 * (aij + aji);
-        }
-    }
-    Host::shared().dense(data, vec![n, n])
-}
-
-fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let real = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let imag = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let r = real.data_slice();
-    let im = imag.data_slice();
-    let mut data = vec![Complex::new(0.0, 0.0); n * n];
-    for i in 0..n {
-        for j in 0..n {
-            let aij = Complex::new(r[i + n * j], im[i + n * j]);
-            let aji = Complex::new(r[j + n * i], im[j + n * i]);
-            data[i + n * j] = (aij + aji.conj()) * 0.5;
-        }
-    }
-    Host::shared().dense(data, vec![n, n])
 }
 
 /// Smallest eigenvalue of a Hermitian matrix via dense `eigh`.
