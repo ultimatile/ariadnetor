@@ -5,6 +5,10 @@ use ariadnetor_core::backend::{ComputeBackend, MemoryOrder};
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensorData};
 use num_traits::{Float, NumCast, One, ToPrimitive, Zero};
 
+mod hermiticity;
+
+use hermiticity::{Adjoint, ensure_adjoint};
+
 use crate::contract::contract_dense;
 use crate::eigen::eigh_dense;
 use crate::error::LinalgError;
@@ -31,7 +35,9 @@ use crate::transpose::conjugate_transpose_dense;
 /// # Errors
 ///
 /// Returns `LinalgError` if `nrow` is out of range, the matrix is non-square,
-/// or the backend fails.
+/// the matrix is not Hermitian (`‖A − A†‖_F > sqrt(ε) · ‖A‖_F`, with `ε` the
+/// machine epsilon of the real scalar type, or `‖A‖_F` not finite), or the
+/// backend fails.
 ///
 /// Internal kernel for the Hermitian matrix-exponential on the joined
 /// [`DenseTensorData<T>`] form. The public entry point is
@@ -41,6 +47,10 @@ pub(crate) fn expm_hermitian_dense<T: Scalar>(
     tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<DenseTensorData<T>, LinalgError> {
+    let n = validate_square_operand(tensor.shape(), nrow, "expm_hermitian")?;
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
+    ensure_adjoint(&rm, n, "expm_hermitian", Adjoint::Hermitian)?;
+
     let (w, v) = eigh_dense(backend, tensor, nrow)?;
 
     // V_scaled[i,j] = V[i,j] * exp(lambda_j)
@@ -73,7 +83,9 @@ pub(crate) fn expm_hermitian_dense<T: Scalar>(
 /// # Errors
 ///
 /// Returns `LinalgError` if the input is a real type (f32/f64), `nrow` is out of range,
-/// the matrix is non-square, or the backend fails.
+/// the matrix is non-square, the matrix is not anti-Hermitian
+/// (`‖A + A†‖_F > sqrt(ε) · ‖A‖_F`, with `ε` the machine epsilon of the real
+/// scalar type, or `‖A‖_F` not finite), or the backend fails.
 ///
 /// Internal kernel for the anti-Hermitian matrix-exponential on the joined
 /// [`DenseTensorData<T>`] form. The public entry point is
@@ -83,18 +95,12 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
     tensor: &DenseTensorData<T>,
     nrow: usize,
 ) -> Result<DenseTensorData<T>, LinalgError> {
-    // Reject real types -- multiplication by i is not representable
-    let tid = TypeId::of::<T>();
-    if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
-        return Err(LinalgError::InvalidArgument(
-            "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
-        ));
-    }
+    ensure_complex::<T>()?;
+    let n = validate_square_operand(tensor.shape(), nrow, "expm_antihermitian")?;
+    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
+    ensure_adjoint(&rm, n, "expm_antihermitian", Adjoint::AntiHermitian)?;
 
     let order = backend.preferred_order();
-
-    // Reorder to RowMajor for element-wise iA computation
-    let rm = reorder_via_backend(backend, tensor, MemoryOrder::RowMajor)?;
     let data = rm.data();
     let shape = tensor.shape();
 
@@ -127,6 +133,18 @@ pub(crate) fn expm_antihermitian_dense<T: Scalar>(
     contract_dense(backend, &v_scaled, &v_dagger, "ij,jk->ik")
 }
 
+/// Reject a real element type for the anti-Hermitian exponential, whose `iA`
+/// is not representable in it.
+pub(crate) fn ensure_complex<T: Scalar>() -> Result<(), LinalgError> {
+    let tid = TypeId::of::<T>();
+    if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
+        return Err(LinalgError::InvalidArgument(
+            "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
+        ));
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // General matrix exponential via Scaling and Squaring + Pade approximation
 // ---------------------------------------------------------------------------
@@ -155,7 +173,7 @@ fn matmul<T: Scalar>(
     contract_dense(backend, a, b, "ij,jk->ik")
 }
 
-/// Validate the `nrow` argument for `expm_dense`: must satisfy `1 <= nrow < rank`.
+/// Validate the `nrow` argument of the matrix exponentials: must satisfy `1 <= nrow < rank`.
 fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
     if nrow == 0 || nrow >= rank {
         return Err(LinalgError::InvalidArgument(format!(
@@ -163,6 +181,21 @@ fn validate_expm_nrow(nrow: usize, rank: usize) -> Result<(), LinalgError> {
         )));
     }
     Ok(())
+}
+
+/// Validate `nrow` and that grouping the first `nrow` axes as rows yields a
+/// square matrix; return its side. `op` names the operation in the squareness
+/// error.
+fn validate_square_operand(shape: &[usize], nrow: usize, op: &str) -> Result<usize, LinalgError> {
+    validate_expm_nrow(nrow, shape.len())?;
+    let m_dim: usize = shape[..nrow].iter().product();
+    let n_dim: usize = shape[nrow..].iter().product();
+    if m_dim != n_dim {
+        return Err(LinalgError::InvalidArgument(format!(
+            "{op} requires a square matrix, got {m_dim}x{n_dim}"
+        )));
+    }
+    Ok(m_dim)
 }
 
 /// Decide the scaling parameter `s` for [13/13] Pade scaling-and-squaring
@@ -438,20 +471,7 @@ pub(crate) fn expm_dense<T: Scalar>(
     nrow: usize,
 ) -> Result<DenseTensorData<T>, LinalgError> {
     let shape = tensor.shape();
-    let rank = tensor.rank();
-
-    validate_expm_nrow(nrow, rank)?;
-
-    let m_dim: usize = shape[..nrow].iter().product();
-    let n_dim: usize = shape[nrow..].iter().product();
-
-    if m_dim != n_dim {
-        return Err(LinalgError::InvalidArgument(format!(
-            "expm requires a square matrix, got {m_dim}x{n_dim}"
-        )));
-    }
-
-    let n = m_dim;
+    let n = validate_square_operand(shape, nrow, "expm")?;
     let order = backend.preferred_order();
 
     // Flatten to n x n row-major for internal computation (norm_1 expects row-major)

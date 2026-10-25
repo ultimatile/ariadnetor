@@ -17,6 +17,10 @@ use crate::block_sparse_decomp::fused_sector::{
 use crate::block_sparse_decomp::to_vec_in_order;
 use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
 
+fn c(re: f64, im: f64) -> Complex<f64> {
+    Complex::new(re, im)
+}
+
 fn backend() -> NativeBackend {
     NativeBackend::new()
 }
@@ -177,7 +181,6 @@ fn general_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// Rank-2 U1, identity flux, complex non-Hermitian blocks. Sector 0 is a 2×2
 /// block not equal to its conjugate transpose; sector 1 is a 1×1 scalar.
 fn general_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
-    let c = |re: f64, im: f64| Complex::new(re, im);
     let mut bs = BlockSparseTensorData::zeros(
         square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
@@ -235,7 +238,6 @@ fn hermitian_rank2_f64() -> BlockSparseTensorData<f64, U1Sector> {
 /// `[[2, 1+i], [1-i, 3]]` (real diagonal, conjugate off-diagonals, so
 /// `A == A†`); sector 1 is the real scalar `[4]`.
 fn hermitian_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
-    let c = |re: f64, im: f64| Complex::new(re, im);
     let mut bs = BlockSparseTensorData::zeros(
         square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
@@ -257,7 +259,6 @@ fn hermitian_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
 /// `[[i, 1+i], [-1+i, 2i]]` (purely imaginary diagonal, `A[j,i] = -conj(A[i,j])`,
 /// so `A† == -A`); sector 1 is the purely imaginary scalar `[3i]`.
 fn antihermitian_rank2_c64() -> BlockSparseTensorData<Complex<f64>, U1Sector> {
-    let c = |re: f64, im: f64| Complex::new(re, im);
     let mut bs = BlockSparseTensorData::zeros(
         square_legs(vec![(U1Sector(0), 2), (U1Sector(1), 1)]),
         U1Sector(0),
@@ -387,6 +388,146 @@ fn nrow_out_of_range_rejected() {
     let a = general_rank2_f64();
     expect_invalid_argument(expm_block_sparse_dense(&backend(), &a, 0), Some("nrow"));
     expect_invalid_argument(expm_block_sparse_dense(&backend(), &a, 2), Some("nrow"));
+}
+
+/// `bs` with its `1 x 1` sector 1 set to `v`.
+fn with_sector_1(
+    mut bs: BlockSparseTensorData<Complex<f64>, U1Sector>,
+    v: Complex<f64>,
+) -> BlockSparseTensorData<Complex<f64>, U1Sector> {
+    fill_block(&mut bs, &[1, 1], &[v], 1, 1, order());
+    bs
+}
+
+/// Each sector block is judged against its own norm. Sector 1 is the `1 x 1`
+/// block `1e-17 (1 + i)`, whose deviation `2e-17` is small next to the other
+/// sector but not next to its own norm, so it is rejected; each sector's
+/// exponential depends on that block alone.
+#[test]
+fn tiny_sector_is_judged_against_its_own_norm() {
+    let herm = with_sector_1(hermitian_rank2_c64(), c(1e-17, 1e-17));
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &herm, 1),
+        Some("requires a Hermitian matrix"),
+    );
+
+    let anti = with_sector_1(antihermitian_rank2_c64(), c(1e-17, 1e-17));
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
+        Some("requires an anti-Hermitian matrix"),
+    );
+}
+
+/// Rank-4 operator, `nrow = 2`, whose charge-1 fused sector is `5 x 5`, built
+/// from the tuples `(0, 1)` and `(1, 0)` with sub-blocks `2 x 2`, `2 x 3`,
+/// `3 x 2` and `3 x 3`. Entry `(i, j)` of that sector is `scale * s(i, j)` with
+/// `s` symmetric, plus `offset` at `(0, 3)`, inside the `2 x 3` sub-block; the
+/// `2 x 2` and `3 x 3` sectors of charge 0 and 2 stay zero.
+fn rank4_nonsquare_subblocks(
+    scale: Complex<f64>,
+    offset: f64,
+) -> BlockSparseTensorData<Complex<f64>, U1Sector> {
+    let mut bs = BlockSparseTensorData::zeros(
+        legs([
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::Out),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::Out),
+            (vec![(U1Sector(0), 2), (U1Sector(1), 3)], Direction::In),
+            (vec![(U1Sector(0), 1), (U1Sector(1), 1)], Direction::In),
+        ]),
+        U1Sector(0),
+        order(),
+    );
+    let s = |i: usize, j: usize| 0.3 * (i.min(j) + 1) as f64 + 0.7 * i.max(j) as f64;
+    // (coord, row offset, column offset, rows, columns) of each sub-block.
+    let sub_blocks = [
+        (vec![0, 1, 0, 1], 0, 0, 2, 2),
+        (vec![0, 1, 1, 0], 0, 2, 2, 3),
+        (vec![1, 0, 0, 1], 2, 0, 3, 2),
+        (vec![1, 0, 1, 0], 2, 2, 3, 3),
+    ];
+    for (coord, ro, co, m, n) in sub_blocks {
+        let logical: Vec<Complex<f64>> = (0..m * n)
+            .map(|k| {
+                let (i, j) = (ro + k / n, co + k % n);
+                let extra = if (i, j) == (0, 3) { offset } else { 0.0 };
+                scale * s(i, j) + c(extra, 0.0)
+            })
+            .collect();
+        fill_block(&mut bs, &coord, &logical, m, n, order());
+    }
+    bs
+}
+
+/// The check reads non-square sub-blocks of a multi-tuple sector in their
+/// stored order: a Hermitian and an anti-Hermitian operator pass, and the same
+/// operators with one entry of the `2 x 3` sub-block shifted fail.
+#[test]
+fn multi_tuple_sector_with_nonsquare_subblocks() {
+    let (one, i) = (c(1.0, 0.0), c(0.0, 1.0));
+    let herm = rank4_nonsquare_subblocks(one, 0.0);
+    assert_adjoint_structure(&herm, 2, order(), 1.0);
+    assert!(expm_hermitian_block_sparse_dense(&backend(), &herm, 2).is_ok());
+    let anti = rank4_nonsquare_subblocks(i, 0.0);
+    assert_adjoint_structure(&anti, 2, order(), -1.0);
+    assert!(expm_antihermitian_block_sparse_dense(&backend(), &anti, 2).is_ok());
+
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &rank4_nonsquare_subblocks(one, 0.5), 2),
+        Some("requires a Hermitian matrix"),
+    );
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &rank4_nonsquare_subblocks(i, 0.5), 2),
+        Some("requires an anti-Hermitian matrix"),
+    );
+}
+
+/// A NaN in a later sector makes that block's norm non-finite.
+#[test]
+fn non_finite_sector_norm_rejected() {
+    const NOT_FINITE: &str = "requires an operand with a finite Frobenius norm";
+
+    let nan = with_sector_1(hermitian_rank2_c64(), c(f64::NAN, 0.0));
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &nan, 1),
+        Some(NOT_FINITE),
+    );
+
+    let anti = with_sector_1(antihermitian_rank2_c64(), c(0.0, f64::NAN));
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
+        Some(NOT_FINITE),
+    );
+}
+
+/// Sector 0 keeps its (anti-)Hermitian block and the `1 x 1` sector 1 gains a
+/// component that breaks it, so only a check that reaches every sector rejects.
+#[test]
+fn non_hermitian_later_sector_rejected() {
+    let herm = with_sector_1(hermitian_rank2_c64(), c(4.0, 0.5));
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &herm, 1),
+        Some("requires a Hermitian matrix"),
+    );
+    assert!(expm_block_sparse_dense(&backend(), &herm, 1).is_ok());
+
+    let anti = with_sector_1(antihermitian_rank2_c64(), c(0.5, 3.0));
+    expect_invalid_argument(
+        expm_antihermitian_block_sparse_dense(&backend(), &anti, 1),
+        Some("requires an anti-Hermitian matrix"),
+    );
+    assert!(expm_block_sparse_dense(&backend(), &anti, 1).is_ok());
+}
+
+/// The middle fused sector of `general_rank4_f64` merges two tuples into a
+/// non-symmetric `2 x 2` block; sectors 0 and 2 are `1 x 1` and symmetric.
+#[test]
+fn non_hermitian_multi_tuple_sector_rejected() {
+    let a = general_rank4_f64();
+    expect_invalid_argument(
+        expm_hermitian_block_sparse_dense(&backend(), &a, 2),
+        Some("requires a Hermitian matrix"),
+    );
+    assert!(expm_block_sparse_dense(&backend(), &a, 2).is_ok());
 }
 
 #[test]

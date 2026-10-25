@@ -26,11 +26,10 @@
 //! sector with a *different* right sector (`s_l.dual().fuse(flux)`), so every
 //! per-sector block is off-diagonal and generally rectangular — there is no
 //! square operator to exponentiate; and the universe must be square so each
-//! per-sector block is square. Per-sector Hermiticity / anti-Hermiticity (for
-//! the specialized variants) is trusted exactly as dense `expm_hermitian` and
-//! block-sparse `eigh` trust it.
-
-use std::any::TypeId;
+//! per-sector block is square. The specialized variants additionally require
+//! each per-sector block to be Hermitian / anti-Hermitian: the dense kernel
+//! they call checks every block against its own Frobenius norm, because each
+//! sector's exponential depends on that block alone.
 
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::ComputeBackend;
@@ -42,7 +41,7 @@ use crate::block_sparse_decomp::fused_sector::{
 };
 use crate::block_sparse_decomp::{to_vec_in_order, validate_nrow};
 use crate::error::LinalgError;
-use crate::expm::{expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
+use crate::expm::{ensure_complex, expm_antihermitian_dense, expm_dense, expm_hermitian_dense};
 
 /// Run a per-sector dense exponential and reassemble into a same-shape tensor.
 ///
@@ -116,12 +115,11 @@ pub(crate) fn expm_block_sparse_dense<T: Scalar, S: Sector>(
 /// joined-form [`BlockSparseTensorData<T, S>`]. The public entry point is
 /// [`crate::expm_hermitian_block_sparse_with_backend`].
 ///
-/// Per-sector Hermiticity is trusted, mirroring dense `expm_hermitian`.
-///
 /// # Errors
 ///
 /// Returns [`LinalgError::InvalidArgument`] if `nrow` is out of range, the flux
-/// is non-identity, or the fused-sector universe is asymmetric.
+/// is non-identity, the fused-sector universe is asymmetric, or a per-sector
+/// block fails the dense kernel's Hermiticity check.
 pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
@@ -136,28 +134,21 @@ pub(crate) fn expm_hermitian_block_sparse_dense<T: Scalar, S: Sector>(
 /// joined-form [`BlockSparseTensorData<T, S>`]. The public entry point is
 /// [`crate::expm_antihermitian_block_sparse_with_backend`].
 ///
-/// Per-sector anti-Hermiticity is trusted, mirroring dense
-/// `expm_antihermitian`. A real element type is rejected up front — before the
-/// sector loop — so an empty real operand errors consistently rather than
-/// succeeding by vacuously skipping every per-sector check.
+/// A real element type is rejected up front, before any sector is visited, so
+/// an empty real operand errors as well.
 ///
 /// # Errors
 ///
 /// Returns [`LinalgError::InvalidArgument`] if the element type is real, `nrow`
-/// is out of range, the flux is non-identity, or the fused-sector universe is
-/// asymmetric.
+/// is out of range, the flux is non-identity, the fused-sector universe is
+/// asymmetric, or a per-sector block fails the dense kernel's anti-Hermiticity
+/// check.
 pub(crate) fn expm_antihermitian_block_sparse_dense<T: Scalar, S: Sector>(
     backend: &impl ComputeBackend,
     tensor: &BlockSparseTensorData<T, S>,
     nrow: usize,
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
-    let tid = TypeId::of::<T>();
-    if tid == TypeId::of::<f64>() || tid == TypeId::of::<f32>() {
-        return Err(LinalgError::InvalidArgument(
-            "expm_antihermitian requires complex input type (Complex<f64> or Complex<f32>)".into(),
-        ));
-    }
-
+    ensure_complex::<T>()?;
     expm_per_sector(backend, tensor, nrow, "expm_antihermitian", |dense| {
         expm_antihermitian_dense(backend, dense, 1)
     })

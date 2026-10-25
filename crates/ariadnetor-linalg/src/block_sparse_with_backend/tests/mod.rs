@@ -23,7 +23,7 @@ use ariadnetor_tensor::{
     BlockCoord, BlockSparseTensor, BlockSparseTensorData, Direction, U1Sector,
 };
 
-use crate::test_util::RecordingBackend;
+use crate::test_util::{RecordingBackend, assert_invalid_argument};
 use crate::*;
 
 /// Number of kernel descriptors a recording backend has seen across the
@@ -263,10 +263,11 @@ fn eig_host_method_matches_with_backend() {
     bsp_eq_complex(&v_method, &v_backend);
 }
 
-/// Complex rank-2 tensor in the recording backend's order. The data is not
-/// constructed to be anti-Hermitian — the `expm_antihermitian` routing /
-/// delegation tests only require the two paths to agree, and kernel-level
-/// numerical correctness is covered by the `block_sparse_expm` unit tests.
+/// Complex anti-Hermitian rank-2 tensor in the recording backend's order: each
+/// sector block equals the negative of its conjugate transpose, as
+/// `expm_antihermitian` requires. The routing / delegation tests only require
+/// the two paths to agree; kernel-level numerical correctness is covered by
+/// the `block_sparse_expm` unit tests.
 fn rank2_c() -> BlockSparseTensor<Complex<f64>, U1Sector> {
     let order = RecordingBackend::new().preferred_order();
     let c = |re: f64, im: f64| Complex::new(re, im);
@@ -353,52 +354,46 @@ fn expm_antihermitian_routes_to_passed_backend() {
     bsp_eq_complex(&r, &hr);
 }
 
-/// Whether two real block-sparse tensors coincide block-by-block within `1e-10`.
-fn bsp_coincides(
-    a: &BlockSparseTensor<f64, U1Sector>,
-    b: &BlockSparseTensor<f64, U1Sector>,
-) -> bool {
-    let (da, db) = (a.data(), b.data());
-    da.block_metas().iter().all(|meta| {
-        let (xa, xb) = (
-            da.block_data(&meta.coord).unwrap(),
-            db.block_data(&meta.coord).unwrap(),
-        );
-        xa.iter().zip(xb).all(|(x, y)| (x - y).abs() < 1e-10)
-    })
-}
-
 #[test]
 fn expm_hermitian_is_not_cross_wired_to_expm() {
     // On a Hermitian input the general and Hermitian exponentials coincide, so
     // `expm_hermitian_host_method_matches_with_backend` (Hermitian fixture)
     // cannot detect a host-method delegation swap. A non-Hermitian input
-    // discriminates: the Hermitian host method must match its Hermitian twin
-    // (eigh-based, trusting hermiticity) and differ from the general exponential.
+    // discriminates: the Hermitian method and its twin reject it with the
+    // Hermiticity error, which neither the general exponential (it succeeds)
+    // nor the anti-Hermitian one (it rejects the real element type) produces.
     let host = NativeBackend::new();
-    let t = rank2(); // non-symmetric, so the Hermitian and general paths diverge
-    let method = t.expm_hermitian(1).unwrap();
-    let twin = expm_hermitian_block_sparse_with_backend(&host, &t, 1).unwrap();
-    bsp_eq(&method, &twin);
-    let general = expm_block_sparse_with_backend(&host, &t, 1).unwrap();
-    assert!(
-        !bsp_coincides(&method, &general),
-        "hermitian path unexpectedly equals the general exponential on a \
-         non-Hermitian input; the fixture cannot discriminate a delegation swap"
+    let t = rank2(); // non-symmetric sector blocks
+    assert_invalid_argument(t.expm_hermitian(1), "requires a Hermitian matrix");
+    assert_invalid_argument(
+        expm_hermitian_block_sparse_with_backend(&host, &t, 1),
+        "requires a Hermitian matrix",
+    );
+    assert!(expm_block_sparse_with_backend(&host, &t, 1).is_ok());
+}
+
+#[test]
+fn expm_antihermitian_rejects_non_antihermitian_input() {
+    // `rank2_c` with a real part added to its 1x1 sector is no longer
+    // anti-Hermitian; both public entries reject it.
+    let host = NativeBackend::new();
+    let mut data = rank2_c().data().clone();
+    data.block_data_mut(&BlockCoord(vec![1, 1])).unwrap()[0] = Complex::new(0.5, 3.0);
+    let t = BlockSparseTensor::from_data(data);
+    assert_invalid_argument(t.expm_antihermitian(1), "requires an anti-Hermitian matrix");
+    assert_invalid_argument(
+        expm_antihermitian_block_sparse_with_backend(&host, &t, 1),
+        "requires an anti-Hermitian matrix",
     );
 }
 
 #[test]
 fn expm_antihermitian_host_rejects_real_input() {
-    // The anti-Hermitian host method rejects real element types; its siblings
-    // (`expm` / `expm_hermitian`) accept them, so this discriminates that the
-    // host method delegates to the anti-Hermitian twin and not a sibling.
+    // Only the anti-Hermitian path rejects real element types, so the message
+    // discriminates that the host method delegates to the anti-Hermitian twin
+    // and not a sibling.
     let t = rank2();
-    let err = t.expm_antihermitian(1).unwrap_err();
-    assert!(
-        matches!(err, LinalgError::InvalidArgument(_)),
-        "expected InvalidArgument, got {err:?}"
-    );
+    assert_invalid_argument(t.expm_antihermitian(1), "requires complex input type");
 }
 
 #[test]
