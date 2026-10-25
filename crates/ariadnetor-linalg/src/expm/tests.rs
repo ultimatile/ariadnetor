@@ -20,7 +20,7 @@ fn hermitian_entry(i: usize, j: usize) -> Complex<f64> {
 
 /// Row-major `[2, 3, 3, 2]` operand whose grouped `6 x 6` matrix is
 /// `scale * H` plus `offset` at row 5, column 4, with `H` from
-/// [`hermitian_entry`]. The anti-Hermitian test passes `scale = -i`.
+/// [`hermitian_entry`]. The anti-Hermitian case passes `scale = -i`.
 fn grouped_operand(scale: Complex<f64>, offset: f64) -> DenseTensorData<Complex<f64>> {
     let mut data: Vec<_> = (0..36)
         .map(|k| hermitian_entry(k / 6, k % 6) * scale)
