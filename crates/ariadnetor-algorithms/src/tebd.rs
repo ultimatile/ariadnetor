@@ -2,7 +2,8 @@
 //!
 //! [`tebd`] evolves an MPS under `H = Σ_i h_i`, where each bond term `h_i`
 //! acts on sites `i` and `i + 1`, by repeated second-order Trotter steps.
-//! One step of length `z` (`i·dt` in real time, `tau` in imaginary time) is
+//! On a chain of `n` sites, one step of length `z` (`i·dt` in real time,
+//! `tau` in imaginary time) is
 //!
 //! ```text
 //! S(z) = g_0(z/2) ⋯ g_{n-2}(z/2) · g_{n-2}(z/2) ⋯ g_0(z/2),   g_i(w) = exp(-w h_i)
@@ -14,8 +15,9 @@
 //!
 //! The gates follow the sweep order: the left-to-right pass leaves the
 //! orthogonality center on the right site of each pair and the return pass
-//! leaves it on the left site, so the center is always on the gated pair.
-//! No gauge step runs between gates, and, given a canonical-form tag that
+//! leaves it on the left site, so from the second gate of a call on, the
+//! center is already on the gated pair; the first gate moves it there from
+//! whatever form the input has. No gauge step runs between gates, and, given a canonical-form tag that
 //! holds, each gate's truncation error is the exact state error it
 //! introduces.
 
@@ -59,9 +61,10 @@ pub struct TebdStepRecord<R> {
     /// Index of the step, counted from 0 within the call.
     pub step: usize,
     /// Sum over this step's gates of the Frobenius norms of the discarded
-    /// singular values. In real time it bounds the distance between the
-    /// untruncated step applied to the incoming state and `norm` times the
-    /// renormalized outgoing state.
+    /// singular values. In real time, given a canonical-form tag that holds
+    /// (see [`tebd`]), it bounds the distance between the untruncated step
+    /// applied to the incoming state and `norm` times the renormalized
+    /// outgoing state.
     pub trunc_err_sum: R,
     /// Norm of the state after this step's gates, before renormalization.
     /// Once an imaginary-time run has converged, `-ln(norm) / tau`
@@ -118,6 +121,14 @@ pub enum TebdError {
         #[source]
         source: LinalgError,
     },
+    /// A bond's gate has an entry that is not finite: in imaginary time,
+    /// `exp(-tau/2 · λ)` overflows for a large negative eigenvalue `λ` of
+    /// the term.
+    #[error("the gate of bond {bond} has an entry that is not finite")]
+    NonFiniteGate {
+        /// Index of the bond.
+        bond: usize,
+    },
     /// The norm after a step's gates is zero or not finite.
     #[error("state norm is zero or not finite after step {step}")]
     NormBreakdown {
@@ -156,6 +167,8 @@ pub enum TebdError {
 ///   real scalar type is not finite and positive, `trunc.chi_max` is
 ///   `Some(0)`, or `trunc.target_trunc_err` is not finite or is negative.
 /// - [`TebdError::GateConstruction`] if exponentiating a term fails.
+/// - [`TebdError::NonFiniteGate`] if a gate has an entry that is not
+///   finite.
 /// - [`TebdError::NormBreakdown`] if the norm after a step is zero or not
 ///   finite.
 ///
@@ -222,8 +235,15 @@ pub fn tebd<T: Scalar>(
                     1,
                 ),
             };
-            exp.map(|gate| gate.reshape_logical(shape))
-                .map_err(|source| TebdError::GateConstruction { bond, source })
+            let gate = exp.map_err(|source| TebdError::GateConstruction { bond, source })?;
+            if !gate
+                .data_slice()
+                .iter()
+                .all(|x| x.re().is_finite() && x.im().is_finite())
+            {
+                return Err(TebdError::NonFiniteGate { bond });
+            }
+            Ok(gate.reshape_logical(shape))
         })
         .collect::<Result<Vec<_>, _>>()?;
 

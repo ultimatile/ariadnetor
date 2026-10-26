@@ -258,9 +258,9 @@ pub fn random_mps_c64(
 /// transposition.
 pub fn random_bond_terms_c64(phys: &[usize], seed: u64) -> Vec<DenseTensor<Complex<f64>>> {
     phys.windows(2)
-        .zip(seed..)
-        .map(|(pair, s)| {
-            random_hermitian_complex_f64(pair[0] * pair[1], s)
+        .zip(0..)
+        .map(|(pair, k)| {
+            random_hermitian_complex_f64(pair[0] * pair[1], seed.wrapping_add(k))
                 .reshape_logical(vec![pair[0], pair[1], pair[0], pair[1]])
         })
         .collect()

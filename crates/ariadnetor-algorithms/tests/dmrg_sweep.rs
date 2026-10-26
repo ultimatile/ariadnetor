@@ -15,6 +15,7 @@ use ariadnetor_algorithms::dmrg::{
     DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_core::Scalar;
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
@@ -120,13 +121,8 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
     Mpo::from_sites(storages)
 }
 
-/// Smallest eigenvalue of a real-symmetric `d×d` matrix; `h` is CM.
-fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
-    smallest_eigenvalue(&Host::shared().dense(h.to_vec(), vec![d, d]))
-}
-
-/// Smallest eigenvalue of a complex Hermitian `d×d` matrix (CM, see above).
-fn min_eig_complex_herm(h: &[Complex<f64>], d: usize) -> f64 {
+/// Smallest eigenvalue of a Hermitian `d×d` matrix stored CM in `h`.
+fn min_eig<T: Scalar>(h: &[T], d: usize) -> T::Real {
     smallest_eigenvalue(&Host::shared().dense(h.to_vec(), vec![d, d]))
 }
 
@@ -162,7 +158,7 @@ fn t1_psd_product_converges_to_product_of_min_eigs_f64() {
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
 
-    let reference = hs.iter().map(|h| min_eig_real_sym(h, d)).product::<f64>();
+    let reference = hs.iter().map(|h| min_eig(h, d)).product::<f64>();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
     assert!(result.converged, "should converge well within max_sweeps");
     assert!(
@@ -352,7 +348,7 @@ fn t5_n_sites_two_edge_case() {
     let params = standard_params_f64(0x99);
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
-    let reference = hs.iter().map(|h| min_eig_real_sym(h, d)).product::<f64>();
+    let reference = hs.iter().map(|h| min_eig(h, d)).product::<f64>();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
     assert!(result.converged);
     // Each sweep at n=2 has exactly one L→R step (site=0) and one R→L step (site=0).
@@ -537,7 +533,7 @@ fn t7_c64_psd_product_converges() {
     };
 
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params).expect("sweep ok");
-    let reference: f64 = hs.iter().map(|h| min_eig_complex_herm(h, d)).product();
+    let reference: f64 = hs.iter().map(|h| min_eig(h, d)).product();
     assert_abs_diff_eq!(result.energy, reference, epsilon = 1e-7);
     assert!(result.converged);
 }
