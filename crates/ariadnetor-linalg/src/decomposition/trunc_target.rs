@@ -10,8 +10,8 @@ use ariadnetor_core::{NormAccumulator, combine_norms};
 /// The target discards singular values from the smallest upward while the
 /// Frobenius norm of the discarded ones stays within the bound, and never
 /// discards the largest one; a `chi_max` in the same
-/// [`TruncSvdParams`](super::TruncSvdParams) can discard more. A `Relative`
-/// target discards nothing from a spectrum holding a value that is not
+/// [`TruncSvdParams`](super::TruncSvdParams) can discard more. Neither
+/// variant discards anything from a spectrum holding a value that is not
 /// finite.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TruncErrTarget {
@@ -44,22 +44,22 @@ pub(crate) fn kept_by_target(
 ) -> usize {
     debug_assert!((1..len).all(|i| value(i - 1).partial_cmp(&value(i)) != Some(Ordering::Less)));
     debug_assert!(target.value().is_finite() && target.value() >= 0.0);
+    // `NormAccumulator` holds the norm as `scale * sqrt(sumsq)` with `scale`
+    // the largest value and `sumsq` at most `len + 1`, so the pair stays
+    // representable where the norm itself overflows.
+    let mut acc = NormAccumulator::new();
+    for i in 0..len {
+        acc.push(value(i));
+    }
+    let scale = acc.scale();
+    if !scale.is_finite() {
+        // An infinite or NaN singular value leaves the discarded norm, and
+        // the matrix norm, without a finite value to compare.
+        return len;
+    }
     match target {
         TruncErrTarget::Absolute(budget) => kept_within(len, &value, budget),
         TruncErrTarget::Relative(fraction) => {
-            // `NormAccumulator` holds the norm as `scale * sqrt(sumsq)` with
-            // `scale` the largest value and `sumsq` at most `len + 1`, so the
-            // pair stays representable where the norm itself overflows.
-            let mut acc = NormAccumulator::new();
-            for i in 0..len {
-                acc.push(value(i));
-            }
-            let scale = acc.scale();
-            if !scale.is_finite() {
-                // An infinite or NaN singular value leaves no finite norm to
-                // measure the fraction against.
-                return len;
-            }
             let ratio_budget = fraction * acc.sumsq().sqrt();
             let budget = scale * ratio_budget;
             if budget.is_finite() {

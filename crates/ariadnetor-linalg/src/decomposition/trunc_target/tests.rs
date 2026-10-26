@@ -52,12 +52,11 @@ fn relative_compares_in_ratios_when_the_budget_overflows() {
 }
 
 #[test]
-fn relative_discards_nothing_against_a_non_finite_value() {
-    assert_eq!(
-        kept(&[f64::INFINITY, 1.0], TruncErrTarget::Relative(0.5)),
-        2
-    );
-    assert_eq!(kept(&[1.0, f64::NAN], TruncErrTarget::Relative(0.5)), 2);
+fn no_target_discards_from_a_non_finite_spectrum() {
+    for target in [TruncErrTarget::Absolute(0.5), TruncErrTarget::Relative(0.5)] {
+        assert_eq!(kept(&[f64::INFINITY, 1.0], target), 2, "{target:?}");
+        assert_eq!(kept(&[1.0, f64::NAN], target), 2, "{target:?}");
+    }
 }
 
 #[test]

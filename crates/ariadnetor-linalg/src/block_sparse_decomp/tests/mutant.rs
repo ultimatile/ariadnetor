@@ -12,7 +12,7 @@ fn trunc_svd_error_and_target_err_arithmetic() {
         trunc_svd_block_sparse_with_policy_dense(&backend(), &bs, 1, &p1, ExecPolicy::Sequential)
             .unwrap();
     assert!((err - 6.0f64.sqrt()).abs() < 1e-10, "trunc_err={err}");
-    // target_err=0.5 → target_sq=0.25; smallest sv²=1 > 0.25 → all kept
+    // target 0.5; the smallest sv, 1, already exceeds it → all kept
     let p2 = TruncSvdParams {
         chi_max: None,
         target_trunc_err: Some(TruncErrTarget::Absolute(0.5)),

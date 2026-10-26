@@ -53,7 +53,11 @@ pub struct TebdParams {
     /// Truncation applied to the new bond after every gate. A
     /// [`Relative`](ariadnetor_linalg::TruncErrTarget::Relative) target is
     /// measured against the gated pair, whose norm is the state's norm after
-    /// the gate given a canonical-form tag that holds (see [`tebd`]).
+    /// the gate given a canonical-form tag that holds (see [`tebd`]). An
+    /// [`Absolute`](ariadnetor_linalg::TruncErrTarget::Absolute) target is
+    /// not rescaled: in imaginary time the state's norm changes from gate to
+    /// gate within a step, so the same bound is a different fraction of it
+    /// at each gate.
     pub trunc: TruncSvdParams,
 }
 

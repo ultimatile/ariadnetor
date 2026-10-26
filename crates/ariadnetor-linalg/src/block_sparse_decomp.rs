@@ -476,7 +476,7 @@ fn cross_sector_truncate<T: Scalar>(
 
     if let Some(target) = params.target_trunc_err {
         let chi_err = kept_by_target(total_sv, |i| sorted_sv[i].0.to_f64().unwrap(), target);
-        chi = chi.min(chi_err).max(1);
+        chi = chi.min(chi_err.max(1));
     }
 
     // Frobenius norm of the discarded singular values, accumulated scale-safely.

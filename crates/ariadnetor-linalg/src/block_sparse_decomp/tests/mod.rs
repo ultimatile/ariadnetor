@@ -546,7 +546,7 @@ fn trunc_svd_exact_truncation_error() {
 #[test]
 fn trunc_svd_target_err_exact_count() {
     // SVs = [3, 2, 1, 1]. With target_err=1.1:
-    // target_sq = 1.21. Can discard one SV (1²=1 ≤ 1.21), not two (1+1=2 > 1.21).
+    // Can discard one SV (norm 1 ≤ 1.1), not two (norm sqrt(2) ≈ 1.414 > 1.1).
     let bs = sample_known_svs();
     let params = TruncSvdParams {
         chi_max: None,
@@ -570,8 +570,9 @@ fn trunc_svd_target_err_exact_count() {
 
 #[test]
 fn trunc_svd_target_err_boundary() {
-    // SVs = [3, 2, 1, 1]. With target_err=1.0 (target_sq=1.0):
-    // Smallest SV² = 1.0. Since 0+1 = 1 is NOT > 1.0 (strict >), it IS discarded.
+    // SVs = [3, 2, 1, 1]. With target_err=1.0, discarding the smallest SV
+    // gives a norm of exactly 1.0, which is NOT > 1.0 (strict >), so it IS
+    // discarded.
     let bs = sample_known_svs();
     let params = TruncSvdParams {
         chi_max: None,
@@ -588,7 +589,7 @@ fn trunc_svd_target_err_boundary() {
     let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
     assert_eq!(
         total_kept, 3,
-        "boundary: sv²==target_sq should still discard"
+        "boundary: discarded norm == target should still discard"
     );
 }
 

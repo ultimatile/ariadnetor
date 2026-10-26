@@ -244,8 +244,9 @@ pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
     // f64 target free of precision loss in the real type.
     if let Some(target) = params.target_trunc_err {
         let chi_err = kept_by_target(k_full, |i| s_data[i].to_f64().unwrap(), target);
-        // Ensure at least one singular value is kept even with aggressive error threshold
-        chi = chi.min(chi_err).max(1);
+        // Keep at least one singular value even with an aggressive target,
+        // but none of an empty spectrum: `chi` is already at most `k_full`.
+        chi = chi.min(chi_err.max(1));
     }
 
     if chi == k_full {

@@ -94,6 +94,22 @@ fn zero_targets_are_accepted() {
     }
 }
 
+/// A matrix with a zero dimension has no singular values, and a target
+/// keeps none rather than flooring the count past the spectrum.
+#[test]
+fn target_on_an_empty_spectrum_keeps_nothing() {
+    let a: DenseTensor<f64> = DenseTensor::from_data(DenseTensorData::from_raw_parts(
+        Vec::new(),
+        vec![0, 3],
+        MemoryOrder::ColumnMajor,
+    ));
+    for t in [TruncErrTarget::Absolute(0.1), TruncErrTarget::Relative(0.1)] {
+        let (_, s, _, err) = a.trunc_svd(1, &target(t)).unwrap();
+        assert_eq!(s.len(), 0, "{t:?}");
+        assert_eq!(err, 0.0);
+    }
+}
+
 /// Parameters are checked before the decomposition, so an invalid target
 /// is reported even where the decomposition itself would fail on `nrow`.
 #[test]
