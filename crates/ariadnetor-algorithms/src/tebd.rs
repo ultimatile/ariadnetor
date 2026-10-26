@@ -16,10 +16,9 @@
 //! The gates follow the sweep order: the left-to-right pass leaves the
 //! orthogonality center on the right site of each pair and the return pass
 //! leaves it on the left site, so from the second gate of a call on, the
-//! center is already on the gated pair; the first gate moves it there from
-//! whatever form the input has. No gauge step runs between gates, and,
-//! given a canonical-form tag that holds, each gate's truncation error is
-//! the exact state error it introduces.
+//! center is already on the gated pair. No gauge step runs between gates,
+//! and, given a canonical-form tag that holds, each gate's truncation error
+//! is the exact state error it introduces.
 
 use ariadnetor_core::{Scalar, try_real_from_f64};
 use ariadnetor_linalg::{
@@ -141,10 +140,9 @@ pub enum TebdError {
 /// [`Mps::apply_two_site_gate`] takes. On-site terms are folded into the
 /// bond terms by the caller.
 ///
-/// `psi` may be in any canonical form; the first gate moves the gauge to
-/// its pair. The form is trusted, not checked: the sites it marks isometric
-/// must be, or the truncation errors stop being state errors and the
-/// renormalization reads the wrong norm. After each step the form is
+/// `psi` may be in any canonical form. The form is trusted, not checked:
+/// the sites it marks isometric must be, or the truncation errors stop
+/// being state errors. After each step the form is
 /// `Mixed { center: 0 }` and the state has unit norm; with `n_steps == 0`,
 /// `psi` is left unchanged.
 /// Returns one record per step.
@@ -236,6 +234,19 @@ pub fn tebd<T: Scalar>(
                 .map_err(|source| TebdError::GateConstruction { bond, source })
         })
         .collect::<Result<Vec<_>, _>>()?;
+
+    // The relative truncation target reads `Mps::norm` before every gate.
+    // For an `Unknown` or `Partial` tag the first read would contract the
+    // whole chain; canonicalizing first makes it a single-site norm too.
+    if params.n_steps > 0
+        && params.trunc.target_trunc_err.is_some()
+        && matches!(
+            psi.canonical_form(),
+            CanonicalForm::Unknown | CanonicalForm::Partial { .. }
+        )
+    {
+        psi.canonicalize::<T, _>(backend.as_ref(), 0);
+    }
 
     let mut records = Vec::new();
     for step in 0..params.n_steps {

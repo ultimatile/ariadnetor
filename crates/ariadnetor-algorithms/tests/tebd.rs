@@ -31,6 +31,14 @@ const PHYS: [usize; 5] = [2, 3, 2, 3, 2];
 /// Bond dimensions of the 5-site fixture, boundaries included.
 const BONDS: [usize; 6] = [1, 2, 4, 4, 3, 1];
 
+/// The bond terms and initial state most tests share.
+fn fixture() -> (Vec<DenseTensor<C64>>, DenseMps<C64>) {
+    (
+        random_bond_terms_c64(&PHYS, 100),
+        random_mps_c64(&PHYS, &BONDS, 7),
+    )
+}
+
 fn cap(chi_max: usize) -> TruncSvdParams {
     TruncSvdParams {
         chi_max: Some(chi_max),
@@ -203,8 +211,7 @@ fn two_site_chain_matches_the_dense_product() {
 /// Halving the step at fixed total time divides the error by about 4.
 #[test]
 fn error_is_second_order_in_the_step() {
-    let terms = random_bond_terms_c64(&PHYS, 100);
-    let psi0 = random_mps_c64(&PHYS, &BONDS, 7);
+    let (terms, psi0) = fixture();
     let h = hamiltonian(&terms, &PHYS);
     let exact_propagator =
         expm_with_backend(&NativeBackend::new(), &h.scaled(C64::new(0.0, -1.0)), 1).expect("expm");
@@ -227,8 +234,7 @@ fn error_is_second_order_in_the_step() {
 /// and every later step starts from the renormalized state.
 #[test]
 fn records_the_norm_before_renormalization() {
-    let terms = random_bond_terms_c64(&PHYS, 100);
-    let mut psi = random_mps_c64(&PHYS, &BONDS, 7);
+    let (terms, mut psi) = fixture();
     let norm0 = 3.0;
     let rescale = norm0 / state_vector(&psi).norm();
     psi.site_mut(0).scale(C64::new(rescale, 0.0));
@@ -243,8 +249,7 @@ fn records_the_norm_before_renormalization() {
 /// the untruncated step: `‖S psi0 − norm · psi‖ ≤ trunc_err_sum`.
 #[test]
 fn truncation_error_bounds_the_state_error() {
-    let terms = random_bond_terms_c64(&PHYS, 100);
-    let psi0 = random_mps_c64(&PHYS, &BONDS, 7);
+    let (terms, psi0) = fixture();
     let time_step = TimeStep::Real(0.1);
     let untruncated = matvec(&dense_step(&terms, &PHYS, time_step), &state_vector(&psi0));
     let mut psi = psi0.clone();
@@ -270,8 +275,7 @@ fn truncation_error_bounds_the_state_error() {
 /// with every discarded weight scaled by the same factor.
 #[test]
 fn truncation_target_is_relative_to_the_state_norm() {
-    let terms = random_bond_terms_c64(&PHYS, 100);
-    let small = random_mps_c64(&PHYS, &BONDS, 7);
+    let (terms, small) = fixture();
     let mut large = small.clone();
     large.site_mut(0).scale(C64::new(1000.0, 0.0));
     let time_step = TimeStep::Real(0.1);
@@ -303,8 +307,7 @@ fn truncation_target_is_relative_to_the_state_norm() {
 /// bound holds against the untruncated step from the first step's result.
 #[test]
 fn each_record_covers_its_own_step() {
-    let terms = random_bond_terms_c64(&PHYS, 100);
-    let psi0 = random_mps_c64(&PHYS, &BONDS, 7);
+    let (terms, psi0) = fixture();
     let time_step = TimeStep::Real(0.1);
 
     let mut stepwise = psi0.clone();
