@@ -46,6 +46,13 @@ fn cap(chi_max: usize) -> TruncSvdParams {
     }
 }
 
+fn relative(target: f64) -> TruncSvdParams {
+    TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(target),
+    }
+}
+
 fn run<T: Scalar>(
     psi: &mut DenseMps<T>,
     terms: &[DenseTensor<T>],
@@ -279,10 +286,7 @@ fn truncation_target_is_relative_to_the_state_norm() {
     let mut large = small.clone();
     large.site_mut(0).scale(C64::new(1000.0, 0.0));
     let time_step = TimeStep::Real(0.1);
-    let target = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(1e-2),
-    };
+    let target = relative(1e-2);
 
     let mut untruncated = small.clone();
     run(&mut untruncated, &terms, time_step, 1, NO_TRUNC);
@@ -300,6 +304,35 @@ fn truncation_target_is_relative_to_the_state_norm() {
         "{ra:?} vs {rb:?}"
     );
     assert!(distance(&state_vector(&a), &state_vector(&b)) < 1e-12);
+}
+
+/// On the 2-site state `Σ_a λ_a |a a>` with Schmidt values
+/// `λ = [sqrt(0.9975), 0.05]` and a zero Hamiltonian, every gate is the
+/// identity, so the truncation sees exactly those values: a relative target
+/// of 0.01 keeps both, and one of 0.06 discards 0.05 once.
+#[test]
+fn truncation_target_matches_a_known_spectrum() {
+    let schmidt = [0.9975_f64.sqrt(), 0.05];
+    let mut a = DenseTensor::<C64>::zeros(vec![1, 2, 2]);
+    let mut b = DenseTensor::<C64>::zeros(vec![2, 2, 1]);
+    for (k, &lambda) in schmidt.iter().enumerate() {
+        a.set([0, k, k], C64::new(lambda, 0.0));
+        b.set([k, k, 0], C64::new(1.0, 0.0));
+    }
+    let psi: DenseMps<C64> = Mps::from_sites(vec![a, b]);
+    let terms = vec![DenseTensor::<C64>::zeros(vec![2, 2, 2, 2])];
+    let truncated = |target: f64| {
+        let trunc = relative(target);
+        run(&mut psi.clone(), &terms, TimeStep::Real(0.1), 1, trunc).remove(0)
+    };
+
+    let kept = truncated(0.01);
+    assert_eq!(kept.max_bond, 2, "{kept:?}");
+    assert!(kept.trunc_err_sum.abs() < 1e-12, "{kept:?}");
+
+    let cut = truncated(0.06);
+    assert_eq!(cut.max_bond, 1, "{cut:?}");
+    assert!((cut.trunc_err_sum - 0.05).abs() < 1e-12, "{cut:?}");
 }
 
 /// A truncating two-step call records the same steps as two one-step calls:
@@ -466,10 +499,7 @@ fn result_is_independent_of_the_input_form() {
             ),
         ),
     ];
-    let relative = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(1e-2),
-    };
+    let trunc = relative(1e-2);
     let mut truncated_reference = None;
     for (label, psi) in inputs {
         let mut exact = psi.clone();
@@ -485,7 +515,7 @@ fn result_is_independent_of_the_input_form() {
         // With a relative target the truncation depends only on the state,
         // so every form, normalized or not, truncates the same way.
         let mut truncated = psi;
-        run(&mut truncated, &terms, time_step, 3, relative.clone());
+        run(&mut truncated, &terms, time_step, 3, trunc.clone());
         let v = state_vector(&truncated);
         let reference = truncated_reference.get_or_insert_with(|| v.clone());
         let diff = distance(&v, reference);
