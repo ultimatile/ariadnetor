@@ -466,16 +466,36 @@ fn result_is_independent_of_the_input_form() {
             ),
         ),
     ];
-    for (label, mut psi) in inputs {
-        run(&mut psi, &terms, time_step, 3, NO_TRUNC);
-        let err = distance(&state_vector(&psi), &expected);
+    let relative = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1e-2),
+    };
+    let mut truncated_reference = None;
+    for (label, psi) in inputs {
+        let mut exact = psi.clone();
+        run(&mut exact, &terms, time_step, 3, NO_TRUNC);
+        let err = distance(&state_vector(&exact), &expected);
         assert!(err < 1e-12, "{label}: state error {err}");
         assert_eq!(
-            *psi.canonical_form(),
+            *exact.canonical_form(),
             CanonicalForm::Mixed { center: 0 },
             "{label}"
         );
+
+        // With a relative target the truncation depends only on the state,
+        // so every form, normalized or not, truncates the same way.
+        let mut truncated = psi;
+        run(&mut truncated, &terms, time_step, 3, relative.clone());
+        let v = state_vector(&truncated);
+        let reference = truncated_reference.get_or_insert_with(|| v.clone());
+        let diff = distance(&v, reference);
+        assert!(diff < 1e-10, "{label}: truncated state differs by {diff}");
     }
+    let reference = truncated_reference.expect("at least one input form");
+    assert!(
+        distance(&normalized(&reference), &expected) > 1e-6,
+        "fixture must actually truncate"
+    );
 }
 
 /// `norm` and `truncate` trust the form the driver leaves, and a further

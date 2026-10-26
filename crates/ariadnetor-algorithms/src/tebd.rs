@@ -172,15 +172,13 @@ pub enum TebdError {
 ///
 /// `psi` must be a well-formed chain (every site rank 3, adjacent bond
 /// dimensions equal) whose canonical-form tag is consistent with its
-/// length. The driver leaves this to [`Mps::apply_two_site_gate`], whose
-/// checks panic on a violation once a step runs; reading the physical
-/// dimensions at entry can panic first. Also panics if a linear-algebra
-/// call inside `apply_two_site_gate` fails, for example a truncated SVD of
-/// an overflowed pair. In imaginary time the state is renormalized only
-/// between steps, and within a step its norm changes by about
-/// `exp(-tau E)`, which on a long chain can overflow the real scalar type
-/// and fail such an SVD. A panic inside a step can leave `psi` with that
-/// step's earlier gates applied.
+/// length; the driver does not check this. Panics if a linear-algebra call
+/// inside [`Mps::apply_two_site_gate`] fails or, with a truncation target,
+/// if the state norm before a gate is not finite. In imaginary time the
+/// state is renormalized only between steps, and within a step its norm
+/// changes by about `exp(-tau E)`, which on a long chain can overflow the
+/// real scalar type and end in one of these panics. A panic inside a step
+/// can leave `psi` with that step's earlier gates applied.
 pub fn tebd<T: Scalar>(
     psi: &mut Mps<DenseStorage<T>, DenseLayout>,
     bond_terms: &[DenseTensor<T>],
@@ -235,11 +233,10 @@ pub fn tebd<T: Scalar>(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // The relative truncation target reads `Mps::norm` before every gate.
-    // For an `Unknown` or `Partial` tag the first read would contract the
-    // whole chain; canonicalizing first makes it a single-site norm too.
+    // The first gate would establish this gauge anyway; doing it here also
+    // keeps the relative truncation target's `Mps::norm` reads, which
+    // contract the whole chain for these tags, single-site.
     if params.n_steps > 0
-        && params.trunc.target_trunc_err.is_some()
         && matches!(
             psi.canonical_form(),
             CanonicalForm::Unknown | CanonicalForm::Partial { .. }
@@ -267,6 +264,10 @@ pub fn tebd<T: Scalar>(
                 chi_max: params.trunc.chi_max,
                 target_trunc_err: params.trunc.target_trunc_err.map(|target| {
                     let norm = psi.norm::<T, _>(backend.as_ref());
+                    assert!(
+                        norm.is_finite(),
+                        "tebd: state norm is not finite before a gate of step {step}",
+                    );
                     target * norm.to_f64().unwrap_or(f64::NAN)
                 }),
             };
