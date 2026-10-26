@@ -2,8 +2,8 @@
 
 use ariadnetor_linalg::{contract, permute_with_backend, tensordot};
 use ariadnetor_mps::{
-    ApplyMethod, Mpo, Mps, MpsOps, SuccessiveRandomizedParams, TensorChain, TruncSvdParams,
-    TruncateParams, apply_with_method,
+    ApplyMethod, Mpo, Mps, MpsOps, SuccessiveRandomizedParams, TensorChain, TruncErrTarget,
+    TruncSvdParams, TruncateParams, apply_with_method,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::legs;
@@ -42,6 +42,14 @@ pub(crate) fn cap(chi_max: usize) -> TruncSvdParams {
     TruncSvdParams {
         chi_max: Some(chi_max),
         target_trunc_err: None,
+    }
+}
+
+/// Truncation by the error target `target` alone, with no `chi_max`.
+pub(crate) fn target_only(target: TruncErrTarget) -> TruncSvdParams {
+    TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(target),
     }
 }
 

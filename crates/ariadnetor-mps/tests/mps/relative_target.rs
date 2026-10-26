@@ -2,13 +2,13 @@
 //! forward `TruncSvdParams` to the truncated SVD: scaling the state scales
 //! every matrix truncated, so the kept bonds stay the same.
 
-use ariadnetor_mps::{
-    ApplyMethod, Mps, TensorChain, TruncErrTarget, TruncSvdParams, TruncateParams,
-};
+use ariadnetor_mps::{ApplyMethod, Mps, TensorChain, TruncErrTarget, TruncateParams};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
-use super::helpers::{apply_ok, cm_dense_tensor, make_3site_test_mpo, with_site_scaled};
+use super::helpers::{
+    apply_ok, cm_dense_tensor, make_3site_test_mpo, target_only, with_site_scaled,
+};
 
 type DenseMps = Mps<DenseStorage<f64>, DenseLayout>;
 
@@ -22,10 +22,7 @@ fn generic_site(shape: Vec<usize>, offset: usize) -> DenseTensor<f64> {
 }
 
 fn relative(fraction: f64) -> TruncateParams {
-    TruncateParams::from(TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(TruncErrTarget::Relative(fraction)),
-    })
+    TruncateParams::from(target_only(TruncErrTarget::Relative(fraction)))
 }
 
 #[test]

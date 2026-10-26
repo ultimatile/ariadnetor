@@ -62,14 +62,16 @@ pub(crate) fn kept_by_target(
         TruncErrTarget::Relative(fraction) => {
             let ratio_budget = fraction * acc.sumsq().sqrt();
             let budget = scale * ratio_budget;
-            if budget.is_finite() {
+            if budget.is_normal() || budget == 0.0 {
                 // Compared in the values' own units, so a value far below
-                // `scale` is never rounded away before it is compared.
+                // `scale` is never rounded away before it is compared. A
+                // budget that underflowed to zero lies below every positive
+                // value either way, so only zeros fit within it.
                 kept_within(len, &value, budget)
             } else {
-                // The budget exceeds the type's range only when `ratio_budget`
-                // is at least 1 in units of `scale`; a ratio that underflows
-                // there lies far inside it either way.
+                // An overflowed budget is out of range and a subnormal one has
+                // lost precision, so compare in units of `scale` instead,
+                // where the budget `ratio_budget` is at least `fraction`.
                 kept_within(len, |i| value(i) / scale, ratio_budget)
             }
         }

@@ -25,13 +25,6 @@ fn trunc(
     trunc_svd_block_sparse_with_policy_dense(&backend(), bs, 1, params, ExecPolicy::Sequential)
 }
 
-fn target(target: TruncErrTarget) -> TruncSvdParams {
-    TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(target),
-    }
-}
-
 /// The norm over both sectors is `sqrt(21)`, so `Relative(0.25)` is a budget
 /// of about 1.146 and discards the 1. Measured against sector 1 alone
 /// (`sqrt(5)`), the budget would be about 0.559 and keep it.
@@ -39,7 +32,7 @@ fn target(target: TruncErrTarget) -> TruncSvdParams {
 fn relative_target_is_measured_against_all_sectors() {
     let (_, sv, _, err) = trunc(
         &two_sector_spectrum(),
-        &target(TruncErrTarget::Relative(0.25)),
+        &target_only(TruncErrTarget::Relative(0.25)),
     )
     .unwrap();
     let kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
@@ -55,9 +48,23 @@ fn invalid_target_values_are_rejected() {
             TruncErrTarget::Absolute(value),
             TruncErrTarget::Relative(value),
         ] {
-            assert_invalid_argument(trunc(&bs, &target(t)), "target_trunc_err");
+            assert_invalid_argument(trunc(&bs, &target_only(t)), "target_trunc_err");
         }
     }
+}
+
+/// Parameters are checked before `nrow`, as in the dense kernel.
+#[test]
+fn invalid_parameters_are_reported_before_nrow() {
+    let params = target_only(TruncErrTarget::Relative(f64::NAN));
+    let result = trunc_svd_block_sparse_with_policy_dense(
+        &backend(),
+        &two_sector_spectrum(),
+        0,
+        &params,
+        ExecPolicy::Sequential,
+    );
+    assert_invalid_argument(result, "target_trunc_err");
 }
 
 /// A flux no block can carry leaves no singular values; invalid parameters

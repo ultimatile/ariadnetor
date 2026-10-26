@@ -14,6 +14,14 @@ fn backend() -> NativeBackend {
 fn order() -> MemoryOrder {
     backend().preferred_order()
 }
+
+/// Truncation by the error target `target` alone, with no `chi_max`.
+fn target_only(target: TruncErrTarget) -> TruncSvdParams {
+    TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(target),
+    }
+}
 // -- Test tensor constructors ------------------------------------------------
 
 /// Rank-2 U1, identity flux, blocks (0,0): 2×2 and (1,1): 3×3.
@@ -548,10 +556,7 @@ fn trunc_svd_target_err_exact_count() {
     // SVs = [3, 2, 1, 1]. With target_err=1.1:
     // Can discard one SV (norm 1 ≤ 1.1), not two (norm sqrt(2) ≈ 1.414 > 1.1).
     let bs = sample_known_svs();
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(TruncErrTarget::Absolute(1.1)),
-    };
+    let params = target_only(TruncErrTarget::Absolute(1.1));
     let (_, sv, _, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
@@ -574,10 +579,7 @@ fn trunc_svd_target_err_boundary() {
     // gives a norm of exactly 1.0, which is NOT > 1.0 (strict >), so it IS
     // discarded.
     let bs = sample_known_svs();
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(TruncErrTarget::Absolute(1.0)),
-    };
+    let params = target_only(TruncErrTarget::Absolute(1.0));
     let (_, sv, _, _) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
@@ -754,10 +756,7 @@ fn trunc_svd_empty_tensor_with_target_err() {
         U1Sector(1),
         order(),
     );
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(TruncErrTarget::Absolute(0.1)),
-    };
+    let params = target_only(TruncErrTarget::Absolute(0.1));
     let (u, sv, vt, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,

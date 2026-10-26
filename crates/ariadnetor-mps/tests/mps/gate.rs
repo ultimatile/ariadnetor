@@ -22,7 +22,8 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use super::helpers::{
-    cap, densify, frobenius_distance, is_isometric, relative_frobenius, with_site_scaled,
+    cap, densify, frobenius_distance, is_isometric, relative_frobenius, target_only,
+    with_site_scaled,
 };
 
 type DenseMps<T> = Mps<DenseStorage<T>, DenseLayout>;
@@ -499,10 +500,7 @@ fn panics_on_zero_chi_max() {
     expected = "apply_two_site_gate: invalid truncation parameters: Invalid argument: target_trunc_err"
 )]
 fn panics_on_a_nan_target() {
-    let svd = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(TruncErrTarget::Relative(f64::NAN)),
-    };
+    let svd = target_only(TruncErrTarget::Relative(f64::NAN));
     apply_to_fixture(0, &real_gate(2, 3, 1), &svd);
 }
 

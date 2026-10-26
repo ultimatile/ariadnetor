@@ -8,6 +8,7 @@ use ariadnetor_native::NativeBackend;
 
 use super::helpers::{
     cm_dense_tensor, is_left_canonical, is_right_canonical, make_4site_mps, mps_to_dense,
+    target_only,
 };
 
 #[test]
@@ -96,10 +97,7 @@ fn test_truncate_with_cutoff() {
     let mut mps = make_4site_mps();
     mps.canonicalize(&backend, 0);
 
-    let params = TruncateParams::from(TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(TruncErrTarget::Absolute(1e-14)),
-    });
+    let params = TruncateParams::from(target_only(TruncErrTarget::Absolute(1e-14)));
     let result = mps.truncate(&backend, &params);
 
     // With very tight cutoff, truncation error should be very small

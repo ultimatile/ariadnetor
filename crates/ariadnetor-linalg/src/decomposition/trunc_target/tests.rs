@@ -51,6 +51,27 @@ fn relative_compares_in_ratios_when_the_budget_overflows() {
     assert_eq!(kept(&s, TruncErrTarget::Relative(0.6)), 3);
 }
 
+/// `[1.6e308, 1.2e308, 1e300]` has norm `2e308`, so `Relative(0.95)` is a
+/// budget of `1.9e308`, past `f64::MAX`. In units of the largest value the
+/// ratios are `[1, 0.75, 6.25e-9]` and the budget is `0.95 * 1.25 = 1.1875`:
+/// the two smaller values (discarded norm 0.75) fit, the largest
+/// (discarded norm 1.25) does not.
+#[test]
+fn relative_ratio_comparison_scales_each_value_by_the_largest() {
+    let s = [1.6e308, 1.2e308, 1e300];
+    assert_eq!(kept(&s, TruncErrTarget::Relative(0.95)), 1);
+}
+
+/// Two copies of the smallest positive `f64` have norm `sqrt(2)` of it, so
+/// `Relative(0.5)` is a budget of about 0.707 of that value, which rounds
+/// up to the value itself. In units of the largest value the budget stays
+/// 0.707 and the value (ratio 1) is kept.
+#[test]
+fn relative_compares_in_ratios_when_the_budget_is_subnormal() {
+    let m = f64::from_bits(1);
+    assert_eq!(kept(&[m, m], TruncErrTarget::Relative(0.5)), 2);
+}
+
 #[test]
 fn no_target_discards_from_a_non_finite_spectrum() {
     for target in [TruncErrTarget::Absolute(0.5), TruncErrTarget::Relative(0.5)] {

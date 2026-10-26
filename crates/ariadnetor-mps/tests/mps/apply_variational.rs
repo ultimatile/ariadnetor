@@ -8,7 +8,7 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 use super::helpers::{
-    apply_ok, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+    apply_ok, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense, target_only,
 };
 
 /// 4-site bond-2 MPS with deterministic, genuinely entangled content, so that
@@ -225,10 +225,7 @@ fn variational_ignores_target_trunc_err() {
 
     // chi_max = None, but a target_trunc_err large enough to collapse every
     // bond to 1 if it were consulted.
-    let params = TruncateParams::from(TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(TruncErrTarget::Absolute(1e10)),
-    });
+    let params = TruncateParams::from(target_only(TruncErrTarget::Absolute(1e10)));
     let fit = apply_ok(
         &backend,
         &op,
