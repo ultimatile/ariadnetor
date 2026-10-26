@@ -60,20 +60,26 @@ pub(crate) fn kept_by_target(
     match target {
         TruncErrTarget::Absolute(budget) => kept_within(len, &value, budget),
         TruncErrTarget::Relative(fraction) => {
-            let ratio_budget = fraction * acc.sumsq().sqrt();
-            let budget = scale * ratio_budget;
-            if budget.is_normal() || budget == 0.0 {
-                // Compared in the values' own units, so a value far below
-                // `scale` is never rounded away before it is compared. A
-                // budget that underflowed to zero lies below every positive
-                // value either way, so only zeros fit within it.
-                kept_within(len, &value, budget)
-            } else {
-                // An overflowed budget is out of range and a subnormal one has
-                // lost precision, so compare in units of `scale` instead,
-                // where the budget `ratio_budget` is at least `fraction`.
-                kept_within(len, |i| value(i) / scale, ratio_budget)
+            if fraction == 0.0 || scale == 0.0 {
+                return kept_within(len, &value, 0.0);
             }
+            // The budget `fraction * scale * sqrt(sumsq)` can leave the normal
+            // range at either end, where rounding it misjudges the values
+            // near it. `fraction` and `scale` split exactly into mantissas in
+            // `[1/2, 1)` times powers of two, and `sqrt(sumsq)` lies in
+            // `[1, sqrt(len + 1)]`, so the budget is `scaled_budget *
+            // 2^exponent` with `scaled_budget` at least 1/4. The values are
+            // multiplied by `2^-exponent`, and the norm of the discarded ones
+            // is folded from those products and compared with
+            // `scaled_budget`; each product is exact unless it leaves the
+            // normal range, and then it lies far below or far above
+            // `scaled_budget`.
+            let (fraction_m, fraction_e) = libm::frexp(fraction);
+            let (scale_m, scale_e) = libm::frexp(scale);
+            let scaled_budget = fraction_m * scale_m * acc.sumsq().sqrt();
+            debug_assert!(scaled_budget >= 0.25);
+            let exponent = fraction_e + scale_e;
+            kept_within(len, |i| libm::scalbn(value(i), -exponent), scaled_budget)
         }
     }
 }

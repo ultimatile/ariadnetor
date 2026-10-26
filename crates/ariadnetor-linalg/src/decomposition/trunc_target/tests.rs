@@ -4,6 +4,9 @@ fn kept(values: &[f64], target: TruncErrTarget) -> usize {
     kept_by_target(values.len(), |i| values[i], target)
 }
 
+/// The smallest positive `f64`.
+const MIN_SUBNORMAL: f64 = f64::from_bits(1);
+
 /// `[4, 2, 1]` has norm `sqrt(21) ≈ 4.583`. An absolute bound of 0.25 keeps
 /// all three; the same number as a fraction is a budget of about 1.146,
 /// which discards the 1 and stops at `sqrt(5) ≈ 2.236`.
@@ -25,17 +28,16 @@ fn relative_keep_count_is_invariant_under_scaling() {
     }
 }
 
-/// The norm overflows `f64`, so `r * norm` would be an infinite budget that
-/// discards everything; built as `scale * (r * sqrt(sumsq))` the budget is
-/// about `2.1e298`, below the `1e300` it must keep.
+/// The norm overflows `f64`, while the budget, about `2.1e298`, does not
+/// and keeps the `1e300`; forming `r * norm` first would give an infinite
+/// budget that discards everything.
 #[test]
 fn relative_survives_an_overflowing_norm() {
     let s = [1.5e308, 1.5e308, 1e300];
     assert_eq!(kept(&s, TruncErrTarget::Relative(1e-10)), 3);
 }
 
-/// `1e-200 / 1e200` underflows to zero, so comparing ratios would discard
-/// it against a zero budget; compared in its own units it stays.
+/// A zero budget discards only zeros, however small the other values are.
 #[test]
 fn relative_zero_keeps_a_value_far_below_the_largest() {
     let s = [1e200, 1e-200];
@@ -43,33 +45,50 @@ fn relative_zero_keeps_a_value_far_below_the_largest() {
 }
 
 /// Four values of `1.7e308` have norm `3.4e308` and budget `2.04e308`, past
-/// `f64::MAX`. In units of the largest value the budget is 1.2: one value
-/// (ratio 1) fits, two (ratio `sqrt(2)`) do not.
+/// `f64::MAX`: one value (`1.7e308`) fits, two (`sqrt(2) * 1.7e308`) do not.
 #[test]
-fn relative_compares_in_ratios_when_the_budget_overflows() {
+fn relative_handles_a_budget_past_the_largest_f64() {
     let s = [1.7e308; 4];
     assert_eq!(kept(&s, TruncErrTarget::Relative(0.6)), 3);
 }
 
 /// `[1.6e308, 1.2e308, 1e300]` has norm `2e308`, so `Relative(0.95)` is a
-/// budget of `1.9e308`, past `f64::MAX`. In units of the largest value the
-/// ratios are `[1, 0.75, 6.25e-9]` and the budget is `0.95 * 1.25 = 1.1875`:
-/// the two smaller values (discarded norm 0.75) fit, the largest
-/// (discarded norm 1.25) does not.
+/// budget of `1.9e308`, past `f64::MAX`. The two smaller values (discarded
+/// norm `1.2e308`) fit, the largest (discarded norm `2e308`) does not.
 #[test]
-fn relative_ratio_comparison_scales_each_value_by_the_largest() {
+fn relative_budget_past_the_largest_f64_on_distinct_values() {
     let s = [1.6e308, 1.2e308, 1e300];
     assert_eq!(kept(&s, TruncErrTarget::Relative(0.95)), 1);
 }
 
 /// Two copies of the smallest positive `f64` have norm `sqrt(2)` of it, so
-/// `Relative(0.5)` is a budget of about 0.707 of that value, which rounds
-/// up to the value itself. In units of the largest value the budget stays
-/// 0.707 and the value (ratio 1) is kept.
+/// `Relative(0.5)` is a budget of about 0.707 of that value, below the
+/// value itself: discarding one would exceed the budget.
 #[test]
-fn relative_compares_in_ratios_when_the_budget_is_subnormal() {
-    let m = f64::from_bits(1);
+fn relative_handles_a_subnormal_budget() {
+    let m = MIN_SUBNORMAL;
     assert_eq!(kept(&[m, m], TruncErrTarget::Relative(0.5)), 2);
+}
+
+/// With the smallest positive `f64` as the fraction, three values of
+/// `1e300` give a budget of `sqrt(3) * 1e300 * MIN_SUBNORMAL ≈ 8.557e-24`,
+/// below `9e-24`. Rounding the fraction times `sqrt(3)` in the subnormal
+/// range first would raise the budget to about `9.88e-24` and discard it.
+#[test]
+fn relative_handles_a_subnormal_fraction() {
+    let s = [1e300, 1e300, 1e300, 9e-24];
+    assert_eq!(kept(&s, TruncErrTarget::Relative(MIN_SUBNORMAL)), 4);
+}
+
+/// `[10, 14 * MIN_SUBNORMAL]` under `Relative(MIN_SUBNORMAL)` has a budget
+/// of `10 * MIN_SUBNORMAL`, below the smaller value. Comparing in units of
+/// the largest value instead would round the value, `1.4 * MIN_SUBNORMAL`
+/// in those units, to `MIN_SUBNORMAL`, which is the budget there, and
+/// discard it.
+#[test]
+fn relative_compares_a_subnormal_value_without_rounding_it() {
+    let s = [10.0, 14.0 * MIN_SUBNORMAL];
+    assert_eq!(kept(&s, TruncErrTarget::Relative(MIN_SUBNORMAL)), 2);
 }
 
 #[test]
