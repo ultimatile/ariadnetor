@@ -1,4 +1,4 @@
-use ariadnetor_linalg::{DenseHostOps, TruncSvdParams};
+use ariadnetor_linalg::{DenseHostOps, TruncErrTarget, TruncSvdParams};
 use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Build a `DenseTensor` from row-major data, reordered to column-major.
@@ -581,7 +581,7 @@ fn test_trunc_svd_target_trunc_err_exact_boundary() {
     // so sv=1 is discarded. chi_err becomes 2.
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(1.0),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1.0)),
     };
     let (_, s, _, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
@@ -603,7 +603,7 @@ fn test_trunc_svd_target_trunc_err_strict_boundary() {
     // so sv=1 is NOT discarded.
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(0.999),
+        target_trunc_err: Some(TruncErrTarget::Absolute(0.999)),
     };
     let (_, s, _, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
@@ -635,7 +635,7 @@ fn test_trunc_svd_target_err_accumulates_multiple_svs() {
     let target = 5.0f64.sqrt();
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(target),
+        target_trunc_err: Some(TruncErrTarget::Absolute(target)),
     };
     let (_, s, _, trunc_err) = tensor.trunc_svd(1, &params).unwrap();
 
@@ -659,7 +659,7 @@ fn test_trunc_svd_target_err_keeps_at_least_one() {
 
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(1e10),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1e10)),
     };
     let (_, s, _, _) = tensor.trunc_svd(1, &params).unwrap();
 
@@ -708,7 +708,7 @@ fn test_trunc_svd_target_err_scan_survives_f32_square_overflow() {
     data[3] = 1e20;
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(1e25),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1e25)),
     };
     let (_, s, _, _) = cm(data, vec![2, 2]).trunc_svd(1, &params).unwrap();
     assert_eq!(s.len(), 1, "the discardable 1e20 value must be dropped");
@@ -776,7 +776,7 @@ fn test_trunc_svd_chi_max_and_target_err_stricter_wins() {
     // Result: min(3, 2) = 2
     let params = TruncSvdParams {
         chi_max: Some(3),
-        target_trunc_err: Some(5.0f64.sqrt()),
+        target_trunc_err: Some(TruncErrTarget::Absolute(5.0f64.sqrt())),
     };
     let (_, s, _, _) = tensor.trunc_svd(1, &params).unwrap();
     assert_eq!(s.len(), 2);
@@ -785,7 +785,7 @@ fn test_trunc_svd_chi_max_and_target_err_stricter_wins() {
     // Result: min(1, 4) = 1
     let params = TruncSvdParams {
         chi_max: Some(1),
-        target_trunc_err: Some(0.0),
+        target_trunc_err: Some(TruncErrTarget::Absolute(0.0)),
     };
     let (_, s, _, _) = tensor.trunc_svd(1, &params).unwrap();
     assert_eq!(s.len(), 1);

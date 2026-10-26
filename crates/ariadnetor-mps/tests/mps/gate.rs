@@ -13,7 +13,8 @@ use ariadnetor_linalg::{
     permute_with_backend, trunc_svd,
 };
 use ariadnetor_mps::{
-    CanonicalForm, GateCenter, Mpo, Mps, TensorChain, TruncSvdParams, TruncateParams, apply, inner,
+    CanonicalForm, GateCenter, Mpo, Mps, TensorChain, TruncErrTarget, TruncSvdParams,
+    TruncateParams, apply, inner,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, MemoryOrder};
@@ -486,9 +487,23 @@ fn panics_on_swapped_gate_dimensions() {
 }
 
 #[test]
-#[should_panic(expected = "apply_two_site_gate: chi_max must be at least 1")]
+#[should_panic(
+    expected = "apply_two_site_gate: invalid truncation parameters: Invalid argument: chi_max"
+)]
 fn panics_on_zero_chi_max() {
     apply_to_fixture(0, &real_gate(2, 3, 1), &cap(0));
+}
+
+#[test]
+#[should_panic(
+    expected = "apply_two_site_gate: invalid truncation parameters: Invalid argument: target_trunc_err"
+)]
+fn panics_on_a_nan_target() {
+    let svd = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(TruncErrTarget::Relative(f64::NAN)),
+    };
+    apply_to_fixture(0, &real_gate(2, 3, 1), &svd);
 }
 
 /// Apply a valid gate at site 0 of the 5-site `f64` fixture tagged `form`.

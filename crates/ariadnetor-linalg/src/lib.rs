@@ -81,7 +81,9 @@ pub use block_sparse_decomp::{
     BlockScalars, BlockSparseEigResult, BlockSparseEighResult, BlockSparseQrResult,
     BlockSparseSvdResult, BlockSparseTruncSvdResult,
 };
-pub use decomposition::{LqResult, QrResult, SvdResult, TruncSvdParams, TruncSvdResult};
+pub use decomposition::{
+    LqResult, QrResult, SvdResult, TruncErrTarget, TruncSvdParams, TruncSvdResult,
+};
 pub use eigen::{EigResult, EighResult, TridiagEighResult};
 pub use incremental_qr::{IncrementalQr, QrAppendOutcome};
 

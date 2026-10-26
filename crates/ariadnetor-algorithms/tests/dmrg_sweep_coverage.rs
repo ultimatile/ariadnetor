@@ -21,7 +21,7 @@ use ariadnetor_algorithms::dmrg::{
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
 use ariadnetor_core::Scalar;
-use ariadnetor_linalg::TruncSvdParams;
+use ariadnetor_linalg::{TruncErrTarget, TruncSvdParams};
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{Mpo, Mps, braket};
 use ariadnetor_native::NativeBackend;
@@ -211,7 +211,7 @@ type ValidationFixture = (
     DmrgSweepParams,
 );
 
-fn small_validation_setup(target_trunc_err: Option<f64>) -> ValidationFixture {
+fn small_validation_setup(target_trunc_err: Option<TruncErrTarget>) -> ValidationFixture {
     let n = 2;
     let mps = random_mps_center_zero_f64(n, D, 2, 0xE1E1);
     let mpo = psd_local_mpo_f64(n, 0xE2E2);
@@ -227,11 +227,12 @@ fn validate_target_trunc_err_zero_accepted() {
     // `te = 0.0` accepted by the original `te < 0.0` predicate.
     // Mutation `<` → `==` (rejects only te==0) and `<` → `<=` (rejects
     // te<=0) would both turn this into `Err(InvalidParams)`.
-    let (mut envs, mut mps, mpo, params) = small_validation_setup(Some(0.0));
+    let (mut envs, mut mps, mpo, params) =
+        small_validation_setup(Some(TruncErrTarget::Absolute(0.0)));
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params);
     assert!(
         result.is_ok(),
-        "target_trunc_err=Some(0.0) must be accepted, got {:?}",
+        "target_trunc_err=Some(Absolute(0.0)) must be accepted, got {:?}",
         result.err()
     );
 }
@@ -240,11 +241,12 @@ fn validate_target_trunc_err_zero_accepted() {
 fn validate_target_trunc_err_positive_accepted() {
     // `te = 0.5` accepted by original. Mutation `<` → `>` would reject
     // any positive te.
-    let (mut envs, mut mps, mpo, params) = small_validation_setup(Some(0.5));
+    let (mut envs, mut mps, mpo, params) =
+        small_validation_setup(Some(TruncErrTarget::Absolute(0.5)));
     let result = sweep_2site(&mut envs, &mut mps, &mpo, &params);
     assert!(
         result.is_ok(),
-        "target_trunc_err=Some(0.5) must be accepted, got {:?}",
+        "target_trunc_err=Some(Absolute(0.5)) must be accepted, got {:?}",
         result.err()
     );
 }
@@ -253,9 +255,10 @@ fn validate_target_trunc_err_positive_accepted() {
 fn validate_target_trunc_err_negative_rejected() {
     // `te = -0.1` rejected by original. Mutation `<` → `>` would
     // accept negative te.
-    let (mut envs, mut mps, mpo, params) = small_validation_setup(Some(-0.1));
+    let (mut envs, mut mps, mpo, params) =
+        small_validation_setup(Some(TruncErrTarget::Absolute(-0.1)));
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &params)
-        .expect_err("target_trunc_err=Some(-0.1) must be rejected");
+        .expect_err("target_trunc_err=Some(Absolute(-0.1)) must be rejected");
     assert!(matches!(err, DmrgSweepError::InvalidParams { .. }));
 }
 
@@ -264,8 +267,9 @@ fn validate_target_trunc_err_nan_rejected() {
     // `te = NaN` rejected by `if !te.is_finite()`. Mutation
     // `delete !` flips the predicate, so finite te would be rejected
     // and NaN would slip through.
-    let (mut envs, mut mps, mpo, params) = small_validation_setup(Some(f64::NAN));
+    let (mut envs, mut mps, mpo, params) =
+        small_validation_setup(Some(TruncErrTarget::Absolute(f64::NAN)));
     let err = sweep_2site(&mut envs, &mut mps, &mpo, &params)
-        .expect_err("target_trunc_err=Some(NaN) must be rejected");
+        .expect_err("target_trunc_err=Some(Absolute(NaN)) must be rejected");
     assert!(matches!(err, DmrgSweepError::InvalidParams { .. }));
 }

@@ -1,7 +1,7 @@
 use ariadnetor_core::backend::{
     ComputeBackend, ExecPolicy, MemoryOrder, QrDescriptor, SvdDescriptor,
 };
-use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
+use ariadnetor_core::{Scalar, scale_safe_norm};
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, DenseTensorData};
 use num_traits::{ToPrimitive, Zero};
 
@@ -54,19 +54,49 @@ pub(crate) type TruncSvdResultDense<T> = (
 /// Controls bond dimension via maximum rank (`chi_max`) and/or
 /// target truncation error (`target_trunc_err`). When both are set,
 /// the stricter (smaller) bound applies.
+///
+/// The truncated SVD returns [`LinalgError::InvalidArgument`] for
+/// parameters [`validate`](Self::validate) rejects.
 #[derive(Debug, Clone)]
 pub struct TruncSvdParams {
     /// Maximum number of singular values to keep.
     pub chi_max: Option<usize>,
-    /// Target truncation error threshold. Singular values are discarded from
-    /// the smallest until the Frobenius norm of discarded values would exceed
-    /// this threshold.
-    pub target_trunc_err: Option<f64>,
+    /// Bound on the discarded singular values.
+    pub target_trunc_err: Option<TruncErrTarget>,
+}
+
+impl TruncSvdParams {
+    /// Check that `chi_max` is not `Some(0)` and that the target's value is
+    /// finite and non-negative.
+    ///
+    /// # Errors
+    ///
+    /// [`LinalgError::InvalidArgument`] naming the first parameter that
+    /// fails.
+    pub fn validate(&self) -> Result<(), LinalgError> {
+        if self.chi_max == Some(0) {
+            return Err(LinalgError::InvalidArgument(
+                "chi_max must be at least 1".into(),
+            ));
+        }
+        if let Some(target) = self.target_trunc_err {
+            let value = target.value();
+            if !(value.is_finite() && value >= 0.0) {
+                return Err(LinalgError::InvalidArgument(format!(
+                    "target_trunc_err must be finite and non-negative, got {target:?}"
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 mod lq;
+mod trunc_target;
 pub use lq::LqResult;
 pub(crate) use lq::{lq_dense, lq_with_policy_dense};
+pub use trunc_target::TruncErrTarget;
+pub(crate) use trunc_target::kept_by_target;
 
 /// Reshape tensor to 2D (m x n) using row-major axis merge, then convert to target order.
 ///
@@ -189,6 +219,7 @@ pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
     params: &TruncSvdParams,
     policy: ExecPolicy,
 ) -> Result<TruncSvdResultDense<T>, LinalgError> {
+    params.validate()?;
     let (u_full, s_full, vt_full) = svd_with_policy_dense(backend, tensor, nrow, policy)?;
 
     let shape = tensor.shape();
@@ -201,11 +232,6 @@ pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
 
     // Apply chi_max bound
     if let Some(chi_max) = params.chi_max {
-        if chi_max == 0 {
-            return Err(LinalgError::InvalidArgument(
-                "chi_max must be at least 1".into(),
-            ));
-        }
         chi = chi.min(chi_max);
     }
 
@@ -213,27 +239,11 @@ pub(crate) fn trunc_svd_with_policy_dense<T: Scalar>(
     let s_data = s_full.data();
 
     // Apply target_trunc_err bound: keep the largest singular values
-    // such that the norm of discarded values stays within the threshold
-    if let Some(target_err) = params.target_trunc_err {
-        // Accumulate the discarded norm from the smallest singular value
-        // upward, scale-safely, and compare the running norm directly against
-        // the (finite) target. Widening each value to f64 before it enters the
-        // fold keeps an f32 singular value near sqrt(f32::MAX) from overflowing
-        // when squared -- squaring in the real type first (`si * si`) would
-        // saturate it to inf and wrongly keep the value. Comparing against
-        // `target_err` rather than its square avoids overflowing the threshold
-        // too. f64 also sidesteps precision loss against the user threshold.
-        let mut discarded = 0.0_f64;
-        let mut chi_err = k_full;
-        for i in (0..k_full).rev() {
-            let si = s_data[i].to_f64().unwrap();
-            let candidate = combine_norms(discarded, si);
-            if candidate > target_err {
-                break;
-            }
-            discarded = candidate;
-            chi_err = i;
-        }
+    // such that the norm of discarded values stays within the threshold.
+    // Widening each value to f64 keeps the comparison against the user's
+    // f64 target free of precision loss in the real type.
+    if let Some(target) = params.target_trunc_err {
+        let chi_err = kept_by_target(k_full, |i| s_data[i].to_f64().unwrap(), target);
         // Ensure at least one singular value is kept even with aggressive error threshold
         chi = chi.min(chi_err).max(1);
     }

@@ -114,7 +114,7 @@ pub use ariadnetor_linalg::expert;
 // on `ariadnetor-tensor` directly.
 
 // Linalg-level error type and SVD parameters.
-pub use ariadnetor_linalg::{LinalgError, TruncSvdParams};
+pub use ariadnetor_linalg::{LinalgError, TruncErrTarget, TruncSvdParams};
 pub use ariadnetor_tensor::TensorError;
 pub use ops::{
     EigResult, EighResult, LqResult, QrResult, SvdResult, TridiagEighResult, TruncSvdResult,

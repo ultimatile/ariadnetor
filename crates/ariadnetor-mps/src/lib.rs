@@ -53,5 +53,5 @@ pub use types::{
     SvdAbsorb, TruncResult, TruncateParams, VariationalInit,
 };
 
-// Re-export TruncSvdParams for convenience
-pub use ariadnetor_linalg::TruncSvdParams;
+// Re-export the truncation parameters for convenience
+pub use ariadnetor_linalg::{TruncErrTarget, TruncSvdParams};

@@ -7,7 +7,7 @@ use algorithms_fixtures::dense_fixtures::{
 };
 use ariadnetor_algorithms::tebd::{TebdError, TebdParams, TimeStep, tebd};
 use ariadnetor_core::Scalar;
-use ariadnetor_mps::{CanonicalForm, Mps, TensorChain, TruncSvdParams};
+use ariadnetor_mps::{CanonicalForm, Mps, TensorChain, TruncErrTarget, TruncSvdParams};
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use num_complex::Complex;
 
@@ -175,17 +175,17 @@ fn rejects_invalid_truncation_params() {
         (Some(0), None, "trunc.chi_max must be > 0 if Some"),
         (
             None,
-            Some(f64::NAN),
+            Some(TruncErrTarget::Absolute(f64::NAN)),
             "trunc.target_trunc_err must be finite",
         ),
         (
             None,
-            Some(f64::INFINITY),
+            Some(TruncErrTarget::Absolute(f64::INFINITY)),
             "trunc.target_trunc_err must be finite",
         ),
         (
             None,
-            Some(-0.1),
+            Some(TruncErrTarget::Absolute(-0.1)),
             "trunc.target_trunc_err must be non-negative",
         ),
     ];

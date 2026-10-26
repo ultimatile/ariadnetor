@@ -17,7 +17,8 @@ use ariadnetor_algorithms::tebd::{TebdParams, TebdStepRecord, TimeStep, tebd};
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{contract, expm_antihermitian_with_backend, expm_with_backend, tensordot};
 use ariadnetor_mps::{
-    CanonicalForm, GateCenter, Mps, SpinHalf, TensorChain, TruncSvdParams, TruncateParams, inner,
+    CanonicalForm, GateCenter, Mps, SpinHalf, TensorChain, TruncErrTarget, TruncSvdParams,
+    TruncateParams, inner,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, add_all};
@@ -49,7 +50,7 @@ fn cap(chi_max: usize) -> TruncSvdParams {
 fn relative(target: f64) -> TruncSvdParams {
     TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(target),
+        target_trunc_err: Some(TruncErrTarget::Relative(target)),
     }
 }
 
@@ -333,6 +334,48 @@ fn truncation_target_matches_a_known_spectrum() {
     let cut = truncated(0.06);
     assert_eq!(cut.max_bond, 1, "{cut:?}");
     assert!((cut.trunc_err_sum - 0.05).abs() < 1e-12, "{cut:?}");
+}
+
+/// The state of `truncation_target_matches_a_known_spectrum` under the bond
+/// term `c·I` with `exp(-tau c / 2) = 2`, so each imaginary-time gate
+/// doubles the state. The first gate sees `[2 sqrt(0.9975), 0.1]` on a pair
+/// of norm 2: `Relative(0.06)` is a budget of 0.12 there and discards the
+/// 0.1, where measuring against the norm before the gate (0.06) would keep
+/// it. `Absolute(0.06)` keeps it at both gates (0.1, then 0.2).
+#[test]
+fn relative_target_is_measured_after_the_gate() {
+    let tau = 0.1;
+    let schmidt = [0.9975_f64.sqrt(), 0.05];
+    let mut a = DenseTensor::<C64>::zeros(vec![1, 2, 2]);
+    let mut b = DenseTensor::<C64>::zeros(vec![2, 2, 1]);
+    for (k, &lambda) in schmidt.iter().enumerate() {
+        a.set([0, k, k], C64::new(lambda, 0.0));
+        b.set([k, k, 0], C64::new(1.0, 0.0));
+    }
+    let psi: DenseMps<C64> = Mps::from_sites(vec![a, b]);
+    let c = -2.0 * 2.0_f64.ln() / tau;
+    let mut term = DenseTensor::<C64>::zeros(vec![2, 2, 2, 2]);
+    for i in 0..2 {
+        for j in 0..2 {
+            term.set([i, j, i, j], C64::new(c, 0.0));
+        }
+    }
+    let terms = vec![term];
+    let step = |target: TruncErrTarget| {
+        let trunc = TruncSvdParams {
+            chi_max: None,
+            target_trunc_err: Some(target),
+        };
+        run(&mut psi.clone(), &terms, TimeStep::Imaginary(tau), 1, trunc).remove(0)
+    };
+
+    let cut = step(TruncErrTarget::Relative(0.06));
+    assert_eq!(cut.max_bond, 1, "{cut:?}");
+    assert!((cut.trunc_err_sum - 0.1).abs() < 1e-12, "{cut:?}");
+
+    let kept = step(TruncErrTarget::Absolute(0.06));
+    assert_eq!(kept.max_bond, 2, "{kept:?}");
+    assert!(kept.trunc_err_sum.abs() < 1e-12, "{kept:?}");
 }
 
 /// A truncating two-step call records the same steps as two one-step calls:

@@ -15,7 +15,7 @@ fn trunc_svd_error_and_target_err_arithmetic() {
     // target_err=0.5 → target_sq=0.25; smallest sv²=1 > 0.25 → all kept
     let p2 = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(0.5),
+        target_trunc_err: Some(TruncErrTarget::Absolute(0.5)),
     };
     let (_, sv, _, err2) =
         trunc_svd_block_sparse_with_policy_dense(&backend(), &bs, 1, &p2, ExecPolicy::Sequential)

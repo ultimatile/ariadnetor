@@ -5,6 +5,7 @@ use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction};
 use ariadnetor_tensor::{U1Sector, Z2Sector};
 
 use super::*;
+use crate::decomposition::TruncErrTarget;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
@@ -549,7 +550,7 @@ fn trunc_svd_target_err_exact_count() {
     let bs = sample_known_svs();
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(1.1),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1.1)),
     };
     let (_, sv, _, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
@@ -574,7 +575,7 @@ fn trunc_svd_target_err_boundary() {
     let bs = sample_known_svs();
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(1.0),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1.0)),
     };
     let (_, sv, _, _) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
@@ -754,7 +755,7 @@ fn trunc_svd_empty_tensor_with_target_err() {
     );
     let params = TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(0.1),
+        target_trunc_err: Some(TruncErrTarget::Absolute(0.1)),
     };
     let (u, sv, vt, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
@@ -772,3 +773,4 @@ fn trunc_svd_empty_tensor_with_target_err() {
 
 mod mutant;
 mod policy_forwarding;
+mod trunc_target;

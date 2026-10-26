@@ -1,7 +1,9 @@
 //! Truncation operation tests.
 
 use approx::assert_abs_diff_eq;
-use ariadnetor_mps::{CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncSvdParams, TruncateParams};
+use ariadnetor_mps::{
+    CanonicalForm, Mps, SvdAbsorb, TensorChain, TruncErrTarget, TruncSvdParams, TruncateParams,
+};
 use ariadnetor_native::NativeBackend;
 
 use super::helpers::{
@@ -96,7 +98,7 @@ fn test_truncate_with_cutoff() {
 
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(1e-14),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1e-14)),
     });
     let result = mps.truncate(&backend, &params);
 

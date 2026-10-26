@@ -18,13 +18,13 @@ pub(crate) use eig::eig_block_sparse_with_policy_dense;
 pub(crate) use eigh::eigh_block_sparse_with_policy_dense;
 
 use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder};
-use ariadnetor_core::{Scalar, combine_norms, scale_safe_norm};
+use ariadnetor_core::{Scalar, scale_safe_norm};
 use ariadnetor_tensor::{
     BlockSparseTensor, BlockSparseTensorData, DenseTensorData, Sector, reorder_data,
 };
 use num_traits::{ToPrimitive, Zero};
 
-use crate::decomposition::TruncSvdParams;
+use crate::decomposition::{TruncSvdParams, kept_by_target};
 use crate::error::LinalgError;
 use fused_sector::*;
 
@@ -202,6 +202,7 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     params: &TruncSvdParams,
     policy: ExecPolicy,
 ) -> Result<BlockSparseTruncSvdResultBsp<T, S>, LinalgError> {
+    params.validate()?;
     validate_nrow(tensor.layout().rank(), nrow)?;
     let order = backend.preferred_order();
     let groups = compute_fused_sector_groups(tensor, nrow);
@@ -223,7 +224,7 @@ pub(crate) fn trunc_svd_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
     }
 
     // Global cross-sector truncation
-    let (k_per_sector, trunc_err) = cross_sector_truncate::<T>(&all_s, groups.len(), params)?;
+    let (k_per_sector, trunc_err) = cross_sector_truncate::<T>(&all_s, groups.len(), params);
 
     // Truncate per-sector data
     let mut u_trunc = Vec::with_capacity(groups.len());
@@ -449,7 +450,7 @@ fn cross_sector_truncate<T: Scalar>(
     all_s: &[Vec<T::Real>],
     num_sectors: usize,
     params: &TruncSvdParams,
-) -> Result<(Vec<usize>, T::Real), LinalgError> {
+) -> (Vec<usize>, T::Real) {
     let mut sorted_sv: Vec<(T::Real, usize)> = Vec::new();
     for (si, s_data) in all_s.iter().enumerate() {
         for &sv in s_data {
@@ -465,36 +466,16 @@ fn cross_sector_truncate<T: Scalar>(
 
     let total_sv = sorted_sv.len();
     if total_sv == 0 {
-        return Ok((vec![0; num_sectors], T::Real::zero()));
+        return (vec![0; num_sectors], T::Real::zero());
     }
     let mut chi = total_sv;
 
     if let Some(chi_max) = params.chi_max {
-        if chi_max == 0 {
-            return Err(LinalgError::InvalidArgument(
-                "chi_max must be at least 1".into(),
-            ));
-        }
         chi = chi.min(chi_max);
     }
 
-    if let Some(target_err) = params.target_trunc_err {
-        // Fold the discarded norm from the smallest singular value upward,
-        // scale-safely, comparing the running norm directly against the
-        // (finite) target rather than squaring either side. See the dense twin
-        // in `decomposition::trunc_svd_with_policy_dense` for the overflow /
-        // underflow the naive sum of squares runs into here.
-        let mut discarded = 0.0_f64;
-        let mut chi_err = total_sv;
-        for i in (0..total_sv).rev() {
-            let si = sorted_sv[i].0.to_f64().unwrap();
-            let candidate = combine_norms(discarded, si);
-            if candidate > target_err {
-                break;
-            }
-            discarded = candidate;
-            chi_err = i;
-        }
+    if let Some(target) = params.target_trunc_err {
+        let chi_err = kept_by_target(total_sv, |i| sorted_sv[i].0.to_f64().unwrap(), target);
         chi = chi.min(chi_err).max(1);
     }
 
@@ -506,7 +487,7 @@ fn cross_sector_truncate<T: Scalar>(
         k_per_sector[si] += 1;
     }
 
-    Ok((k_per_sector, trunc_err))
+    (k_per_sector, trunc_err)
 }
 
 /// Extract tensor data in `order`. `reorder_data` is a no-op clone

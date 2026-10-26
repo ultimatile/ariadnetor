@@ -33,6 +33,8 @@ mod inner_block_sparse;
 mod inner_product;
 #[path = "mps/operators.rs"]
 mod operators;
+#[path = "mps/relative_target.rs"]
+mod relative_target;
 #[path = "mps/truncate.rs"]
 mod truncate;
 #[path = "mps/truncate_block_sparse.rs"]

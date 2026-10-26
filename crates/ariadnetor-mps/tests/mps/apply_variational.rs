@@ -1,8 +1,8 @@
 //! Variational (fit) MPO-MPS apply tests (Dense).
 
 use ariadnetor_mps::{
-    self as mps, ApplyMethod, CanonicalForm, Mps, TensorChain, TruncSvdParams, TruncateParams,
-    VariationalInit,
+    self as mps, ApplyMethod, CanonicalForm, Mps, TensorChain, TruncErrTarget, TruncSvdParams,
+    TruncateParams, VariationalInit,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
@@ -227,7 +227,7 @@ fn variational_ignores_target_trunc_err() {
     // bond to 1 if it were consulted.
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: None,
-        target_trunc_err: Some(1e10),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1e10)),
     });
     let fit = apply_ok(
         &backend,
