@@ -1,5 +1,4 @@
-//! Entry-point validation of [`TruncSvdParams`] shared by the drivers that
-//! forward them to a truncated SVD.
+//! Entry-point validation of [`TruncSvdParams`] shared by the drivers.
 
 use ariadnetor_linalg::TruncSvdParams;
 

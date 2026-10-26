@@ -5,8 +5,8 @@
 //! driver is compared against come from the general (Padé) matrix
 //! exponential rather than the eigendecomposition the driver uses. Unless a
 //! test says otherwise, the bond terms are random complex
-//! Hermitian draws on neighboring physical dimensions that differ, so
-//! neighboring terms do not commute and no term is symmetric under
+//! Hermitian draws on neighboring physical dimensions that differ, so for a
+//! generic draw neighboring terms do not commute and no term is symmetric under
 //! transposition: a swapped leg, a reversed pass, or a missing half step
 //! changes the result.
 
@@ -263,6 +263,39 @@ fn truncation_error_bounds_the_state_error() {
         "state error {err} exceeds trunc_err_sum {}",
         record.trunc_err_sum
     );
+}
+
+/// The truncation target is relative to the state norm: the same state at
+/// 1000 times the norm keeps the same bonds and the same normalized result,
+/// with every discarded weight scaled by the same factor.
+#[test]
+fn truncation_target_is_relative_to_the_state_norm() {
+    let terms = random_bond_terms_c64(&PHYS, 100);
+    let small = random_mps_c64(&PHYS, &BONDS, 7);
+    let mut large = small.clone();
+    large.site_mut(0).scale(C64::new(1000.0, 0.0));
+    let time_step = TimeStep::Real(0.1);
+    let target = TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(1e-2),
+    };
+
+    let mut untruncated = small.clone();
+    run(&mut untruncated, &terms, time_step, 1, NO_TRUNC);
+    let (mut a, mut b) = (small, large);
+    let ra = run(&mut a, &terms, time_step, 1, target.clone()).remove(0);
+    let rb = run(&mut b, &terms, time_step, 1, target).remove(0);
+    assert!(
+        a.bond_dims() != untruncated.bond_dims(),
+        "fixture must actually truncate: {:?}",
+        a.bond_dims()
+    );
+    assert_eq!(a.bond_dims(), b.bond_dims());
+    assert!(
+        (rb.trunc_err_sum - 1000.0 * ra.trunc_err_sum).abs() < 1e-9 * rb.trunc_err_sum,
+        "{ra:?} vs {rb:?}"
+    );
+    assert!(distance(&state_vector(&a), &state_vector(&b)) < 1e-12);
 }
 
 /// A truncating two-step call records the same steps as two one-step calls:

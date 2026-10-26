@@ -3,8 +3,7 @@
 //! transverse-field Ising (TFI) and antiferromagnetic Heisenberg
 //! (XXX). The TFI MPO builder and the ED Hamiltonians are inlined here; the
 //! shared Heisenberg MPO, random-MPS builders, and smallest-eigenvalue
-//! helper come from `algorithms_fixtures::dense_fixtures`. No public API
-//! is added.
+//! helper come from `algorithms_fixtures::dense_fixtures`.
 
 use algorithms_fixtures::dense_fixtures::{
     build_mpo_site_f64, heisenberg_mpo_f64, op_id, op_sz, random_mps_center_zero_f64,

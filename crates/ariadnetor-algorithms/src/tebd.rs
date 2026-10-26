@@ -17,9 +17,9 @@
 //! orthogonality center on the right site of each pair and the return pass
 //! leaves it on the left site, so from the second gate of a call on, the
 //! center is already on the gated pair; the first gate moves it there from
-//! whatever form the input has. No gauge step runs between gates, and, given a canonical-form tag that
-//! holds, each gate's truncation error is the exact state error it
-//! introduces.
+//! whatever form the input has. No gauge step runs between gates, and,
+//! given a canonical-form tag that holds, each gate's truncation error is
+//! the exact state error it introduces.
 
 use ariadnetor_core::{Scalar, try_real_from_f64};
 use ariadnetor_linalg::{
@@ -27,7 +27,7 @@ use ariadnetor_linalg::{
 };
 use ariadnetor_mps::{CanonicalForm, GateCenter, Mps, TensorChain};
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, Host};
-use num_traits::{Float, Zero};
+use num_traits::{Float, One, ToPrimitive, Zero};
 
 use crate::trunc_params::validate_trunc_params;
 
@@ -51,7 +51,10 @@ pub struct TebdParams {
     pub time_step: TimeStep,
     /// Number of steps to run.
     pub n_steps: usize,
-    /// Truncation applied to the new bond after every gate.
+    /// Truncation applied to the new bond after every gate. `chi_max`
+    /// applies as is; `target_trunc_err` is relative to the state's norm
+    /// before the gate, so a gate may discard singular values whose
+    /// Frobenius norm is up to that fraction of it.
     pub trunc: TruncSvdParams,
 }
 
@@ -110,9 +113,8 @@ pub enum TebdError {
         /// Names the validation constraint that failed.
         detail: &'static str,
     },
-    /// Exponentiating a bond term failed, for example for a real-time step
-    /// on a real scalar type or a term that is not Hermitian within the
-    /// exponential's tolerance.
+    /// Exponentiating a bond term failed, for example for a term that is
+    /// not Hermitian within the exponential's tolerance.
     #[error("building the gate of bond {bond} failed")]
     GateConstruction {
         /// Index of the bond.
@@ -120,14 +122,6 @@ pub enum TebdError {
         /// The underlying matrix-exponential error.
         #[source]
         source: LinalgError,
-    },
-    /// A bond's gate has an entry that is not finite: in imaginary time,
-    /// `exp(-tau/2 · λ)` overflows for a large negative eigenvalue `λ` of
-    /// the term.
-    #[error("the gate of bond {bond} has an entry that is not finite")]
-    NonFiniteGate {
-        /// Index of the bond.
-        bond: usize,
     },
     /// The norm after a step's gates is zero or not finite.
     #[error("state norm is zero or not finite after step {step}")]
@@ -150,8 +144,9 @@ pub enum TebdError {
 /// `psi` may be in any canonical form; the first gate moves the gauge to
 /// its pair. The form is trusted, not checked: the sites it marks isometric
 /// must be, or the truncation errors stop being state errors and the
-/// renormalization reads the wrong norm. After each step the form is `Mixed { center: 0 }` and the
-/// state has unit norm; with `n_steps == 0`, `psi` is left unchanged.
+/// renormalization reads the wrong norm. After each step the form is
+/// `Mixed { center: 0 }` and the state has unit norm; with `n_steps == 0`,
+/// `psi` is left unchanged.
 /// Returns one record per step.
 ///
 /// The driver is host-pinned: every kernel runs on the substrate
@@ -164,11 +159,10 @@ pub enum TebdError {
 /// - [`TebdError::BondTermShape`] if a term's shape does not match its
 ///   sites.
 /// - [`TebdError::InvalidParams`] if the step length or its half in the
-///   real scalar type is not finite and positive, `trunc.chi_max` is
-///   `Some(0)`, or `trunc.target_trunc_err` is not finite or is negative.
+///   real scalar type is not finite and positive, the step is real time on
+///   a real scalar type, `trunc.chi_max` is `Some(0)`, or
+///   `trunc.target_trunc_err` is not finite or is negative.
 /// - [`TebdError::GateConstruction`] if exponentiating a term fails.
-/// - [`TebdError::NonFiniteGate`] if a gate has an entry that is not
-///   finite.
 /// - [`TebdError::NormBreakdown`] if the norm after a step is zero or not
 ///   finite.
 ///
@@ -184,7 +178,10 @@ pub enum TebdError {
 /// checks panic on a violation once a step runs; reading the physical
 /// dimensions at entry can panic first. Also panics if a linear-algebra
 /// call inside `apply_two_site_gate` fails, for example a truncated SVD of
-/// an overflowed pair. A panic inside a step can leave `psi` with that
+/// an overflowed pair. In imaginary time the state is renormalized only
+/// between steps, and within a step its norm changes by about
+/// `exp(-tau E)`, which on a long chain can overflow the real scalar type
+/// and fail such an SVD. A panic inside a step can leave `psi` with that
 /// step's earlier gates applied.
 pub fn tebd<T: Scalar>(
     psi: &mut Mps<DenseStorage<T>, DenseLayout>,
@@ -235,15 +232,8 @@ pub fn tebd<T: Scalar>(
                     1,
                 ),
             };
-            let gate = exp.map_err(|source| TebdError::GateConstruction { bond, source })?;
-            if !gate
-                .data_slice()
-                .iter()
-                .all(|x| x.re().is_finite() && x.im().is_finite())
-            {
-                return Err(TebdError::NonFiniteGate { bond });
-            }
-            Ok(gate.reshape_logical(shape))
+            exp.map(|gate| gate.reshape_logical(shape))
+                .map_err(|source| TebdError::GateConstruction { bond, source })
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -262,7 +252,14 @@ pub fn tebd<T: Scalar>(
                     .map(|pair| (pair, GateCenter::Left)),
             );
         for ((bond, gate), center) in passes {
-            let res = psi.apply_two_site_gate(backend.as_ref(), bond, gate, &params.trunc, center);
+            let svd = TruncSvdParams {
+                chi_max: params.trunc.chi_max,
+                target_trunc_err: params.trunc.target_trunc_err.map(|target| {
+                    let norm = psi.norm::<T, _>(backend.as_ref());
+                    target * norm.to_f64().unwrap_or(f64::NAN)
+                }),
+            };
+            let res = psi.apply_two_site_gate(backend.as_ref(), bond, gate, &svd, center);
             trunc_err_sum = trunc_err_sum + res.error;
         }
 
@@ -270,10 +267,6 @@ pub fn tebd<T: Scalar>(
         // carries the whole norm.
         debug_assert_eq!(*psi.canonical_form(), CanonicalForm::Mixed { center: 0 });
         let norm = psi.site(0).norm();
-        // A zero or underflowed state gives a zero norm. A pair grown close
-        // to the overflow threshold fails its SVD inside the gate, before
-        // the norm is read, so the non-finite half guards `normalize`
-        // against a case the gates are not known to reach.
         if !(norm.is_finite() && norm > zero) {
             return Err(TebdError::NormBreakdown { step });
         }
@@ -297,6 +290,10 @@ fn validate_params<T: Scalar>(params: &TebdParams) -> Result<T::Real, TebdError>
     let (TimeStep::Real(len) | TimeStep::Imaginary(len)) = params.time_step;
     if !(len.is_finite() && len > 0.0) {
         return Err(invalid("time step must be finite and positive"));
+    }
+    let (zero, one) = (T::Real::zero(), T::Real::one());
+    if matches!(params.time_step, TimeStep::Real(_)) && T::from_real_imag(zero, one).im() == zero {
+        return Err(invalid("a real-time step requires a complex scalar type"));
     }
     // A step far below the real type's range converts to zero and would make
     // every gate the identity; one far above it converts to infinity.

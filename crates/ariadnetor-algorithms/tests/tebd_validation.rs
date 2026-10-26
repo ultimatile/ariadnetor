@@ -199,33 +199,14 @@ fn rejects_invalid_truncation_params() {
     }
 }
 
-/// `exp(-tau/2 · h)` for `h = -2100 · 1` and `tau = 1` is `exp(1050)`,
-/// which overflows `f64`.
-#[test]
-fn rejects_a_gate_that_overflows() {
-    let psi = random_mps_unknown_f64(3, 2, 2, 3);
-    let mut h = DenseTensor::<f64>::zeros(vec![2, 2, 2, 2]);
-    for a in 0..2 {
-        for b in 0..2 {
-            h.set([a, b, a, b], -2100.0);
-        }
-    }
-    let terms = vec![DenseTensor::<f64>::zeros(vec![2, 2, 2, 2]), h];
-    let err = rejected(&psi, &terms, &params(TimeStep::Imaginary(1.0), NO_TRUNC));
-    assert!(
-        matches!(err, TebdError::NonFiniteGate { bond: 1 }),
-        "{err:?}"
-    );
-}
-
 #[test]
 fn rejects_real_time_on_a_real_scalar() {
     let psi = random_mps_unknown_f64(5, 2, 2, 3);
     let terms = vec![DenseTensor::<f64>::zeros(vec![2, 2, 2, 2]); 4];
     let err = rejected(&psi, &terms, &params(TimeStep::Real(0.1), NO_TRUNC));
-    assert!(
-        matches!(err, TebdError::GateConstruction { bond: 0, .. }),
-        "{err:?}"
+    assert_eq!(
+        invalid_detail(err),
+        "a real-time step requires a complex scalar type"
     );
 }
 
