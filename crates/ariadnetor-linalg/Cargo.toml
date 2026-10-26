@@ -55,6 +55,7 @@ name = "sweep_transpose_par"
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
 ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
+libm = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 thiserror = { workspace = true }

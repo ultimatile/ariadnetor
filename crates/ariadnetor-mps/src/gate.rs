@@ -46,7 +46,7 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
     ///
     /// Panics if `site + 1 >= self.len()`, if `gate.shape()` is not
     /// `[d_site, d_site+1, d_site, d_site+1]` for the physical dimensions of
-    /// the two sites, if `svd.chi_max` is `Some(0)`, or if the stored
+    /// the two sites, if [`TruncSvdParams::validate`] rejects `svd`, or if the stored
     /// canonical form is inconsistent with the chain length `n` (a `Mixed`
     /// center at or past `n`, a `Partial` `right_start` past `n`, or a
     /// `Partial` whose `left_end` exceeds its `right_start`). Also panics if the chain is
@@ -72,10 +72,9 @@ impl<T: Scalar> Mps<DenseStorage<T>, DenseLayout> {
             [d_l, d_r, d_l, d_r],
             "apply_two_site_gate: gate shape must be [d_site, d_site+1, d_site, d_site+1]",
         );
-        assert!(
-            svd.chi_max != Some(0),
-            "apply_two_site_gate: chi_max must be at least 1",
-        );
+        if let Err(err) = svd.validate() {
+            panic!("apply_two_site_gate: invalid truncation parameters: {err}");
+        }
 
         // The error identity needs sites `0..site` left-isometric and
         // `site + 2..n` right-isometric. Extend whichever side the form does

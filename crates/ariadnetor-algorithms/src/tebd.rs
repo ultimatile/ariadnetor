@@ -26,7 +26,7 @@ use ariadnetor_linalg::{
 };
 use ariadnetor_mps::{CanonicalForm, GateCenter, Mps, TensorChain};
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, Host};
-use num_traits::{Float, One, ToPrimitive, Zero};
+use num_traits::{Float, One, Zero};
 
 use crate::trunc_params::validate_trunc_params;
 
@@ -50,10 +50,14 @@ pub struct TebdParams {
     pub time_step: TimeStep,
     /// Number of steps to run.
     pub n_steps: usize,
-    /// Truncation applied to the new bond after every gate. `chi_max`
-    /// applies as is; `target_trunc_err` is relative to the state's norm
-    /// before the gate, so a gate may discard singular values whose
-    /// Frobenius norm is up to that fraction of it.
+    /// Truncation applied to the new bond after every gate. A
+    /// [`Relative`](ariadnetor_linalg::TruncErrTarget::Relative) target is
+    /// measured against the gated pair, whose norm is the state's norm after
+    /// the gate given a canonical-form tag that holds (see [`tebd`]). An
+    /// [`Absolute`](ariadnetor_linalg::TruncErrTarget::Absolute) target is
+    /// not rescaled: in imaginary time the state's norm changes from gate to
+    /// gate within a step, so the same bound is a different fraction of it
+    /// at each gate.
     pub trunc: TruncSvdParams,
 }
 
@@ -158,7 +162,7 @@ pub enum TebdError {
 ///   sites.
 /// - [`TebdError::InvalidParams`] if the step length or its half in the
 ///   real scalar type is not finite and positive, the step is real time on
-///   a real scalar type, `trunc.chi_max` is `Some(0)`, or
+///   a real scalar type, `trunc.chi_max` is `Some(0)`, or the value of
 ///   `trunc.target_trunc_err` is not finite or is negative.
 /// - [`TebdError::GateConstruction`] if exponentiating a term fails.
 /// - [`TebdError::NormBreakdown`] if the norm after a step is zero or not
@@ -173,12 +177,11 @@ pub enum TebdError {
 /// `psi` must be a well-formed chain (every site rank 3, adjacent bond
 /// dimensions equal) whose canonical-form tag is consistent with its
 /// length; the driver does not check this. Panics if a linear-algebra call
-/// inside [`Mps::apply_two_site_gate`] fails or, with a truncation target,
-/// if the state norm before a gate is not finite. In imaginary time the
-/// state is renormalized only between steps, and within a step its norm
-/// changes by about `exp(-tau E)`, which on a long chain can overflow the
-/// real scalar type and end in one of these panics. A panic inside a step
-/// can leave `psi` with that step's earlier gates applied.
+/// inside [`Mps::apply_two_site_gate`] fails. In imaginary time the state
+/// is renormalized only between steps, and within a step its norm changes
+/// by about `exp(-tau E)`, which on a long chain can overflow the real
+/// scalar type before the step ends. A panic inside a step can leave `psi`
+/// with that step's earlier gates applied.
 pub fn tebd<T: Scalar>(
     psi: &mut Mps<DenseStorage<T>, DenseLayout>,
     bond_terms: &[DenseTensor<T>],
@@ -233,18 +236,6 @@ pub fn tebd<T: Scalar>(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // The first gate would establish this gauge anyway; doing it here also
-    // keeps the relative truncation target's `Mps::norm` reads, which
-    // contract the whole chain for these tags, single-site.
-    if params.n_steps > 0
-        && matches!(
-            psi.canonical_form(),
-            CanonicalForm::Unknown | CanonicalForm::Partial { .. }
-        )
-    {
-        psi.canonicalize::<T, _>(backend.as_ref(), 0);
-    }
-
     let mut records = Vec::new();
     for step in 0..params.n_steps {
         let mut trunc_err_sum = zero;
@@ -260,18 +251,7 @@ pub fn tebd<T: Scalar>(
                     .map(|pair| (pair, GateCenter::Left)),
             );
         for ((bond, gate), center) in passes {
-            let svd = TruncSvdParams {
-                chi_max: params.trunc.chi_max,
-                target_trunc_err: params.trunc.target_trunc_err.map(|target| {
-                    let norm = psi.norm::<T, _>(backend.as_ref());
-                    assert!(
-                        norm.is_finite(),
-                        "tebd: state norm is not finite before a gate of step {step}",
-                    );
-                    target * norm.to_f64().unwrap_or(f64::NAN)
-                }),
-            };
-            let res = psi.apply_two_site_gate(backend.as_ref(), bond, gate, &svd, center);
+            let res = psi.apply_two_site_gate(backend.as_ref(), bond, gate, &params.trunc, center);
             trunc_err_sum = trunc_err_sum + res.error;
         }
 

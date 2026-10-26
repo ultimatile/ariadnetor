@@ -5,6 +5,7 @@ use ariadnetor_tensor::{BlockCoord, BlockSparseTensorData, Direction};
 use ariadnetor_tensor::{U1Sector, Z2Sector};
 
 use super::*;
+use crate::decomposition::TruncErrTarget;
 
 fn backend() -> NativeBackend {
     NativeBackend::new()
@@ -12,6 +13,14 @@ fn backend() -> NativeBackend {
 
 fn order() -> MemoryOrder {
     backend().preferred_order()
+}
+
+/// Truncation by the error target `target` alone, with no `chi_max`.
+fn target_only(target: TruncErrTarget) -> TruncSvdParams {
+    TruncSvdParams {
+        chi_max: None,
+        target_trunc_err: Some(target),
+    }
 }
 // -- Test tensor constructors ------------------------------------------------
 
@@ -545,12 +554,9 @@ fn trunc_svd_exact_truncation_error() {
 #[test]
 fn trunc_svd_target_err_exact_count() {
     // SVs = [3, 2, 1, 1]. With target_err=1.1:
-    // target_sq = 1.21. Can discard one SV (1²=1 ≤ 1.21), not two (1+1=2 > 1.21).
+    // Can discard one SV (norm 1 ≤ 1.1), not two (norm sqrt(2) ≈ 1.414 > 1.1).
     let bs = sample_known_svs();
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(1.1),
-    };
+    let params = target_only(TruncErrTarget::Absolute(1.1));
     let (_, sv, _, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
@@ -569,13 +575,11 @@ fn trunc_svd_target_err_exact_count() {
 
 #[test]
 fn trunc_svd_target_err_boundary() {
-    // SVs = [3, 2, 1, 1]. With target_err=1.0 (target_sq=1.0):
-    // Smallest SV² = 1.0. Since 0+1 = 1 is NOT > 1.0 (strict >), it IS discarded.
+    // SVs = [3, 2, 1, 1]. With target_err=1.0, discarding the smallest SV
+    // gives a norm of exactly 1.0, which is NOT > 1.0 (strict >), so it IS
+    // discarded.
     let bs = sample_known_svs();
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(1.0),
-    };
+    let params = target_only(TruncErrTarget::Absolute(1.0));
     let (_, sv, _, _) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
@@ -587,7 +591,7 @@ fn trunc_svd_target_err_boundary() {
     let total_kept: usize = sv.values.iter().map(|(_, v)| v.len()).sum();
     assert_eq!(
         total_kept, 3,
-        "boundary: sv²==target_sq should still discard"
+        "boundary: discarded norm == target should still discard"
     );
 }
 
@@ -752,10 +756,7 @@ fn trunc_svd_empty_tensor_with_target_err() {
         U1Sector(1),
         order(),
     );
-    let params = TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(0.1),
-    };
+    let params = target_only(TruncErrTarget::Absolute(0.1));
     let (u, sv, vt, trunc_err) = trunc_svd_block_sparse_with_policy_dense(
         &backend(),
         &bs,
@@ -772,3 +773,4 @@ fn trunc_svd_empty_tensor_with_target_err() {
 
 mod mutant;
 mod policy_forwarding;
+mod trunc_target;

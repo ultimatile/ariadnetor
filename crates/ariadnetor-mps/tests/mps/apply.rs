@@ -2,8 +2,8 @@
 
 use approx::assert_abs_diff_eq;
 use ariadnetor_mps::{
-    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
-    TruncateParams,
+    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncErrTarget,
+    TruncSvdParams, TruncateParams,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
@@ -11,6 +11,7 @@ use ariadnetor_tensor::DenseTensor;
 use super::helpers::{
     apply_ok, assert_dense_close, cm_dense_tensor, dense_basis_site, make_3site_test_mpo,
     make_3site_test_mps, make_4site_mps, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+    target_only,
 };
 
 #[test]
@@ -710,10 +711,7 @@ fn test_apply_density_matrix_ignores_target_trunc_err() {
 
     // chi_max = None, but a target_trunc_err large enough to discard everything
     // down to chi = 1 if it were consulted.
-    let params = TruncateParams::from(TruncSvdParams {
-        chi_max: None,
-        target_trunc_err: Some(1e10),
-    });
+    let params = TruncateParams::from(target_only(TruncErrTarget::Absolute(1e10)));
     let phi = apply_ok(
         &backend,
         &op,
