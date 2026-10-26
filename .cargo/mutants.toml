@@ -80,8 +80,8 @@ exclude_re = [
   # is never observed. End-of-sweep state matches the original
   # exactly. Confirmed via cargo-mutants run on these two mutants
   # alone — both MISSED across the full test suite by design.
-  "sweep.rs:362:21: replace < with <= in sweep_2site",
-  "sweep.rs:362:31: replace - with \\+ in sweep_2site",
+  "sweep.rs:364:21: replace < with <= in sweep_2site",
+  "sweep.rs:364:31: replace - with \\+ in sweep_2site",
   # sweep_2site per-step diagnostics aggregation: tracking-min
   # (`<` / `<=`) and tracking-max (`>` / `>=`) yield identical
   # values for any finite input — distinct values pick the extremum
@@ -91,8 +91,8 @@ exclude_re = [
   # `Float::min` / `Float::max` because those mask NaN by returning
   # the non-NaN argument, which would change the diagnostic on
   # numerically broken runs.
-  "sweep.rs:426:29: replace < with <= in sweep_2site",
-  "sweep.rs:429:28: replace > with >= in sweep_2site",
+  "sweep.rs:427:29: replace < with <= in sweep_2site",
+  "sweep.rs:430:28: replace > with >= in sweep_2site",
   # contract_to_tensor trans-flag predicates: any mutation that forces the predicate
   # to false (or removes the leading `!`) routes through the physical-permute GEMM
   # path, which produces identical numerical results to the trans-flag GEMM path

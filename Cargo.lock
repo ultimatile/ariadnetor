@@ -16,6 +16,7 @@ name = "algorithms-fixtures"
 version = "0.0.6"
 dependencies = [
  "ariadnetor-core",
+ "ariadnetor-linalg",
  "ariadnetor-mps",
  "ariadnetor-native",
  "ariadnetor-tensor",

@@ -4,15 +4,14 @@
 //! the solver via a closure that does a matrix-vector product, and
 //! compare against `ariadnetor_linalg::eigh` ground truth.
 
+use algorithms_fixtures::dense_fixtures::{
+    random_hermitian_complex_f64, random_hermitian_f64, smallest_eigenvalue,
+};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
 use ariadnetor_core::Scalar;
-use ariadnetor_linalg::eigh_with_backend;
-use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -32,46 +31,6 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
         }
     }
     Host::shared().dense(out, vec![n])
-}
-
-/// Build a random Hermitian matrix `H = (A + A^H) / 2` of size `n×n`,
-/// stored in column-major.
-fn random_hermitian_f64(n: usize, seed: u64) -> DenseTensor<f64> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let a = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let a_data = a.data_slice();
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        for j in 0..n {
-            let aij = a_data[i + n * j];
-            let aji = a_data[j + n * i];
-            data[i + n * j] = 0.5 * (aij + aji);
-        }
-    }
-    Host::shared().dense(data, vec![n, n])
-}
-
-fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<f64>> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let real = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let imag = DenseTensor::<f64>::random(vec![n, n], &mut rng);
-    let r = real.data_slice();
-    let im = imag.data_slice();
-    let mut data = vec![Complex::new(0.0, 0.0); n * n];
-    for i in 0..n {
-        for j in 0..n {
-            let aij = Complex::new(r[i + n * j], im[i + n * j]);
-            let aji = Complex::new(r[j + n * i], im[j + n * i]);
-            data[i + n * j] = (aij + aji.conj()) * 0.5;
-        }
-    }
-    Host::shared().dense(data, vec![n, n])
-}
-
-/// Smallest eigenvalue of a Hermitian matrix via dense `eigh`.
-fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
-    let (eigvals, _) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
-    eigvals.data_slice()[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +67,7 @@ fn lanczos_diagonal_returns_min_eigenvalue() {
 fn lanczos_random_symmetric_matches_eigh() {
     for &n in &[16usize, 64, 256] {
         let h = random_hermitian_f64(n, 0xC0FFEE + n as u64);
-        let lambda_ref = eigh_smallest(&h);
+        let lambda_ref = smallest_eigenvalue(&h);
 
         let result = lanczos_smallest::<f64, _>(
             &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -176,7 +135,7 @@ fn lanczos_near_degenerate_cluster() {
 fn lanczos_complex_hermitian_matches_eigh() {
     let n = 32;
     let h = random_hermitian_complex_f64(n, 0xDEADBEEF);
-    let lambda_ref = eigh_smallest(&h);
+    let lambda_ref = smallest_eigenvalue(&h);
 
     let result = lanczos_smallest::<Complex<f64>, _>(
         &|v: &DenseTensor<Complex<f64>>| matvec_cm(&h, n, v),

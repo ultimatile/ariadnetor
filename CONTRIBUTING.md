@@ -35,7 +35,7 @@ cargo make litmus          # pluggability litmus: host-pinned crates against the
 
 Run `cargo make litmus` when changing the host-pinned surface (the
 `Host` alias, `host_order()` constructors, the `host_ops` extension
-traits, or the DMRG / Krylov host-pinned paths) or before opening a PR
+traits, or the DMRG / Krylov / TEBD host-pinned paths) or before opening a PR
 that touches it. It rebuilds those crates with `Host` aliased to a
 distinct backend and runs their tests, confirming the call-site-backend
 design still holds against a non-native substrate. The cheaper per-diff

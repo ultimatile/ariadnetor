@@ -12,6 +12,7 @@
 use std::error::Error;
 
 use ariadnetor_algorithms::dmrg::{DmrgError, DmrgHeffError, DmrgSweepError, SweepDirection};
+use ariadnetor_algorithms::tebd::TebdError;
 use ariadnetor_linalg::LinalgError;
 use ariadnetor_mps::BraketEnvError;
 
@@ -139,4 +140,15 @@ fn dmrg_sweep_error_scale_forwards_to_source() {
         "S-absorb (diagonal scale) failed during sweep 0, LeftToRight, site 0",
         &child_display,
     );
+}
+
+#[test]
+fn tebd_error_gate_construction_forwards_to_source() {
+    let child = marker_linalg_error();
+    let child_display = child.to_string();
+    let err = TebdError::GateConstruction {
+        bond: 2,
+        source: child,
+    };
+    assert_forwards(&err, "building the gate of bond 2 failed", &child_display);
 }

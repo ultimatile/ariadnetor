@@ -8,10 +8,10 @@ use crate::dmrg::heff_block_sparse::{
     EffectiveHamiltonian2SiteBlockSparse, dmrg_2site_step_block_sparse,
 };
 use crate::krylov::{LanczosParams, LinearOp};
-use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use algorithms_fixtures::dense_fixtures::smallest_eigenvalue;
+use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::TensorChain;
-use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::MemoryOrder;
 use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 use ariadnetor_tensor::{Sector, U1Sector};
@@ -203,8 +203,7 @@ fn bsp_heff_step_eigenvalue_matches_eigh_on_bsp_flat() {
     }
 
     let h_dense = Host::shared().dense(h_data, vec![dim, dim]);
-    let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &h_dense, 1).expect("eigh");
-    let eigh_smallest = eigvals.data_slice()[0];
+    let eigh_smallest = smallest_eigenvalue(&h_dense);
 
     let params = LocalEigensolverParams::Lanczos(LanczosParams {
         max_iter: 200,
