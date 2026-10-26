@@ -16,9 +16,12 @@ use super::{identity_mpo, product_state_mps};
 use crate::dmrg::heff::{EffectiveHamiltonian2Site, dmrg_2site_step};
 use crate::dmrg::{DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::{LanczosError, LanczosParams, LinearOp};
+use algorithms_fixtures::dense_fixtures::{
+    random_mps_unknown_c64, random_mps_unknown_f64, smallest_eigenvalue,
+};
 use approx::assert_abs_diff_eq;
 use ariadnetor_core::Scalar;
-use ariadnetor_linalg::{TruncSvdParams, contract, diagonal_scale, eigh_with_backend};
+use ariadnetor_linalg::{TruncSvdParams, contract, diagonal_scale};
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{Mpo, Mps};
 use ariadnetor_native::NativeBackend;
@@ -32,51 +35,6 @@ use rand::rngs::StdRng;
 // Fixtures (`product_state_mps` / `identity_mpo` are shared from the parent
 // `tests` module)
 // ---------------------------------------------------------------------------
-
-/// Random-but-seeded MPS with chi internal, d physical, n sites.
-fn random_mps_f64(
-    n: usize,
-    d: usize,
-    chi: usize,
-    seed: u64,
-) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<DenseTensor<f64>> = (0..n)
-        .map(|i| {
-            let l = if i == 0 { 1 } else { chi };
-            let r = if i + 1 == n { 1 } else { chi };
-            let len = l * d * r;
-            let data: Vec<f64> = (0..len).map(|_| rng.random_range(-0.5_f64..0.5)).collect();
-            Host::shared().dense(data, vec![l, d, r])
-        })
-        .collect();
-    Mps::from_sites(storages)
-}
-
-fn random_mps_c64(
-    n: usize,
-    d: usize,
-    chi: usize,
-    seed: u64,
-) -> Mps<DenseStorage<Complex<f64>>, DenseLayout> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<DenseTensor<Complex<f64>>> = (0..n)
-        .map(|i| {
-            let l = if i == 0 { 1 } else { chi };
-            let r = if i + 1 == n { 1 } else { chi };
-            let len = l * d * r;
-            let data: Vec<Complex<f64>> = (0..len)
-                .map(|_| {
-                    let re = rng.random_range(-0.5_f64..0.5);
-                    let im = rng.random_range(-0.5_f64..0.5);
-                    Complex::new(re, im)
-                })
-                .collect();
-            Host::shared().dense(data, vec![l, d, r])
-        })
-        .collect();
-    Mps::from_sites(storages)
-}
 
 /// Hermitian "local-product" MPO: bond dim 1 at every site, each
 /// site stores a random Hermitian `d × d` operator. The global
@@ -229,7 +187,7 @@ fn heff_matvec_matches_dense_apply() {
     let n = 4;
     let d = 2;
     let chi = 2;
-    let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
+    let mps = random_mps_unknown_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
     let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     envs.advance_left(&mps, &mpo, &mps, 0)
@@ -278,7 +236,7 @@ fn heff_lanczos_eigvalue_matches_eigh() {
     let n = 4;
     let d = 2;
     let chi = 2;
-    let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
+    let mps = random_mps_unknown_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
     let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     envs.advance_left(&mps, &mpo, &mps, 0)
@@ -287,8 +245,7 @@ fn heff_lanczos_eigvalue_matches_eigh() {
     let site = 1;
     let heff = make_heff(&envs, &mps, &mpo, site);
     let h_dense = build_heff_dense(&heff);
-    let (eigvals, _) = eigh_with_backend(&NativeBackend::new(), &h_dense, 1).expect("eigh");
-    let reference = eigvals.data_slice()[0];
+    let reference = smallest_eigenvalue(&h_dense);
 
     let result = dmrg_2site_step(
         &envs,
@@ -320,7 +277,7 @@ fn heff_svd_split_is_canonical() {
     let n = 4;
     let d = 2;
     let chi = 2;
-    let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
+    let mps = random_mps_unknown_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
     let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     envs.advance_left(&mps, &mpo, &mps, 0)
@@ -378,7 +335,7 @@ fn heff_svd_reconstruction_round_trips() {
     let n = 4;
     let d = 2;
     let chi = 2;
-    let mps = random_mps_f64(n, d, chi, 0xCAFE_F00D);
+    let mps = random_mps_unknown_f64(n, d, chi, 0xCAFE_F00D);
     let mpo = hermitian_local_mpo_f64(n, d, 0xBEEF_DEAD);
     let mut envs = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
     envs.advance_left(&mps, &mpo, &mps, 0)
@@ -468,7 +425,7 @@ fn heff_edge_sites_succeed() {
     let n = 3;
     let d = 2;
     let chi = 2;
-    let mps = random_mps_f64(n, d, chi, 0xFEED_CAFE);
+    let mps = random_mps_unknown_f64(n, d, chi, 0xFEED_CAFE);
     let mpo = hermitian_local_mpo_f64(n, d, 0x0BAD_F00D);
 
     // site = 0 → left(0) trivial 1x1x1 boundary, chi_l = 1.
@@ -528,7 +485,7 @@ fn heff_matvec_matches_dense_apply_complex() {
     let n = 3;
     let d = 2;
     let chi = 2;
-    let mps = random_mps_c64(n, d, chi, 0x1357_9BDF);
+    let mps = random_mps_unknown_c64(n, d, chi, 0x1357_9BDF);
     let mpo = hermitian_local_mpo_c64(n, d, 0x2468_ACE0);
     let envs = BraketEnvs::build(&mps, &mpo, &mps).expect("build");
 

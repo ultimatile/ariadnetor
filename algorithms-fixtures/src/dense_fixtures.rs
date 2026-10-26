@@ -1,22 +1,28 @@
-//! Dense (non-symmetric) test fixtures: a minimal spin-1/2 Heisenberg
-//! MPO builder, random Dense MPS generators, and random Hermitian
-//! matrices, shared across the algorithms crate's integration tests and
-//! the local-eigensolver benchmark.
+//! Dense test fixtures (no U(1) block structure) shared across the algorithms
+//! crate's tests and benchmarks: a minimal spin-1/2 Heisenberg MPO
+//! builder, random Dense MPS generators, random Hermitian matrices and
+//! bond terms, the smallest eigenvalue of a dense Hermitian matrix, and
+//! truncation parameters that keep every singular value.
 //!
-//! Heisenberg is preferred over TFI as the test Hamiltonian because the
-//! planned BlockSparse / U(1) wrapper path reuses Heisenberg as its test
-//! Hamiltonian (TFI is not U(1) symmetric); sharing one builder body
-//! keeps the two test surfaces directly comparable when that follow-up
-//! lands.
+//! Heisenberg rather than TFI is the test Hamiltonian because it is U(1)
+//! symmetric, which keeps the Dense results comparable with the
+//! BlockSparse / U(1) tests that use it too.
 
 use ariadnetor_core::Scalar;
-use ariadnetor_mps::{Mpo, Mps};
+use ariadnetor_linalg::eigh_with_backend;
+use ariadnetor_mps::{Mpo, Mps, TruncSvdParams};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 use num_complex::Complex;
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+
+/// Truncated-SVD parameters that keep every singular value.
+pub const NO_TRUNC: TruncSvdParams = TruncSvdParams {
+    chi_max: None,
+    target_trunc_err: None,
+};
 
 /// Physical (spin-1/2) dimension of the Heisenberg MPO toolkit below.
 pub const D: usize = 2;
@@ -140,6 +146,37 @@ fn random_mps<T: Scalar>(
     Mps::from_sites(sites)
 }
 
+/// Bond dimensions of an `n`-site chain: `chi` inside, 1 at both ends.
+fn uniform_bonds(n: usize, chi: usize) -> Vec<usize> {
+    (0..=n)
+        .map(|j| if j == 0 || j == n { 1 } else { chi })
+        .collect()
+}
+
+/// Random complex Dense MPS with `n` sites of physical dimension `d` and
+/// internal bond dimension `chi`, and no canonical form set.
+pub fn random_mps_unknown_c64(
+    n: usize,
+    d: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<Complex<f64>>, DenseLayout> {
+    random_mps_c64(&vec![d; n], &uniform_bonds(n, chi), seed)
+}
+
+/// Random complex Dense MPS canonicalized with the orthogonality center at
+/// site 0.
+pub fn random_mps_center_zero_c64(
+    n: usize,
+    d: usize,
+    chi: usize,
+    seed: u64,
+) -> Mps<DenseStorage<Complex<f64>>, DenseLayout> {
+    let mut mps = random_mps_unknown_c64(n, d, chi, seed);
+    mps.canonicalize(&NativeBackend::new(), 0);
+    mps
+}
+
 /// Random Dense MPS canonicalized with the orthogonality center at site 0.
 pub fn random_mps_center_zero_f64(
     n: usize,
@@ -188,6 +225,17 @@ pub fn random_hermitian_complex_f64(n: usize, seed: u64) -> DenseTensor<Complex<
     Host::shared().dense(data, vec![n, n])
 }
 
+/// Smallest eigenvalue of the Hermitian matrix `h`, by dense `eigh`.
+pub fn smallest_eigenvalue<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
+    let (eigvals, _) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
+    eigvals
+        .data_slice()
+        .iter()
+        .copied()
+        .reduce(|a, b| if b < a { b } else { a })
+        .expect("smallest_eigenvalue requires a non-empty matrix")
+}
+
 /// Random complex Dense MPS with per-site physical dimensions `phys` and
 /// bond dimensions `bonds` (boundaries included, so `bonds.len()` is
 /// `phys.len() + 1`), and no canonical form set.
@@ -226,10 +274,7 @@ pub fn random_mps_unknown_f64(
     chi: usize,
     seed: u64,
 ) -> Mps<DenseStorage<f64>, DenseLayout> {
-    let bonds: Vec<usize> = (0..=n)
-        .map(|j| if j == 0 || j == n { 1 } else { chi })
-        .collect();
-    random_mps(&vec![d; n], &bonds, seed, |rng| {
+    random_mps(&vec![d; n], &uniform_bonds(n, chi), seed, |rng| {
         rng.random_range(-0.5_f64..0.5)
     })
 }

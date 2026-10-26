@@ -3,7 +3,7 @@
 //! failing step produced it.
 
 use algorithms_fixtures::dense_fixtures::{
-    random_bond_terms_c64, random_mps_c64, random_mps_unknown_f64,
+    NO_TRUNC, random_bond_terms_c64, random_mps_c64, random_mps_unknown_f64,
 };
 use ariadnetor_algorithms::tebd::{TebdError, TebdParams, TimeStep, tebd};
 use ariadnetor_core::Scalar;
@@ -16,11 +16,6 @@ type DenseMps<T> = Mps<DenseStorage<T>, DenseLayout>;
 
 const PHYS: [usize; 5] = [2, 3, 2, 3, 2];
 const BONDS: [usize; 6] = [1, 2, 4, 4, 3, 1];
-
-const NO_TRUNC: TruncSvdParams = TruncSvdParams {
-    chi_max: None,
-    target_trunc_err: None,
-};
 
 const STEP_DETAIL: &str = "time step must be finite and positive";
 const HALF_STEP_DETAIL: &str =
@@ -174,7 +169,7 @@ fn rejects_a_half_step_outside_the_real_scalar_range() {
 }
 
 #[test]
-fn rejects_truncation_params_the_svd_cannot_honor() {
+fn rejects_invalid_truncation_params() {
     let (psi, terms) = fixture();
     let cases = [
         (Some(0), None, "trunc.chi_max must be > 0 if Some"),

@@ -12,11 +12,12 @@
 //! followed by a right-to-left pass. Each `h_i` enters with total weight
 //! `z` and `S(-z) S(z) = 1`, so `S(z) = exp(-zH) + O(z³)`.
 //!
-//! The gates follow the sweep order rather than an even / odd split: the
-//! left-to-right pass leaves the orthogonality center on the right site of
-//! each pair and the return pass leaves it on the left site, so the center
-//! is always on the gated pair. No gauge step runs between gates, and each
-//! gate's truncation error is the exact state error it introduces.
+//! The gates follow the sweep order: the left-to-right pass leaves the
+//! orthogonality center on the right site of each pair and the return pass
+//! leaves it on the left site, so the center is always on the gated pair.
+//! No gauge step runs between gates, and, given a canonical-form tag that
+//! holds, each gate's truncation error is the exact state error it
+//! introduces.
 
 use ariadnetor_core::{Scalar, try_real_from_f64};
 use ariadnetor_linalg::{
@@ -107,7 +108,8 @@ pub enum TebdError {
         detail: &'static str,
     },
     /// Exponentiating a bond term failed, for example for a real-time step
-    /// on a real scalar type or a term that is not Hermitian.
+    /// on a real scalar type or a term that is not Hermitian within the
+    /// exponential's tolerance.
     #[error("building the gate of bond {bond} failed")]
     GateConstruction {
         /// Index of the bond.
@@ -135,7 +137,9 @@ pub enum TebdError {
 /// bond terms by the caller.
 ///
 /// `psi` may be in any canonical form; the first gate moves the gauge to
-/// its pair. After each step the form is `Mixed { center: 0 }` and the
+/// its pair. The form is trusted, not checked: the sites it marks isometric
+/// must be, or the truncation errors stop being state errors and the
+/// renormalization reads the wrong norm. After each step the form is `Mixed { center: 0 }` and the
 /// state has unit norm; with `n_steps == 0`, `psi` is left unchanged.
 /// Returns one record per step.
 ///
@@ -161,10 +165,14 @@ pub enum TebdError {
 ///
 /// # Panics
 ///
-/// Running a step panics if the chain is malformed (a site that is not
-/// rank 3, or adjacent bond dimensions that disagree), if its
-/// canonical-form tag is inconsistent with the chain length, or if a
-/// linear-algebra call inside [`Mps::apply_two_site_gate`] fails.
+/// `psi` must be a well-formed chain (every site rank 3, adjacent bond
+/// dimensions equal) whose canonical-form tag is consistent with its
+/// length. The driver leaves this to [`Mps::apply_two_site_gate`], whose
+/// checks panic on a violation once a step runs; reading the physical
+/// dimensions at entry can panic first. Also panics if a linear-algebra
+/// call inside `apply_two_site_gate` fails, for example a truncated SVD of
+/// an overflowed pair. A panic inside a step can leave `psi` with that
+/// step's earlier gates applied.
 pub fn tebd<T: Scalar>(
     psi: &mut Mps<DenseStorage<T>, DenseLayout>,
     bond_terms: &[DenseTensor<T>],
@@ -219,7 +227,7 @@ pub fn tebd<T: Scalar>(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut records = Vec::with_capacity(params.n_steps);
+    let mut records = Vec::new();
     for step in 0..params.n_steps {
         let mut trunc_err_sum = zero;
         let passes = gates
@@ -240,7 +248,12 @@ pub fn tebd<T: Scalar>(
 
         // The return pass leaves sites 1.. right-isometric, so site 0
         // carries the whole norm.
+        debug_assert_eq!(*psi.canonical_form(), CanonicalForm::Mixed { center: 0 });
         let norm = psi.site(0).norm();
+        // A zero or underflowed state gives a zero norm. A pair grown close
+        // to the overflow threshold fails its SVD inside the gate, before
+        // the norm is read, so the non-finite half guards `normalize`
+        // against a case the gates are not known to reach.
         if !(norm.is_finite() && norm > zero) {
             return Err(TebdError::NormBreakdown { step });
         }

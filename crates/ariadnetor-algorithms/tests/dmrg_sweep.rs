@@ -7,13 +7,15 @@
 //! variant gives a closed-form ground-energy reference
 //! (`prod_i min_eig(h_i)`) without a separate ED solver.
 
-use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
+use algorithms_fixtures::dense_fixtures::{
+    random_mps_center_zero_c64, random_mps_center_zero_f64, smallest_eigenvalue,
+};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::dmrg::{
     DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
-use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use ariadnetor_native::NativeBackend;
@@ -26,33 +28,6 @@ use rand::rngs::StdRng;
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
-
-fn random_mps_center_zero_c64(
-    n: usize,
-    d: usize,
-    chi: usize,
-    seed: u64,
-) -> Mps<DenseStorage<Complex<f64>>, DenseLayout> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let storages: Vec<DenseTensor<Complex<f64>>> = (0..n)
-        .map(|i| {
-            let l = if i == 0 { 1 } else { chi };
-            let r = if i + 1 == n { 1 } else { chi };
-            let len = l * d * r;
-            let data: Vec<Complex<f64>> = (0..len)
-                .map(|_| {
-                    let re = rng.random_range(-0.5_f64..0.5);
-                    let im = rng.random_range(-0.5_f64..0.5);
-                    Complex::new(re, im)
-                })
-                .collect();
-            Host::shared().dense(data, vec![l, d, r])
-        })
-        .collect();
-    let mut mps = Mps::from_sites(storages);
-    mps.canonicalize(&NativeBackend::new(), 0);
-    mps
-}
 
 /// Per-site PSD Hermitian `h_i = G^† G + ε I`. `h` and MPO storage are
 /// column-major (`make_tensor` reads `backend.preferred_order()`).
@@ -147,24 +122,12 @@ fn hermitian_local_mpo_f64(n: usize, d: usize, seed: u64) -> Mpo<DenseStorage<f6
 
 /// Smallest eigenvalue of a real-symmetric `d×d` matrix; `h` is CM.
 fn min_eig_real_sym(h: &[f64], d: usize) -> f64 {
-    let m = Host::shared().dense(h.to_vec(), vec![d, d]);
-    let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &m, 1).expect("eigh");
-    eigvals
-        .data_slice()
-        .iter()
-        .cloned()
-        .fold(f64::INFINITY, f64::min)
+    smallest_eigenvalue(&Host::shared().dense(h.to_vec(), vec![d, d]))
 }
 
 /// Smallest eigenvalue of a complex Hermitian `d×d` matrix (CM, see above).
 fn min_eig_complex_herm(h: &[Complex<f64>], d: usize) -> f64 {
-    let m = Host::shared().dense(h.to_vec(), vec![d, d]);
-    let (eigvals, _eigvecs) = eigh_with_backend(&NativeBackend::new(), &m, 1).expect("eigh");
-    eigvals
-        .data_slice()
-        .iter()
-        .cloned()
-        .fold(f64::INFINITY, f64::min)
+    smallest_eigenvalue(&Host::shared().dense(h.to_vec(), vec![d, d]))
 }
 
 fn standard_params_f64(seed: u64) -> DmrgSweepParams {

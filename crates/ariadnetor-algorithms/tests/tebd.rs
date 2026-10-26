@@ -1,27 +1,26 @@
 //! Tests for the Dense TEBD driver against dense references.
 //!
 //! The chain is contracted to its state vector, each bond term is embedded
-//! into the full space, and the reference gates come from the general
-//! (Padé) matrix exponential rather than the eigendecomposition the driver
-//! uses. Except in the Heisenberg test, the bond terms are random complex
+//! into the full space, and the dense Trotter steps and propagators the
+//! driver is compared against come from the general (Padé) matrix
+//! exponential rather than the eigendecomposition the driver uses. Unless a
+//! test says otherwise, the bond terms are random complex
 //! Hermitian draws on neighboring physical dimensions that differ, so
 //! neighboring terms do not commute and no term is symmetric under
 //! transposition: a swapped leg, a reversed pass, or a missing half step
 //! changes the result.
 
 use algorithms_fixtures::dense_fixtures::{
-    random_bond_terms_c64, random_mps_c64, random_mps_unknown_f64,
+    NO_TRUNC, random_bond_terms_c64, random_mps_c64, random_mps_unknown_f64, smallest_eigenvalue,
 };
 use ariadnetor_algorithms::tebd::{TebdParams, TebdStepRecord, TimeStep, tebd};
 use ariadnetor_core::Scalar;
-use ariadnetor_linalg::{
-    contract, eigh_with_backend, expm_antihermitian_with_backend, expm_with_backend, tensordot,
-};
+use ariadnetor_linalg::{contract, expm_antihermitian_with_backend, expm_with_backend, tensordot};
 use ariadnetor_mps::{
     CanonicalForm, GateCenter, Mps, SpinHalf, TensorChain, TruncSvdParams, TruncateParams, inner,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, add_all};
 use num_complex::Complex;
 
 type C64 = Complex<f64>;
@@ -31,11 +30,6 @@ type DenseMps<T> = Mps<DenseStorage<T>, DenseLayout>;
 const PHYS: [usize; 5] = [2, 3, 2, 3, 2];
 /// Bond dimensions of the 5-site fixture, boundaries included.
 const BONDS: [usize; 6] = [1, 2, 4, 4, 3, 1];
-
-const NO_TRUNC: TruncSvdParams = TruncSvdParams {
-    chi_max: None,
-    target_trunc_err: None,
-};
 
 fn cap(chi_max: usize) -> TruncSvdParams {
     TruncSvdParams {
@@ -97,17 +91,12 @@ fn embed<T: Scalar>(term: &DenseTensor<T>, phys: &[usize], bond: usize) -> Dense
 
 /// `H = Σ_i h_i` as a dense matrix.
 fn hamiltonian<T: Scalar>(terms: &[DenseTensor<T>], phys: &[usize]) -> DenseTensor<T> {
-    let mut h = embed(&terms[0], phys, 0);
-    let dim = h.shape()[0];
-    for (bond, term) in terms.iter().enumerate().skip(1) {
-        let e = embed(term, phys, bond);
-        for i in 0..dim {
-            for j in 0..dim {
-                h.set([i, j], h.get([i, j]) + e.get([i, j]));
-            }
-        }
-    }
-    h
+    let embedded: Vec<_> = terms
+        .iter()
+        .enumerate()
+        .map(|(bond, term)| embed(term, phys, bond))
+        .collect();
+    add_all(&embedded.iter().collect::<Vec<_>>()).expect("terms share one shape and order")
 }
 
 fn matmul<T: Scalar>(a: &DenseTensor<T>, b: &DenseTensor<T>) -> DenseTensor<T> {
@@ -147,6 +136,8 @@ fn dense_step<T: Scalar<Real = f64>>(
     s
 }
 
+/// `v` scaled to unit norm, computed apart from `Tensor::normalize`, which
+/// the driver itself uses.
 fn normalized<T: Scalar<Real = f64>>(v: &DenseTensor<T>) -> DenseTensor<T> {
     v.scaled(T::from_real_imag(1.0 / v.norm(), 0.0))
 }
@@ -313,6 +304,43 @@ fn each_record_covers_its_own_step() {
     );
 }
 
+/// A 2-site `f32` chain with every dimension 1 and bond term `h = -c`:
+/// every tensor is a scalar, so each imaginary-time step multiplies the norm
+/// by `exp(c tau)` up to rounding. A step whose factor underflows `f32` leaves a
+/// zero state.
+#[test]
+fn f32_imaginary_time_tracks_scalar_growth_until_it_underflows() {
+    let scalar_run = |c: f32, tau: f64| {
+        let mut psi: DenseMps<f32> = Mps::from_sites(vec![DenseTensor::ones(vec![1, 1, 1]); 2]);
+        let mut h = DenseTensor::<f32>::zeros(vec![1, 1, 1, 1]);
+        h.set([0, 0, 0, 0], -c);
+        let params = TebdParams {
+            time_step: TimeStep::Imaginary(tau),
+            n_steps: 2,
+            trunc: NO_TRUNC,
+        };
+        tebd(&mut psi, &[h], &params)
+    };
+
+    let records = scalar_run(1.0, 0.5).expect("finite growth");
+    for record in &records {
+        let expected = 0.5_f32.exp();
+        assert!(
+            (record.norm - expected).abs() < 1e-6 * expected,
+            "{record:?}"
+        );
+    }
+
+    let err = scalar_run(-200.0, 1.0).expect_err("exp(-200) underflows f32");
+    assert!(
+        matches!(
+            err,
+            ariadnetor_algorithms::tebd::TebdError::NormBreakdown { step: 0 }
+        ),
+        "{err:?}"
+    );
+}
+
 /// `S_i · S_{i+1} = Sz Sz + (S+ S- + S- S+) / 2` with legs
 /// `(out_i, out_i+1, in_i, in_i+1)`.
 fn heisenberg_term() -> DenseTensor<f64> {
@@ -346,12 +374,7 @@ fn imaginary_time_converges_to_the_heisenberg_ground_state() {
     let phys = [2; 6];
     let terms = vec![heisenberg_term(); n - 1];
     let h = hamiltonian(&terms, &phys);
-    let (eigvals, _) = eigh_with_backend(&NativeBackend::new(), &h, 1).expect("eigh");
-    let e0 = eigvals
-        .data_slice()
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min);
+    let e0 = smallest_eigenvalue(&h);
     assert!((e0 + 2.4935771339).abs() < 1e-9, "fixture E0 = {e0}");
 
     let tau = 0.1;

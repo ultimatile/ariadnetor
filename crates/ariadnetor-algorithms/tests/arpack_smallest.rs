@@ -7,12 +7,12 @@
 
 #![cfg(feature = "arpack")]
 
-use algorithms_fixtures::dense_fixtures::{random_hermitian_complex_f64, random_hermitian_f64};
+use algorithms_fixtures::dense_fixtures::{
+    random_hermitian_complex_f64, random_hermitian_f64, smallest_eigenvalue,
+};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
 use ariadnetor_core::Scalar;
-use ariadnetor_linalg::eigh_with_backend;
-use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;
 use num_traits::{Float, NumCast, One, Zero};
@@ -33,11 +33,6 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
         }
     }
     Host::shared().dense(out, vec![n])
-}
-
-fn eigh_smallest<T: Scalar>(h: &DenseTensor<T>) -> T::Real {
-    let (eigvals, _) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
-    eigvals.data_slice()[0]
 }
 
 /// Diagonal-spectrum smallest-eigenpair check, generic over the scalar type.
@@ -189,7 +184,7 @@ fn arpack_diagonal_f64_returns_smallest() {
 fn arpack_random_symmetric_f64_matches_eigh() {
     for &n in &[16usize, 64] {
         let h = random_hermitian_f64(n, 0xC0FFEE + n as u64);
-        let lambda_ref = eigh_smallest(&h);
+        let lambda_ref = smallest_eigenvalue(&h);
 
         let result = arpack_smallest::<f64, _>(
             &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -228,7 +223,7 @@ fn arpack_random_symmetric_f64_matches_eigh() {
 fn arpack_complex_hermitian_matches_eigh() {
     let n = 32;
     let h = random_hermitian_complex_f64(n, 0xDEADBEEF);
-    let lambda_ref = eigh_smallest(&h);
+    let lambda_ref = smallest_eigenvalue(&h);
 
     let result = arpack_smallest::<Complex<f64>, _>(
         &|v: &DenseTensor<Complex<f64>>| matvec_cm(&h, n, v),

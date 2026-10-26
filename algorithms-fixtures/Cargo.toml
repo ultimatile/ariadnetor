@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 ariadnetor-core = { path = "../crates/ariadnetor-core" }
+ariadnetor-linalg = { path = "../crates/ariadnetor-linalg" }
 ariadnetor-mps = { path = "../crates/ariadnetor-mps" }
 ariadnetor-native = { path = "../crates/ariadnetor-native" }
 # `test-fixtures` exposes `ariadnetor_tensor::test_fixtures::legs`, which

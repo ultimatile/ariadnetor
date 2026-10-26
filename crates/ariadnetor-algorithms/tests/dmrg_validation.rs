@@ -1,19 +1,20 @@
 //! End-to-end validation of the 2-site DMRG sweep driver against
 //! exact diagonalization on the standard 1D spin-1/2 Hamiltonians:
 //! transverse-field Ising (TFI) and antiferromagnetic Heisenberg
-//! (XXX). The TFI MPO builder and ED reference are inlined here; the
-//! shared Heisenberg MPO and random-MPS builders come from
-//! `algorithms_fixtures::dense_fixtures`. No public API is added.
+//! (XXX). The TFI MPO builder and the ED Hamiltonians are inlined here; the
+//! shared Heisenberg MPO, random-MPS builders, and smallest-eigenvalue
+//! helper come from `algorithms_fixtures::dense_fixtures`. No public API
+//! is added.
 
 use algorithms_fixtures::dense_fixtures::{
     build_mpo_site_f64, heisenberg_mpo_f64, op_id, op_sz, random_mps_center_zero_f64,
+    smallest_eigenvalue,
 };
 use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
-use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, TensorChain};
-use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
 
 // ---------------------------------------------------------------------------
@@ -158,15 +159,6 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
     Host::shared().dense(data, vec![dim, dim])
 }
 
-fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
-    let (eigvals, _v) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
-    eigvals
-        .data_slice()
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min)
-}
-
 // ---------------------------------------------------------------------------
 // Sweep parameters for the validation fixtures.
 // ---------------------------------------------------------------------------
@@ -237,7 +229,7 @@ fn v1_tfi_n6_critical_vs_ed() {
     let j = 1.0;
     let h = 1.0;
     let mpo = tfi_mpo_f64(n, j, h);
-    let e_ed = dense_min_eig_f64(&tfi_ed_dense_f64(n, j, h));
+    let e_ed = smallest_eigenvalue(&tfi_ed_dense_f64(n, j, h));
     run_validation("v1_tfi_n6_critical", mpo, e_ed, 16, 0xD3F1, 0xA101);
 }
 
@@ -250,7 +242,7 @@ fn v2_tfi_n8_fm_gapped_vs_ed() {
     let j = 1.0;
     let h = 0.5;
     let mpo = tfi_mpo_f64(n, j, h);
-    let e_ed = dense_min_eig_f64(&tfi_ed_dense_f64(n, j, h));
+    let e_ed = smallest_eigenvalue(&tfi_ed_dense_f64(n, j, h));
     run_validation("v2_tfi_n8_fm_gapped", mpo, e_ed, 16, 0xD3F2, 0xA102);
 }
 
@@ -263,7 +255,7 @@ fn v3_tfi_n10_paramagnetic_vs_ed() {
     let j = 1.0;
     let h = 2.0;
     let mpo = tfi_mpo_f64(n, j, h);
-    let e_ed = dense_min_eig_f64(&tfi_ed_dense_f64(n, j, h));
+    let e_ed = smallest_eigenvalue(&tfi_ed_dense_f64(n, j, h));
     run_validation("v3_tfi_n10_paramagnetic", mpo, e_ed, 16, 0xD3F3, 0xA103);
 }
 
@@ -275,7 +267,7 @@ fn v4_heisenberg_n6_vs_ed() {
     let n = 6;
     let j = 1.0;
     let mpo = heisenberg_mpo_f64(n, j);
-    let e_ed = dense_min_eig_f64(&heisenberg_ed_dense_f64(n, j));
+    let e_ed = smallest_eigenvalue(&heisenberg_ed_dense_f64(n, j));
     run_validation("v4_heisenberg_n6", mpo, e_ed, 32, 0xD3F4, 0xA104);
 }
 
@@ -287,7 +279,7 @@ fn v5_heisenberg_n8_vs_ed() {
     let n = 8;
     let j = 1.0;
     let mpo = heisenberg_mpo_f64(n, j);
-    let e_ed = dense_min_eig_f64(&heisenberg_ed_dense_f64(n, j));
+    let e_ed = smallest_eigenvalue(&heisenberg_ed_dense_f64(n, j));
     run_validation("v5_heisenberg_n8", mpo, e_ed, 32, 0xD3F5, 0xA105);
 }
 

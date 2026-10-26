@@ -18,9 +18,10 @@
 //!
 //! Test-internal helpers; no public API additions.
 
+use algorithms_fixtures::dense_fixtures::smallest_eigenvalue;
 use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
-use ariadnetor_linalg::{TruncSvdParams, eigh_with_backend};
+use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};
 use ariadnetor_native::NativeBackend;
@@ -83,15 +84,6 @@ fn heisenberg_ed_dense_f64(n: usize, j: f64) -> DenseTensor<f64> {
         }
     }
     Host::shared().dense(data, vec![dim, dim])
-}
-
-fn dense_min_eig_f64(h: &DenseTensor<f64>) -> f64 {
-    let (eigvals, _v) = eigh_with_backend(&NativeBackend::new(), h, 1).expect("eigh");
-    eigvals
-        .data_slice()
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min)
 }
 
 // ---------------------------------------------------------------------------
@@ -438,7 +430,7 @@ fn v1_bsp_heisenberg_n6_vs_ed() {
     let n = 6;
     let j = 1.0;
     let mpo = heisenberg_mpo_bsp_f64(n, j);
-    let e_ed = dense_min_eig_f64(&heisenberg_ed_dense_f64(n, j));
+    let e_ed = smallest_eigenvalue(&heisenberg_ed_dense_f64(n, j));
     run_validation_bsp(
         "v1_bsp_heisenberg_n6",
         mpo,
@@ -460,7 +452,7 @@ fn v2_bsp_heisenberg_n8_vs_ed() {
     let n = 8;
     let j = 1.0;
     let mpo = heisenberg_mpo_bsp_f64(n, j);
-    let e_ed = dense_min_eig_f64(&heisenberg_ed_dense_f64(n, j));
+    let e_ed = smallest_eigenvalue(&heisenberg_ed_dense_f64(n, j));
     run_validation_bsp(
         "v2_bsp_heisenberg_n8",
         mpo,
@@ -482,7 +474,7 @@ fn v3_bsp_heisenberg_n10_vs_ed() {
     let n = 10;
     let j = 1.0;
     let mpo = heisenberg_mpo_bsp_f64(n, j);
-    let e_ed = dense_min_eig_f64(&heisenberg_ed_dense_f64(n, j));
+    let e_ed = smallest_eigenvalue(&heisenberg_ed_dense_f64(n, j));
     run_validation_bsp(
         "v3_bsp_heisenberg_n10",
         mpo,
