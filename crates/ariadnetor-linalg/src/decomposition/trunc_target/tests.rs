@@ -28,6 +28,35 @@ fn relative_keep_count_is_invariant_under_scaling() {
     }
 }
 
+/// A relative target decides on the spectrum's shape alone, so scaling every
+/// value by `2^k` must not change the keep count anywhere in the `f64`
+/// range. The spectra hold small integers, so `n * 2^k` is exact from the
+/// smallest positive `f64` (`k = -1074`) up to `k = 1020`, where the largest
+/// value, 10, stays below `f64::MAX`.
+#[test]
+fn relative_keep_count_is_invariant_under_exact_binary_scaling() {
+    let spectra: [&[f64]; 4] = [
+        &[1.0, 1.0],
+        &[4.0, 2.0, 1.0],
+        &[10.0, 7.0, 1.0],
+        &[5.0, 4.0, 3.0, 1.0],
+    ];
+    for spectrum in spectra {
+        for fraction in [0.05, 0.1, 0.25, 0.5, 0.75] {
+            let target = TruncErrTarget::Relative(fraction);
+            let expected = kept(spectrum, target);
+            for k in (-1074..=1020).step_by(7).chain([-1074, 1020]) {
+                let scaled: Vec<f64> = spectrum.iter().map(|&n| libm::scalbn(n, k)).collect();
+                assert_eq!(
+                    kept(&scaled, target),
+                    expected,
+                    "{spectrum:?} * 2^{k}, {fraction}"
+                );
+            }
+        }
+    }
+}
+
 /// The norm overflows `f64`, while the budget, about `2.1e298`, does not
 /// and keeps the `1e300`; forming `r * norm` first would give an infinite
 /// budget that discards everything.
