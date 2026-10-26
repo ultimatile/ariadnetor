@@ -5,15 +5,17 @@ use ariadnetor_linalg::{DenseHostOps, LinalgError, TruncErrTarget, TruncSvdParam
 use ariadnetor_tensor::{DenseTensor, DenseTensorData, MemoryOrder};
 
 /// Square diagonal matrix, whose singular values are its diagonal entries.
+/// A diagonal entry sits at index `i * n + i` in either memory order, so
+/// the buffer is laid out column-major directly.
 fn diag(entries: &[f64]) -> DenseTensor<f64> {
     let n = entries.len();
     let mut data = vec![0.0; n * n];
     for (i, &e) in entries.iter().enumerate() {
         data[i * n + i] = e;
     }
-    let rm = DenseTensorData::from_raw_parts(data, vec![n, n], MemoryOrder::RowMajor);
-    DenseTensor::from_data(ariadnetor_tensor::reorder_data(
-        &rm,
+    DenseTensor::from_data(DenseTensorData::from_raw_parts(
+        data,
+        vec![n, n],
         MemoryOrder::ColumnMajor,
     ))
 }

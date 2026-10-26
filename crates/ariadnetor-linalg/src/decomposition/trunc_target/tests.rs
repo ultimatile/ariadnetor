@@ -26,8 +26,8 @@ fn relative_keep_count_is_invariant_under_scaling() {
 }
 
 /// The norm overflows `f64`, so `r * norm` would be an infinite budget that
-/// discards everything; the budget in units of the largest value is about
-/// `2.1e298`, below the `1e300` it must keep.
+/// discards everything; built as `scale * (r * sqrt(sumsq))` the budget is
+/// about `2.1e298`, below the `1e300` it must keep.
 #[test]
 fn relative_survives_an_overflowing_norm() {
     let s = [1.5e308, 1.5e308, 1e300];

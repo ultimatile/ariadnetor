@@ -7,22 +7,25 @@ use ariadnetor_core::{NormAccumulator, combine_norms};
 
 /// Bound on the singular values a truncated SVD may discard.
 ///
-/// Singular values are discarded from the smallest upward while the
-/// Frobenius norm of the discarded ones stays within the bound.
+/// The target discards singular values from the smallest upward while the
+/// Frobenius norm of the discarded ones stays within the bound, and never
+/// discards the largest one; a `chi_max` in the same
+/// [`TruncSvdParams`](super::TruncSvdParams) can discard more. A `Relative`
+/// target discards nothing from a spectrum holding a value that is not
+/// finite.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TruncErrTarget {
-    /// The discarded norm is at most this value.
+    /// The bound is this value.
     Absolute(f64),
-    /// The discarded norm is at most this fraction of the Frobenius norm of
-    /// the matrix being truncated; for a block-sparse matrix, of its norm
-    /// over all sectors together. The fraction is a ratio of norms, not of
-    /// squared norms.
+    /// The bound is this fraction of the Frobenius norm of the matrix being
+    /// truncated; for a block-sparse matrix, of its norm over all sectors
+    /// together. The fraction is a ratio of norms, not of squared norms.
     Relative(f64),
 }
 
 impl TruncErrTarget {
     /// The bound or fraction the variant carries.
-    pub(crate) fn value(self) -> f64 {
+    pub fn value(self) -> f64 {
         match self {
             Self::Absolute(v) | Self::Relative(v) => v,
         }

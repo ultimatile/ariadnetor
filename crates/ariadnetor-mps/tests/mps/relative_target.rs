@@ -12,8 +12,7 @@ use super::helpers::{apply_ok, cm_dense_tensor, make_3site_test_mpo, with_site_s
 
 type DenseMps = Mps<DenseStorage<f64>, DenseLayout>;
 
-/// A site with generic entries, so the chains built from it have
-/// non-degenerate Schmidt spectra.
+/// A site whose entry at flat index `i` is `sin(1.3 (i + offset))`.
 fn generic_site(shape: Vec<usize>, offset: usize) -> DenseTensor<f64> {
     let len = shape.iter().product();
     let data = (0..len)

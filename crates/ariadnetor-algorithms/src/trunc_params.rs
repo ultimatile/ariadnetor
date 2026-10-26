@@ -1,6 +1,6 @@
 //! Entry-point validation of [`TruncSvdParams`] shared by the drivers.
 
-use ariadnetor_linalg::{TruncErrTarget, TruncSvdParams};
+use ariadnetor_linalg::TruncSvdParams;
 
 /// Reject a `chi_max` of `Some(0)` and a `target_trunc_err` whose value is
 /// not finite or is negative. `Err` names the constraint that failed.
@@ -8,9 +8,8 @@ pub(crate) fn validate_trunc_params(trunc: &TruncSvdParams) -> Result<(), &'stat
     if trunc.chi_max == Some(0) {
         return Err("trunc.chi_max must be > 0 if Some");
     }
-    if let Some(TruncErrTarget::Absolute(te) | TruncErrTarget::Relative(te)) =
-        trunc.target_trunc_err
-    {
+    if let Some(target) = trunc.target_trunc_err {
+        let te = target.value();
         if !te.is_finite() {
             return Err("trunc.target_trunc_err must be finite");
         }
@@ -23,6 +22,8 @@ pub(crate) fn validate_trunc_params(trunc: &TruncSvdParams) -> Result<(), &'stat
 
 #[cfg(test)]
 mod tests {
+    use ariadnetor_linalg::TruncErrTarget;
+
     use super::*;
 
     fn params(chi_max: Option<usize>, target_trunc_err: Option<TruncErrTarget>) -> TruncSvdParams {
