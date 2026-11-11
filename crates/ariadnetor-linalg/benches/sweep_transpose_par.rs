@@ -6,15 +6,19 @@
 //! `ExecPolicy` dispatch in `ariadnetor-native`.
 //!
 //! Each measurement uses `expert::permute` with a caller-provided
-//! `ExecPolicy`. The bench does not change global parallelism state; the
+//! `ExecPolicy`, except the conjugating sweep, which calls
+//! `ComputeBackend::transpose` directly because no public op conjugates as
+//! it permutes. The bench does not change global parallelism state; the
 //! strided-perm route reads the global Rayon pool's width once, to size its
 //! own pool on first parallel use.
 //!
 //! The f64 sweeps cover `n × n` with `perm = [1, 0]` (up to 2048, the
 //! parallel-dominant regime), `n × n × n` with `perm = [2, 0, 1]`, and `n⁴`
-//! with `perm = [3, 1, 0, 2]`. The `Complex<f64>` sweeps repeat the 2D and
-//! 3D cases; they do not conjugate, so they take the strided-perm route like
-//! f64.
+//! with `perm = [3, 1, 0, 2]`. The non-conjugating `Complex<f64>` sweeps
+//! repeat the 2D and 3D cases and take the strided-perm route like f64. The
+//! conjugating `Complex<f64>` sweep (2D, column-major) times the kernel that
+//! serves conjugating complex transposes: the naive kernel by default, HPTT
+//! with `--features hptt`.
 //!
 //! `ThresholdTable::transpose` keys on total element count (not side
 //! length) — see `NativeBackend::par_for_transpose`, which feeds
@@ -28,7 +32,7 @@ use rand::SeedableRng;
 
 use ariadnetor_core::Complex;
 use ariadnetor_core::Scalar;
-use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, TransposeDescriptor};
 use ariadnetor_linalg::expert::permute;
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
@@ -152,6 +156,27 @@ fn main() {
         &sizes_3d,
         |n| filled_c64(vec![n, n, n]),
         &[2, 0, 1],
+    );
+    run_sweep(
+        "Conjugating transpose c64 (2D n×n, perm=[1,0], column-major)",
+        &sizes_2d,
+        |n| (vec![Complex::new(0.5, -0.25); n * n], n),
+        |(input, _)| input.len(),
+        |(input, n), policy| {
+            let mut output = vec![Complex::new(0.0, 0.0); input.len()];
+            backend
+                .transpose(TransposeDescriptor {
+                    input,
+                    output: &mut output,
+                    shape: &[*n, *n],
+                    perm: &[1, 0],
+                    order: MemoryOrder::ColumnMajor,
+                    conj: true,
+                    policy,
+                })
+                .unwrap();
+            std::hint::black_box(&output);
+        },
     );
 
     eprintln!(
