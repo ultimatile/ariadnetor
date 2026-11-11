@@ -35,8 +35,8 @@ ariadnetor-tensor = {
 }
 
 [features]
-# Opt-in passthrough enabling the native HPTT transpose kernel (off by default
-# -> pure-Rust). See `ariadnetor-native`'s `hptt`.
+# Opt-in passthrough enabling the native HPTT kernel for conjugating complex
+# transposes (off by default -> pure-Rust). See `ariadnetor-native`'s `hptt`.
 hptt = ["ariadnetor-native/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.

@@ -352,7 +352,7 @@ fn prepare_for_gemm<T: Scalar>(
 ) -> Result<DenseTensorData<T>, LinalgError> {
     if tensor.rank() <= 2 {
         // No axis merge needed; route the operand to the target order through
-        // the backend transpose (a 2D order flip is HPTT's core case).
+        // the backend transpose.
         reorder_via_backend(backend, tensor, order)
     } else {
         // Axis merge requires RowMajor reshape, then convert to preferred_order

@@ -62,13 +62,14 @@ compatible nightly.
 `cargo make mutants` runs the shipped mutation pass with default features,
 so hptt is OFF and arpack OFF. Two feature-gated regions fall outside that
 pass by construction — the ARPACK backend is never compiled, and the HPTT
-transpose kernels are not compiled (hptt off by default) — so each has a
+kernels for conjugating complex transposes are not compiled (hptt off by
+default) — so each has a
 companion task and the faithful run is all three:
 
 ```bash
 cargo make mutants         # shipped pass: default features (hptt off, arpack off)
 cargo make mutants-arpack  # the #[cfg(feature = "arpack")] krylov backend
-cargo make mutants-hptt    # the #[cfg(feature = "hptt")] HPTT transpose kernels
+cargo make mutants-hptt    # the #[cfg(feature = "hptt")] HPTT conjugating-transpose kernels
 ```
 
 A bare `cargo mutants` keeps its working copies in the system temp
@@ -111,8 +112,9 @@ of every package that has mutants, and refuses any argument.
 backend that the shipped pass (arpack off by default) never builds — which
 is why its mutants trivially pass the shipped run; the pass itself needs
 the system ARPACK library at build time. `mutants-hptt` builds native with
-`--features hptt` to compile the gated kernels (the naive fallback is
-already covered by the shipped default-features run). Each pass scopes
+`--features hptt` to compile the gated kernels (the naive kernel that
+replaces them without the feature, and the strided-perm route every other
+transpose takes, are already covered by the shipped default-features run). Each pass scopes
 mutation with `--file` (and `--re` for the kernel functions) to just its
 feature-gated region, so it audits what the shipped run cannot reach
 rather than re-mutating already-covered code — without that scope the

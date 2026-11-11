@@ -37,7 +37,7 @@ echo "==> cargo bench --no-run (all sweep benches)"
 cargo bench --no-run -p ariadnetor-linalg "${BUILD_ARGS[@]}" --quiet
 
 echo "==> available cores: $(nproc)"
-echo "==> rayon will read RAYON_NUM_THREADS / std::thread::available_parallelism"
+echo "==> rayon (and the strided-perm transpose pool, sized from it) will read RAYON_NUM_THREADS / std::thread::available_parallelism"
 
 for ex in "${SWEEPS[@]}"; do
     log="sweep_${ex#sweep_}.log"

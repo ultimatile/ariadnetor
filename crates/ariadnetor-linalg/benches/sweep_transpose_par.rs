@@ -1,17 +1,24 @@
-//! Threshold sweep: dense 2D transpose time vs square matrix size,
-//! comparing `ExecPolicy::Sequential` and `ExecPolicy::Parallel(0)`.
+//! Threshold sweep: dense transpose time vs tensor size, comparing
+//! `ExecPolicy::Sequential` and `ExecPolicy::Parallel(0)`.
 //!
-//! Goal: find the matrix size at which parallel transpose starts to
-//! beat sequential. The crossover is the threshold to use for per-call
-//! `ExecPolicy` dispatch in `ariadnetor-native` (currently `usize::MAX` on
-//! laptop — unmeasured per ADR-0008).
+//! Goal: find the size at which parallel transpose starts to beat
+//! sequential. The crossover is the threshold to use for per-call
+//! `ExecPolicy` dispatch in `ariadnetor-native`.
 //!
-//! Each measurement uses `expert::permute(.., perm=[1, 0], ..)`
-//! with a caller-provided `ExecPolicy`. Global parallelism state is not
-//! consulted by the per-call path and is intentionally not touched here.
+//! Each measurement uses `expert::permute` with a caller-provided
+//! `ExecPolicy`, except the conjugating sweep, which calls
+//! `ComputeBackend::transpose` directly because no public op conjugates as
+//! it permutes. The bench does not change global parallelism state; the
+//! strided-perm route reads the global Rayon pool's width once, to size its
+//! own pool on first parallel use.
 //!
-//! Each size `n` measures permuting an `n × n` tensor with `perm = [1, 0]`.
-//! The upper size extends to 2048 to reach the parallel-dominant regime.
+//! The f64 sweeps cover `n × n` with `perm = [1, 0]` (up to 2048, the
+//! parallel-dominant regime), `n × n × n` with `perm = [2, 0, 1]`, and `n⁴`
+//! with `perm = [3, 1, 0, 2]`. The non-conjugating `Complex<f64>` sweeps
+//! repeat the 2D and 3D cases and take the strided-perm route like f64. The
+//! conjugating `Complex<f64>` sweep (2D, column-major) times the kernel that
+//! serves conjugating complex transposes: the naive kernel by default, HPTT
+//! with `--features hptt`.
 //!
 //! `ThresholdTable::transpose` keys on total element count (not side
 //! length) — see `NativeBackend::par_for_transpose`, which feeds
@@ -23,14 +30,22 @@ use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 
-use ariadnetor_core::backend::ExecPolicy;
+use ariadnetor_core::Complex;
+use ariadnetor_core::Scalar;
+use ariadnetor_core::backend::{ComputeBackend, ExecPolicy, MemoryOrder, TransposeDescriptor};
 use ariadnetor_linalg::expert::permute;
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
 
-fn random_square(n: usize, seed: u64) -> DenseTensor<f64> {
+fn random_f64(shape: Vec<usize>, seed: u64) -> DenseTensor<f64> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-    DenseTensor::random(vec![n, n], &mut rng)
+    DenseTensor::random(shape, &mut rng)
+}
+
+/// A complex tensor of the given shape. A transpose only moves elements, so
+/// its time does not depend on their values.
+fn filled_c64(shape: Vec<usize>) -> DenseTensor<Complex<f64>> {
+    DenseTensor::filled(shape, Complex::new(0.5, -0.25))
 }
 
 fn measure<F: FnMut()>(target: Duration, mut f: F) -> (Duration, u32) {
@@ -64,7 +79,7 @@ where
     for &n in sizes {
         let state = make(n);
         let key = key_of(&state);
-        let target = if n >= 512 {
+        let target = if key >= 262_144 {
             Duration::from_millis(500)
         } else {
             Duration::from_millis(150)
@@ -81,17 +96,86 @@ where
     }
 }
 
-fn main() {
-    let backend = NativeBackend::new();
-    let sizes = [16usize, 32, 64, 128, 256, 512, 1024, 2048];
-
+/// Sweep `expert::permute` by `perm` over tensors `make` builds, keyed on
+/// their element count.
+fn sweep_permute<T: Scalar>(
+    backend: &NativeBackend,
+    label: &str,
+    sizes: &[usize],
+    make: impl Fn(usize) -> DenseTensor<T>,
+    perm: &[usize],
+) {
     run_sweep(
-        "Transpose (2D n×n, perm=[1,0])",
-        &sizes,
-        |n| random_square(n, 42),
+        label,
+        sizes,
+        make,
         |t| t.len(),
         |t, policy| {
-            let _ = permute(&backend, t, &[1, 0], policy).unwrap();
+            let _ = permute(backend, t, perm, policy).unwrap();
+        },
+    );
+}
+
+fn main() {
+    let backend = NativeBackend::new();
+    let sizes_2d = [16usize, 32, 64, 128, 256, 512, 1024, 2048];
+    let sizes_3d = [8usize, 16, 32, 64, 128, 256];
+    let sizes_4d = [4usize, 8, 16, 32, 64];
+
+    sweep_permute(
+        &backend,
+        "Transpose f64 (2D n×n, perm=[1,0])",
+        &sizes_2d,
+        |n| random_f64(vec![n, n], 42),
+        &[1, 0],
+    );
+    sweep_permute(
+        &backend,
+        "Transpose f64 (3D n×n×n, perm=[2,0,1])",
+        &sizes_3d,
+        |n| random_f64(vec![n, n, n], 42),
+        &[2, 0, 1],
+    );
+    sweep_permute(
+        &backend,
+        "Transpose f64 (4D n⁴, perm=[3,1,0,2])",
+        &sizes_4d,
+        |n| random_f64(vec![n, n, n, n], 42),
+        &[3, 1, 0, 2],
+    );
+    sweep_permute(
+        &backend,
+        "Transpose c64 (2D n×n, perm=[1,0])",
+        &sizes_2d,
+        |n| filled_c64(vec![n, n]),
+        &[1, 0],
+    );
+    sweep_permute(
+        &backend,
+        "Transpose c64 (3D n×n×n, perm=[2,0,1])",
+        &sizes_3d,
+        |n| filled_c64(vec![n, n, n]),
+        &[2, 0, 1],
+    );
+    run_sweep(
+        "Conjugating transpose c64 (2D n×n, perm=[1,0], column-major)",
+        &sizes_2d,
+        |n| (vec![Complex::new(0.5, -0.25); n * n], n),
+        |(input, _)| input.len(),
+        |(input, n), policy| {
+            let mut output = vec![Complex::new(0.0, 0.0); input.len()];
+            backend
+                .transpose(TransposeDescriptor {
+                    input,
+                    output: &mut output,
+                    shape: &[*n, *n],
+                    perm: &[1, 0],
+                    order: MemoryOrder::ColumnMajor,
+                    conj: true,
+                    policy,
+                })
+                .unwrap();
+            std::hint::black_box(&output);
         },
     );
 

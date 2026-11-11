@@ -37,21 +37,19 @@ pub enum MemoryOrder {
 
 /// Per-call execution policy for a compute backend operation.
 ///
-/// `Parallel(0)` means "backend auto" — faer uses rayon's
-/// `current_num_threads`, while HPTT resolves `0` via
-/// `std::thread::available_parallelism()` before crossing the FFI
-/// boundary (HPTT 0.4 rejects a literal `0`). `Parallel(n)` with
-/// `n > 0` is a target worker count whose strictness depends on the
-/// backend: HPTT spawns exactly `n` OpenMP threads, while faer and
-/// the naive Rayon kernel treat `n` as a partitioning hint dispatched
-/// on the global Rayon pool. `Sequential` forces single-threaded
-/// execution.
+/// `Parallel(0)` means "backend auto" and `Parallel(n)` with `n > 0` a
+/// target worker count. How strictly a backend honours either, and on which
+/// threads, is the backend's to define and is documented on its operations
+/// (for the native backend, on `NativeBackend` and its `transpose`).
+///
+/// `Sequential` forces single-threaded execution.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExecPolicy {
     /// Force single-threaded execution.
     Sequential,
     /// Run in parallel with the given target worker count; `0` means
-    /// "backend auto" (see the type-level note for per-backend semantics).
+    /// "backend auto" (the type-level note says where each backend documents
+    /// what this means for it).
     Parallel(usize),
 }
 

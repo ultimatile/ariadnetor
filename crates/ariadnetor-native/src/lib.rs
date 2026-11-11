@@ -5,7 +5,9 @@
 //! - **SVD/QR/LQ/EIGH**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **Tridiagonal EIGH**: faer (f64, f32; the eigensystem of a real
 //!   symmetric tridiagonal matrix is real, so complex scalars are rejected)
-//! - **Transpose**: HPTT (f64, f32, Complex) when the `hptt` feature is on, a naive kernel otherwise
+//! - **Transpose**: strided-perm (f64, f32, `Complex<f64>`, `Complex<f32>`); a
+//!   conjugating complex transpose of rank 1 or more uses HPTT when the `hptt`
+//!   feature is on and a naive kernel otherwise
 
 #![deny(missing_docs)]
 
@@ -36,10 +38,12 @@ pub use performance::{PerformanceManager, ThresholdTable};
 ///
 /// `Parallel(0)` defers to faer's Rayon default (current thread pool size).
 /// `Parallel(n)` for `n > 0` is an advisory thread-count hint passed to
-/// `faer::Par::rayon(n)`; faer dispatches on the global Rayon pool, so
+/// `faer::Par::rayon(n)`; faer dispatches on the current Rayon pool (the
+/// global one unless the caller installed another), so
 /// `n` influences work partitioning rather than guaranteeing exactly
-/// `n` OS threads. The naive transpose kernel honors `n` with the same
-/// semantics.
+/// `n` OS threads. The naive transpose kernel, which serves conjugating
+/// complex transposes when the `hptt` feature is off, honors `n` with the
+/// same semantics.
 pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
     match policy {
         ExecPolicy::Sequential => faer::Par::Seq,
@@ -48,11 +52,16 @@ pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
     }
 }
 
-/// Native backend using faer for GEMM and, with the `hptt` feature, HPTT for
-/// transpose (a naive kernel otherwise).
+/// Native backend using faer for GEMM and the decompositions, and
+/// strided-perm for transpose (HPTT or a naive kernel for a conjugating
+/// complex transpose).
 ///
-/// This is the sole owner of faer and hptt-rs dependencies in the workspace.
+/// This is the sole owner of faer, strided-perm and hptt-rs dependencies in
+/// the workspace.
 /// Other crates access these capabilities through the `ComputeBackend` trait.
+/// The faer ops run on the current Rayon pool (the global one unless the
+/// caller installed another): `ExecPolicy::Parallel(0)` takes its width, and
+/// `Parallel(n)` is a partitioning hint rather than a thread count.
 /// Holds a `PerformanceManager` that drives the `par_for_*` dispatch
 /// decisions for each op based on a hardware-aware threshold table.
 #[derive(Debug, Clone)]
@@ -144,9 +153,32 @@ impl ComputeBackend for NativeBackend {
 
     /// Transpose tensor axes according to permutation.
     ///
-    /// Uses HPTT for f64/f32/Complex when the `hptt` feature is enabled,
-    /// otherwise a naive output-driven kernel.
+    /// Copies through strided-perm, except a conjugating transpose of a
+    /// complex type of rank 1 or more, which uses HPTT when the `hptt`
+    /// feature is enabled and a naive output-driven kernel otherwise. Under `ExecPolicy::Parallel(n)`
+    /// the strided-perm copy runs on a dedicated pool sized from the global
+    /// Rayon pool, using at most `n` of its threads (all of them for
+    /// `n == 0`) and fewer when the copy is small; a call made on
+    /// a Rayon worker runs on the calling thread. The conjugating kernels
+    /// keep their own semantics: the naive kernel splits its output on the
+    /// current Rayon pool with `n` (that pool's width for `n == 0`) as a
+    /// partitioning hint, and HPTT spawns
+    /// exactly `n` OpenMP threads (`available_parallelism()` of them for
+    /// `n == 0`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BackendError::InvalidArgument`] when `perm` is not a
+    /// permutation of `0..shape.len()`, when the element count of `shape`
+    /// overflows `usize`, or when `input` or `output` does not hold exactly
+    /// that many elements; nothing is written in that case. Returns
+    /// [`BackendError::ExecutionFailed`] when the kernel rejects a valid
+    /// descriptor, as HPTT does for a `Parallel(n)` thread count beyond its
+    /// C `int` range.
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+        if transpose::validate(&desc)? == 0 {
+            return Ok(());
+        }
         T::dispatch_op(&NativeKernels, OpDesc::Transpose(desc))
     }
 
@@ -268,7 +300,7 @@ impl ComputeBackend for NativeBackend {
     }
 }
 
-/// faer / HPTT kernel set the call-site dispatcher routes to.
+/// faer / transpose kernel set the call-site dispatcher routes to.
 ///
 /// `DispatchScalar::dispatch_op` resolves a generic `OpDesc<'_, T>` to one of
 /// these four methods, where the scalar is concrete; each method then matches the op
