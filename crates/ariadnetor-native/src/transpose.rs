@@ -148,14 +148,14 @@ fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendErr
     }
     let input_strides = compute_strides(shape, order);
     let dims: Vec<usize> = perm.iter().map(|&axis| shape[axis]).collect();
-    let src_strides = perm
+    let src_strides: Vec<isize> = perm
         .iter()
         .map(|&axis| stride_to_isize(input_strides[axis]))
-        .collect::<Result<Vec<_>, _>>()?;
-    let dst_strides = compute_strides(&dims, order)
+        .collect();
+    let dst_strides: Vec<isize> = compute_strides(&dims, order)
         .into_iter()
         .map(stride_to_isize)
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect();
     let src = StridedView::new(input, &dims, &src_strides, 0).map_err(strided_failure)?;
     let mut dst = StridedViewMut::new(output, &dims, &dst_strides, 0).map_err(strided_failure)?;
     strided_perm::copy_into(&mut dst, &src, exec_for(policy)).map_err(strided_failure)
@@ -165,11 +165,9 @@ fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendErr
 ///
 /// With every extent at least 1, a stride is a product of extents and so at
 /// most `product(shape)`, the slice length `validate` admitted, which a slice
-/// keeps within `isize::MAX`; the conversion therefore succeeds.
-fn stride_to_isize(stride: usize) -> Result<isize, BackendError> {
-    isize::try_from(stride).map_err(|_| {
-        BackendError::InvalidArgument(format!("transpose: stride {stride} exceeds isize::MAX"))
-    })
+/// keeps within `isize::MAX`.
+fn stride_to_isize(stride: usize) -> isize {
+    isize::try_from(stride).expect("a stride is at most the slice length")
 }
 
 fn strided_failure(e: impl std::fmt::Display) -> BackendError {
@@ -182,9 +180,10 @@ fn strided_failure(e: impl std::fmt::Display) -> BackendError {
 static POOL: OnceLock<Option<Pool>> = OnceLock::new();
 
 /// The shared pool, sized from the global Rayon pool's width so that
-/// `RAYON_NUM_THREADS` bounds transpose threads as it bounds faer's.
+/// `RAYON_NUM_THREADS` bounds this pool's width as it bounds the global
+/// pool's. The two pools are separate thread sets.
 ///
-/// `exec_for` calls this only off Rayon workers, so `current_num_threads`
+/// `exec_in` reaches this only off Rayon workers, so `current_num_threads`
 /// reads the global pool, not a caller's custom pool.
 fn pool() -> Option<&'static Pool> {
     POOL.get_or_init(|| {
@@ -200,19 +199,16 @@ fn pool() -> Option<&'static Pool> {
     .as_ref()
 }
 
-/// The placement token for a strided-perm copy under `policy`.
-///
-/// Settles the serial cases before touching `pool()`, so a call from a Rayon
-/// worker neither runs on the pool nor initialises it.
+/// The placement token for a strided-perm copy under `policy`, on the
+/// shared pool.
 fn exec_for(policy: ExecPolicy) -> Exec<'static> {
-    match policy {
-        ExecPolicy::Sequential => Exec::serial(),
-        ExecPolicy::Parallel(_) if on_rayon_worker() => Exec::serial(),
-        ExecPolicy::Parallel(_) => exec_in(pool(), policy),
-    }
+    exec_in(pool, policy)
 }
 
-/// Map `policy` to a token on `pool`.
+/// Map `policy` to a token on the pool `pool` yields.
+///
+/// `pool` is called only once the serial cases are settled, so a call from a
+/// Rayon worker neither runs on the pool nor initialises it.
 ///
 /// * `Sequential` → serial.
 /// * Any policy on a Rayon worker → serial. A Rayon worker that blocks on
@@ -224,13 +220,13 @@ fn exec_for(policy: ExecPolicy) -> Exec<'static> {
 ///   clamped to the width by `Exec::new`. strided-perm narrows the width
 ///   further when the copy is too small to repay a fan-out.
 /// * No pool → serial.
-fn exec_in(pool: Option<&Pool>, policy: ExecPolicy) -> Exec<'_> {
+fn exec_in<'p>(pool: impl FnOnce() -> Option<&'p Pool>, policy: ExecPolicy) -> Exec<'p> {
     let n = match policy {
         ExecPolicy::Sequential => return Exec::serial(),
         ExecPolicy::Parallel(_) if on_rayon_worker() => return Exec::serial(),
         ExecPolicy::Parallel(n) => n,
     };
-    let Some(pool) = pool else {
+    let Some(pool) = pool() else {
         return Exec::serial();
     };
     let budget = if n == 0 { pool.width().get() } else { n };

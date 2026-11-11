@@ -216,10 +216,15 @@ fn run_transpose<T: Sample>(
 }
 
 const ORDERS: [MemoryOrder; 2] = [MemoryOrder::RowMajor, MemoryOrder::ColumnMajor];
-const POLICIES: [ExecPolicy; 3] = [
+/// `Parallel(1)` is a one-slot budget, and `Parallel(64)` exceeds the pool's
+/// width on any host with fewer than 64 Rayon threads, so both edges of the
+/// budget clamp are copied for real there.
+const POLICIES: [ExecPolicy; 5] = [
     ExecPolicy::Sequential,
     ExecPolicy::Parallel(0),
+    ExecPolicy::Parallel(1),
     ExecPolicy::Parallel(2),
+    ExecPolicy::Parallel(64),
 ];
 
 /// Rank 0 through 5, two zero-size shapes, and a 15_360-element case that

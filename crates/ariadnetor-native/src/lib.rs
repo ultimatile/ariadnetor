@@ -59,6 +59,9 @@ pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
 /// This is the sole owner of faer, strided-perm and hptt-rs dependencies in
 /// the workspace.
 /// Other crates access these capabilities through the `ComputeBackend` trait.
+/// The faer ops run on the current Rayon pool (the global one unless the
+/// caller installed another): `ExecPolicy::Parallel(0)` takes its width, and
+/// `Parallel(n)` is a partitioning hint rather than a thread count.
 /// Holds a `PerformanceManager` that drives the `par_for_*` dispatch
 /// decisions for each op based on a hardware-aware threshold table.
 #[derive(Debug, Clone)]
@@ -156,7 +159,12 @@ impl ComputeBackend for NativeBackend {
     /// the strided-perm copy runs on a dedicated pool sized from the global
     /// Rayon pool, using at most `n` of its threads (all of them for
     /// `n == 0`) and fewer when the copy is small; a call made on
-    /// a Rayon worker runs on the calling thread.
+    /// a Rayon worker runs on the calling thread. The conjugating kernels
+    /// keep their own semantics: the naive kernel splits its output on the
+    /// current Rayon pool with `n` (that pool's width for `n == 0`) as a
+    /// partitioning hint, and HPTT spawns
+    /// exactly `n` OpenMP threads (`available_parallelism()` of them for
+    /// `n == 0`).
     ///
     /// # Errors
     ///

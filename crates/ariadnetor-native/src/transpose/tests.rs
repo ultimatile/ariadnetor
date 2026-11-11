@@ -18,16 +18,16 @@ fn budget(exec: Exec<'_>) -> usize {
 #[test]
 fn sequential_is_serial() {
     let pool = pool4();
-    assert_eq!(budget(exec_in(Some(&pool), ExecPolicy::Sequential)), 1);
+    assert_eq!(budget(exec_in(|| Some(&pool), ExecPolicy::Sequential)), 1);
 }
 
 #[test]
 fn parallel_off_a_rayon_worker_uses_the_pool() {
     let pool = pool4();
     assert!(!on_rayon_worker());
-    assert_eq!(budget(exec_in(Some(&pool), ExecPolicy::Parallel(0))), 4);
-    assert_eq!(budget(exec_in(Some(&pool), ExecPolicy::Parallel(3))), 3);
-    assert_eq!(budget(exec_in(Some(&pool), ExecPolicy::Parallel(64))), 4);
+    assert_eq!(budget(exec_in(|| Some(&pool), ExecPolicy::Parallel(0))), 4);
+    assert_eq!(budget(exec_in(|| Some(&pool), ExecPolicy::Parallel(3))), 3);
+    assert_eq!(budget(exec_in(|| Some(&pool), ExecPolicy::Parallel(64))), 4);
 }
 
 #[test]
@@ -35,8 +35,8 @@ fn parallel_on_a_global_rayon_worker_is_serial() {
     let pool = pool4();
     rayon::scope(|_| {
         assert!(on_rayon_worker());
-        assert_eq!(budget(exec_in(Some(&pool), ExecPolicy::Parallel(0))), 1);
-        assert_eq!(budget(exec_in(Some(&pool), ExecPolicy::Parallel(3))), 1);
+        assert_eq!(budget(exec_in(|| Some(&pool), ExecPolicy::Parallel(0))), 1);
+        assert_eq!(budget(exec_in(|| Some(&pool), ExecPolicy::Parallel(3))), 1);
     });
 }
 
@@ -49,13 +49,13 @@ fn parallel_on_a_custom_rayon_worker_is_serial() {
         .unwrap();
     custom.install(|| {
         assert!(on_rayon_worker());
-        assert_eq!(budget(exec_in(Some(&pool), ExecPolicy::Parallel(0))), 1);
+        assert_eq!(budget(exec_in(|| Some(&pool), ExecPolicy::Parallel(0))), 1);
     });
 }
 
 #[test]
 fn parallel_without_a_pool_is_serial() {
-    assert_eq!(budget(exec_in(None, ExecPolicy::Parallel(0))), 1);
+    assert_eq!(budget(exec_in(|| None, ExecPolicy::Parallel(0))), 1);
 }
 
 #[test]

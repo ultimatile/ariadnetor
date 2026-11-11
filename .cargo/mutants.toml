@@ -25,7 +25,7 @@
 copy_target = false
 
 # Reduce timeout from default 5x to 2x baseline.
-# Most timeouts are FFI glue mutations (gemm/qr/lq/svd/solve/transpose)
+# Most timeouts are FFI glue mutations (gemm/qr/lq/svd/solve)
 # that cause LAPACK to hang on garbage input — 2x is enough to detect them.
 timeout_multiplier = 2.0
 
