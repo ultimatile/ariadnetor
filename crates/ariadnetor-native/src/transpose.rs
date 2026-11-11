@@ -8,7 +8,8 @@
 //! nonempty descriptor. Each copies through `strided_perm::copy_into`, except
 //! a conjugating transpose of a complex type: strided-perm only copies, so
 //! that case goes to HPTT under the `hptt` feature and to the naive
-//! output-driven kernel otherwise, or is conjugated in place for rank 0. For real types conjugation is the
+//! output-driven kernel otherwise; for rank 0 its one element is
+//! conjugated straight into `output`. For real types conjugation is the
 //! identity, so a real `conj = true` transpose takes the strided-perm route
 //! as well.
 //!
@@ -246,8 +247,10 @@ fn exec_in<'p>(pool: impl FnOnce() -> Option<&'p Pool>, policy: ExecPolicy) -> E
     let Some(pool) = pool() else {
         return Exec::serial();
     };
+    // `Exec::new` fails only on a zero budget; the width is nonzero and the
+    // other arm has `n > 0`.
     let budget = if n == 0 { pool.width().get() } else { n };
-    Exec::new(pool, budget).unwrap_or_else(|_| Exec::serial())
+    Exec::new(pool, budget).expect("the budget is nonzero")
 }
 
 fn on_rayon_worker() -> bool {

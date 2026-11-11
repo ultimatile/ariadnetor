@@ -52,14 +52,12 @@ impl ThresholdTable {
     /// `transpose` permits parallelism from 65_536 total elements. The
     /// strided-perm kernel narrows its own width and stays on one thread
     /// until a copy is large enough to repay a fan-out, so this value only
-    /// has to sit below that point. The value itself is where the naive
-    /// kernel, which serves conjugating complex transposes in the default
-    /// build, gained from its parallel path when `sweep_transpose_par.rs`
-    /// still measured that kernel; the sweep now measures the strided-perm
-    /// route. HPTT, which serves those transposes under the `hptt` feature,
-    /// was measured separately on an Apple M2 8-core: conjugating
-    /// `Complex<f64>` transposes of rank 2 to 4 ran faster in parallel than
-    /// sequentially from this size up.
+    /// has to sit below that point. The value is the naive kernel's
+    /// parallel crossover; that kernel serves conjugating complex transposes
+    /// in the default build. HPTT, which serves them under the `hptt`
+    /// feature, ran conjugating `Complex<f64>` transposes of rank 2 to 4
+    /// faster in parallel than sequentially from this size up on an Apple
+    /// M2 8-core.
     pub fn laptop() -> Self {
         Self {
             svd: 384,
@@ -84,9 +82,10 @@ impl ThresholdTable {
     ///
     /// `transpose` permits parallelism from 262_144 total elements, the
     /// size above which the naive kernel's parallel path beat its own
-    /// sequential path on 2D `[n, n]` inputs when the transpose sweep still
-    /// measured that kernel. HPTT was not measured on this profile. Above
-    /// it, strided-perm still
+    /// sequential path on 2D `[n, n]` inputs. HPTT's real 2D transposes
+    /// crossed over only at 4_194_304 elements on this profile; its
+    /// conjugating complex transposes, the only ones it serves, were not
+    /// measured here. Above 262_144, strided-perm still
     /// picks its own width and stays on one thread for a copy too small to
     /// repay a fan-out. The dispatch key is total elements for any rank.
     pub fn workstation() -> Self {
