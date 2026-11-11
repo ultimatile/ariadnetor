@@ -1,10 +1,10 @@
 //! Route a cross-order memory reorder through the backend transpose.
 //!
 //! The linalg row-major sandwich normalizes operands across memory order with
-//! `ariadnetor_tensor::reorder_data`, a backend-less per-element loop that
-//! never reaches HPTT. A cross-order reorder at fixed logical shape is a
-//! physical axis-reversal permutation, so the backend transpose computes the
-//! same bytes while using HPTT under `--features hptt`.
+//! `ariadnetor_tensor::reorder_data`, a backend-less per-element loop. A
+//! cross-order reorder at fixed logical shape is a physical axis-reversal
+//! permutation, so the backend transpose computes the same bytes with the
+//! backend's blocked kernel (strided-perm on the native backend).
 
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{ComputeBackend, MemoryOrder, TransposeDescriptor};
@@ -18,9 +18,9 @@ use crate::error::LinalgError;
 /// A reorder from `from` to the opposite order keeps the logical index but
 /// moves each element from its `from`-layout slot to its `to`-layout slot —
 /// exactly `backend.transpose` with the reverse permutation and the SOURCE
-/// order. That path uses HPTT for f64 / f32 / complex under `--features hptt`
-/// (and the native naive kernel, which can parallelize, otherwise), where
-/// `reorder_data` is always a sequential per-element loop. The transpose emits
+/// order. On the native backend that path is the blocked strided-perm copy,
+/// which can parallelize, where `reorder_data` is always a sequential
+/// per-element loop. The transpose emits
 /// the buffer for the reversed shape; it is re-wrapped under the original
 /// logical shape and `to`, which is byte-identical to `reorder_data(tensor, to)`.
 ///
@@ -37,7 +37,7 @@ pub(crate) fn reorder_via_backend<T: Scalar>(
     let shape = tensor.shape().to_vec();
     // A rank-0 / rank-1 tensor has one byte layout shared by both orders, so
     // re-tag the order by cloning the Arc-backed storage (zero-copy) rather
-    // than moving data; this also keeps a degenerate perm off the HPTT path.
+    // than moving data.
     if shape.len() <= 1 {
         return Ok(DenseTensorData::new(
             tensor.storage().clone(),
@@ -72,9 +72,7 @@ mod tests {
 
     /// The routed reorder must be byte-identical to the naive `reorder_data`
     /// for every rank, order pair, and scalar. Distinct per-slot values make a
-    /// wrong permutation (rather than a mere layout re-tag) observable. Run
-    /// under both the default build (native naive kernel) and `--features hptt`
-    /// (HPTT) — the two are distinct compilations that must both agree.
+    /// wrong permutation (rather than a mere layout re-tag) observable.
     fn check<T>(mk: impl Fn(usize) -> T)
     where
         T: Scalar + PartialEq + std::fmt::Debug,

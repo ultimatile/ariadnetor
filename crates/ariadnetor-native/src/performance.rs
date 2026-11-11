@@ -4,7 +4,7 @@
 //! linear-algebra op is worth running in parallel on this machine. The
 //! sentinel `usize::MAX` means "no finite parallel threshold" — either
 //! the op is unmeasured on this profile, or calibration showed no
-//! regime where parallel beats sequential (e.g. `ThresholdTable::laptop().transpose`).
+//! regime where parallel beats sequential (e.g. `ThresholdTable::workstation().svd`).
 //! `PerformanceManager` pairs a table with the comparison logic that
 //! `NativeBackend::par_for_*` methods call.
 
@@ -21,7 +21,7 @@ use ariadnetor_core::backend::ExecPolicy;
 ///
 /// `usize::MAX` marks "no finite parallel threshold": either unmeasured
 /// on this profile, or a calibrated decision that parallel never wins
-/// (e.g. `ThresholdTable::laptop().transpose`). `policy_by_n` treats it
+/// (e.g. `ThresholdTable::workstation().svd`). `policy_by_n` treats it
 /// as `ExecPolicy::Sequential` in both cases.
 #[derive(Clone, Debug)]
 pub struct ThresholdTable {
@@ -49,12 +49,12 @@ impl ThresholdTable {
     /// Values come from `crates/ariadnetor-linalg/benches/sweep_{decomp,
     /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
     ///
-    /// `transpose` is calibrated per backend at compile time. Under the
-    /// `hptt` feature the sweep showed no regime where Rayon-style
-    /// parallel can beat HPTT's tiled sequential on laptop, so the
-    /// sentinel `usize::MAX` is retained. Without it (the default build),
-    /// the naive fallback's simpler sequential loses to the parallel
-    /// kernel above ~65k total elements.
+    /// `transpose` permits parallelism from 65_536 total elements. The
+    /// strided-perm kernel narrows its own width and stays on one thread
+    /// until a copy is large enough to repay a fan-out, so this value only
+    /// has to sit below that point. It is also where the naive kernel,
+    /// which serves conjugating complex transposes in the default build,
+    /// was measured to gain from its parallel path.
     pub fn laptop() -> Self {
         Self {
             svd: 384,
@@ -64,11 +64,7 @@ impl ThresholdTable {
             eig: 256,
             gemm: 192,
             solve: 768,
-            transpose: if cfg!(feature = "hptt") {
-                usize::MAX
-            } else {
-                65_536
-            },
+            transpose: 65_536,
         }
     }
 
@@ -81,13 +77,10 @@ impl ThresholdTable {
     /// (`cbrt(m*n*k) ≥ 768`) and transposes benefit from parallel
     /// dispatch.
     ///
-    /// `transpose` is calibrated per backend at compile time. Under
-    /// `hptt` the tiled kernel only crosses over at total element count
-    /// ≥ 4_194_304. Without it (the default build), the naive fallback
-    /// crosses over much earlier — its parallel kernel beats its own
-    /// sequential above ~262_144 total elements. Calibration was
-    /// performed on 2D `[n, n]` inputs; the dispatch key is total
-    /// elements for any rank.
+    /// `transpose` permits parallelism from 262_144 total elements, the
+    /// size above which the naive kernel's parallel path beat its own
+    /// sequential path on 2D `[n, n]` inputs. strided-perm narrows its own
+    /// width below this. The dispatch key is total elements for any rank.
     pub fn workstation() -> Self {
         Self {
             svd: usize::MAX,
@@ -97,11 +90,7 @@ impl ThresholdTable {
             eig: usize::MAX,
             gemm: 768,
             solve: usize::MAX,
-            transpose: if cfg!(feature = "hptt") {
-                4_194_304
-            } else {
-                262_144
-            },
+            transpose: 262_144,
         }
     }
 
@@ -180,9 +169,6 @@ mod tests {
         assert_eq!(t.eig, 256);
         assert_eq!(t.gemm, 192);
         assert_eq!(t.solve, 768);
-        #[cfg(feature = "hptt")]
-        assert_eq!(t.transpose, usize::MAX);
-        #[cfg(not(feature = "hptt"))]
         assert_eq!(t.transpose, 65_536);
     }
 
@@ -196,9 +182,6 @@ mod tests {
         assert_eq!(t.eig, usize::MAX);
         assert_eq!(t.gemm, 768);
         assert_eq!(t.solve, usize::MAX);
-        #[cfg(feature = "hptt")]
-        assert_eq!(t.transpose, 4_194_304);
-        #[cfg(not(feature = "hptt"))]
         assert_eq!(t.transpose, 262_144);
     }
 

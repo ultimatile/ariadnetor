@@ -43,8 +43,8 @@ criterion = { workspace = true }
 rand = { workspace = true }
 
 [features]
-# Opt-in passthrough enabling the native HPTT transpose kernel (off by default
-# -> pure-Rust). See `ariadnetor-native`'s `hptt`.
+# Opt-in passthrough enabling the native HPTT kernel for conjugating complex
+# transposes (off by default -> pure-Rust). See `ariadnetor-native`'s `hptt`.
 hptt = ["ariadnetor-native/hptt"]
 # Swaps the `Host` substrate alias to a distinct stateful backend so the
 # host-pinned surface is proven to hold against a non-native substrate.

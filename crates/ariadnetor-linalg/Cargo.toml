@@ -73,10 +73,10 @@ criterion = { workspace = true }
 rand = { workspace = true }
 
 [features]
-# Opt-in passthrough enabling the native HPTT transpose kernel through the
-# `ariadnetor-tensor` -> `ariadnetor-native` edge (off by default -> pure-Rust).
-# Tests / benches that want the accelerated kernel run with `--features hptt`;
-# the default exercises the naive transpose fallback.
+# Opt-in passthrough enabling the native HPTT kernel for conjugating complex
+# transposes through the `ariadnetor-tensor` -> `ariadnetor-native` edge (off by
+# default -> pure-Rust). Without it those transposes use the naive kernel; every
+# other transpose uses strided-perm in both builds.
 hptt = ["ariadnetor-tensor/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.

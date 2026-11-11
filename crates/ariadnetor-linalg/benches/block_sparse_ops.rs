@@ -10,7 +10,7 @@
 //! equivalent total dimension. Rank-3 contraction is BlockSparse-only.
 //!
 //! The `block_transpose` group is a separate micro-benchmark isolating the
-//! physical per-block transpose (naive kernel vs HPTT via `backend.transpose`).
+//! physical per-block transpose through `backend.transpose`.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
@@ -176,9 +176,8 @@ fn bench_contract_rank3(c: &mut Criterion) {
 /// trans-flag shortcut, so every block is physically transposed through the
 /// backend. Unlike the isolated `block_transpose` micro-benchmark, this drives
 /// the full public `permute_block_sparse_with_backend` path — block iteration,
-/// per-block transpose, output assembly — so it tracks the user-facing payoff
-/// of routing the per-block transpose through HPTT (build with `--features
-/// hptt` and compare).
+/// per-block transpose, output assembly — so it tracks the user-facing cost
+/// of the backend's per-block transpose kernel.
 fn bench_permute(c: &mut Criterion) {
     let backend = NativeBackend::new();
     let mut group = c.benchmark_group("permute_bsp");
@@ -361,7 +360,7 @@ const D_SWEEP: [usize; 4] = [16, 32, 64, 128];
 /// physical transpose otherwise; block-sparse permute transposes every
 /// non-identity perm physically. Each perm here is neither an ascending prefix
 /// nor suffix, so it exercises that physical fallback rather than the flag path.
-/// `d` sweeps the per-sector degeneracy so the naive-vs-HPTT crossover can be
+/// `d` sweeps the per-sector degeneracy so the per-block transpose cost can be
 /// read per block shape instead of being diluted by surrounding contraction
 /// work.
 fn transpose_cases() -> Vec<TransposeCase> {
@@ -427,12 +426,11 @@ fn bench_transpose_case(
 
 /// Micro-benchmark for the physical per-block transpose.
 ///
-/// This times [`ComputeBackend::transpose`] — the native naive kernel on the
-/// default build, HPTT under `--features hptt` — so comparing the two baselines
-/// answers "does HPTT beat the naive kernel per block". Block-sparse
-/// contract/permute route their per-block transpose through
-/// [`ComputeBackend::transpose`], so this measures that production path directly:
-/// the native-vs-HPTT ratio is the per-block payoff of building with HPTT.
+/// This times [`ComputeBackend::transpose`], the strided-perm copy on the
+/// native backend in every build. Block-sparse contract/permute route their
+/// per-block transpose through [`ComputeBackend::transpose`], so this measures
+/// that production path directly; comparing criterion baselines across
+/// revisions gives the per-block effect of a kernel change.
 fn bench_block_transpose(c: &mut Criterion) {
     let backend = NativeBackend::new();
     let order = backend.preferred_order();

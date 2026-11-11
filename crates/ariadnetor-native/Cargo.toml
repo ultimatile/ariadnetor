@@ -2,10 +2,10 @@
 name = "ariadnetor-native"
 version.workspace = true
 edition.workspace = true
-description = "Native backend for ariadnetor (faer; optional HPTT transpose)"
+description = "Native backend for ariadnetor (faer; strided-perm transpose)"
 repository.workspace = true
 license.workspace = true
-keywords = ["backend", "faer", "hptt", "tensor", "transpose"]
+keywords = ["backend", "faer", "tensor", "transpose"]
 categories = ["mathematics", "science"]
 
 [lib]
@@ -19,14 +19,18 @@ hptt = { workspace = true, optional = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 rayon = { workspace = true }
+strided-perm = { workspace = true }
+strided-view = { workspace = true }
+threadteam = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
 
 [features]
-# `hptt` is opt-in: the HPTT transpose kernel pulls a C++/CMake build, so the
-# default stays pure-Rust. Enable it directly or via a dependent crate's `hptt`
-# passthrough to use the accelerated kernel.
+# `hptt` is opt-in: the HPTT kernel pulls a C++/CMake build, so the default
+# stays pure-Rust. It serves only conjugating complex transposes, which
+# strided-perm cannot express; every other transpose uses strided-perm in
+# both builds.
 default = []
 hptt = ["dep:hptt"]
 

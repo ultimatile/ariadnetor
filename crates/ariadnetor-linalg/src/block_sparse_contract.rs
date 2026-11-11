@@ -374,9 +374,8 @@ fn contract_to_tensor<T: Scalar, S: Sector>(
 
 /// Physically transpose a block into a fresh buffer via the backend.
 ///
-/// Runs sequentially: per-block transposes are small enough that Rayon dispatch
-/// costs more than it saves. HPTT (when the build enables it) or the native
-/// naive kernel is selected inside the backend.
+/// Runs sequentially: per-block transposes are small enough that parallel
+/// dispatch costs more than it saves. The backend selects the kernel.
 fn transpose_block<T: Scalar>(
     backend: &impl ComputeBackend,
     data: &[T],

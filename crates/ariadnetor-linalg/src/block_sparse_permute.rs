@@ -71,7 +71,7 @@ where
             .expect("permuted block must exist in output");
         // Transpose straight into the freshly-zeroed output block, avoiding an
         // intermediate buffer and copy. Sequential: per-block transposes are too
-        // small for Rayon dispatch to pay off.
+        // small for parallel dispatch to pay off.
         backend.transpose(TransposeDescriptor {
             input: src_data,
             output: dst_data,

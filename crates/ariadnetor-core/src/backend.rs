@@ -37,15 +37,23 @@ pub enum MemoryOrder {
 
 /// Per-call execution policy for a compute backend operation.
 ///
-/// `Parallel(0)` means "backend auto" — faer uses rayon's
-/// `current_num_threads`, while HPTT resolves `0` via
-/// `std::thread::available_parallelism()` before crossing the FFI
-/// boundary (HPTT 0.4 rejects a literal `0`). `Parallel(n)` with
-/// `n > 0` is a target worker count whose strictness depends on the
-/// backend: HPTT spawns exactly `n` OpenMP threads, while faer and
-/// the naive Rayon kernel treat `n` as a partitioning hint dispatched
-/// on the global Rayon pool. `Sequential` forces single-threaded
-/// execution.
+/// `Parallel(0)` means "backend auto" and `Parallel(n)` with `n > 0` a
+/// target worker count; what each means depends on the kernel:
+///
+/// - faer and the naive Rayon transpose kernel run on the global Rayon
+///   pool. `0` resolves to rayon's `current_num_threads`, and `n` is a
+///   partitioning hint.
+/// - The native strided-perm transpose runs on a dedicated pool as wide as
+///   the global Rayon pool. `0` takes the whole pool and `n` at most `n` of
+///   its threads; the kernel uses fewer when the copy is too small to repay
+///   a fan-out, and a call made on a Rayon worker runs on the calling
+///   thread.
+/// - HPTT, which serves conjugating complex transposes under the `hptt`
+///   feature, resolves `0` via `std::thread::available_parallelism()`
+///   before crossing the FFI boundary (HPTT 0.4 rejects a literal `0`) and
+///   spawns exactly `n` OpenMP threads otherwise.
+///
+/// `Sequential` forces single-threaded execution.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExecPolicy {
     /// Force single-threaded execution.

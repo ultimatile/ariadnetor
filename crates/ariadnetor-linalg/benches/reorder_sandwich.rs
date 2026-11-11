@@ -1,18 +1,17 @@
 //! Micro-benchmark: cross-order reorder — naive `reorder_data` vs the
-//! HPTT-routable `ComputeBackend::transpose`.
+//! routed `ComputeBackend::transpose`.
 //!
 //! The linalg row-major sandwich (decomposition / contract / expm / solve /
 //! eigen / einsum) normalizes rank>2 operands across memory order with
-//! `ariadnetor_tensor::reorder_data`, a backend-less per-element loop that
-//! never reaches HPTT. A cross-order reorder of the same logical shape is a
-//! physical axis-reversal permutation, so `backend.transpose` with a reverse
-//! perm and the source order produces the identical bytes and uses HPTT under
-//! `--features hptt`.
+//! `ariadnetor_tensor::reorder_data`, a backend-less per-element loop. A
+//! cross-order reorder of the same logical shape is a physical axis-reversal
+//! permutation, so `backend.transpose` with a reverse perm and the source order
+//! produces the identical bytes through the backend's blocked kernel
+//! (strided-perm on the native backend).
 //!
 //! This group compares the two at representative shapes so the naive-vs-kernel
-//! crossover can be read per shape: the default build times the native naive
-//! transpose kernel, `--features hptt` times HPTT, both against the same naive
-//! `reorder_data` baseline, via criterion baselines. Both paths allocate their
+//! crossover can be read per shape, both against the same naive `reorder_data`
+//! baseline, via criterion baselines. Both paths allocate their
 //! output per iteration, matching the real call sites (`reorder_data` returns a
 //! fresh tensor; the routed helper allocates a fresh buffer).
 
@@ -127,7 +126,7 @@ fn bench_reorder(c: &mut Criterion) {
 /// reorder through the backend transpose. Unlike the isolated `reorder_micro`
 /// group, this drives a whole decomposition, so the routed reorder is a real
 /// (faer-SVD-diluted) fraction of the wall time — it confirms the routed path
-/// is exercised end to end and moves with HPTT under `--features hptt`. `nrow=1`
+/// is exercised end to end and moves with the backend's transpose kernel. `nrow=1`
 /// splits axis 0 from the rest, so the rank>2 row-major sandwich runs.
 fn bench_decomp_e2e(c: &mut Criterion) {
     let backend = NativeBackend::new();

@@ -4,9 +4,11 @@
 # because they are spec gaps:
 #   - the ARPACK backend (krylov/arpack.rs, #[cfg(feature = "arpack")]) is
 #     never compiled here, so its mutants trivially pass;
-#   - the HPTT transpose kernels (transpose.rs, #[cfg(feature = "hptt")])
-#     are not compiled under the default (hptt-off) build, so their mutants
-#     are unviable. (The naive fallback IS compiled by this run.)
+#   - the HPTT kernels for conjugating complex transposes (transpose.rs,
+#     #[cfg(feature = "hptt")]) are not compiled under the default (hptt-off)
+#     build, so their mutants are unviable. (The naive kernel that serves
+#     those transposes in this build IS compiled by this run, as is the
+#     strided-perm route every other transpose takes.)
 # Both are covered by dedicated feature-flipped passes — `cargo make
 # mutants-arpack` and `cargo make mutants-hptt` (see Makefile.toml and
 # CONTRIBUTING.md). Read this run's missed.txt knowing those regions are

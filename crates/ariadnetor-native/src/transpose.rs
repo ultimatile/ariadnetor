@@ -1,69 +1,263 @@
-//! Transpose kernels: HPTT per concrete type when the `hptt` feature is on,
-//! a naive output-driven kernel otherwise.
+//! Transpose kernels.
 //!
 //! The four `transpose_*` entry points are the per-scalar kernels the
 //! call-site dispatcher (`DispatchScalar::dispatch_op` via the backend's
-//! `ScalarKernels`) routes to once the type is concrete. HPTT and the naive
-//! kernel are mutually exclusive implementations selected at compile time by
-//! the `hptt` feature, so the naive kernel is compiled only when HPTT is absent.
+//! `ScalarKernels`) routes to once the type is concrete. Each validates the
+//! descriptor, then copies through `strided_perm::copy_into`, except a
+//! conjugating transpose of a complex type: strided-perm only copies, so that
+//! case goes to HPTT under the `hptt` feature and to the naive output-driven
+//! kernel otherwise. For real types conjugation is the identity, so a real
+//! `conj = true` transpose takes the strided-perm route as well.
+//!
+//! strided-perm runs on a dedicated `threadteam` pool, not on the global Rayon
+//! pool, sized from the global Rayon pool's width on first parallel use.
 
-#[cfg(not(feature = "hptt"))]
+use std::sync::OnceLock;
+
 use ariadnetor_core::Scalar;
-use ariadnetor_core::backend::ExecPolicy;
-use ariadnetor_core::backend::{BackendError, MemoryOrder, TransposeDescriptor};
+use ariadnetor_core::backend::{BackendError, ExecPolicy, MemoryOrder, TransposeDescriptor};
 #[cfg(not(feature = "hptt"))]
 use rayon::prelude::*;
+use strided_view::{StridedView, StridedViewMut};
+use threadteam::{Exec, Pool};
 
 pub(crate) fn transpose_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
-    #[cfg(feature = "hptt")]
-    {
-        hptt_f64(desc)
-    }
-    #[cfg(not(feature = "hptt"))]
-    {
-        naive(desc)
-    }
+    validate(&desc)?;
+    strided(desc)
 }
 
 pub(crate) fn transpose_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
-    #[cfg(feature = "hptt")]
-    {
-        hptt_f32(desc)
-    }
-    #[cfg(not(feature = "hptt"))]
-    {
-        naive(desc)
-    }
+    validate(&desc)?;
+    strided(desc)
 }
 
 pub(crate) fn transpose_c64(
     desc: TransposeDescriptor<'_, num_complex::Complex<f64>>,
 ) -> Result<(), BackendError> {
+    validate(&desc)?;
+    if !desc.conj {
+        return strided(desc);
+    }
     #[cfg(feature = "hptt")]
-    {
-        hptt_c64(desc)
-    }
+    let kernel = hptt_c64;
     #[cfg(not(feature = "hptt"))]
-    {
-        naive(desc)
-    }
+    let kernel = naive;
+    conjugating(desc, kernel)
 }
 
 pub(crate) fn transpose_c32(
     desc: TransposeDescriptor<'_, num_complex::Complex<f32>>,
 ) -> Result<(), BackendError> {
+    validate(&desc)?;
+    if !desc.conj {
+        return strided(desc);
+    }
     #[cfg(feature = "hptt")]
-    {
-        hptt_c32(desc)
-    }
+    let kernel = hptt_c32;
     #[cfg(not(feature = "hptt"))]
-    {
-        naive(desc)
-    }
+    let kernel = naive;
+    conjugating(desc, kernel)
 }
 
 // ---------------------------------------------------------------------------
-// MemoryOrder conversion
+// Descriptor validation
+// ---------------------------------------------------------------------------
+
+/// Reject a descriptor no kernel can transpose correctly.
+///
+/// Every kernel indexes `input` and `output` through strides derived from
+/// `shape` and `perm`, so each needs `perm` to be a permutation of
+/// `0..shape.len()` and both buffers to hold exactly `product(shape)`
+/// elements. Checked before any element is read or written.
+fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+    let rank = desc.shape.len();
+    if desc.perm.len() != rank {
+        return Err(BackendError::InvalidArgument(format!(
+            "transpose: perm {:?} has {} entries for a rank-{rank} shape {:?}",
+            desc.perm,
+            desc.perm.len(),
+            desc.shape
+        )));
+    }
+    let mut seen = vec![false; rank];
+    for &axis in desc.perm {
+        if axis >= rank {
+            return Err(BackendError::InvalidArgument(format!(
+                "transpose: perm {:?} names axis {axis}, out of range for rank {rank}",
+                desc.perm
+            )));
+        }
+        if seen[axis] {
+            return Err(BackendError::InvalidArgument(format!(
+                "transpose: perm {:?} names axis {axis} more than once",
+                desc.perm
+            )));
+        }
+        seen[axis] = true;
+    }
+    let total = desc
+        .shape
+        .iter()
+        .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+        .ok_or_else(|| {
+            BackendError::InvalidArgument(format!(
+                "transpose: element count of shape {:?} overflows usize",
+                desc.shape
+            ))
+        })?;
+    if desc.input.len() != total || desc.output.len() != total {
+        return Err(BackendError::InvalidArgument(format!(
+            "transpose: shape {:?} has {total} elements, but input has {} and output has {}",
+            desc.shape,
+            desc.input.len(),
+            desc.output.len()
+        )));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// strided-perm route
+// ---------------------------------------------------------------------------
+
+/// Copy `input` permuted by `perm` into `output` with strided-perm.
+///
+/// The source view walks `input` in output-axis order: output axis `a` has
+/// extent `shape[perm[a]]` and the stride input axis `perm[a]` has under
+/// `order`. Copying it into a contiguous destination of the same `order`
+/// writes `output[y] = input[x]` with `x[perm[a]] = y[a]`.
+fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+    let TransposeDescriptor {
+        input,
+        output,
+        shape,
+        perm,
+        order,
+        policy,
+        ..
+    } = desc;
+    // A zero-length axis leaves nothing to copy; returning here also keeps the
+    // stride products below from multiplying the remaining extents.
+    if output.is_empty() {
+        return Ok(());
+    }
+    let input_strides = compute_strides(shape, order);
+    let dims: Vec<usize> = perm.iter().map(|&axis| shape[axis]).collect();
+    let src_strides = perm
+        .iter()
+        .map(|&axis| stride_to_isize(input_strides[axis]))
+        .collect::<Result<Vec<_>, _>>()?;
+    let dst_strides = compute_strides(&dims, order)
+        .into_iter()
+        .map(stride_to_isize)
+        .collect::<Result<Vec<_>, _>>()?;
+    let src = StridedView::new(input, &dims, &src_strides, 0).map_err(strided_failure)?;
+    let mut dst = StridedViewMut::new(output, &dims, &dst_strides, 0).map_err(strided_failure)?;
+    strided_perm::copy_into(&mut dst, &src, exec_for(policy)).map_err(strided_failure)
+}
+
+/// Convert a stride to the `isize` strided-view takes.
+///
+/// With every extent at least 1, a stride is a product of extents and so at
+/// most `product(shape)`, the slice length `validate` admitted, which a slice
+/// keeps within `isize::MAX`; the conversion therefore succeeds.
+fn stride_to_isize(stride: usize) -> Result<isize, BackendError> {
+    isize::try_from(stride).map_err(|_| {
+        BackendError::InvalidArgument(format!("transpose: stride {stride} exceeds isize::MAX"))
+    })
+}
+
+fn strided_failure(e: impl std::fmt::Display) -> BackendError {
+    BackendError::ExecutionFailed(format!("strided-perm transpose: {e}"))
+}
+
+/// The process-wide pool the strided-perm route runs parallel copies on,
+/// built on first use. `None` when the pool could not be built; parallel
+/// copies then run serially.
+static POOL: OnceLock<Option<Pool>> = OnceLock::new();
+
+/// The shared pool, sized from the global Rayon pool's width so that
+/// `RAYON_NUM_THREADS` bounds transpose threads as it bounds faer's.
+///
+/// `exec_for` calls this only off Rayon workers, so `current_num_threads`
+/// reads the global pool, not a caller's custom pool.
+fn pool() -> Option<&'static Pool> {
+    POOL.get_or_init(|| {
+        Pool::builder()
+            .threads(rayon::current_num_threads())
+            .build()
+            .ok()
+    })
+    .as_ref()
+}
+
+/// The placement token for a strided-perm copy under `policy`.
+///
+/// Settles the serial cases before touching `pool()`, so a call from a Rayon
+/// worker neither runs on the pool nor initialises it.
+fn exec_for(policy: ExecPolicy) -> Exec<'static> {
+    match policy {
+        ExecPolicy::Sequential => Exec::serial(),
+        ExecPolicy::Parallel(_) if on_rayon_worker() => Exec::serial(),
+        ExecPolicy::Parallel(_) => exec_in(pool(), policy),
+    }
+}
+
+/// Map `policy` to a token on `pool`.
+///
+/// * `Sequential` → serial.
+/// * Any policy on a Rayon worker → serial. A Rayon worker that blocks on
+///   another pool's `install` keeps stealing jobs from its own pool onto the
+///   blocked stack, so parallel transposes issued from inside a `par_iter`
+///   pile up on worker stacks until one overflows. Running such a call on
+///   the worker itself avoids entering the pool at all.
+/// * `Parallel(0)` → the pool's whole width; `Parallel(n)` → `n` slots,
+///   clamped to the width by `Exec::new`. strided-perm narrows the width
+///   further when the copy is too small to repay a fan-out.
+/// * No pool → serial.
+fn exec_in(pool: Option<&Pool>, policy: ExecPolicy) -> Exec<'_> {
+    let n = match policy {
+        ExecPolicy::Sequential => return Exec::serial(),
+        ExecPolicy::Parallel(_) if on_rayon_worker() => return Exec::serial(),
+        ExecPolicy::Parallel(n) => n,
+    };
+    let Some(pool) = pool else {
+        return Exec::serial();
+    };
+    let budget = if n == 0 { pool.width().get() } else { n };
+    Exec::new(pool, budget).unwrap_or_else(|_| Exec::serial())
+}
+
+fn on_rayon_worker() -> bool {
+    rayon::current_thread_index().is_some()
+}
+
+// ---------------------------------------------------------------------------
+// Conjugating complex fallback
+// ---------------------------------------------------------------------------
+
+/// Run a conjugating transpose on `kernel`, handling the degenerate shapes
+/// first.
+///
+/// HPTT rejects a rank-0 shape and a zero extent by terminating the process,
+/// so neither reaches `kernel`: a zero-size tensor has nothing to write, and
+/// a rank-0 tensor is its one element, conjugated.
+fn conjugating<T: Scalar>(
+    desc: TransposeDescriptor<'_, T>,
+    kernel: fn(TransposeDescriptor<'_, T>) -> Result<(), BackendError>,
+) -> Result<(), BackendError> {
+    if desc.output.is_empty() {
+        return Ok(());
+    }
+    if desc.shape.is_empty() {
+        desc.output[0] = desc.input[0].conj();
+        return Ok(());
+    }
+    kernel(desc)
+}
+
+// ---------------------------------------------------------------------------
+// HPTT kernels (feature-gated)
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "hptt")]
@@ -90,42 +284,6 @@ fn to_hptt_num_threads(policy: ExecPolicy) -> usize {
             .unwrap_or(1),
         ExecPolicy::Parallel(n) => n,
     }
-}
-
-// ---------------------------------------------------------------------------
-// HPTT implementations (feature-gated)
-// ---------------------------------------------------------------------------
-
-#[cfg(feature = "hptt")]
-fn hptt_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
-    hptt::transpose_f64(
-        desc.perm,
-        1.0,
-        desc.input,
-        desc.shape,
-        0.0,
-        desc.output,
-        to_hptt_num_threads(desc.policy),
-        to_hptt_order(desc.order),
-    )
-    .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f64: {e}")))?;
-    Ok(())
-}
-
-#[cfg(feature = "hptt")]
-fn hptt_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
-    hptt::transpose_f32(
-        desc.perm,
-        1.0,
-        desc.input,
-        desc.shape,
-        0.0,
-        desc.output,
-        to_hptt_num_threads(desc.policy),
-        to_hptt_order(desc.order),
-    )
-    .map_err(|e| BackendError::ExecutionFailed(format!("HPTT transpose_f32: {e}")))?;
-    Ok(())
 }
 
 #[cfg(feature = "hptt")]
@@ -167,7 +325,7 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 }
 
 // ---------------------------------------------------------------------------
-// Naive fallback (compiled when the `hptt` feature is off)
+// Naive kernel (compiled when the `hptt` feature is off)
 // ---------------------------------------------------------------------------
 
 /// Naive transpose for any Scalar type.
@@ -352,8 +510,7 @@ fn new_to_old_idx(
     old_idx
 }
 
-/// Compute strides for a given shape and memory order.
-#[cfg(not(feature = "hptt"))]
+/// Compute contiguous strides for a given shape and memory order.
 fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
     let mut strides = vec![1; shape.len()];
     match order {
@@ -370,3 +527,6 @@ fn compute_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
     }
     strides
 }
+
+#[cfg(test)]
+mod tests;

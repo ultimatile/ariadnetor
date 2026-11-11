@@ -153,6 +153,9 @@ dependencies = [
  "num-traits",
  "rayon",
  "rstest",
+ "strided-perm",
+ "strided-view",
+ "threadteam",
 ]
 
 [[package]]
@@ -1754,6 +1757,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "strided-perm"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d367ea2bd53f572b8eac92ac08a70fa042da6114c08e28674722a21002a5a29"
+dependencies = [
+ "strided-view",
+ "thiserror 1.0.69",
+ "threadteam",
+ "tinyvec",
+]
+
+[[package]]
+name = "strided-traits"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "894ae73ede6508852f55968ea8bc4eaefd657c21c484e0ee41de59e69290b35d"
+dependencies = [
+ "num-complex",
+ "num-traits",
+]
+
+[[package]]
+name = "strided-view"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73b0b658f57a42d6cd20df58eeb42f74425ae8be4140751fb2dde80d042e20ff"
+dependencies = [
+ "num-complex",
+ "num-traits",
+ "strided-traits",
+ "thiserror 1.0.69",
+ "tinyvec",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1850,6 +1888,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "threadteam"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ae7666b2f6a9ad479f5d0be7b54d21d62912ddd7c69923ad6f50767a86440e8"
+dependencies = [
+ "libc",
+ "loom",
+ "rayon",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "tinytemplate"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1858,6 +1908,12 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "tinyvec"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "toml_datetime"
