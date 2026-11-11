@@ -361,7 +361,7 @@ args = [
 # build. `--features hptt` compiles them; `--file` + `--re` scope
 # mutation to exactly those gated kernels. The scope is REQUIRED for a
 # faithful result, not an optimization — without it the pass also mutates
-#   - the naive fallback in the same file (cfg'd out under `--features hptt`,
+#   - the naive kernel in the same file (cfg'd out under `--features hptt`,
 #     so its mutants surface as false gaps), and
 #   - the rest of the native crate (gemm/qr/svd/...), which the shipped run
 #     already audits; re-mutating it here is redundant, and under the

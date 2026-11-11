@@ -10,8 +10,7 @@
 //! (strided-perm on the native backend).
 //!
 //! This group compares the two at representative shapes so the naive-vs-kernel
-//! crossover can be read per shape, both against the same naive `reorder_data`
-//! baseline, via criterion baselines. Both paths allocate their
+//! crossover can be read per shape. Both paths allocate their
 //! output per iteration, matching the real call sites (`reorder_data` returns a
 //! fresh tensor; the routed helper allocates a fresh buffer).
 

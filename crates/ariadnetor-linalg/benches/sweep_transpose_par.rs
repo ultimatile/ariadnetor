@@ -6,13 +6,15 @@
 //! `ExecPolicy` dispatch in `ariadnetor-native`.
 //!
 //! Each measurement uses `expert::permute` with a caller-provided
-//! `ExecPolicy`. Global parallelism state is not consulted by the per-call
-//! path and is intentionally not touched here.
+//! `ExecPolicy`. The bench does not change global parallelism state; the
+//! strided-perm route reads the global Rayon pool's width once, to size its
+//! own pool on first parallel use.
 //!
-//! The sweeps cover `n × n` with `perm = [1, 0]` (up to 2048, the
-//! parallel-dominant regime), `n × n × n` with `perm = [2, 0, 1]`, and
-//! `n⁴` with `perm = [3, 1, 0, 2]`, for f64 and for `Complex<f64>`
-//! (non-conjugating, so both take the strided-perm route).
+//! The f64 sweeps cover `n × n` with `perm = [1, 0]` (up to 2048, the
+//! parallel-dominant regime), `n × n × n` with `perm = [2, 0, 1]`, and `n⁴`
+//! with `perm = [3, 1, 0, 2]`. The `Complex<f64>` sweeps repeat the 2D and
+//! 3D cases; they do not conjugate, so they take the strided-perm route like
+//! f64.
 //!
 //! `ThresholdTable::transpose` keys on total element count (not side
 //! length) — see `NativeBackend::par_for_transpose`, which feeds
@@ -25,6 +27,7 @@ use std::time::{Duration, Instant};
 use rand::SeedableRng;
 
 use ariadnetor_core::Complex;
+use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::ExecPolicy;
 use ariadnetor_linalg::expert::permute;
 use ariadnetor_native::NativeBackend;
@@ -89,59 +92,66 @@ where
     }
 }
 
+/// Sweep `expert::permute` by `perm` over tensors `make` builds, keyed on
+/// their element count.
+fn sweep_permute<T: Scalar>(
+    backend: &NativeBackend,
+    label: &str,
+    sizes: &[usize],
+    make: impl Fn(usize) -> DenseTensor<T>,
+    perm: &[usize],
+) {
+    run_sweep(
+        label,
+        sizes,
+        make,
+        |t| t.len(),
+        |t, policy| {
+            let _ = permute(backend, t, perm, policy).unwrap();
+        },
+    );
+}
+
 fn main() {
     let backend = NativeBackend::new();
     let sizes_2d = [16usize, 32, 64, 128, 256, 512, 1024, 2048];
     let sizes_3d = [8usize, 16, 32, 64, 128, 256];
     let sizes_4d = [4usize, 8, 16, 32, 64];
-    let perm_2d = [1usize, 0];
-    let perm_3d = [2usize, 0, 1];
-    let perm_4d = [3usize, 1, 0, 2];
 
-    run_sweep(
+    sweep_permute(
+        &backend,
         "Transpose f64 (2D n×n, perm=[1,0])",
         &sizes_2d,
         |n| random_f64(vec![n, n], 42),
-        |t| t.len(),
-        |t, policy| {
-            let _ = permute(&backend, t, &perm_2d, policy).unwrap();
-        },
+        &[1, 0],
     );
-    run_sweep(
+    sweep_permute(
+        &backend,
         "Transpose f64 (3D n×n×n, perm=[2,0,1])",
         &sizes_3d,
         |n| random_f64(vec![n, n, n], 42),
-        |t| t.len(),
-        |t, policy| {
-            let _ = permute(&backend, t, &perm_3d, policy).unwrap();
-        },
+        &[2, 0, 1],
     );
-    run_sweep(
+    sweep_permute(
+        &backend,
         "Transpose f64 (4D n⁴, perm=[3,1,0,2])",
         &sizes_4d,
         |n| random_f64(vec![n, n, n, n], 42),
-        |t| t.len(),
-        |t, policy| {
-            let _ = permute(&backend, t, &perm_4d, policy).unwrap();
-        },
+        &[3, 1, 0, 2],
     );
-    run_sweep(
+    sweep_permute(
+        &backend,
         "Transpose c64 (2D n×n, perm=[1,0])",
         &sizes_2d,
         |n| filled_c64(vec![n, n]),
-        |t| t.len(),
-        |t, policy| {
-            let _ = permute(&backend, t, &perm_2d, policy).unwrap();
-        },
+        &[1, 0],
     );
-    run_sweep(
+    sweep_permute(
+        &backend,
         "Transpose c64 (3D n×n×n, perm=[2,0,1])",
         &sizes_3d,
         |n| filled_c64(vec![n, n, n]),
-        |t| t.len(),
-        |t, policy| {
-            let _ = permute(&backend, t, &perm_3d, policy).unwrap();
-        },
+        &[2, 0, 1],
     );
 
     eprintln!(

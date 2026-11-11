@@ -79,8 +79,9 @@ impl ThresholdTable {
     ///
     /// `transpose` permits parallelism from 262_144 total elements, the
     /// size above which the naive kernel's parallel path beat its own
-    /// sequential path on 2D `[n, n]` inputs. strided-perm narrows its own
-    /// width below this. The dispatch key is total elements for any rank.
+    /// sequential path on 2D `[n, n]` inputs. Above it, strided-perm still
+    /// picks its own width and stays on one thread for a copy too small to
+    /// repay a fan-out. The dispatch key is total elements for any rank.
     pub fn workstation() -> Self {
         Self {
             svd: usize::MAX,

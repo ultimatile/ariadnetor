@@ -95,16 +95,21 @@ fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
         }
         seen[axis] = true;
     }
-    let total = desc
-        .shape
-        .iter()
-        .try_fold(1usize, |acc, &d| acc.checked_mul(d))
-        .ok_or_else(|| {
-            BackendError::InvalidArgument(format!(
-                "transpose: element count of shape {:?} overflows usize",
-                desc.shape
-            ))
-        })?;
+    // A zero extent makes the element count 0 whatever the other extents are;
+    // only an all-nonzero shape can overflow.
+    let total = if desc.shape.contains(&0) {
+        Some(0)
+    } else {
+        desc.shape
+            .iter()
+            .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+    }
+    .ok_or_else(|| {
+        BackendError::InvalidArgument(format!(
+            "transpose: element count of shape {:?} overflows usize",
+            desc.shape
+        ))
+    })?;
     if desc.input.len() != total || desc.output.len() != total {
         return Err(BackendError::InvalidArgument(format!(
             "transpose: shape {:?} has {total} elements, but input has {} and output has {}",
@@ -183,6 +188,10 @@ static POOL: OnceLock<Option<Pool>> = OnceLock::new();
 /// reads the global pool, not a caller's custom pool.
 fn pool() -> Option<&'static Pool> {
     POOL.get_or_init(|| {
+        assert!(
+            !on_rayon_worker(),
+            "the transpose pool must be sized off Rayon workers"
+        );
         Pool::builder()
             .threads(rayon::current_num_threads())
             .build()
@@ -334,12 +343,12 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 /// * `Sequential` runs the output-driven kernel single-threaded on
 ///   the calling thread, paying no Rayon overhead.
 /// * `Parallel(_)` dispatches the same output-driven kernel across
-///   the global Rayon pool, where each chunk owns a disjoint
+///   the current Rayon pool, where each chunk owns a disjoint
 ///   contiguous slice of `output` (race-free by construction).
 ///
 /// Both paths share `new_to_old_idx` for the per-element index
-/// mapping so `Sequential` and `Parallel(_)` measurements are
-/// comparable when calibrating `ThresholdTable::*.transpose`.
+/// mapping, so `Sequential` and `Parallel(_)` differ only in how the
+/// output is split.
 #[cfg(not(feature = "hptt"))]
 fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
@@ -397,9 +406,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
 
 /// Single-threaded transpose using the same output-driven, no-alloc
 /// kernel as the parallel path; differs only in that work runs on the
-/// caller's thread without Rayon split. Sharing the inner kernel keeps
-/// the Sequential / Parallel comparison fair when calibrating
-/// `ThresholdTable::*.transpose` against the naive baseline.
+/// caller's thread without Rayon split.
 #[cfg(not(feature = "hptt"))]
 #[allow(clippy::too_many_arguments)]
 fn naive_sequential<T: Scalar>(
@@ -423,12 +430,12 @@ fn naive_sequential<T: Scalar>(
 /// `output` so writes never race. Reads scatter across `input` via the
 /// inverse mapping `old_idx = Σ new_coords[a] * old_strides[perm[a]]`.
 ///
-/// Runs on the global Rayon pool. `n` is interpreted as an advisory
+/// Runs on the current Rayon pool (the global one unless the caller
+/// installed another). `n` is interpreted as an advisory
 /// target that influences chunk sizing, not a strict worker count:
 /// `Parallel(0)` adopts `rayon::current_num_threads()`, `Parallel(n>0)`
 /// splits work as if `n` workers were available. This mirrors faer's
-/// `Par::rayon(n)` semantics; the global pool's actual width is
-/// unchanged.
+/// `Par::rayon(n)` semantics; the pool's actual width is unchanged.
 #[cfg(not(feature = "hptt"))]
 #[allow(clippy::too_many_arguments)]
 fn naive_parallel<T: Scalar>(

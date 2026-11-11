@@ -418,7 +418,7 @@ fn bench_transpose_case(
                     policy,
                 })
                 .unwrap();
-            // Force the write to survive dead-store elimination on the naive path.
+            // Force the write to survive dead-store elimination.
             std::hint::black_box(&output);
         });
     });

@@ -38,7 +38,8 @@ pub use performance::{PerformanceManager, ThresholdTable};
 ///
 /// `Parallel(0)` defers to faer's Rayon default (current thread pool size).
 /// `Parallel(n)` for `n > 0` is an advisory thread-count hint passed to
-/// `faer::Par::rayon(n)`; faer dispatches on the global Rayon pool, so
+/// `faer::Par::rayon(n)`; faer dispatches on the current Rayon pool (the
+/// global one unless the caller installed another), so
 /// `n` influences work partitioning rather than guaranteeing exactly
 /// `n` OS threads. The naive transpose kernel, which serves conjugating
 /// complex transposes when the `hptt` feature is off, honors `n` with the
@@ -52,7 +53,8 @@ pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
 }
 
 /// Native backend using faer for GEMM and the decompositions, and
-/// strided-perm for transpose.
+/// strided-perm for transpose (HPTT or a naive kernel for a conjugating
+/// complex transpose).
 ///
 /// This is the sole owner of faer, strided-perm and hptt-rs dependencies in
 /// the workspace.
@@ -161,7 +163,10 @@ impl ComputeBackend for NativeBackend {
     /// Returns [`BackendError::InvalidArgument`] when `perm` is not a
     /// permutation of `0..shape.len()`, when the element count of `shape`
     /// overflows `usize`, or when `input` or `output` does not hold exactly
-    /// that many elements; nothing is written in that case.
+    /// that many elements; nothing is written in that case. Returns
+    /// [`BackendError::ExecutionFailed`] when the kernel rejects a valid
+    /// descriptor, as HPTT does for a `Parallel(n)` thread count beyond its
+    /// C `int` range.
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
         T::dispatch_op(&NativeKernels, OpDesc::Transpose(desc))
     }
@@ -284,7 +289,7 @@ impl ComputeBackend for NativeBackend {
     }
 }
 
-/// faer / strided-perm kernel set the call-site dispatcher routes to.
+/// faer / transpose kernel set the call-site dispatcher routes to.
 ///
 /// `DispatchScalar::dispatch_op` resolves a generic `OpDesc<'_, T>` to one of
 /// these four methods, where the scalar is concrete; each method then matches the op

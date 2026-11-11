@@ -1,8 +1,8 @@
 //! Backend-agnostic linear algebra API for ariadnetor
 //!
 //! Provides high-level tensor operations that delegate to a [`ComputeBackend`]
-//! for the actual computation. This decouples tensor data from compute libraries
-//! (faer, strided-perm, HPTT) so that `ariadnetor-tensor` carries no heavy dependencies.
+//! for the actual computation, so that only `ariadnetor-native` depends on the
+//! compute libraries (faer, strided-perm, HPTT) directly.
 //!
 //! # Operations
 //!

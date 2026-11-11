@@ -116,36 +116,21 @@ fn test_transpose_complex_f64_2d() {
 // --- Reference-checked transposes ---
 //
 // Every case below is compared with `reference`, which walks output
-// coordinates one at a time and shares no code with the kernels. The perms
-// are not involutions and the extents differ, so a kernel that used the
-// inverse permutation, or read the wrong axis's extent, would fail.
+// coordinates one at a time and shares no code with the kernels. Every
+// nonempty case of rank 3 or more uses a perm that is not its own inverse on
+// extents that all differ, so a kernel that used the inverse permutation, or
+// read the wrong axis's extent, fails there.
 
-trait Sample: Scalar + std::fmt::Debug + PartialEq {
-    fn sample(i: usize) -> Self;
-}
+trait Sample: Scalar + std::fmt::Debug + PartialEq {}
 
-impl Sample for f64 {
-    fn sample(i: usize) -> Self {
-        i as f64 + 0.5
-    }
-}
+impl<T: Scalar + std::fmt::Debug + PartialEq> Sample for T {}
 
-impl Sample for f32 {
-    fn sample(i: usize) -> Self {
-        i as f32 + 0.5
-    }
-}
-
-impl Sample for Complex<f64> {
-    fn sample(i: usize) -> Self {
-        Complex::new(i as f64, -(2.0 * i as f64) - 1.0)
-    }
-}
-
-impl Sample for Complex<f32> {
-    fn sample(i: usize) -> Self {
-        Complex::new(i as f32, -(2.0 * i as f32) - 1.0)
-    }
+/// A value distinct for each `i` below 2^23 (exact in f32); complex values
+/// also get a nonzero imaginary part, so a missing or extra conjugation is
+/// visible.
+fn sample<T: Sample>(i: usize) -> T {
+    let real = |x: f64| -> T::Real { num_traits::NumCast::from(x).unwrap() };
+    T::from_real_imag(real(i as f64 + 0.5), real(-2.0 * i as f64 - 1.0))
 }
 
 fn contiguous_strides(shape: &[usize], order: MemoryOrder) -> Vec<usize> {
@@ -174,7 +159,7 @@ fn reference<T: Sample>(
     let in_strides = contiguous_strides(shape, order);
     let out_strides = contiguous_strides(&new_shape, order);
     let total: usize = shape.iter().product();
-    let mut out = vec![T::sample(0); total];
+    let mut out = vec![sample::<T>(0); total];
     let mut y = vec![0usize; shape.len()];
     for _ in 0..total {
         let mut src = 0;
@@ -196,6 +181,27 @@ fn reference<T: Sample>(
     out
 }
 
+fn try_transpose<T: Sample>(
+    input: &[T],
+    output: &mut [T],
+    shape: &[usize],
+    perm: &[usize],
+    order: MemoryOrder,
+    conj: bool,
+    policy: ExecPolicy,
+) -> Result<(), BackendError> {
+    let desc = TransposeDescriptor {
+        input,
+        output,
+        shape,
+        perm,
+        order,
+        conj,
+        policy,
+    };
+    NativeBackend::new().transpose(desc)
+}
+
 fn run_transpose<T: Sample>(
     input: &[T],
     shape: &[usize],
@@ -204,17 +210,8 @@ fn run_transpose<T: Sample>(
     conj: bool,
     policy: ExecPolicy,
 ) -> Vec<T> {
-    let mut output = vec![T::sample(usize::MAX / 4); input.len()];
-    let desc = TransposeDescriptor {
-        input,
-        output: &mut output,
-        shape,
-        perm,
-        order,
-        conj,
-        policy,
-    };
-    NativeBackend::new().transpose(desc).unwrap();
+    let mut output = vec![sample::<T>(usize::MAX / 4); input.len()];
+    try_transpose(input, &mut output, shape, perm, order, conj, policy).unwrap();
     output
 }
 
@@ -243,7 +240,7 @@ const CASES: &[(&[usize], &[usize])] = &[
 fn check_against_reference<T: Sample>() {
     for &(shape, perm) in CASES {
         let total: usize = shape.iter().product();
-        let input: Vec<T> = (0..total).map(T::sample).collect();
+        let input: Vec<T> = (0..total).map(sample::<T>).collect();
         for order in ORDERS {
             for conj in [false, true] {
                 let expected = reference(&input, shape, perm, order, conj);
@@ -279,13 +276,16 @@ fn c32_matches_reference() {
     check_against_reference::<Complex<f32>>();
 }
 
-/// Above 1M elements strided-perm may split the copy across the pool; how
-/// wide it goes depends on the host, so only the output is asserted.
+/// At 1_572_864 elements the copy is large enough to split on every host
+/// class: strided-perm 0.14's per-element copy rate times the element count
+/// clears three times threadteam 0.5's dispatch cost for a caller outside the
+/// pool. How wide it goes still depends on the host, so only the output is
+/// asserted.
 fn check_large<T: Sample>() {
-    let shape = [64usize, 48, 400];
+    let shape = [64usize, 48, 512];
     let perm = [2usize, 0, 1];
     let total: usize = shape.iter().product();
-    let input: Vec<T> = (0..total).map(T::sample).collect();
+    let input: Vec<T> = (0..total).map(sample::<T>).collect();
     for order in ORDERS {
         let expected = reference(&input, &shape, &perm, order, false);
         for policy in [ExecPolicy::Sequential, ExecPolicy::Parallel(0)] {
@@ -307,6 +307,53 @@ fn large_c64_matches_reference() {
 
 // --- Descriptor validation ---
 
+/// HPTT takes its thread count as a C `int`, so a larger `Parallel(n)` on
+/// the conjugating complex path is a kernel failure, not a panic.
+#[cfg(feature = "hptt")]
+fn check_hptt_thread_count_beyond_c_int<T: Sample>() {
+    let input: Vec<T> = (0..6).map(sample::<T>).collect();
+    let mut output = input.clone();
+    let err = try_transpose(
+        &input,
+        &mut output,
+        &[2, 3],
+        &[1, 0],
+        MemoryOrder::ColumnMajor,
+        true,
+        ExecPolicy::Parallel(usize::MAX),
+    )
+    .unwrap_err();
+    assert!(matches!(err, BackendError::ExecutionFailed(_)), "{err:?}");
+}
+
+#[cfg(feature = "hptt")]
+#[test]
+fn hptt_thread_count_beyond_c_int_is_execution_failed() {
+    check_hptt_thread_count_beyond_c_int::<Complex<f64>>();
+    check_hptt_thread_count_beyond_c_int::<Complex<f32>>();
+}
+
+/// A zero extent makes the element count 0 even when the other extents
+/// multiply past `usize::MAX`, so such a shape is a valid empty tensor
+/// wherever the zero sits.
+#[test]
+fn zero_extent_beside_huge_extents_is_empty() {
+    let input: Vec<Complex<f64>> = vec![];
+    for shape in [[usize::MAX, 2, 0], [0, usize::MAX, 2]] {
+        for conj in [false, true] {
+            let out = run_transpose(
+                &input,
+                &shape,
+                &[2, 0, 1],
+                MemoryOrder::ColumnMajor,
+                conj,
+                ExecPolicy::Sequential,
+            );
+            assert!(out.is_empty());
+        }
+    }
+}
+
 /// `(shape, perm, input length, output length)` for descriptors every entry
 /// must reject before writing anything.
 const INVALID: &[(&[usize], &[usize], usize, usize)] = &[
@@ -324,22 +371,22 @@ const INVALID: &[(&[usize], &[usize], usize, usize)] = &[
 ];
 
 fn check_rejects<T: Sample>() {
-    let sentinel = T::sample(999);
+    let sentinel = sample::<T>(999);
     for &(shape, perm, in_len, out_len) in INVALID {
-        let input: Vec<T> = (0..in_len).map(T::sample).collect();
+        let input: Vec<T> = (0..in_len).map(sample::<T>).collect();
         for order in ORDERS {
             for conj in [false, true] {
                 let mut output = vec![sentinel; out_len];
-                let desc = TransposeDescriptor {
-                    input: &input,
-                    output: &mut output,
+                let err = try_transpose(
+                    &input,
+                    &mut output,
                     shape,
                     perm,
                     order,
                     conj,
-                    policy: ExecPolicy::Sequential,
-                };
-                let err = NativeBackend::new().transpose(desc).unwrap_err();
+                    ExecPolicy::Sequential,
+                )
+                .unwrap_err();
                 assert!(
                     matches!(err, BackendError::InvalidArgument(_)),
                     "shape {shape:?} perm {perm:?} lens {in_len}/{out_len}: {err:?}"

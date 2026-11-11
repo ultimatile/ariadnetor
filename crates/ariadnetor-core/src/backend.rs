@@ -40,9 +40,10 @@ pub enum MemoryOrder {
 /// `Parallel(0)` means "backend auto" and `Parallel(n)` with `n > 0` a
 /// target worker count; what each means depends on the kernel:
 ///
-/// - faer and the naive Rayon transpose kernel run on the global Rayon
-///   pool. `0` resolves to rayon's `current_num_threads`, and `n` is a
-///   partitioning hint.
+/// - faer and the naive Rayon transpose kernel run on the current Rayon
+///   pool (the global one unless the caller installed another). `0`
+///   resolves to rayon's `current_num_threads`, and `n` is a partitioning
+///   hint.
 /// - The native strided-perm transpose runs on a dedicated pool as wide as
 ///   the global Rayon pool. `0` takes the whole pool and `n` at most `n` of
 ///   its threads; the kernel uses fewer when the copy is too small to repay
@@ -51,7 +52,8 @@ pub enum MemoryOrder {
 /// - HPTT, which serves conjugating complex transposes under the `hptt`
 ///   feature, resolves `0` via `std::thread::available_parallelism()`
 ///   before crossing the FFI boundary (HPTT 0.4 rejects a literal `0`) and
-///   spawns exactly `n` OpenMP threads otherwise.
+///   spawns exactly `n` OpenMP threads otherwise, rejecting an `n` beyond
+///   C `int` range.
 ///
 /// `Sequential` forces single-threaded execution.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
