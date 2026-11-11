@@ -3,7 +3,8 @@
 //! The four `transpose_*` entry points are the per-scalar kernels the
 //! call-site dispatcher (`DispatchScalar::dispatch_op` via the backend's
 //! `ScalarKernels`) routes to once the type is concrete. Each validates the
-//! descriptor, then copies through `strided_perm::copy_into`, except a
+//! descriptor, returns at once for a zero-size tensor, and otherwise copies
+//! through `strided_perm::copy_into`, except a
 //! conjugating transpose of a complex type: strided-perm only copies, so that
 //! case goes to HPTT under the `hptt` feature and to the naive output-driven
 //! kernel otherwise. For real types conjugation is the identity, so a real
@@ -22,41 +23,63 @@ use strided_view::{StridedView, StridedViewMut};
 use threadteam::{Exec, Pool};
 
 pub(crate) fn transpose_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
-    validate(&desc)?;
-    strided(desc)
+    transpose_real(desc)
 }
 
 pub(crate) fn transpose_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
-    validate(&desc)?;
-    strided(desc)
+    transpose_real(desc)
 }
 
 pub(crate) fn transpose_c64(
     desc: TransposeDescriptor<'_, num_complex::Complex<f64>>,
 ) -> Result<(), BackendError> {
-    validate(&desc)?;
-    if !desc.conj {
-        return strided(desc);
-    }
     #[cfg(feature = "hptt")]
-    let kernel = hptt_c64;
+    let conj_kernel = hptt_c64;
     #[cfg(not(feature = "hptt"))]
-    let kernel = naive;
-    conjugating(desc, kernel)
+    let conj_kernel = naive;
+    transpose_complex(desc, conj_kernel)
 }
 
 pub(crate) fn transpose_c32(
     desc: TransposeDescriptor<'_, num_complex::Complex<f32>>,
 ) -> Result<(), BackendError> {
-    validate(&desc)?;
+    #[cfg(feature = "hptt")]
+    let conj_kernel = hptt_c32;
+    #[cfg(not(feature = "hptt"))]
+    let conj_kernel = naive;
+    transpose_complex(desc, conj_kernel)
+}
+
+/// A real transpose: conjugation is the identity, so every nonempty one
+/// takes the strided-perm route.
+fn transpose_real<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+    if validate(&desc)? == 0 {
+        return Ok(());
+    }
+    strided(desc)
+}
+
+/// A complex transpose: strided-perm unless it conjugates, in which case
+/// `conj_kernel` runs it.
+///
+/// HPTT rejects a rank-0 shape and a zero extent by terminating the process,
+/// so neither reaches `conj_kernel`: a zero-size tensor returns before any
+/// kernel, and a rank-0 tensor is its one element, conjugated here.
+fn transpose_complex<T: Scalar>(
+    desc: TransposeDescriptor<'_, T>,
+    conj_kernel: fn(TransposeDescriptor<'_, T>) -> Result<(), BackendError>,
+) -> Result<(), BackendError> {
+    if validate(&desc)? == 0 {
+        return Ok(());
+    }
     if !desc.conj {
         return strided(desc);
     }
-    #[cfg(feature = "hptt")]
-    let kernel = hptt_c32;
-    #[cfg(not(feature = "hptt"))]
-    let kernel = naive;
-    conjugating(desc, kernel)
+    if desc.shape.is_empty() {
+        desc.output[0] = desc.input[0].conj();
+        return Ok(());
+    }
+    conj_kernel(desc)
 }
 
 // ---------------------------------------------------------------------------
@@ -68,8 +91,9 @@ pub(crate) fn transpose_c32(
 /// Every kernel indexes `input` and `output` through strides derived from
 /// `shape` and `perm`, so each needs `perm` to be a permutation of
 /// `0..shape.len()` and both buffers to hold exactly `product(shape)`
-/// elements. Checked before any element is read or written.
-fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+/// elements. Checked before any element is read or written; returns that
+/// element count.
+fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<usize, BackendError> {
     let rank = desc.shape.len();
     if desc.perm.len() != rank {
         return Err(BackendError::InvalidArgument(format!(
@@ -118,7 +142,7 @@ fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
             desc.output.len()
         )));
     }
-    Ok(())
+    Ok(total)
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +155,12 @@ fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
 /// extent `shape[perm[a]]` and the stride input axis `perm[a]` has under
 /// `order`. Copying it into a contiguous destination of the same `order`
 /// writes `output[y] = input[x]` with `x[perm[a]] = y[a]`.
+///
+/// # Panics
+///
+/// On an empty `output`: a zero extent would let the stride products below
+/// multiply the remaining extents past `usize::MAX`. Callers return before
+/// reaching here for a zero-size tensor.
 fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
         input,
@@ -141,11 +171,7 @@ fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendErr
         policy,
         ..
     } = desc;
-    // A zero-length axis leaves nothing to copy; returning here also keeps the
-    // stride products below from multiplying the remaining extents.
-    if output.is_empty() {
-        return Ok(());
-    }
+    assert!(!output.is_empty(), "strided() takes a nonempty tensor");
     let input_strides = compute_strides(shape, order);
     let dims: Vec<usize> = perm.iter().map(|&axis| shape[axis]).collect();
     let src_strides: Vec<isize> = perm
@@ -235,30 +261,6 @@ fn exec_in<'p>(pool: impl FnOnce() -> Option<&'p Pool>, policy: ExecPolicy) -> E
 
 fn on_rayon_worker() -> bool {
     rayon::current_thread_index().is_some()
-}
-
-// ---------------------------------------------------------------------------
-// Conjugating complex fallback
-// ---------------------------------------------------------------------------
-
-/// Run a conjugating transpose on `kernel`, handling the degenerate shapes
-/// first.
-///
-/// HPTT rejects a rank-0 shape and a zero extent by terminating the process,
-/// so neither reaches `kernel`: a zero-size tensor has nothing to write, and
-/// a rank-0 tensor is its one element, conjugated.
-fn conjugating<T: Scalar>(
-    desc: TransposeDescriptor<'_, T>,
-    kernel: fn(TransposeDescriptor<'_, T>) -> Result<(), BackendError>,
-) -> Result<(), BackendError> {
-    if desc.output.is_empty() {
-        return Ok(());
-    }
-    if desc.shape.is_empty() {
-        desc.output[0] = desc.input[0].conj();
-        return Ok(());
-    }
-    kernel(desc)
 }
 
 // ---------------------------------------------------------------------------
