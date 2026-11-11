@@ -6,8 +6,8 @@
 //! - **Tridiagonal EIGH**: faer (f64, f32; the eigensystem of a real
 //!   symmetric tridiagonal matrix is real, so complex scalars are rejected)
 //! - **Transpose**: strided-perm (f64, f32, `Complex<f64>`, `Complex<f32>`); a
-//!   conjugating complex transpose uses HPTT when the `hptt` feature is on and a
-//!   naive kernel otherwise
+//!   conjugating complex transpose of rank 1 or more uses HPTT when the `hptt`
+//!   feature is on and a naive kernel otherwise
 
 #![deny(missing_docs)]
 
@@ -154,8 +154,8 @@ impl ComputeBackend for NativeBackend {
     /// Transpose tensor axes according to permutation.
     ///
     /// Copies through strided-perm, except a conjugating transpose of a
-    /// complex type, which uses HPTT when the `hptt` feature is enabled and a
-    /// naive output-driven kernel otherwise. Under `ExecPolicy::Parallel(n)`
+    /// complex type of rank 1 or more, which uses HPTT when the `hptt`
+    /// feature is enabled and a naive output-driven kernel otherwise. Under `ExecPolicy::Parallel(n)`
     /// the strided-perm copy runs on a dedicated pool sized from the global
     /// Rayon pool, using at most `n` of its threads (all of them for
     /// `n == 0`) and fewer when the copy is small; a call made on
@@ -176,6 +176,9 @@ impl ComputeBackend for NativeBackend {
     /// descriptor, as HPTT does for a `Parallel(n)` thread count beyond its
     /// C `int` range.
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+        if transpose::validate(&desc)? == 0 {
+            return Ok(());
+        }
         T::dispatch_op(&NativeKernels, OpDesc::Transpose(desc))
     }
 

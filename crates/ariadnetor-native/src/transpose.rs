@@ -1,14 +1,16 @@
 //! Transpose kernels.
 //!
-//! The four `transpose_*` entry points are the per-scalar kernels the
-//! call-site dispatcher (`DispatchScalar::dispatch_op` via the backend's
-//! `ScalarKernels`) routes to once the type is concrete. Each validates the
-//! descriptor, returns at once for a zero-size tensor, and otherwise copies
-//! through `strided_perm::copy_into`, except a
-//! conjugating transpose of a complex type: strided-perm only copies, so that
-//! case goes to HPTT under the `hptt` feature and to the naive output-driven
-//! kernel otherwise. For real types conjugation is the identity, so a real
-//! `conj = true` transpose takes the strided-perm route as well.
+//! `NativeBackend::transpose` checks the descriptor with [`validate`] and
+//! returns for a zero-size tensor before dispatching, so the four
+//! `transpose_*` entry points — the per-scalar kernels the call-site
+//! dispatcher (`DispatchScalar::dispatch_op` via the backend's
+//! `ScalarKernels`) routes to once the type is concrete — take a valid,
+//! nonempty descriptor. Each copies through `strided_perm::copy_into`, except
+//! a conjugating transpose of a complex type: strided-perm only copies, so
+//! that case goes to HPTT under the `hptt` feature and to the naive
+//! output-driven kernel otherwise, or is conjugated in place for rank 0. For real types conjugation is the
+//! identity, so a real `conj = true` transpose takes the strided-perm route
+//! as well.
 //!
 //! strided-perm runs on a dedicated `threadteam` pool, not on the global Rayon
 //! pool, sized from the global Rayon pool's width on first parallel use.
@@ -23,11 +25,11 @@ use strided_view::{StridedView, StridedViewMut};
 use threadteam::{Exec, Pool};
 
 pub(crate) fn transpose_f64(desc: TransposeDescriptor<'_, f64>) -> Result<(), BackendError> {
-    transpose_real(desc)
+    strided(desc)
 }
 
 pub(crate) fn transpose_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), BackendError> {
-    transpose_real(desc)
+    strided(desc)
 }
 
 pub(crate) fn transpose_c64(
@@ -50,28 +52,17 @@ pub(crate) fn transpose_c32(
     transpose_complex(desc, conj_kernel)
 }
 
-/// A real transpose: conjugation is the identity, so every nonempty one
-/// takes the strided-perm route.
-fn transpose_real<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
-    if validate(&desc)? == 0 {
-        return Ok(());
-    }
-    strided(desc)
-}
-
 /// A complex transpose: strided-perm unless it conjugates, in which case
 /// `conj_kernel` runs it.
 ///
 /// HPTT rejects a rank-0 shape and a zero extent by terminating the process,
-/// so neither reaches `conj_kernel`: a zero-size tensor returns before any
-/// kernel, and a rank-0 tensor is its one element, conjugated here.
+/// so neither reaches `conj_kernel`: `NativeBackend::transpose` has already
+/// returned for a zero-size tensor, and a rank-0 tensor is its one element,
+/// conjugated here.
 fn transpose_complex<T: Scalar>(
     desc: TransposeDescriptor<'_, T>,
     conj_kernel: fn(TransposeDescriptor<'_, T>) -> Result<(), BackendError>,
 ) -> Result<(), BackendError> {
-    if validate(&desc)? == 0 {
-        return Ok(());
-    }
     if !desc.conj {
         return strided(desc);
     }
@@ -93,7 +84,7 @@ fn transpose_complex<T: Scalar>(
 /// `0..shape.len()` and both buffers to hold exactly `product(shape)`
 /// elements. Checked before any element is read or written; returns that
 /// element count.
-fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<usize, BackendError> {
+pub(crate) fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<usize, BackendError> {
     let rank = desc.shape.len();
     if desc.perm.len() != rank {
         return Err(BackendError::InvalidArgument(format!(
@@ -159,8 +150,8 @@ fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<usize, BackendError>
 /// # Panics
 ///
 /// On an empty `output`: a zero extent would let the stride products below
-/// multiply the remaining extents past `usize::MAX`. Callers return before
-/// reaching here for a zero-size tensor.
+/// multiply the remaining extents past `usize::MAX`. `NativeBackend::transpose`
+/// returns before dispatching for a zero-size tensor.
 fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
         input,
@@ -347,6 +338,12 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 /// Both paths share `new_to_old_idx` for the per-element index
 /// mapping, so `Sequential` and `Parallel(_)` differ only in how the
 /// output is split.
+///
+/// # Panics
+///
+/// On an empty `output`, which the parallel path could not split into
+/// chunks. `NativeBackend::transpose` returns before dispatching for a
+/// zero-size tensor.
 #[cfg(not(feature = "hptt"))]
 fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
@@ -360,11 +357,8 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
     } = desc;
 
     let rank = shape.len();
-    let total: usize = shape.iter().product();
-
-    if total == 0 {
-        return Ok(());
-    }
+    let total = output.len();
+    assert!(total > 0, "naive() takes a nonempty tensor");
 
     let old_strides = compute_strides(shape, order);
     let new_shape: Vec<usize> = perm.iter().map(|&i| shape[i]).collect();
