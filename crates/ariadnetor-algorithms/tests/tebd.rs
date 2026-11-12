@@ -11,7 +11,8 @@
 //! changes the result.
 
 use algorithms_fixtures::dense_fixtures::{
-    NO_TRUNC, random_bond_terms_c64, random_mps_c64, random_mps_unknown_f64, smallest_eigenvalue,
+    NO_TRUNC, bond_term_hamiltonian, embed_bond_term, random_bond_terms_c64, random_mps_c64,
+    random_mps_unknown_f64, smallest_eigenvalue,
 };
 use ariadnetor_algorithms::tebd::{TebdParams, TebdStepRecord, TimeStep, tebd};
 use ariadnetor_core::Scalar;
@@ -21,7 +22,7 @@ use ariadnetor_mps::{
     TruncateParams, inner,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, add_all};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 use num_complex::Complex;
 
 type C64 = Complex<f64>;
@@ -81,40 +82,6 @@ fn state_vector<T: Scalar>(psi: &DenseMps<T>) -> DenseTensor<T> {
     acc.reshape_logical(vec![dim])
 }
 
-/// `term` at `bond` embedded into the full space as `1 ⊗ h ⊗ 1`, a matrix
-/// over the row-major flattening of `(d_0, …, d_{n-1})`.
-fn embed<T: Scalar>(term: &DenseTensor<T>, phys: &[usize], bond: usize) -> DenseTensor<T> {
-    let left: usize = phys[..bond].iter().product();
-    let right: usize = phys[bond + 2..].iter().product();
-    let pair = phys[bond] * phys[bond + 1];
-    let h = term.reshape_logical(vec![pair, pair]);
-    let dim = left * pair * right;
-    let mut out = DenseTensor::<T>::zeros(vec![dim, dim]);
-    for l in 0..left {
-        for r in 0..right {
-            for a in 0..pair {
-                for b in 0..pair {
-                    out.set(
-                        [(l * pair + a) * right + r, (l * pair + b) * right + r],
-                        h.get([a, b]),
-                    );
-                }
-            }
-        }
-    }
-    out
-}
-
-/// `H = Σ_i h_i` as a dense matrix.
-fn hamiltonian<T: Scalar>(terms: &[DenseTensor<T>], phys: &[usize]) -> DenseTensor<T> {
-    let embedded: Vec<_> = terms
-        .iter()
-        .enumerate()
-        .map(|(bond, term)| embed(term, phys, bond))
-        .collect();
-    add_all(&embedded.iter().collect::<Vec<_>>()).expect("terms share one shape and order")
-}
-
 fn matmul<T: Scalar>(a: &DenseTensor<T>, b: &DenseTensor<T>) -> DenseTensor<T> {
     contract(&NativeBackend::new(), a, b, "ij,jk->ik").expect("matmul")
 }
@@ -143,7 +110,7 @@ fn dense_step<T: Scalar<Real = f64>>(
     let gates: Vec<_> = terms
         .iter()
         .enumerate()
-        .map(|(bond, term)| half_step_exp(&embed(term, phys, bond), time_step))
+        .map(|(bond, term)| half_step_exp(&embed_bond_term(term, phys, bond), time_step))
         .collect();
     let mut s = gates[0].clone();
     for g in gates.iter().skip(1).chain(gates.iter().rev()) {
@@ -220,7 +187,7 @@ fn two_site_chain_matches_the_dense_product() {
 #[test]
 fn error_is_second_order_in_the_step() {
     let (terms, psi0) = fixture();
-    let h = hamiltonian(&terms, &PHYS);
+    let h = bond_term_hamiltonian(&terms, &PHYS);
     let exact_propagator =
         expm_with_backend(&NativeBackend::new(), &h.scaled(C64::new(0.0, -1.0)), 1).expect("expm");
     let exact = normalized(&matvec(&exact_propagator, &state_vector(&psi0)));
@@ -485,7 +452,7 @@ fn imaginary_time_converges_to_the_heisenberg_ground_state() {
     let n = 6;
     let phys = [2; 6];
     let terms = vec![heisenberg_term(); n - 1];
-    let h = hamiltonian(&terms, &phys);
+    let h = bond_term_hamiltonian(&terms, &phys);
     let e0 = smallest_eigenvalue(&h);
     assert!((e0 + 2.4935771339).abs() < 1e-9, "fixture E0 = {e0}");
 
@@ -606,7 +573,7 @@ fn result_works_with_the_other_mps_operations() {
     let gate = expm_antihermitian_with_backend(&backend, &anti, 1)
         .expect("expm")
         .reshape_logical(vec![PHYS[bond], PHYS[bond + 1], PHYS[bond], PHYS[bond + 1]]);
-    let expected = matvec(&embed(&gate, &PHYS, bond), &state_vector(&psi));
+    let expected = matvec(&embed_bond_term(&gate, &PHYS, bond), &state_vector(&psi));
     psi.apply_two_site_gate(&backend, bond, &gate, &NO_TRUNC, GateCenter::Right);
     let err = distance(&state_vector(&psi), &expected);
     assert!(err < 1e-12, "gate after tebd: state error {err}");

@@ -1,8 +1,9 @@
 //! Dense test fixtures (no U(1) block structure) shared across the algorithms
-//! crate's tests and benchmarks: a minimal spin-1/2 Heisenberg MPO
-//! builder, random Dense MPS generators, random Hermitian matrices and
-//! bond terms, the smallest eigenvalue of a dense Hermitian matrix, and
-//! truncation parameters that keep every singular value.
+//! crate's tests, examples, and benchmarks: a minimal spin-1/2 Heisenberg
+//! MPO builder, random Dense MPS generators, random Hermitian matrices and
+//! bond terms, the dense Hamiltonian of a list of bond terms, the smallest
+//! eigenvalue of a dense Hermitian matrix, and truncation parameters that
+//! keep every singular value.
 //!
 //! Heisenberg rather than TFI is the test Hamiltonian because it is U(1)
 //! symmetric, which keeps the Dense results comparable with the
@@ -12,7 +13,9 @@ use ariadnetor_core::Scalar;
 use ariadnetor_linalg::eigh_with_backend;
 use ariadnetor_mps::{Mpo, Mps, TruncSvdParams};
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host};
+use ariadnetor_tensor::{
+    ComputeBackendTensorExt, DenseLayout, DenseStorage, DenseTensor, Host, add_all,
+};
 use num_complex::Complex;
 use rand::RngExt;
 use rand::SeedableRng;
@@ -264,6 +267,48 @@ pub fn random_bond_terms_c64(phys: &[usize], seed: u64) -> Vec<DenseTensor<Compl
                 .reshape_logical(vec![pair[0], pair[1], pair[0], pair[1]])
         })
         .collect()
+}
+
+/// `term` at `bond` embedded into the full space as `1 ⊗ h ⊗ 1`, a matrix
+/// over the row-major flattening of `(d_0, …, d_{n-1})`.
+pub fn embed_bond_term<T: Scalar>(
+    term: &DenseTensor<T>,
+    phys: &[usize],
+    bond: usize,
+) -> DenseTensor<T> {
+    let left: usize = phys[..bond].iter().product();
+    let right: usize = phys[bond + 2..].iter().product();
+    let pair = phys[bond] * phys[bond + 1];
+    let h = term.reshape_logical(vec![pair, pair]);
+    let dim = left * pair * right;
+    let mut out = DenseTensor::<T>::zeros(vec![dim, dim]);
+    for l in 0..left {
+        for r in 0..right {
+            for a in 0..pair {
+                for b in 0..pair {
+                    out.set(
+                        [(l * pair + a) * right + r, (l * pair + b) * right + r],
+                        h.get([a, b]),
+                    );
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `H = Σ_i h_i` as a dense matrix, with `terms[i]` acting on sites `i` and
+/// `i + 1`.
+pub fn bond_term_hamiltonian<T: Scalar>(
+    terms: &[DenseTensor<T>],
+    phys: &[usize],
+) -> DenseTensor<T> {
+    let embedded: Vec<_> = terms
+        .iter()
+        .enumerate()
+        .map(|(bond, term)| embed_bond_term(term, phys, bond))
+        .collect();
+    add_all(&embedded.iter().collect::<Vec<_>>()).expect("terms share one shape and order")
 }
 
 /// Random Dense MPS with no canonical form set (`CanonicalForm::Unknown`);

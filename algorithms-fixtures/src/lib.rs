@@ -1,5 +1,5 @@
-//! Shared algorithms-level fixtures for the algorithms crate's tests and
-//! benchmarks: U(1) MPS / MPO chains (`fixtures`) and Dense builders and
+//! Shared algorithms-level fixtures for the algorithms crate's tests,
+//! examples, and benchmarks: U(1) MPS / MPO chains (`fixtures`) and Dense builders and
 //! dense references (`dense_fixtures`). The tensor-layer densify / leg
 //! helpers live in `ariadnetor_tensor::test_fixtures`.
 //!
