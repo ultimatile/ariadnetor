@@ -1,0 +1,439 @@
+//! Dynamical structure factor `S^zz(q, ω)` of the spin-1/2 Heisenberg open
+//! chain `H = J Σ_i S_i · S_{i+1}` by real-time evolution.
+//!
+//! For the center site `c = n / 2` the example measures
+//!
+//! ```text
+//! C_xc(t) = ⟨ψ₀| S^z_x e^{-i(H - E₀)t} S^z_c |ψ₀⟩,
+//! C(q, t) = Σ_x cos(q (x - c)) C_xc(t),
+//! S(q, ω) = (1/2π) ∫ dt e^{iωt} e^{-η|t|} C(q, t)
+//!         = (1/π) Re ∫_0^∞ dt e^{iωt} e^{-ηt} C(q, t).
+//! ```
+//!
+//! The one-sided form holds because, for a real Hamiltonian, `C_xc = C_cx`,
+//! so the cosine weights give `C(q, -t) = conj C(q, t)`. With the
+//! exponential window the result is the Lehmann sum broadened by a
+//! Lorentzian of half width `η`:
+//!
+//! ```text
+//! S(q, ω) = Σ_n A_n(q) (η/π) / ((ω - ω_n)² + η²),
+//! A_n(q) = Σ_x cos(q (x - c)) ⟨0|S^z_x|n⟩⟨n|S^z_c|0⟩,   ω_n = E_n - E₀.
+//! ```
+//!
+//! The pipeline: the ground state `ψ₀` and `E₀` by two-site DMRG, `S^z_c ψ₀`
+//! by an exact MPO application, real-time TEBD one step at a time, the
+//! overlaps `⟨ψ₀|S^z_x|φ(t)⟩` for every `x` at every step, and a trapezoid
+//! sum over the samples `t_k = k δt`, `k = 0, …, K`.
+//!
+//! Run it with
+//!
+//! ```text
+//! cargo run --release -p ariadnetor-algorithms --example dynamical_structure_factor
+//! ```
+
+use std::f64::consts::PI;
+
+use ariadnetor_algorithms::dmrg::{DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
+use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::tebd::{TebdError, TebdParams, TimeStep, tebd};
+use ariadnetor_mps::{Mpo, Mps, SpinHalf, TensorChain, TruncSvdParams, apply, braket};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor, Host};
+use num_complex::Complex;
+
+type C64 = Complex<f64>;
+type DenseMps = Mps<DenseStorage<C64>, DenseLayout>;
+type DenseMpo = Mpo<DenseStorage<C64>, DenseLayout>;
+
+/// Largest DMRG truncation error, in the last sweep, accepted for the
+/// ground state.
+const DMRG_TRUNC_BOUND: f64 = 1e-8;
+
+/// Largest value the window `e^{-ηt}` may keep at the last sample.
+const WINDOW_TAIL_BOUND: f64 = 1e-4;
+
+/// Inputs of one run.
+#[derive(Debug, Clone)]
+struct Params {
+    /// Number of sites.
+    n_sites: usize,
+    /// Exchange coupling `J`.
+    j: f64,
+    /// Time step `δt`.
+    dt: f64,
+    /// Number of time steps `K`; the samples are `t_k = k δt`, `k = 0, …, K`.
+    n_steps: usize,
+    /// Window decay rate `η`, the Lorentzian half width.
+    eta: f64,
+    /// Bond-dimension cap of the DMRG ground state.
+    dmrg_chi_max: usize,
+    /// Sweep cap of the DMRG ground state.
+    dmrg_max_sweeps: usize,
+    /// Bond-dimension cap of the time evolution; `None` keeps every
+    /// singular value.
+    tebd_chi_max: Option<usize>,
+    /// Largest accepted sum of the TEBD records' `trunc_err_sum`.
+    trunc_budget: f64,
+    /// Momenta `q`.
+    qs: Vec<f64>,
+    /// Frequencies `ω`.
+    omegas: Vec<f64>,
+}
+
+impl Params {
+    /// Center site `c`.
+    fn center(&self) -> usize {
+        self.n_sites / 2
+    }
+
+    /// Reject inputs for which the method returns a wrong spectrum without
+    /// failing.
+    ///
+    /// # Panics
+    ///
+    /// - `J` is not finite and positive: for `J ≤ 0` the ground state is a
+    ///   multiplet whose states give different correlations.
+    /// - `δt` or `η` is not positive, or the window has not decayed below
+    ///   [`WINDOW_TAIL_BOUND`] at the last sample, so the cut-off tail
+    ///   biases `S`.
+    /// - A frequency is not below the Nyquist frequency `π/δt`, where the
+    ///   sampled transform reads an aliased value.
+    fn validate(&self) {
+        assert!(
+            self.j.is_finite() && self.j > 0.0,
+            "the coupling J must be finite and positive (antiferromagnetic), got {}",
+            self.j
+        );
+        let tail = (-self.eta * self.dt * self.n_steps as f64).exp();
+        assert!(
+            self.dt > 0.0 && self.eta > 0.0 && tail <= WINDOW_TAIL_BOUND,
+            "the window e^(-eta t) must decay below {WINDOW_TAIL_BOUND:e} at the last sample, \
+             got dt = {}, eta = {}, e^(-eta K dt) = {tail:e}",
+            self.dt,
+            self.eta
+        );
+        let nyquist = PI / self.dt;
+        assert!(
+            self.omegas.iter().all(|w| w.abs() < nyquist),
+            "every frequency must lie below the Nyquist frequency pi/dt = {nyquist}"
+        );
+    }
+}
+
+/// Errors of a run.
+#[derive(Debug, thiserror::Error)]
+enum RunError {
+    /// `dmrg_2site` failed.
+    #[error("DMRG failed")]
+    Dmrg(#[from] DmrgError),
+    /// DMRG truncated the ground state by more than [`DMRG_TRUNC_BOUND`].
+    #[error(
+        "DMRG truncated the ground state: truncation error {max_trunc_err:e} exceeds {bound:e}"
+    )]
+    DmrgTruncated {
+        /// The last sweep's largest truncation error.
+        max_trunc_err: f64,
+        /// [`DMRG_TRUNC_BOUND`].
+        bound: f64,
+    },
+    /// DMRG stopped before convergence.
+    #[error("DMRG did not converge in {n_sweeps} sweeps")]
+    DmrgNotConverged {
+        /// Sweeps run.
+        n_sweeps: usize,
+    },
+    /// `tebd` failed.
+    #[error("TEBD failed")]
+    Tebd(#[from] TebdError),
+    /// The time evolution truncated more than the budget allows.
+    #[error("TEBD truncation error {sum:e} exceeds the budget {budget:e} at step {step}")]
+    TruncationBudget {
+        /// Summed `trunc_err_sum` up to `step`.
+        sum: f64,
+        /// [`Params::trunc_budget`].
+        budget: f64,
+        /// Step at which the budget was exceeded.
+        step: usize,
+    },
+}
+
+/// Whether `value` is above `bound` or either is NaN, so that a NaN error or
+/// bound fails the check instead of passing it.
+fn exceeds(value: f64, bound: f64) -> bool {
+    value.partial_cmp(&bound).is_none_or(|o| o.is_gt())
+}
+
+fn c64(re: f64) -> C64 {
+    C64::new(re, 0.0)
+}
+
+/// `J (S^z S^z + (S⁺S⁻ + S⁻S⁺)/2)` on two sites, with legs
+/// `(out_i, out_i+1, in_i, in_i+1)`.
+fn bond_term(j: f64) -> DenseTensor<C64> {
+    let (sz, sp, sm) = (
+        SpinHalf.sz::<C64>(),
+        SpinHalf.sp::<C64>(),
+        SpinHalf.sm::<C64>(),
+    );
+    let mut h = DenseTensor::<C64>::zeros(vec![2, 2, 2, 2]);
+    for o1 in 0..2 {
+        for o2 in 0..2 {
+            for i1 in 0..2 {
+                for i2 in 0..2 {
+                    let zz = sz.get([o1, i1]) * sz.get([o2, i2]);
+                    let flip =
+                        sp.get([o1, i1]) * sm.get([o2, i2]) + sm.get([o1, i1]) * sp.get([o2, i2]);
+                    h.set([o1, o2, i1, i2], (zz + flip * 0.5) * j);
+                }
+            }
+        }
+    }
+    h
+}
+
+/// MPO of `J Σ_i S_i · S_{i+1}` on `n` sites, from the five-state automaton
+/// whose last row starts a term and whose first column ends it.
+///
+/// # Panics
+///
+/// Panics if `n < 2`.
+fn heisenberg_mpo(n: usize, j: f64) -> DenseMpo {
+    assert!(n >= 2, "heisenberg_mpo needs at least 2 sites, got {n}");
+    let (id, sz, sp, sm) = (
+        SpinHalf.id::<C64>(),
+        SpinHalf.sz::<C64>(),
+        SpinHalf.sp::<C64>(),
+        SpinHalf.sm::<C64>(),
+    );
+    // (row, column, operator, coefficient) of the 5 × 5 operator matrix.
+    let cells = [
+        (0, 0, &id, 1.0),
+        (1, 0, &sp, 1.0),
+        (2, 0, &sm, 1.0),
+        (3, 0, &sz, 1.0),
+        (4, 1, &sm, 0.5 * j),
+        (4, 2, &sp, 0.5 * j),
+        (4, 3, &sz, j),
+        (4, 4, &id, 1.0),
+    ];
+    let sites = (0..n)
+        .map(|site| {
+            let (first, last) = (site == 0, site == n - 1);
+            let shape = vec![if first { 1 } else { 5 }, 2, 2, if last { 1 } else { 5 }];
+            let mut w = DenseTensor::<C64>::zeros(shape);
+            for &(row, col, op, coeff) in &cells {
+                if (first && row != 4) || (last && col != 0) {
+                    continue;
+                }
+                let (l, r) = (if first { 0 } else { row }, if last { 0 } else { col });
+                for k in 0..2 {
+                    for b in 0..2 {
+                        // Leg 1 is the input (ket) index, leg 2 the output.
+                        w.set([l, k, b, r], op.get([b, k]) * coeff);
+                    }
+                }
+            }
+            w
+        })
+        .collect();
+    Mpo::from_sites(sites)
+}
+
+/// `S^z` at site `x` of an `n`-site chain, identity elsewhere.
+///
+/// # Panics
+///
+/// Panics if `x >= n`.
+fn sz_mpo(n: usize, x: usize) -> DenseMpo {
+    assert!(x < n, "sz_mpo: site {x} is outside a chain of {n} sites");
+    let mut w = DenseMpo::identity(&vec![2; n]);
+    let sz = SpinHalf.sz::<C64>();
+    for k in 0..2 {
+        for b in 0..2 {
+            w.site_mut(x).set([0, k, b, 0], sz.get([b, k]));
+        }
+    }
+    w
+}
+
+/// Néel product state `|↑↓↑↓…⟩`.
+fn neel_state(n: usize) -> DenseMps {
+    let sites = (0..n)
+        .map(|x| {
+            let mut a = DenseTensor::<C64>::zeros(vec![1, 2, 1]);
+            a.set([0, x % 2, 0], c64(1.0));
+            a
+        })
+        .collect();
+    Mps::from_sites(sites)
+}
+
+/// Ground-state energy and state by two-site DMRG from the Néel state.
+fn ground_state(params: &Params) -> Result<(f64, DenseMps), RunError> {
+    params.validate();
+    let dmrg = DmrgSweepParams {
+        max_sweeps: params.dmrg_max_sweeps,
+        min_sweeps: params.dmrg_max_sweeps.min(3),
+        energy_tol: 1e-12,
+        eigensolver: LocalEigensolverParams::Lanczos(LanczosParams {
+            max_iter: 200,
+            tol: 1e-12,
+            seed: Some(7),
+        }),
+        trunc: TruncSvdParams {
+            chi_max: Some(params.dmrg_chi_max),
+            target_trunc_err: None,
+        },
+    };
+    let mpo = heisenberg_mpo(params.n_sites, params.j);
+    let (result, psi) = dmrg_2site::<C64, _, _>(&mpo, &neel_state(params.n_sites), &dmrg)?;
+    let max_trunc_err = result.sweeps.last().map_or(0.0, |s| s.max_trunc_err);
+    if exceeds(max_trunc_err, DMRG_TRUNC_BOUND) {
+        return Err(RunError::DmrgTruncated {
+            max_trunc_err,
+            bound: DMRG_TRUNC_BOUND,
+        });
+    }
+    if !result.converged {
+        return Err(RunError::DmrgNotConverged {
+            n_sweeps: result.n_sweeps,
+        });
+    }
+    Ok((result.energy, psi))
+}
+
+/// `C_xc(t_k)` indexed by `[k][x]`, with the summed TEBD truncation error.
+#[derive(Debug, Clone)]
+struct Correlations {
+    values: Vec<Vec<C64>>,
+    trunc_err_sum: f64,
+}
+
+/// Measure `C_xc(t_k)` for every site `x` and sample `k`.
+fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlations, RunError> {
+    params.validate();
+    let n = params.n_sites;
+    let backend = Host::shared();
+    let sz: Vec<DenseMpo> = (0..n).map(|x| sz_mpo(n, x)).collect();
+    let terms = vec![bond_term(params.j); n - 1];
+    let tebd_params = TebdParams {
+        time_step: TimeStep::Real(params.dt),
+        n_steps: 1,
+        trunc: TruncSvdParams {
+            chi_max: params.tebd_chi_max,
+            target_trunc_err: None,
+        },
+    };
+    let measure = |phi: &DenseMps, factor: C64| -> Vec<C64> {
+        sz.iter()
+            .map(|op| factor * braket::<C64, _, _, _>(backend.as_ref(), psi0, op, phi))
+            .collect()
+    };
+
+    let mut phi = apply::<C64, _, _, _>(backend.as_ref(), &sz[params.center()], psi0, None);
+    let mut values = vec![measure(&phi, c64(1.0))];
+    // `tebd` renormalizes after every step; the product of the recorded
+    // norms restores the norm the evolution carries, ‖S^z_c ψ₀‖ included.
+    let mut norm_product = 1.0;
+    let mut trunc_err_sum = 0.0;
+    for step in 1..=params.n_steps {
+        let record = &tebd(&mut phi, &terms, &tebd_params)?[0];
+        norm_product *= record.norm;
+        trunc_err_sum += record.trunc_err_sum;
+        if exceeds(trunc_err_sum, params.trunc_budget) {
+            return Err(RunError::TruncationBudget {
+                sum: trunc_err_sum,
+                budget: params.trunc_budget,
+                step,
+            });
+        }
+        let t = step as f64 * params.dt;
+        values.push(measure(&phi, C64::from_polar(norm_product, e0 * t)));
+    }
+    Ok(Correlations {
+        values,
+        trunc_err_sum,
+    })
+}
+
+/// `S(q, ω)` indexed by `[q][ω]` from `C_xc(t_k)` indexed by `[k][x]`.
+fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
+    params.validate();
+    let c = params.center() as f64;
+    let last = values.len() - 1;
+    params
+        .qs
+        .iter()
+        .map(|&q| {
+            let cq: Vec<C64> = values
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .enumerate()
+                        .map(|(x, v)| v * (q * (x as f64 - c)).cos())
+                        .sum()
+                })
+                .collect();
+            params
+                .omegas
+                .iter()
+                .map(|&w| {
+                    let sum: C64 = cq
+                        .iter()
+                        .enumerate()
+                        .map(|(k, v)| {
+                            let t = k as f64 * params.dt;
+                            let weight = if k == 0 || k == last { 0.5 } else { 1.0 } * params.dt;
+                            v * C64::from_polar(weight * (-params.eta * t).exp(), w * t)
+                        })
+                        .sum();
+                    sum.re / PI
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn main() -> Result<(), RunError> {
+    let n_sites = 12;
+    let params = Params {
+        n_sites,
+        j: 1.0,
+        dt: 0.05,
+        n_steps: 500,
+        eta: 0.5,
+        dmrg_chi_max: 64,
+        dmrg_max_sweeps: 30,
+        tebd_chi_max: Some(64),
+        trunc_budget: 1e-3,
+        qs: (0..=n_sites / 2)
+            .map(|k| 2.0 * PI * k as f64 / n_sites as f64)
+            .collect(),
+        omegas: (0..=40).map(|i| 0.1 * f64::from(i)).collect(),
+    };
+    params.validate();
+    let (e0, psi0) = ground_state(&params)?;
+    let corr = correlations(&params, e0, &psi0)?;
+    let s = structure_factor(&params, &corr.values);
+
+    println!("# n = {}, J = {}, E0 = {e0:.12}", params.n_sites, params.j);
+    println!(
+        "# dt = {}, K = {}, eta = {}, summed TEBD truncation error = {:e}",
+        params.dt, params.n_steps, params.eta, corr.trunc_err_sum
+    );
+    print!("# omega");
+    for q in &params.qs {
+        print!(" q={q:.4}");
+    }
+    println!();
+    for (i, w) in params.omegas.iter().enumerate() {
+        print!("{w:7.3}");
+        for row in &s {
+            print!(" {:8.5}", row[i]);
+        }
+        println!();
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

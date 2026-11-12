@@ -1,0 +1,280 @@
+//! Checks of the example against exact diagonalization of the 8-site chain.
+
+use std::sync::OnceLock;
+
+use algorithms_fixtures::dense_fixtures::bond_term_hamiltonian;
+use ariadnetor_linalg::eigh_with_backend;
+
+use super::*;
+
+/// Known ground energy of `Σ_i S_i · S_{i+1}` on the 8-site open chain.
+const E0_8_SITES: f64 = -3.374932598687898;
+
+/// The 8-site chain with `η = 1` over `T = 10`, short enough for the test
+/// suite. The bounds the tests assert are about three times the deviations
+/// a dense-matrix model of the same Trotter schedule and transform gives
+/// for this fixture.
+fn fixture() -> Params {
+    let n_sites = 8;
+    Params {
+        n_sites,
+        j: 1.0,
+        dt: 0.05,
+        n_steps: 200,
+        eta: 1.0,
+        dmrg_chi_max: 64,
+        dmrg_max_sweeps: 30,
+        tebd_chi_max: None,
+        trunc_budget: 1e-8,
+        qs: (0..=4)
+            .map(|k| 2.0 * PI * f64::from(k) / n_sites as f64)
+            .collect(),
+        omegas: (0..=60).map(|i| -1.0 + 0.1 * f64::from(i)).collect(),
+    }
+}
+
+/// Exact eigenpairs of the fixture chain and `⟨n|S^z_x|0⟩`.
+struct Exact {
+    energies: Vec<f64>,
+    /// `[x][n]`.
+    sz_elems: Vec<Vec<C64>>,
+}
+
+impl Exact {
+    fn correlation(&self, x: usize, c: usize, t: f64) -> C64 {
+        let e0 = self.energies[0];
+        (0..self.energies.len())
+            .map(|n| {
+                self.sz_elems[x][n].conj()
+                    * self.sz_elems[c][n]
+                    * C64::from_polar(1.0, -(self.energies[n] - e0) * t)
+            })
+            .sum()
+    }
+
+    fn lehmann(&self, params: &Params) -> Vec<Vec<f64>> {
+        let c = params.center();
+        let e0 = self.energies[0];
+        let eta = params.eta;
+        params
+            .qs
+            .iter()
+            .map(|&q| {
+                let weights: Vec<C64> = (0..self.energies.len())
+                    .map(|n| {
+                        (0..params.n_sites)
+                            .map(|x| {
+                                self.sz_elems[x][n].conj()
+                                    * self.sz_elems[c][n]
+                                    * (q * (x as f64 - c as f64)).cos()
+                            })
+                            .sum()
+                    })
+                    .collect();
+                params
+                    .omegas
+                    .iter()
+                    .map(|&w| {
+                        let total: C64 = weights
+                            .iter()
+                            .zip(&self.energies)
+                            .map(|(a, e)| a * (eta / PI) / ((w - (e - e0)).powi(2) + eta * eta))
+                            .sum();
+                        total.re
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+}
+
+fn exact() -> &'static Exact {
+    static EXACT: OnceLock<Exact> = OnceLock::new();
+    EXACT.get_or_init(|| {
+        let n = fixture().n_sites;
+        let h = bond_term_hamiltonian(&vec![bond_term(1.0); n - 1], &vec![2; n]);
+        let (vals, vecs) = eigh_with_backend(Host::shared().as_ref(), &h, 1).expect("eigh");
+        let dim = 1 << n;
+        // Basis index `s` flattens `(s_0, …, s_{n-1})` row-major, so site
+        // `x` is bit `n - 1 - x`; bit value 0 is spin up.
+        let sz_diag = |x: usize, s: usize| {
+            if (s >> (n - 1 - x)) & 1 == 0 {
+                0.5
+            } else {
+                -0.5
+            }
+        };
+        let sz_elems = (0..n)
+            .map(|x| {
+                (0..dim)
+                    .map(|m| {
+                        (0..dim)
+                            .map(|s| vecs.get([s, m]).conj() * sz_diag(x, s) * vecs.get([s, 0]))
+                            .sum()
+                    })
+                    .collect()
+            })
+            .collect();
+        Exact {
+            energies: vals.data_slice().to_vec(),
+            sz_elems,
+        }
+    })
+}
+
+fn pipeline() -> &'static (f64, Correlations) {
+    static RUN: OnceLock<(f64, Correlations)> = OnceLock::new();
+    RUN.get_or_init(|| {
+        let params = fixture();
+        let (e0, psi0) = ground_state(&params).expect("ground state");
+        (e0, correlations(&params, e0, &psi0).expect("correlations"))
+    })
+}
+
+fn max_deviation(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
+    a.iter()
+        .flatten()
+        .zip(b.iter().flatten())
+        .map(|(x, y)| (x - y).abs())
+        .fold(0.0, f64::max)
+}
+
+#[test]
+fn bond_terms_reproduce_the_known_ground_energy() {
+    let e0 = exact().energies[0];
+    assert!(
+        (e0 - E0_8_SITES).abs() < 1e-10,
+        "bond_term(1.0) does not build J Σ S·S with J = 1: E0 = {e0}, expected {E0_8_SITES}"
+    );
+}
+
+#[test]
+fn ground_energy_matches_exact_diagonalization() {
+    let (e0, _) = pipeline();
+    let exact_e0 = exact().energies[0];
+    assert!(
+        (e0 - exact_e0).abs() < 1e-10,
+        "heisenberg_mpo and bond_term disagree on the coupling: DMRG E0 = {e0}, exact {exact_e0}"
+    );
+}
+
+#[test]
+fn correlations_match_exact_diagonalization() {
+    let params = fixture();
+    let (_, corr) = pipeline();
+    assert_eq!(corr.values.len(), params.n_steps + 1);
+    assert!(
+        corr.trunc_err_sum <= 1e-12,
+        "untruncated run truncated {}",
+        corr.trunc_err_sum
+    );
+    let mut deviation: f64 = 0.0;
+    for (k, row) in corr.values.iter().enumerate() {
+        assert_eq!(row.len(), params.n_sites);
+        for (x, v) in row.iter().enumerate() {
+            let t = k as f64 * params.dt;
+            deviation = deviation.max((v - exact().correlation(x, params.center(), t)).norm());
+        }
+    }
+    assert!(deviation <= 6e-4, "max |C_TEBD - C_exact| = {deviation:e}");
+}
+
+#[test]
+fn transform_of_exact_correlations_matches_lehmann() {
+    let params = fixture();
+    let values: Vec<Vec<C64>> = (0..=params.n_steps)
+        .map(|k| {
+            let t = k as f64 * params.dt;
+            (0..params.n_sites)
+                .map(|x| exact().correlation(x, params.center(), t))
+                .collect()
+        })
+        .collect();
+    let deviation = max_deviation(
+        &structure_factor(&params, &values),
+        &exact().lehmann(&params),
+    );
+    assert!(deviation <= 2e-4, "max |S - S_Lehmann| = {deviation:e}");
+}
+
+#[test]
+fn structure_factor_matches_lehmann() {
+    let params = fixture();
+    let s = structure_factor(&params, &pipeline().1.values);
+    let deviation = max_deviation(&s, &exact().lehmann(&params));
+    assert!(deviation <= 2.5e-4, "max |S - S_Lehmann| = {deviation:e}");
+}
+
+#[test]
+fn rejects_an_exceeded_truncation_budget() {
+    let params = Params {
+        tebd_chi_max: Some(2),
+        trunc_budget: 1e-6,
+        ..fixture()
+    };
+    let (e0, psi0) = ground_state(&params).expect("ground state");
+    let err = correlations(&params, e0, &psi0).expect_err("budget exceeded");
+    assert!(matches!(err, RunError::TruncationBudget { .. }), "{err:?}");
+}
+
+#[test]
+fn rejects_an_unconverged_dmrg() {
+    let params = Params {
+        dmrg_max_sweeps: 1,
+        ..fixture()
+    };
+    let Err(err) = ground_state(&params) else {
+        panic!("one sweep does not converge");
+    };
+    assert!(matches!(err, RunError::DmrgNotConverged { .. }), "{err:?}");
+}
+
+#[test]
+fn rejects_a_truncated_dmrg_ground_state() {
+    let params = Params {
+        dmrg_chi_max: 2,
+        ..fixture()
+    };
+    let Err(err) = ground_state(&params) else {
+        panic!("bond dimension 2 truncates");
+    };
+    assert!(matches!(err, RunError::DmrgTruncated { .. }), "{err:?}");
+}
+
+#[test]
+#[should_panic(expected = "the coupling J must be finite and positive")]
+fn rejects_a_non_antiferromagnetic_coupling() {
+    Params {
+        j: -1.0,
+        ..fixture()
+    }
+    .validate();
+}
+
+#[test]
+#[should_panic(expected = "the coupling J must be finite and positive")]
+fn rejects_a_non_finite_coupling() {
+    Params {
+        j: f64::INFINITY,
+        ..fixture()
+    }
+    .validate();
+}
+
+#[test]
+#[should_panic(expected = "the window e^(-eta t) must decay below")]
+fn rejects_an_undecayed_window() {
+    Params {
+        n_steps: 100,
+        ..fixture()
+    }
+    .validate();
+}
+
+#[test]
+#[should_panic(expected = "every frequency must lie below the Nyquist frequency")]
+fn rejects_a_frequency_above_nyquist() {
+    let params = fixture();
+    let omegas = vec![-1.01 * PI / params.dt];
+    Params { omegas, ..params }.validate();
+}

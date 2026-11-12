@@ -16,10 +16,10 @@
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
-# integration + doctests but does NOT compile benches; its doc-check step
-# builds the workspace docs with rustdoc warnings denied, catching broken
-# / private intra-doc links and invalid-HTML doc comments that clippy and
-# doctests do not. No step in `gate` runs benchmarks — those are on demand
+# integration + example tests and doctests but does NOT compile benches;
+# its doc-check step builds the workspace docs with rustdoc warnings
+# denied, catching broken / private intra-doc links and invalid-HTML doc
+# comments that clippy and doctests do not. No step in `gate` runs benchmarks — those are on demand
 # via the bench* tasks.
 
 [config]
@@ -55,7 +55,7 @@ args = ["build", "--workspace", "--release"]
 # ============================================================================
 
 [tasks.test]
-description = "Run unit + integration + doctests across the workspace (does not compile benches)"
+description = "Run unit + integration + example tests and doctests across the workspace (does not compile benches)"
 command = "cargo"
 args = ["test", "--workspace"]
 
@@ -191,7 +191,7 @@ args = ["release", "${@}"]
 # ============================================================================
 
 [tasks.gate]
-description = "Local pre-PR gate: fmt-check + clippy (--all-targets, compiles benches) + test (unit/integration/doctests) + doc-check (rustdoc warnings denied); does not run benchmarks"
+description = "Local pre-PR gate: fmt-check + clippy (--all-targets, compiles benches) + test (unit/integration/example/doctests) + doc-check (rustdoc warnings denied); does not run benchmarks"
 dependencies = ["fmt-check", "clippy", "test", "doc-check"]
 
 [tasks.dev]
@@ -326,7 +326,7 @@ args = ["${@}"]
 # non-ARPACK solver mutants overlap the shipped run; their verdicts are
 # identical there (algorithms has no cross-crate test consumer), so the
 # overlap is redundant, not contradictory. `--test-workspace false` scopes
-# testing to the algorithms crate's own unit + integration tests
+# testing to the algorithms crate's own unit + integration + example tests
 # (tests/arpack_smallest.rs, tests/dmrg_arpack.rs) — the only tests that can
 # kill these mutants; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
