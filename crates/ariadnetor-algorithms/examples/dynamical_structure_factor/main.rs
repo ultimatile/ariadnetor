@@ -185,13 +185,12 @@ enum RunError {
     Dmrg(#[from] DmrgError),
     /// DMRG's truncation error is above [`DMRG_TRUNC_BOUND`] or NaN.
     #[error(
-        "DMRG truncated the ground state: truncation error {max_trunc_err:e} is not within {bound:e}"
+        "DMRG truncated the ground state: truncation error {max_trunc_err:e} is not within {DMRG_TRUNC_BOUND:e}"
     )]
     DmrgTruncated {
-        /// The last sweep's largest truncation error.
+        /// The last sweep's largest truncation error, or NaN when DMRG
+        /// returned no sweep record.
         max_trunc_err: f64,
-        /// [`DMRG_TRUNC_BOUND`].
-        bound: f64,
     },
     /// DMRG stopped before convergence.
     #[error("DMRG did not converge in {n_sweeps} sweeps")]
@@ -350,12 +349,9 @@ fn ground_state(params: &Params) -> Result<(f64, DenseMps), RunError> {
     };
     let mpo = heisenberg_mpo(params.n_sites, params.j);
     let (result, psi) = dmrg_2site::<C64, _, _>(&mpo, &neel_state(params.n_sites), &dmrg)?;
-    let max_trunc_err = result.sweeps.last().map_or(0.0, |s| s.max_trunc_err);
+    let max_trunc_err = result.sweeps.last().map_or(f64::NAN, |s| s.max_trunc_err);
     if not_within(max_trunc_err, DMRG_TRUNC_BOUND) {
-        return Err(RunError::DmrgTruncated {
-            max_trunc_err,
-            bound: DMRG_TRUNC_BOUND,
-        });
+        return Err(RunError::DmrgTruncated { max_trunc_err });
     }
     if !result.converged {
         return Err(RunError::DmrgNotConverged {

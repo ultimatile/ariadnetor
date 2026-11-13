@@ -305,8 +305,8 @@ fn rejects_a_truncated_dmrg_ground_state() {
     });
     let err = ground_state_error(&params);
     assert!(
-        matches!(err, RunError::DmrgTruncated { max_trunc_err, bound }
-            if max_trunc_err > bound && bound == DMRG_TRUNC_BOUND),
+        matches!(err, RunError::DmrgTruncated { max_trunc_err }
+            if max_trunc_err > DMRG_TRUNC_BOUND),
         "{err:?}"
     );
 }
