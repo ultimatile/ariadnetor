@@ -1,9 +1,10 @@
 //! Dense test fixtures (no U(1) block structure) shared across the algorithms
 //! crate's tests, examples, and benchmarks: a minimal spin-1/2 Heisenberg
 //! MPO builder, random Dense MPS generators, random Hermitian matrices and
-//! bond terms, the dense Hamiltonian of a list of bond terms, the smallest
-//! eigenvalue of a dense Hermitian matrix, and truncation parameters that
-//! keep every singular value.
+//! bond terms, a bond term embedded into the full space and the dense
+//! Hamiltonian of a list of bond terms, the smallest eigenvalue of a dense
+//! Hermitian matrix, and truncation parameters that keep every singular
+//! value.
 //!
 //! Heisenberg rather than TFI is the test Hamiltonian because it is U(1)
 //! symmetric, which keeps the Dense results comparable with the
@@ -271,11 +272,28 @@ pub fn random_bond_terms_c64(phys: &[usize], seed: u64) -> Vec<DenseTensor<Compl
 
 /// `term` at `bond` embedded into the full space as `1 ⊗ h ⊗ 1`, a matrix
 /// over the row-major flattening of `(d_0, …, d_{n-1})`.
+///
+/// # Panics
+///
+/// Panics if `bond + 1` is not a site of `phys`, or if `term`'s shape is
+/// not `[d_bond, d_bond+1, d_bond, d_bond+1]`.
 pub fn embed_bond_term<T: Scalar>(
     term: &DenseTensor<T>,
     phys: &[usize],
     bond: usize,
 ) -> DenseTensor<T> {
+    assert!(
+        bond + 1 < phys.len(),
+        "embed_bond_term: bond {bond} needs sites {bond} and {} of {}",
+        bond + 1,
+        phys.len()
+    );
+    let expected = [phys[bond], phys[bond + 1], phys[bond], phys[bond + 1]];
+    assert_eq!(
+        term.shape(),
+        expected,
+        "embed_bond_term: term shape does not match the sites of bond {bond}"
+    );
     let left: usize = phys[..bond].iter().product();
     let right: usize = phys[bond + 2..].iter().product();
     let pair = phys[bond] * phys[bond + 1];
@@ -299,10 +317,21 @@ pub fn embed_bond_term<T: Scalar>(
 
 /// `H = Σ_i h_i` as a dense matrix, with `terms[i]` acting on sites `i` and
 /// `i + 1`.
+///
+/// # Panics
+///
+/// Panics if `terms` does not hold one term per bond of `phys` (at least
+/// one), or as [`embed_bond_term`] does.
 pub fn bond_term_hamiltonian<T: Scalar>(
     terms: &[DenseTensor<T>],
     phys: &[usize],
 ) -> DenseTensor<T> {
+    assert!(
+        !terms.is_empty() && terms.len() + 1 == phys.len(),
+        "bond_term_hamiltonian: {} terms for {} sites; need one per bond, at least one",
+        terms.len(),
+        phys.len()
+    );
     let embedded: Vec<_> = terms
         .iter()
         .enumerate()
@@ -322,4 +351,37 @@ pub fn random_mps_unknown_f64(
     random_mps(&vec![d; n], &uniform_bonds(n, chi), seed, |rng| {
         rng.random_range(-0.5_f64..0.5)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn term(d_l: usize, d_r: usize) -> DenseTensor<f64> {
+        DenseTensor::<f64>::zeros(vec![d_l, d_r, d_l, d_r])
+    }
+
+    #[test]
+    #[should_panic(expected = "embed_bond_term: bond 1 needs sites 1 and 2 of 2")]
+    fn embed_bond_term_rejects_a_bond_past_the_chain() {
+        embed_bond_term(&term(2, 2), &[2, 2], 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "embed_bond_term: term shape does not match the sites of bond 0")]
+    fn embed_bond_term_rejects_a_term_of_the_wrong_shape() {
+        embed_bond_term(&term(3, 2), &[2, 3], 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "bond_term_hamiltonian: 2 terms for 2 sites")]
+    fn bond_term_hamiltonian_rejects_a_term_count_that_is_not_the_bond_count() {
+        bond_term_hamiltonian(&[term(2, 2), term(2, 2)], &[2, 2]);
+    }
+
+    #[test]
+    #[should_panic(expected = "bond_term_hamiltonian: 0 terms for 1 sites")]
+    fn bond_term_hamiltonian_rejects_no_terms() {
+        bond_term_hamiltonian::<f64>(&[], &[2]);
+    }
 }

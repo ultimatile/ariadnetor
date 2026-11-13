@@ -19,8 +19,8 @@
 # integration + example tests and doctests but does NOT compile benches;
 # its doc-check step builds the workspace docs with rustdoc warnings
 # denied, catching broken / private intra-doc links and invalid-HTML doc
-# comments that clippy and doctests do not. No step in `gate` runs benchmarks — those are on demand
-# via the bench* tasks.
+# comments that clippy and doctests do not. No step in `gate` runs
+# benchmarks — those are on demand via the bench* tasks.
 
 [config]
 default_to_workspace = false
@@ -60,7 +60,7 @@ command = "cargo"
 args = ["test", "--workspace"]
 
 [tasks.test-lib]
-description = "Run unit tests only (--lib): no integration tests, no doctests"
+description = "Run unit tests only (--lib): no integration tests, no example tests, no doctests"
 command = "cargo"
 args = ["test", "--workspace", "--lib"]
 
@@ -326,9 +326,8 @@ args = ["${@}"]
 # non-ARPACK solver mutants overlap the shipped run; their verdicts are
 # identical there (algorithms has no cross-crate test consumer), so the
 # overlap is redundant, not contradictory. `--test-workspace false` scopes
-# testing to the algorithms crate's own unit + integration + example tests
-# (tests/arpack_smallest.rs, tests/dmrg_arpack.rs) — the only tests that can
-# kill these mutants; it is an optimization here, not a correctness
+# testing to the algorithms crate's own tests, where every test that can
+# kill these mutants lives; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
 # Neither scoped pass takes `${@}`, unlike `mutants`: cargo-mutants

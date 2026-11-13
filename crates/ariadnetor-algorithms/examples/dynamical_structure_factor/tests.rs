@@ -1,5 +1,3 @@
-//! Checks of the example against exact diagonalization of the 8-site chain.
-
 use std::sync::OnceLock;
 
 use algorithms_fixtures::dense_fixtures::bond_term_hamiltonian;
@@ -11,9 +9,9 @@ use super::*;
 const E0_8_SITES: f64 = -3.374932598687898;
 
 /// The 8-site chain with `η = 1` over `T = 10`, short enough for the test
-/// suite. The bounds the tests assert are about three times the deviations
-/// a dense-matrix model of the same Trotter schedule and transform gives
-/// for this fixture.
+/// suite. The bounds of the comparisons of `C` and `S` with exact
+/// diagonalization are each about three times the deviation this fixture
+/// shows.
 fn fixture() -> Params {
     let n_sites = 8;
     Params {
@@ -33,7 +31,8 @@ fn fixture() -> Params {
     }
 }
 
-/// Exact eigenpairs of the fixture chain and `⟨n|S^z_x|0⟩`.
+/// Exact energies of the fixture chain and the matrix elements
+/// `⟨n|S^z_x|0⟩`.
 struct Exact {
     energies: Vec<f64>,
     /// `[x][n]`.
@@ -214,7 +213,29 @@ fn rejects_an_exceeded_truncation_budget() {
     };
     let (e0, psi0) = ground_state(&params).expect("ground state");
     let err = correlations(&params, e0, &psi0).expect_err("budget exceeded");
-    assert!(matches!(err, RunError::TruncationBudget { .. }), "{err:?}");
+    assert!(
+        matches!(err, RunError::TruncationBudget { sum, budget, step }
+            if sum > budget && budget == 1e-6 && (1..=params.n_steps).contains(&step)),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn reports_the_truncation_error_of_a_truncated_run() {
+    // η = 2 lets K = 100 pass the window check, which keeps this run short.
+    let params = Params {
+        tebd_chi_max: Some(4),
+        trunc_budget: f64::INFINITY,
+        eta: 2.0,
+        n_steps: 100,
+        ..fixture()
+    };
+    let (e0, psi0) = ground_state(&params).expect("ground state");
+    let corr = correlations(&params, e0, &psi0).expect("an infinite budget is never exceeded");
+    assert!(
+        corr.trunc_err_sum > 0.0,
+        "chi_max = 4 truncates the 8-site chain"
+    );
 }
 
 #[test]
@@ -226,7 +247,10 @@ fn rejects_an_unconverged_dmrg() {
     let Err(err) = ground_state(&params) else {
         panic!("one sweep does not converge");
     };
-    assert!(matches!(err, RunError::DmrgNotConverged { .. }), "{err:?}");
+    assert!(
+        matches!(err, RunError::DmrgNotConverged { n_sweeps: 1 }),
+        "{err:?}"
+    );
 }
 
 #[test]
@@ -238,43 +262,174 @@ fn rejects_a_truncated_dmrg_ground_state() {
     let Err(err) = ground_state(&params) else {
         panic!("bond dimension 2 truncates");
     };
-    assert!(matches!(err, RunError::DmrgTruncated { .. }), "{err:?}");
+    assert!(
+        matches!(err, RunError::DmrgTruncated { max_trunc_err, bound }
+            if max_trunc_err > bound && bound == DMRG_TRUNC_BOUND),
+        "{err:?}"
+    );
 }
 
 #[test]
-#[should_panic(expected = "the coupling J must be finite and positive")]
-fn rejects_a_non_antiferromagnetic_coupling() {
-    Params {
-        j: -1.0,
+fn forwards_dmrg_and_tebd_errors() {
+    let params = Params {
+        dmrg_max_sweeps: 0,
         ..fixture()
-    }
-    .validate();
-}
+    };
+    let Err(err) = ground_state(&params) else {
+        panic!("zero sweeps are invalid DMRG parameters");
+    };
+    assert!(matches!(err, RunError::Dmrg(_)), "{err:?}");
 
-#[test]
-#[should_panic(expected = "the coupling J must be finite and positive")]
-fn rejects_a_non_finite_coupling() {
-    Params {
-        j: f64::INFINITY,
+    let params = Params {
+        tebd_chi_max: Some(0),
         ..fixture()
-    }
-    .validate();
+    };
+    let psi0 = neel_state(params.n_sites);
+    let err = correlations(&params, 0.0, &psi0).expect_err("chi_max = 0 is invalid");
+    assert!(matches!(err, RunError::Tebd(_)), "{err:?}");
+}
+
+/// A call expected to panic.
+type PanicCase = Box<dyn FnOnce() + std::panic::UnwindSafe>;
+
+/// The message `f` panics with.
+fn panic_message(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+    let payload = std::panic::catch_unwind(f).expect_err("expected a panic");
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+        .expect("a panic message")
 }
 
 #[test]
-#[should_panic(expected = "the window e^(-eta t) must decay below")]
-fn rejects_an_undecayed_window() {
-    Params {
-        n_steps: 100,
-        ..fixture()
+fn validate_rejects_each_violated_precondition() {
+    let base = fixture();
+    let step_rate = "the time step dt and the window rate eta must be finite and positive";
+    let coupling = "the coupling J must be finite and positive";
+    let cases = [
+        (
+            Params {
+                n_sites: 1,
+                ..base.clone()
+            },
+            "the chain needs at least 2 sites, got 1",
+        ),
+        (
+            Params {
+                j: 0.0,
+                ..base.clone()
+            },
+            coupling,
+        ),
+        (
+            Params {
+                j: f64::INFINITY,
+                ..base.clone()
+            },
+            coupling,
+        ),
+        (
+            Params {
+                dt: 0.0,
+                ..base.clone()
+            },
+            step_rate,
+        ),
+        (
+            Params {
+                dt: -0.05,
+                ..base.clone()
+            },
+            step_rate,
+        ),
+        (
+            Params {
+                dt: f64::INFINITY,
+                ..base.clone()
+            },
+            step_rate,
+        ),
+        (
+            Params {
+                eta: 0.0,
+                ..base.clone()
+            },
+            step_rate,
+        ),
+        (
+            Params {
+                eta: -1.0,
+                ..base.clone()
+            },
+            step_rate,
+        ),
+        (
+            Params {
+                eta: f64::INFINITY,
+                ..base.clone()
+            },
+            step_rate,
+        ),
+        (
+            Params {
+                n_steps: 100,
+                ..base.clone()
+            },
+            "the window e^(-eta t) must decay to at most",
+        ),
+        (
+            Params {
+                omegas: vec![-1.01 * PI / base.dt],
+                ..base.clone()
+            },
+            "every |omega| must lie below the Nyquist frequency",
+        ),
+    ];
+    for (params, expected) in cases {
+        let message = panic_message(|| params.validate());
+        assert!(message.starts_with(expected), "{params:?}: {message}");
     }
-    .validate();
 }
 
 #[test]
-#[should_panic(expected = "every frequency must lie below the Nyquist frequency")]
-fn rejects_a_frequency_above_nyquist() {
+fn builders_and_transform_reject_malformed_inputs() {
     let params = fixture();
-    let omegas = vec![-1.01 * PI / params.dt];
-    Params { omegas, ..params }.validate();
+    let (n, k) = (params.n_sites, params.n_steps);
+    let transform = "structure_factor needs C_xc(t_k) for k = 0..=K and every site";
+    let short = vec![vec![C64::new(0.0, 0.0); n]; k];
+    let narrow = vec![vec![C64::new(0.0, 0.0); n - 1]; k + 1];
+    let cases: [(PanicCase, &str); 4] = [
+        (
+            Box::new(|| drop(heisenberg_mpo(1, 1.0))),
+            "heisenberg_mpo needs at least 2 sites, got 1",
+        ),
+        (
+            Box::new(move || drop(sz_mpo(n, n))),
+            "sz_mpo: site 8 is outside a chain of 8 sites",
+        ),
+        (
+            Box::new({
+                let params = params.clone();
+                move || drop(structure_factor(&params, &short))
+            }),
+            transform,
+        ),
+        (
+            Box::new(move || drop(structure_factor(&params, &narrow))),
+            transform,
+        ),
+    ];
+    for (f, expected) in cases {
+        let message = panic_message(f);
+        assert!(message.starts_with(expected), "{message}");
+    }
+}
+
+#[test]
+fn exceeds_fails_closed_on_nan() {
+    assert!(!exceeds(1.0, 1.0));
+    assert!(exceeds(2.0, 1.0));
+    assert!(exceeds(f64::NAN, 1.0));
+    assert!(exceeds(0.0, f64::NAN));
 }

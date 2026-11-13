@@ -85,36 +85,46 @@ impl Params {
         self.n_sites / 2
     }
 
-    /// Reject inputs for which the method returns a wrong spectrum without
-    /// failing.
+    /// Assert the preconditions of a run.
     ///
     /// # Panics
     ///
+    /// - The chain has fewer than 2 sites.
     /// - `J` is not finite and positive: for `J ≤ 0` the ground state is a
     ///   multiplet whose states give different correlations.
-    /// - `δt` or `η` is not positive, or the window has not decayed below
-    ///   [`WINDOW_TAIL_BOUND`] at the last sample, so the cut-off tail
-    ///   biases `S`.
-    /// - A frequency is not below the Nyquist frequency `π/δt`, where the
-    ///   sampled transform reads an aliased value.
+    /// - `δt` or `η` is not finite and positive.
+    /// - The window at the last sample is above [`WINDOW_TAIL_BOUND`], so the
+    ///   cut-off tail biases `S`.
+    /// - A frequency's magnitude is not below the Nyquist frequency `π/δt`,
+    ///   where the sampled transform reads an aliased value.
     fn validate(&self) {
+        assert!(
+            self.n_sites >= 2,
+            "the chain needs at least 2 sites, got {}",
+            self.n_sites
+        );
         assert!(
             self.j.is_finite() && self.j > 0.0,
             "the coupling J must be finite and positive (antiferromagnetic), got {}",
             self.j
         );
-        let tail = (-self.eta * self.dt * self.n_steps as f64).exp();
         assert!(
-            self.dt > 0.0 && self.eta > 0.0 && tail <= WINDOW_TAIL_BOUND,
-            "the window e^(-eta t) must decay below {WINDOW_TAIL_BOUND:e} at the last sample, \
-             got dt = {}, eta = {}, e^(-eta K dt) = {tail:e}",
+            self.dt.is_finite() && self.dt > 0.0 && self.eta.is_finite() && self.eta > 0.0,
+            "the time step dt and the window rate eta must be finite and positive, \
+             got dt = {}, eta = {}",
             self.dt,
             self.eta
+        );
+        let tail = (-self.eta * self.dt * self.n_steps as f64).exp();
+        assert!(
+            tail <= WINDOW_TAIL_BOUND,
+            "the window e^(-eta t) must decay to at most {WINDOW_TAIL_BOUND:e} at the last sample, \
+             got e^(-eta K dt) = {tail:e}"
         );
         let nyquist = PI / self.dt;
         assert!(
             self.omegas.iter().all(|w| w.abs() < nyquist),
-            "every frequency must lie below the Nyquist frequency pi/dt = {nyquist}"
+            "every |omega| must lie below the Nyquist frequency pi/dt = {nyquist}"
         );
     }
 }
@@ -356,8 +366,17 @@ fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlation
 }
 
 /// `S(q, ω)` indexed by `[q][ω]` from `C_xc(t_k)` indexed by `[k][x]`.
+///
+/// # Panics
+///
+/// Panics as [`Params::validate`] does, or if `values` is not
+/// `(K + 1) × n_sites`.
 fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
     params.validate();
+    assert!(
+        values.len() == params.n_steps + 1 && values.iter().all(|row| row.len() == params.n_sites),
+        "structure_factor needs C_xc(t_k) for k = 0..=K and every site"
+    );
     let c = params.center() as f64;
     let last = values.len() - 1;
     params
