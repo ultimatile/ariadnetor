@@ -147,12 +147,34 @@ fn ground_state_error(params: &Params) -> RunError {
     }
 }
 
+/// The larger of `a` and `b`, or NaN if either is NaN. `f64::max` returns the
+/// other operand for a NaN, which would let a NaN deviation pass a bound.
+fn nan_max(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else {
+        a.max(b)
+    }
+}
+
 fn max_deviation(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
+    assert_eq!(
+        a.len(),
+        b.len(),
+        "the spectra have different momentum counts"
+    );
+    for (row_a, row_b) in a.iter().zip(b) {
+        assert_eq!(
+            row_a.len(),
+            row_b.len(),
+            "the spectra have different frequency counts"
+        );
+    }
     a.iter()
         .flatten()
         .zip(b.iter().flatten())
         .map(|(x, y)| (x - y).abs())
-        .fold(0.0, f64::max)
+        .fold(0.0, nan_max)
 }
 
 #[test]
@@ -209,7 +231,10 @@ fn correlations_match_exact_diagonalization() {
         assert_eq!(row.len(), params.n_sites);
         for (x, v) in row.iter().enumerate() {
             let t = k as f64 * params.dt;
-            deviation = deviation.max((v - exact().correlation(x, params.center(), t)).norm());
+            deviation = nan_max(
+                deviation,
+                (v - exact().correlation(x, params.center(), t)).norm(),
+            );
         }
     }
     assert!(deviation <= 6e-4, "max |C_TEBD - C_exact| = {deviation:e}");
@@ -565,4 +590,12 @@ fn not_within_fails_closed_on_nan() {
     assert!(not_within(2.0, 1.0));
     assert!(not_within(f64::NAN, 1.0));
     assert!(not_within(0.0, f64::NAN));
+}
+
+#[test]
+fn max_deviation_keeps_a_nan() {
+    let zeros = vec![vec![0.0; 2]];
+    assert!(max_deviation(&[vec![f64::NAN, 0.0]], &zeros).is_nan());
+    assert!(max_deviation(&[vec![0.0, f64::NAN]], &zeros).is_nan());
+    assert_eq!(max_deviation(&[vec![0.5, -1.0]], &zeros), 1.0);
 }
