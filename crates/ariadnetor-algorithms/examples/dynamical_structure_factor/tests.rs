@@ -268,7 +268,8 @@ fn reports_the_truncation_error_of_a_truncated_run() {
         ..fixture()
     });
     let (e0, psi0) = ground();
-    let corr = correlations(&params, *e0, psi0).expect("an infinite budget is never exceeded");
+    let corr =
+        correlations(&params, *e0, psi0).expect("a finite sum does not exceed an infinite budget");
     assert!(
         corr.trunc_err_sum > 0.0,
         "chi_max = 4 truncates the 8-site chain"
@@ -307,6 +308,19 @@ fn rejects_a_truncated_dmrg_ground_state() {
         matches!(err, RunError::DmrgTruncated { max_trunc_err, bound }
             if max_trunc_err > bound && bound == DMRG_TRUNC_BOUND),
         "{err:?}"
+    );
+}
+
+#[test]
+fn error_report_lists_the_error_and_its_source() {
+    let err = RunError::Tebd {
+        step: 3,
+        source: TebdError::NormBreakdown { step: 0 },
+    };
+    assert_eq!(
+        error_report(&err),
+        "error: the single-step TEBD call that produces sample 3 failed\n  \
+         caused by: state norm is zero or not finite after step 0\n"
     );
 }
 
@@ -472,7 +486,7 @@ fn params_reject_each_violated_precondition() {
 }
 
 #[test]
-fn builders_and_transform_reject_malformed_inputs() {
+fn entry_points_reject_malformed_inputs() {
     let params = Params::new(fixture());
     let (n, k) = (params.n_sites, params.n_steps);
     let transform = "structure_factor needs C_xc(t_k) for k = 0..=K and every site";

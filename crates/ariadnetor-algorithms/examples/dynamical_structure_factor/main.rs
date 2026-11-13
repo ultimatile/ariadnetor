@@ -31,7 +31,9 @@
 //! cargo run --release -p ariadnetor-algorithms --example dynamical_structure_factor
 //! ```
 
+use std::error::Error;
 use std::f64::consts::PI;
+use std::process::ExitCode;
 
 use ariadnetor_algorithms::dmrg::{DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
@@ -199,7 +201,7 @@ enum RunError {
         n_sweeps: usize,
     },
     /// `tebd` failed.
-    #[error("TEBD failed at sample {step}")]
+    #[error("the single-step TEBD call that produces sample {step} failed")]
     Tebd {
         /// Sample `k` whose step failed; `k = 1` is the first TEBD step.
         step: usize,
@@ -445,6 +447,13 @@ fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
     );
     let c = params.center() as f64;
     let last = values.len() - 1;
+    // Trapezoid weight times the window, per sample.
+    let windowed: Vec<f64> = (0..=last)
+        .map(|k| {
+            let weight = if k == 0 || k == last { 0.5 } else { 1.0 } * params.dt;
+            weight * (-params.eta * k as f64 * params.dt).exp()
+        })
+        .collect();
     params
         .qs
         .iter()
@@ -464,11 +473,10 @@ fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
                 .map(|&w| {
                     let sum: C64 = cq
                         .iter()
+                        .zip(&windowed)
                         .enumerate()
-                        .map(|(k, v)| {
-                            let t = k as f64 * params.dt;
-                            let weight = if k == 0 || k == last { 0.5 } else { 1.0 } * params.dt;
-                            v * C64::from_polar(weight * (-params.eta * t).exp(), w * t)
+                        .map(|(k, (v, &weight))| {
+                            v * C64::from_polar(weight, w * k as f64 * params.dt)
                         })
                         .sum();
                     sum.re / PI
@@ -478,7 +486,29 @@ fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
         .collect()
 }
 
-fn main() -> Result<(), RunError> {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprint!("{}", error_report(&err));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `err` and the chain of its sources, one per line.
+fn error_report(err: &dyn Error) -> String {
+    let mut report = format!("error: {err}\n");
+    let mut source = err.source();
+    while let Some(cause) = source {
+        report.push_str(&format!("  caused by: {cause}\n"));
+        source = cause.source();
+    }
+    report
+}
+
+/// Run the default parameters and print `S(q, ω)` as a table.
+fn run() -> Result<(), RunError> {
     let n_sites = 12;
     let params = Params::new(Inputs {
         n_sites,
