@@ -201,24 +201,24 @@ enum RunError {
         n_sweeps: usize,
     },
     /// `tebd` failed.
-    #[error("the single-step TEBD call that produces sample {step} failed")]
+    #[error("the single-step TEBD call that produces sample {sample} failed")]
     Tebd {
         /// Sample `k` whose step failed; `k = 1` is the first TEBD step.
-        step: usize,
+        sample: usize,
         /// The `tebd` error.
         #[source]
         source: TebdError,
     },
     /// The summed TEBD truncation error is above the budget or NaN.
-    #[error("TEBD truncation error {sum:e} exceeds the budget {budget:e} at sample {step}")]
+    #[error("TEBD truncation error {sum:e} exceeds the budget {budget:e} at sample {sample}")]
     TruncationBudget {
-        /// Summed truncation error of the evolved state up to `step`.
+        /// Summed truncation error of the evolved state up to `sample`.
         sum: f64,
         /// [`Inputs::trunc_budget`].
         budget: f64,
         /// Sample `k` whose step exceeded the budget; `k = 1` is the first
         /// TEBD step.
-        step: usize,
+        sample: usize,
     },
 }
 
@@ -413,19 +413,19 @@ fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlation
     // by that product puts every step's error on the evolved state's scale.
     let mut norm_product = 1.0;
     let mut trunc_err_sum = 0.0;
-    for step in 1..=params.n_steps {
+    for sample in 1..=params.n_steps {
         let record = &tebd(&mut phi, &terms, &tebd_params)
-            .map_err(|source| RunError::Tebd { step, source })?[0];
+            .map_err(|source| RunError::Tebd { sample, source })?[0];
         trunc_err_sum += norm_product * record.trunc_err_sum;
         norm_product *= record.norm;
         if exceeds(trunc_err_sum, params.trunc_budget) {
             return Err(RunError::TruncationBudget {
                 sum: trunc_err_sum,
                 budget: params.trunc_budget,
-                step,
+                sample,
             });
         }
-        let t = step as f64 * params.dt;
+        let t = sample as f64 * params.dt;
         values.push(measure(&phi, C64::from_polar(norm_product, e0 * t)));
     }
     Ok(Correlations {
@@ -507,10 +507,10 @@ fn error_report(err: &dyn Error) -> String {
     report
 }
 
-/// Run the default parameters and print `S(q, ω)` as a table.
-fn run() -> Result<(), RunError> {
+/// Inputs of the run `main` performs.
+fn default_inputs() -> Inputs {
     let n_sites = 12;
-    let params = Params::new(Inputs {
+    Inputs {
         n_sites,
         j: 1.0,
         dt: 0.05,
@@ -524,7 +524,12 @@ fn run() -> Result<(), RunError> {
             .map(|k| 2.0 * PI * k as f64 / n_sites as f64)
             .collect(),
         omegas: (0..=40).map(|i| 0.1 * f64::from(i)).collect(),
-    });
+    }
+}
+
+/// Run the default parameters and print `S(q, ω)` as a table.
+fn run() -> Result<(), RunError> {
+    let params = Params::new(default_inputs());
     let (e0, psi0) = ground_state(&params)?;
     let corr = correlations(&params, e0, &psi0)?;
     let s = structure_factor(&params, &corr.values);

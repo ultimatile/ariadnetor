@@ -251,8 +251,8 @@ fn rejects_an_exceeded_truncation_budget() {
     let (e0, psi0) = ground();
     let err = correlations(&params, *e0, psi0).expect_err("budget exceeded");
     assert!(
-        matches!(err, RunError::TruncationBudget { sum, budget, step }
-            if sum > budget && budget == 1e-6 && (1..=params.n_steps).contains(&step)),
+        matches!(err, RunError::TruncationBudget { sum, budget, sample }
+            if sum > budget && budget == 1e-6 && (1..=params.n_steps).contains(&sample)),
         "{err:?}"
     );
 }
@@ -314,13 +314,30 @@ fn rejects_a_truncated_dmrg_ground_state() {
 #[test]
 fn error_report_lists_the_error_and_its_source() {
     let err = RunError::Tebd {
-        step: 3,
+        sample: 3,
         source: TebdError::NormBreakdown { step: 0 },
     };
     assert_eq!(
         error_report(&err),
         "error: the single-step TEBD call that produces sample 3 failed\n  \
          caused by: state norm is zero or not finite after step 0\n"
+    );
+}
+
+#[test]
+fn error_report_follows_every_level_of_the_source_chain() {
+    #[derive(Debug, thiserror::Error)]
+    #[error("inner")]
+    struct Inner;
+    #[derive(Debug, thiserror::Error)]
+    #[error("middle")]
+    struct Middle(#[source] Inner);
+    #[derive(Debug, thiserror::Error)]
+    #[error("outer")]
+    struct Outer(#[source] Middle);
+    assert_eq!(
+        error_report(&Outer(Middle(Inner))),
+        "error: outer\n  caused by: middle\n  caused by: inner\n"
     );
 }
 
@@ -337,12 +354,18 @@ fn forwards_a_tebd_breakdown() {
         matches!(
             err,
             RunError::Tebd {
-                step: 1,
+                sample: 1,
                 source: TebdError::NormBreakdown { .. }
             }
         ),
         "{err:?}"
     );
+}
+
+#[test]
+fn default_inputs_are_accepted() {
+    let params = Params::new(default_inputs());
+    assert_eq!(params.n_sites, 12);
 }
 
 #[test]

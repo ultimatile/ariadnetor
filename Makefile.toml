@@ -20,7 +20,8 @@
 # its doc-check step builds the workspace docs with rustdoc warnings
 # denied, catching broken / private intra-doc links and invalid-HTML doc
 # comments that clippy and doctests do not. No step in `gate` runs
-# benchmarks — those are on demand via the bench* tasks.
+# benchmarks — those are on demand via the bench* tasks. Example tests are
+# those of examples whose `[[example]]` entry sets `test = true`.
 
 [config]
 default_to_workspace = false
