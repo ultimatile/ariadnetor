@@ -104,8 +104,7 @@ mod params {
         /// - `δt` or `η` is not finite and positive.
         /// - The window at the last sample is above [`WINDOW_TAIL_BOUND`], so
         ///   the cut-off tail biases `S`.
-        /// - A frequency's magnitude is not below the Nyquist frequency
-        ///   `π/δt` of the samples.
+        /// - A frequency's magnitude is not below `π/δt`.
         /// - A momentum is not finite.
         /// - The truncation budget is negative or NaN.
         /// - A bond-dimension cap or the sweep cap is zero.
@@ -186,7 +185,7 @@ enum RunError {
     Dmrg(#[from] DmrgError),
     /// DMRG's truncation error is above [`DMRG_TRUNC_BOUND`] or NaN.
     #[error(
-        "DMRG truncated the ground state: truncation error {max_trunc_err:e} exceeds {bound:e}"
+        "DMRG truncated the ground state: truncation error {max_trunc_err:e} is not within {bound:e}"
     )]
     DmrgTruncated {
         /// The last sweep's largest truncation error.
@@ -210,13 +209,13 @@ enum RunError {
         source: TebdError,
     },
     /// The summed TEBD truncation error is above the budget or NaN.
-    #[error("TEBD truncation error {sum:e} exceeds the budget {budget:e} at sample {sample}")]
+    #[error("TEBD truncation error {sum:e} is not within the budget {budget:e} at sample {sample}")]
     TruncationBudget {
         /// Summed truncation error of the evolved state up to `sample`.
         sum: f64,
         /// [`Inputs::trunc_budget`].
         budget: f64,
-        /// Sample `k` whose step exceeded the budget; `k = 1` is the first
+        /// Sample `k` whose step left the budget; `k = 1` is the first
         /// TEBD step.
         sample: usize,
     },
@@ -224,7 +223,7 @@ enum RunError {
 
 /// Whether `value` is above `bound` or either is NaN, so that a NaN error or
 /// bound fails the check instead of passing it.
-fn exceeds(value: f64, bound: f64) -> bool {
+fn not_within(value: f64, bound: f64) -> bool {
     value.partial_cmp(&bound).is_none_or(|o| o.is_gt())
 }
 
@@ -352,7 +351,7 @@ fn ground_state(params: &Params) -> Result<(f64, DenseMps), RunError> {
     let mpo = heisenberg_mpo(params.n_sites, params.j);
     let (result, psi) = dmrg_2site::<C64, _, _>(&mpo, &neel_state(params.n_sites), &dmrg)?;
     let max_trunc_err = result.sweeps.last().map_or(0.0, |s| s.max_trunc_err);
-    if exceeds(max_trunc_err, DMRG_TRUNC_BOUND) {
+    if not_within(max_trunc_err, DMRG_TRUNC_BOUND) {
         return Err(RunError::DmrgTruncated {
             max_trunc_err,
             bound: DMRG_TRUNC_BOUND,
@@ -418,7 +417,7 @@ fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlation
             .map_err(|source| RunError::Tebd { sample, source })?[0];
         trunc_err_sum += norm_product * record.trunc_err_sum;
         norm_product *= record.norm;
-        if exceeds(trunc_err_sum, params.trunc_budget) {
+        if not_within(trunc_err_sum, params.trunc_budget) {
             return Err(RunError::TruncationBudget {
                 sum: trunc_err_sum,
                 budget: params.trunc_budget,
@@ -458,14 +457,12 @@ fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
         .qs
         .iter()
         .map(|&q| {
+            let cosines: Vec<f64> = (0..params.n_sites)
+                .map(|x| (q * (x as f64 - c)).cos())
+                .collect();
             let cq: Vec<C64> = values
                 .iter()
-                .map(|row| {
-                    row.iter()
-                        .enumerate()
-                        .map(|(x, v)| v * (q * (x as f64 - c)).cos())
-                        .sum()
-                })
+                .map(|row| row.iter().zip(&cosines).map(|(v, &w)| v * w).sum())
                 .collect();
             params
                 .omegas
@@ -539,19 +536,26 @@ fn run() -> Result<(), RunError> {
         "# dt = {}, K = {}, eta = {}, summed TEBD truncation error = {:e}",
         params.dt, params.n_steps, params.eta, corr.trunc_err_sum
     );
-    print!("# omega");
-    for q in &params.qs {
-        print!(" q={q:.4}");
-    }
-    println!();
-    for (i, w) in params.omegas.iter().enumerate() {
-        print!("{w:7.3}");
-        for row in &s {
-            print!(" {:8.5}", row[i]);
-        }
-        println!();
-    }
+    print!("{}", format_table(&params.qs, &params.omegas, &s));
     Ok(())
+}
+
+/// `S(q, ω)`, indexed by `[q][ω]`, as a table with one row per `ω` and one
+/// column per `q`.
+fn format_table(qs: &[f64], omegas: &[f64], s: &[Vec<f64>]) -> String {
+    let mut table = String::from("# omega");
+    for q in qs {
+        table.push_str(&format!(" q={q:.4}"));
+    }
+    table.push('\n');
+    for (i, w) in omegas.iter().enumerate() {
+        table.push_str(&format!("{w:7.3}"));
+        for row in s {
+            table.push_str(&format!(" {:8.5}", row[i]));
+        }
+        table.push('\n');
+    }
+    table
 }
 
 #[cfg(test)]

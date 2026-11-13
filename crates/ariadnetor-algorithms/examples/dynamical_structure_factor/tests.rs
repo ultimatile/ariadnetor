@@ -549,10 +549,20 @@ fn entry_points_reject_malformed_inputs() {
     }
 }
 
+/// Rows are frequencies and columns momenta, while `s` is indexed `[q][ω]`.
 #[test]
-fn exceeds_fails_closed_on_nan() {
-    assert!(!exceeds(1.0, 1.0));
-    assert!(exceeds(2.0, 1.0));
-    assert!(exceeds(f64::NAN, 1.0));
-    assert!(exceeds(0.0, f64::NAN));
+fn format_table_puts_frequencies_in_rows() {
+    let table = format_table(&[0.0, 1.0], &[0.5, 2.0], &[vec![1.0, 2.0], vec![3.0, 4.0]]);
+    assert_eq!(
+        table,
+        "# omega q=0.0000 q=1.0000\n  0.500  1.00000  3.00000\n  2.000  2.00000  4.00000\n"
+    );
+}
+
+#[test]
+fn not_within_fails_closed_on_nan() {
+    assert!(!not_within(1.0, 1.0));
+    assert!(not_within(2.0, 1.0));
+    assert!(not_within(f64::NAN, 1.0));
+    assert!(not_within(0.0, f64::NAN));
 }
