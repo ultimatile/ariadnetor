@@ -94,9 +94,28 @@ command = "cargo"
 args = ["check", "--workspace"]
 
 [tasks.clippy]
-description = "Lint the workspace including all targets (benches, examples, tests); denies warnings. Single clippy-gate definition shared by `gate` and the pre-commit hook."
+description = "Lint the workspace including all targets (benches, examples, tests) and the examples' tests; denies warnings. Single clippy-gate definition shared by `gate` and the pre-commit hook."
+dependencies = ["install-clippy", "clippy-example-tests"]
 command = "cargo"
 args = ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
+
+# `--all-targets` lints an example without `cfg(test)` unless its
+# `[[example]]` entry sets `test = true`, which no example does (see
+# `test-examples`). The test profile lints the examples as `cargo test`
+# builds them, test modules included.
+[tasks.clippy-example-tests]
+description = "Lint every example in the workspace with its tests compiled in; denies warnings"
+command = "cargo"
+args = [
+  "clippy",
+  "--workspace",
+  "--examples",
+  "--profile",
+  "test",
+  "--",
+  "-D",
+  "warnings"
+]
 
 [tasks.fmt]
 description = "Format the workspace with rustfmt"

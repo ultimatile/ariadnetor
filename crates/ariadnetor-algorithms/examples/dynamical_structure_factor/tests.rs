@@ -604,15 +604,14 @@ fn max_deviation_keeps_a_nan() {
 fn max_deviation_rejects_mismatched_shapes() {
     let cases: [(PanicCase, &str); 2] = [
         (
-            Box::new(|| drop(max_deviation(&[], &[vec![0.0]]))),
+            Box::new(|| {
+                max_deviation(&[], &[vec![0.0]]);
+            }),
             "different momentum counts",
         ),
         (
             Box::new(|| {
-                drop(max_deviation(
-                    &[vec![0.0; 2], vec![0.0]],
-                    &[vec![0.0; 2], vec![0.0; 2]],
-                ))
+                max_deviation(&[vec![0.0; 2], vec![0.0]], &[vec![0.0; 2], vec![0.0; 2]]);
             }),
             "different frequency counts",
         ),
