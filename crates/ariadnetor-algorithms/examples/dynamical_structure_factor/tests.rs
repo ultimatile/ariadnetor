@@ -1,6 +1,7 @@
 use std::sync::OnceLock;
 
-use algorithms_fixtures::dense_fixtures::bond_term_hamiltonian;
+use algorithms_fixtures::dense_fixtures::{bond_term_hamiltonian, smallest_eigenvalue};
+use algorithms_fixtures::{PanicCase, panic_message};
 use ariadnetor_linalg::eigh_with_backend;
 
 use super::*;
@@ -12,9 +13,9 @@ const E0_8_SITES: f64 = -3.374932598687898;
 /// suite. The bounds of the comparisons of `C` and `S` with exact
 /// diagonalization are each about three times the deviation this fixture
 /// shows.
-fn fixture() -> Params {
+fn fixture() -> Inputs {
     let n_sites = 8;
-    Params {
+    Inputs {
         n_sites,
         j: 1.0,
         dt: 0.05,
@@ -124,7 +125,7 @@ fn exact() -> &'static Exact {
 /// Ground-state energy and state of the fixture chain.
 fn ground() -> &'static (f64, DenseMps) {
     static GROUND: OnceLock<(f64, DenseMps)> = OnceLock::new();
-    GROUND.get_or_init(|| ground_state(&fixture()).expect("ground state"))
+    GROUND.get_or_init(|| ground_state(&Params::new(fixture())).expect("ground state"))
 }
 
 fn pipeline() -> &'static (f64, Correlations) {
@@ -133,9 +134,17 @@ fn pipeline() -> &'static (f64, Correlations) {
         let (e0, psi0) = ground();
         (
             *e0,
-            correlations(&fixture(), *e0, psi0).expect("correlations"),
+            correlations(&Params::new(fixture()), *e0, psi0).expect("correlations"),
         )
     })
+}
+
+/// The error `ground_state` returns for `params`.
+fn ground_state_error(params: &Params) -> RunError {
+    match ground_state(params) {
+        Ok((e0, _)) => panic!("ground_state succeeded with E0 = {e0}"),
+        Err(err) => err,
+    }
 }
 
 fn max_deviation(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
@@ -165,7 +174,7 @@ fn ground_energy_matches_exact_diagonalization() {
     );
 }
 
-/// `H(J) = J H(1)`, so the ground energy is linear in `J`; a coupling other
+/// `H(J) = J H(1)`, so for `J > 0` the ground energy is linear in `J`; a coupling other
 /// than 1 shows whether both builders carry `J` with power one.
 #[test]
 fn ground_energy_scales_with_the_coupling() {
@@ -173,13 +182,12 @@ fn ground_energy_scales_with_the_coupling() {
     let expected = j * E0_8_SITES;
     let n = fixture().n_sites;
     let h = bond_term_hamiltonian(&vec![bond_term(j); n - 1], &vec![2; n]);
-    let (vals, _) = eigh_with_backend(Host::shared().as_ref(), &h, 1).expect("eigh");
-    let exact_e0 = vals.data_slice()[0];
+    let exact_e0 = smallest_eigenvalue(&h);
     assert!(
         (exact_e0 - expected).abs() < 1e-10,
         "bond_term does not scale with J: E0 = {exact_e0}, expected {expected}"
     );
-    let (e0, _) = ground_state(&Params { j, ..fixture() }).expect("ground state");
+    let (e0, _) = ground_state(&Params::new(Inputs { j, ..fixture() })).expect("ground state");
     assert!(
         (e0 - expected).abs() < 1e-10,
         "heisenberg_mpo does not scale with J: E0 = {e0}, expected {expected}"
@@ -188,7 +196,7 @@ fn ground_energy_scales_with_the_coupling() {
 
 #[test]
 fn correlations_match_exact_diagonalization() {
-    let params = fixture();
+    let params = Params::new(fixture());
     let (_, corr) = pipeline();
     assert_eq!(corr.values.len(), params.n_steps + 1);
     assert!(
@@ -209,7 +217,7 @@ fn correlations_match_exact_diagonalization() {
 
 #[test]
 fn transform_of_exact_correlations_matches_lehmann() {
-    let params = fixture();
+    let params = Params::new(fixture());
     let values: Vec<Vec<C64>> = (0..=params.n_steps)
         .map(|k| {
             let t = k as f64 * params.dt;
@@ -227,7 +235,7 @@ fn transform_of_exact_correlations_matches_lehmann() {
 
 #[test]
 fn structure_factor_matches_lehmann() {
-    let params = fixture();
+    let params = Params::new(fixture());
     let s = structure_factor(&params, &pipeline().1.values);
     let deviation = max_deviation(&s, &exact().lehmann(&params));
     assert!(deviation <= 2.5e-4, "max |S - S_Lehmann| = {deviation:e}");
@@ -235,11 +243,11 @@ fn structure_factor_matches_lehmann() {
 
 #[test]
 fn rejects_an_exceeded_truncation_budget() {
-    let params = Params {
+    let params = Params::new(Inputs {
         tebd_chi_max: Some(2),
         trunc_budget: 1e-6,
         ..fixture()
-    };
+    });
     let (e0, psi0) = ground();
     let err = correlations(&params, *e0, psi0).expect_err("budget exceeded");
     assert!(
@@ -252,13 +260,13 @@ fn rejects_an_exceeded_truncation_budget() {
 #[test]
 fn reports_the_truncation_error_of_a_truncated_run() {
     // η = 2 lets K = 100 pass the window check, which keeps this run short.
-    let params = Params {
+    let params = Params::new(Inputs {
         tebd_chi_max: Some(4),
         trunc_budget: f64::INFINITY,
         eta: 2.0,
         n_steps: 100,
         ..fixture()
-    };
+    });
     let (e0, psi0) = ground();
     let corr = correlations(&params, *e0, psi0).expect("an infinite budget is never exceeded");
     assert!(
@@ -267,7 +275,7 @@ fn reports_the_truncation_error_of_a_truncated_run() {
     );
 
     // Doubling ψ₀ doubles the evolved state and keeps every truncation
-    // decision, so the evolved state's truncation error doubles exactly.
+    // decision, so the evolved state's truncation error doubles up to rounding.
     let mut doubled = psi0.clone();
     *doubled.site_mut(0) = doubled.site(0).scaled(c64(2.0));
     let doubled_corr = correlations(&params, *e0, &doubled).expect("infinite budget");
@@ -277,13 +285,11 @@ fn reports_the_truncation_error_of_a_truncated_run() {
 
 #[test]
 fn rejects_an_unconverged_dmrg() {
-    let params = Params {
+    let params = Params::new(Inputs {
         dmrg_max_sweeps: 1,
         ..fixture()
-    };
-    let Err(err) = ground_state(&params) else {
-        panic!("one sweep does not converge");
-    };
+    });
+    let err = ground_state_error(&params);
     assert!(
         matches!(err, RunError::DmrgNotConverged { n_sweeps: 1 }),
         "{err:?}"
@@ -292,13 +298,11 @@ fn rejects_an_unconverged_dmrg() {
 
 #[test]
 fn rejects_a_truncated_dmrg_ground_state() {
-    let params = Params {
+    let params = Params::new(Inputs {
         dmrg_chi_max: 2,
         ..fixture()
-    };
-    let Err(err) = ground_state(&params) else {
-        panic!("bond dimension 2 truncates");
-    };
+    });
+    let err = ground_state_error(&params);
     assert!(
         matches!(err, RunError::DmrgTruncated { max_trunc_err, bound }
             if max_trunc_err > bound && bound == DMRG_TRUNC_BOUND),
@@ -306,132 +310,170 @@ fn rejects_a_truncated_dmrg_ground_state() {
     );
 }
 
+/// A zero state has no norm to renormalize, so the first TEBD step breaks
+/// down at run time.
 #[test]
-fn forwards_dmrg_and_tebd_errors() {
-    let params = Params {
-        dmrg_max_sweeps: 0,
-        ..fixture()
-    };
-    let Err(err) = ground_state(&params) else {
-        panic!("zero sweeps are invalid DMRG parameters");
-    };
-    assert!(matches!(err, RunError::Dmrg(_)), "{err:?}");
-
-    let params = Params {
-        tebd_chi_max: Some(0),
-        ..fixture()
-    };
-    let psi0 = neel_state(params.n_sites);
-    let err = correlations(&params, 0.0, &psi0).expect_err("chi_max = 0 is invalid");
-    assert!(matches!(err, RunError::Tebd(_)), "{err:?}");
-}
-
-/// A call expected to panic.
-type PanicCase = Box<dyn FnOnce() + std::panic::UnwindSafe>;
-
-/// The message `f` panics with.
-fn panic_message(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
-    let payload = std::panic::catch_unwind(f).expect_err("expected a panic");
-    payload
-        .downcast_ref::<String>()
-        .cloned()
-        .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_owned()))
-        .expect("a panic message")
+fn forwards_a_tebd_breakdown() {
+    let params = Params::new(fixture());
+    let sites = (0..params.n_sites)
+        .map(|_| DenseTensor::<C64>::zeros(vec![1, 2, 1]))
+        .collect();
+    let err = correlations(&params, 0.0, &Mps::from_sites(sites)).expect_err("breakdown");
+    assert!(
+        matches!(
+            err,
+            RunError::Tebd {
+                step: 1,
+                source: TebdError::NormBreakdown { .. }
+            }
+        ),
+        "{err:?}"
+    );
 }
 
 #[test]
-fn validate_rejects_each_violated_precondition() {
+fn params_reject_each_violated_precondition() {
     let base = fixture();
     let step_rate = "the time step dt and the window rate eta must be finite and positive";
     let coupling = "the coupling J must be finite and positive";
     let cases = [
         (
-            Params {
+            Inputs {
                 n_sites: 1,
                 ..base.clone()
             },
             "the chain needs at least 2 sites, got 1",
         ),
         (
-            Params {
+            Inputs {
                 j: 0.0,
                 ..base.clone()
             },
             coupling,
         ),
         (
-            Params {
+            Inputs {
                 j: f64::INFINITY,
                 ..base.clone()
             },
             coupling,
         ),
         (
-            Params {
+            Inputs {
                 dt: 0.0,
                 ..base.clone()
             },
             step_rate,
         ),
         (
-            Params {
+            Inputs {
                 dt: -0.05,
                 ..base.clone()
             },
             step_rate,
         ),
         (
-            Params {
+            Inputs {
                 dt: f64::INFINITY,
                 ..base.clone()
             },
             step_rate,
         ),
         (
-            Params {
+            Inputs {
                 eta: 0.0,
                 ..base.clone()
             },
             step_rate,
         ),
         (
-            Params {
+            Inputs {
                 eta: -1.0,
                 ..base.clone()
             },
             step_rate,
         ),
         (
-            Params {
+            Inputs {
                 eta: f64::INFINITY,
                 ..base.clone()
             },
             step_rate,
         ),
         (
-            Params {
+            Inputs {
                 n_steps: 100,
                 ..base.clone()
             },
             "the window e^(-eta t) must decay to at most",
         ),
         (
-            Params {
+            Inputs {
                 omegas: vec![-1.01 * PI / base.dt],
                 ..base.clone()
             },
             "every |omega| must lie below the Nyquist frequency",
         ),
+        (
+            Inputs {
+                qs: vec![f64::NAN],
+                ..base.clone()
+            },
+            "every momentum q must be finite",
+        ),
+        (
+            Inputs {
+                omegas: vec![PI / base.dt],
+                ..base.clone()
+            },
+            "every |omega| must lie below the Nyquist frequency",
+        ),
+        (
+            Inputs {
+                trunc_budget: -1.0,
+                ..base.clone()
+            },
+            "the truncation budget must be non-negative",
+        ),
+        (
+            Inputs {
+                trunc_budget: f64::NAN,
+                ..base.clone()
+            },
+            "the truncation budget must be non-negative",
+        ),
+        (
+            Inputs {
+                dmrg_chi_max: 0,
+                ..base.clone()
+            },
+            "the DMRG bond-dimension and sweep caps must be at least 1",
+        ),
+        (
+            Inputs {
+                dmrg_max_sweeps: 0,
+                ..base.clone()
+            },
+            "the DMRG bond-dimension and sweep caps must be at least 1",
+        ),
+        (
+            Inputs {
+                tebd_chi_max: Some(0),
+                ..base.clone()
+            },
+            "the TEBD bond-dimension cap must be at least 1",
+        ),
     ];
-    for (params, expected) in cases {
-        let message = panic_message(|| params.validate());
-        assert!(message.starts_with(expected), "{params:?}: {message}");
+    for (inputs, expected) in cases {
+        let shown = format!("{inputs:?}");
+        let message = panic_message(|| drop(Params::new(inputs)));
+        assert!(message.starts_with(expected), "{shown}: {message}");
     }
 }
 
 #[test]
 fn builders_and_transform_reject_malformed_inputs() {
-    let params = fixture();
+    let params = Params::new(fixture());
     let (n, k) = (params.n_sites, params.n_steps);
     let transform = "structure_factor needs C_xc(t_k) for k = 0..=K and every site";
     let short = vec![vec![c64(0.0); n]; k];

@@ -51,9 +51,9 @@ const DMRG_TRUNC_BOUND: f64 = 1e-8;
 /// Largest value the window `e^{-ηt}` may keep at the last sample.
 const WINDOW_TAIL_BOUND: f64 = 1e-4;
 
-/// Inputs of one run.
+/// Inputs of one run; [`Params::new`] lists the checks they go through.
 #[derive(Debug, Clone)]
-struct Params {
+struct Inputs {
     /// Number of sites.
     n_sites: usize,
     /// Exchange coupling `J`.
@@ -80,55 +80,101 @@ struct Params {
     omegas: Vec<f64>,
 }
 
-impl Params {
-    /// Center site `c`.
-    fn center(&self) -> usize {
-        self.n_sites / 2
+mod params {
+    use std::f64::consts::PI;
+    use std::ops::Deref;
+
+    use super::{Inputs, WINDOW_TAIL_BOUND};
+
+    /// Inputs that [`Params::new`] accepted. The field is private to this
+    /// module, so every `Params` went through those checks.
+    #[derive(Debug, Clone)]
+    pub(super) struct Params(Inputs);
+
+    impl Params {
+        /// Accept `inputs` for a run.
+        ///
+        /// # Panics
+        ///
+        /// - The chain has fewer than 2 sites.
+        /// - `J` is not finite and positive: for `J ≤ 0` the ground state is a
+        ///   multiplet whose states give different correlations.
+        /// - `δt` or `η` is not finite and positive.
+        /// - The window at the last sample is above [`WINDOW_TAIL_BOUND`], so
+        ///   the cut-off tail biases `S`.
+        /// - A frequency's magnitude is not below the Nyquist frequency
+        ///   `π/δt` of the samples.
+        /// - A momentum is not finite.
+        /// - The truncation budget is negative or NaN.
+        /// - A bond-dimension cap or the sweep cap is zero.
+        pub(super) fn new(inputs: Inputs) -> Self {
+            assert!(
+                inputs.n_sites >= 2,
+                "the chain needs at least 2 sites, got {}",
+                inputs.n_sites
+            );
+            assert!(
+                inputs.j.is_finite() && inputs.j > 0.0,
+                "the coupling J must be finite and positive (antiferromagnetic), got {}",
+                inputs.j
+            );
+            assert!(
+                inputs.dt.is_finite()
+                    && inputs.dt > 0.0
+                    && inputs.eta.is_finite()
+                    && inputs.eta > 0.0,
+                "the time step dt and the window rate eta must be finite and positive, \
+                 got dt = {}, eta = {}",
+                inputs.dt,
+                inputs.eta
+            );
+            let tail = (-inputs.eta * inputs.dt * inputs.n_steps as f64).exp();
+            assert!(
+                tail <= WINDOW_TAIL_BOUND,
+                "the window e^(-eta t) must decay to at most {WINDOW_TAIL_BOUND:e} at the last sample, \
+                 got e^(-eta K dt) = {tail:e}"
+            );
+            let nyquist = PI / inputs.dt;
+            assert!(
+                inputs.omegas.iter().all(|w| w.abs() < nyquist),
+                "every |omega| must lie below the Nyquist frequency pi/dt = {nyquist}"
+            );
+            assert!(
+                inputs.qs.iter().all(|q| q.is_finite()),
+                "every momentum q must be finite"
+            );
+            assert!(
+                inputs.trunc_budget >= 0.0,
+                "the truncation budget must be non-negative, got {}",
+                inputs.trunc_budget
+            );
+            assert!(
+                inputs.dmrg_chi_max >= 1 && inputs.dmrg_max_sweeps >= 1,
+                "the DMRG bond-dimension and sweep caps must be at least 1"
+            );
+            assert!(
+                inputs.tebd_chi_max != Some(0),
+                "the TEBD bond-dimension cap must be at least 1"
+            );
+            Self(inputs)
+        }
+
+        /// Center site `c`.
+        pub(super) fn center(&self) -> usize {
+            self.0.n_sites / 2
+        }
     }
 
-    /// Assert the preconditions of a run.
-    ///
-    /// # Panics
-    ///
-    /// - The chain has fewer than 2 sites.
-    /// - `J` is not finite and positive: for `J ≤ 0` the ground state is a
-    ///   multiplet whose states give different correlations.
-    /// - `δt` or `η` is not finite and positive.
-    /// - The window at the last sample is above [`WINDOW_TAIL_BOUND`], so the
-    ///   cut-off tail biases `S`.
-    /// - A frequency's magnitude is not below the Nyquist frequency `π/δt`,
-    ///   where the sampled transform reads an aliased value.
-    fn validate(&self) {
-        assert!(
-            self.n_sites >= 2,
-            "the chain needs at least 2 sites, got {}",
-            self.n_sites
-        );
-        assert!(
-            self.j.is_finite() && self.j > 0.0,
-            "the coupling J must be finite and positive (antiferromagnetic), got {}",
-            self.j
-        );
-        assert!(
-            self.dt.is_finite() && self.dt > 0.0 && self.eta.is_finite() && self.eta > 0.0,
-            "the time step dt and the window rate eta must be finite and positive, \
-             got dt = {}, eta = {}",
-            self.dt,
-            self.eta
-        );
-        let tail = (-self.eta * self.dt * self.n_steps as f64).exp();
-        assert!(
-            tail <= WINDOW_TAIL_BOUND,
-            "the window e^(-eta t) must decay to at most {WINDOW_TAIL_BOUND:e} at the last sample, \
-             got e^(-eta K dt) = {tail:e}"
-        );
-        let nyquist = PI / self.dt;
-        assert!(
-            self.omegas.iter().all(|w| w.abs() < nyquist),
-            "every |omega| must lie below the Nyquist frequency pi/dt = {nyquist}"
-        );
+    impl Deref for Params {
+        type Target = Inputs;
+
+        fn deref(&self) -> &Inputs {
+            &self.0
+        }
     }
 }
+
+use params::Params;
 
 /// Errors of a run.
 #[derive(Debug, thiserror::Error)]
@@ -136,7 +182,7 @@ enum RunError {
     /// `dmrg_2site` failed.
     #[error("DMRG failed")]
     Dmrg(#[from] DmrgError),
-    /// DMRG truncated the ground state by more than [`DMRG_TRUNC_BOUND`].
+    /// DMRG's truncation error is above [`DMRG_TRUNC_BOUND`] or NaN.
     #[error(
         "DMRG truncated the ground state: truncation error {max_trunc_err:e} exceeds {bound:e}"
     )]
@@ -153,16 +199,23 @@ enum RunError {
         n_sweeps: usize,
     },
     /// `tebd` failed.
-    #[error("TEBD failed")]
-    Tebd(#[from] TebdError),
-    /// The time evolution truncated more than the budget allows.
-    #[error("TEBD truncation error {sum:e} exceeds the budget {budget:e} at step {step}")]
+    #[error("TEBD failed at sample {step}")]
+    Tebd {
+        /// Sample `k` whose step failed; `k = 1` is the first TEBD step.
+        step: usize,
+        /// The `tebd` error.
+        #[source]
+        source: TebdError,
+    },
+    /// The summed TEBD truncation error is above the budget or NaN.
+    #[error("TEBD truncation error {sum:e} exceeds the budget {budget:e} at sample {step}")]
     TruncationBudget {
         /// Summed truncation error of the evolved state up to `step`.
         sum: f64,
-        /// [`Params::trunc_budget`].
+        /// [`Inputs::trunc_budget`].
         budget: f64,
-        /// Step at which the budget was exceeded.
+        /// Sample `k` whose step exceeded the budget; `k = 1` is the first
+        /// TEBD step.
         step: usize,
     },
 }
@@ -279,12 +332,7 @@ fn neel_state(n: usize) -> DenseMps {
 }
 
 /// Ground-state energy and state by two-site DMRG from the Néel state.
-///
-/// # Panics
-///
-/// Panics as [`Params::validate`] does.
 fn ground_state(params: &Params) -> Result<(f64, DenseMps), RunError> {
-    params.validate();
     let dmrg = DmrgSweepParams {
         max_sweeps: params.dmrg_max_sweeps,
         min_sweeps: params.dmrg_max_sweeps.min(3),
@@ -328,10 +376,9 @@ struct Correlations {
 ///
 /// # Panics
 ///
-/// Panics as [`Params::validate`] does, or if `psi0` does not have
+/// Panics if `psi0` does not have
 /// `n_sites` sites.
 fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlations, RunError> {
-    params.validate();
     let n = params.n_sites;
     assert!(
         psi0.len() == n,
@@ -365,7 +412,8 @@ fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlation
     let mut norm_product = 1.0;
     let mut trunc_err_sum = 0.0;
     for step in 1..=params.n_steps {
-        let record = &tebd(&mut phi, &terms, &tebd_params)?[0];
+        let record = &tebd(&mut phi, &terms, &tebd_params)
+            .map_err(|source| RunError::Tebd { step, source })?[0];
         trunc_err_sum += norm_product * record.trunc_err_sum;
         norm_product *= record.norm;
         if exceeds(trunc_err_sum, params.trunc_budget) {
@@ -388,10 +436,9 @@ fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlation
 ///
 /// # Panics
 ///
-/// Panics as [`Params::validate`] does, or if `values` is not
+/// Panics if `values` is not
 /// `(K + 1) × n_sites`.
 fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
-    params.validate();
     assert!(
         values.len() == params.n_steps + 1 && values.iter().all(|row| row.len() == params.n_sites),
         "structure_factor needs C_xc(t_k) for k = 0..=K and every site"
@@ -433,7 +480,7 @@ fn structure_factor(params: &Params, values: &[Vec<C64>]) -> Vec<Vec<f64>> {
 
 fn main() -> Result<(), RunError> {
     let n_sites = 12;
-    let params = Params {
+    let params = Params::new(Inputs {
         n_sites,
         j: 1.0,
         dt: 0.05,
@@ -447,8 +494,7 @@ fn main() -> Result<(), RunError> {
             .map(|k| 2.0 * PI * k as f64 / n_sites as f64)
             .collect(),
         omegas: (0..=40).map(|i| 0.1 * f64::from(i)).collect(),
-    };
-    params.validate();
+    });
     let (e0, psi0) = ground_state(&params)?;
     let corr = correlations(&params, e0, &psi0)?;
     let s = structure_factor(&params, &corr.values);

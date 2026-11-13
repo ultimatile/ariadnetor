@@ -270,13 +270,18 @@ pub fn random_bond_terms_c64(phys: &[usize], seed: u64) -> Vec<DenseTensor<Compl
         .collect()
 }
 
+/// Shape `[d_bond, d_{bond+1}, d_bond, d_{bond+1}]` of a term on `bond`.
+fn bond_term_shape(phys: &[usize], bond: usize) -> [usize; 4] {
+    [phys[bond], phys[bond + 1], phys[bond], phys[bond + 1]]
+}
+
 /// `term` at `bond` embedded into the full space as `1 ⊗ h ⊗ 1`, a matrix
 /// over the row-major flattening of `(d_0, …, d_{n-1})`.
 ///
 /// # Panics
 ///
 /// Panics if `bond + 1` is not a site of `phys`, or if `term`'s shape is
-/// not `[d_bond, d_bond+1, d_bond, d_bond+1]`.
+/// not `[d_bond, d_{bond+1}, d_bond, d_{bond+1}]`.
 pub fn embed_bond_term<T: Scalar>(
     term: &DenseTensor<T>,
     phys: &[usize],
@@ -288,7 +293,7 @@ pub fn embed_bond_term<T: Scalar>(
         bond + 1,
         phys.len()
     );
-    let expected = [phys[bond], phys[bond + 1], phys[bond], phys[bond + 1]];
+    let expected = bond_term_shape(phys, bond);
     assert_eq!(
         term.shape(),
         expected,
@@ -333,7 +338,7 @@ pub fn bond_term_hamiltonian<T: Scalar>(
         phys.len()
     );
     for (bond, term) in terms.iter().enumerate() {
-        let expected = [phys[bond], phys[bond + 1], phys[bond], phys[bond + 1]];
+        let expected = bond_term_shape(phys, bond);
         assert_eq!(
             term.shape(),
             expected,
@@ -363,24 +368,11 @@ pub fn random_mps_unknown_f64(
 
 #[cfg(test)]
 mod tests {
-    use std::panic::{UnwindSafe, catch_unwind};
-
     use super::*;
+    use crate::{PanicCase, panic_message};
 
     fn term(d_l: usize, d_r: usize) -> DenseTensor<f64> {
         DenseTensor::<f64>::zeros(vec![d_l, d_r, d_l, d_r])
-    }
-
-    /// A call expected to panic.
-    type PanicCase = Box<dyn FnOnce() + UnwindSafe>;
-
-    /// The message `f` panics with.
-    fn panic_message(f: impl FnOnce() + UnwindSafe) -> String {
-        let payload = catch_unwind(f).expect_err("expected a panic");
-        payload
-            .downcast_ref::<String>()
-            .cloned()
-            .expect("a formatted panic message")
     }
 
     #[test]
