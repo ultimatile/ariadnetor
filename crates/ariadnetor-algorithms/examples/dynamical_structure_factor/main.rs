@@ -185,7 +185,7 @@ enum RunError {
     Dmrg(#[from] DmrgError),
     /// DMRG's truncation error is above [`DMRG_TRUNC_BOUND`] or NaN.
     #[error(
-        "DMRG truncated the ground state: truncation error {max_trunc_err:e} is not within {DMRG_TRUNC_BOUND:e}"
+        "the DMRG ground state fails the truncation check: truncation error {max_trunc_err:e} is not within {DMRG_TRUNC_BOUND:e}"
     )]
     DmrgTruncated {
         /// The last sweep's largest truncation error, or NaN when DMRG
