@@ -598,4 +598,18 @@ fn max_deviation_keeps_a_nan() {
     assert!(max_deviation(&[vec![f64::NAN, 0.0]], &zeros).is_nan());
     assert!(max_deviation(&[vec![0.0, f64::NAN]], &zeros).is_nan());
     assert_eq!(max_deviation(&[vec![0.5, -1.0]], &zeros), 1.0);
+    let cases: [(PanicCase, &str); 2] = [
+        (
+            Box::new(|| drop(max_deviation(&[], &[vec![0.0]]))),
+            "different momentum counts",
+        ),
+        (
+            Box::new(|| drop(max_deviation(&[vec![0.0]], &[vec![0.0; 2]]))),
+            "different frequency counts",
+        ),
+    ];
+    for (f, expected) in cases {
+        let message = panic_message(f);
+        assert!(message.contains(expected), "{message}");
+    }
 }
