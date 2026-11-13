@@ -341,9 +341,8 @@ args = ["${@}"]
 # non-ARPACK solver mutants overlap the shipped run; their verdicts are
 # identical there (algorithms has no cross-crate test consumer), so the
 # overlap is redundant, not contradictory. `--test-workspace false` scopes
-# testing to the algorithms crate's own unit + integration tests
-# (tests/arpack_smallest.rs, tests/dmrg_arpack.rs) — the only tests that can
-# kill these mutants; it is an optimization here, not a correctness
+# testing to the algorithms crate's own tests, where every test that can
+# kill these mutants lives; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
 # Neither scoped pass takes `${@}`, unlike `mutants`: cargo-mutants
