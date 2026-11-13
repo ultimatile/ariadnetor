@@ -321,7 +321,7 @@ pub fn embed_bond_term<T: Scalar>(
 /// # Panics
 ///
 /// Panics if `terms` does not hold one term per bond of `phys` (at least
-/// one), or as [`embed_bond_term`] does.
+/// one), or if a term's shape does not match the sites of its bond.
 pub fn bond_term_hamiltonian<T: Scalar>(
     terms: &[DenseTensor<T>],
     phys: &[usize],
@@ -332,6 +332,14 @@ pub fn bond_term_hamiltonian<T: Scalar>(
         terms.len(),
         phys.len()
     );
+    for (bond, term) in terms.iter().enumerate() {
+        let expected = [phys[bond], phys[bond + 1], phys[bond], phys[bond + 1]];
+        assert_eq!(
+            term.shape(),
+            expected,
+            "bond_term_hamiltonian: term {bond} does not match the sites of its bond"
+        );
+    }
     let embedded: Vec<_> = terms
         .iter()
         .enumerate()
@@ -355,33 +363,53 @@ pub fn random_mps_unknown_f64(
 
 #[cfg(test)]
 mod tests {
+    use std::panic::{UnwindSafe, catch_unwind};
+
     use super::*;
 
     fn term(d_l: usize, d_r: usize) -> DenseTensor<f64> {
         DenseTensor::<f64>::zeros(vec![d_l, d_r, d_l, d_r])
     }
 
-    #[test]
-    #[should_panic(expected = "embed_bond_term: bond 1 needs sites 1 and 2 of 2")]
-    fn embed_bond_term_rejects_a_bond_past_the_chain() {
-        embed_bond_term(&term(2, 2), &[2, 2], 1);
+    /// A call expected to panic.
+    type PanicCase = Box<dyn FnOnce() + UnwindSafe>;
+
+    /// The message `f` panics with.
+    fn panic_message(f: impl FnOnce() + UnwindSafe) -> String {
+        let payload = catch_unwind(f).expect_err("expected a panic");
+        payload
+            .downcast_ref::<String>()
+            .cloned()
+            .expect("a formatted panic message")
     }
 
     #[test]
-    #[should_panic(expected = "embed_bond_term: term shape does not match the sites of bond 0")]
-    fn embed_bond_term_rejects_a_term_of_the_wrong_shape() {
-        embed_bond_term(&term(3, 2), &[2, 3], 0);
-    }
-
-    #[test]
-    #[should_panic(expected = "bond_term_hamiltonian: 2 terms for 2 sites")]
-    fn bond_term_hamiltonian_rejects_a_term_count_that_is_not_the_bond_count() {
-        bond_term_hamiltonian(&[term(2, 2), term(2, 2)], &[2, 2]);
-    }
-
-    #[test]
-    #[should_panic(expected = "bond_term_hamiltonian: 0 terms for 1 sites")]
-    fn bond_term_hamiltonian_rejects_no_terms() {
-        bond_term_hamiltonian::<f64>(&[], &[2]);
+    fn bond_term_helpers_reject_malformed_inputs() {
+        let cases: [(PanicCase, &str); 5] = [
+            (
+                Box::new(|| drop(embed_bond_term(&term(2, 2), &[2, 2], 1))),
+                "embed_bond_term: bond 1 needs sites 1 and 2 of 2",
+            ),
+            (
+                Box::new(|| drop(embed_bond_term(&term(3, 2), &[2, 3], 0))),
+                "embed_bond_term: term shape does not match the sites of bond 0",
+            ),
+            (
+                Box::new(|| drop(bond_term_hamiltonian(&[term(2, 2), term(2, 2)], &[2, 2]))),
+                "bond_term_hamiltonian: 2 terms for 2 sites",
+            ),
+            (
+                Box::new(|| drop(bond_term_hamiltonian(&[term(2, 3), term(2, 2)], &[2, 3, 2]))),
+                "bond_term_hamiltonian: term 1 does not match the sites of its bond",
+            ),
+            (
+                Box::new(|| drop(bond_term_hamiltonian::<f64>(&[], &[2]))),
+                "bond_term_hamiltonian: 0 terms for 1 sites",
+            ),
+        ];
+        for (f, expected) in cases {
+            let message = panic_message(f);
+            assert!(message.contains(expected), "{message}");
+        }
     }
 }

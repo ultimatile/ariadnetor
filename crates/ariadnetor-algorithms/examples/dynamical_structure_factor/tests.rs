@@ -121,12 +121,20 @@ fn exact() -> &'static Exact {
     })
 }
 
+/// Ground-state energy and state of the fixture chain.
+fn ground() -> &'static (f64, DenseMps) {
+    static GROUND: OnceLock<(f64, DenseMps)> = OnceLock::new();
+    GROUND.get_or_init(|| ground_state(&fixture()).expect("ground state"))
+}
+
 fn pipeline() -> &'static (f64, Correlations) {
     static RUN: OnceLock<(f64, Correlations)> = OnceLock::new();
     RUN.get_or_init(|| {
-        let params = fixture();
-        let (e0, psi0) = ground_state(&params).expect("ground state");
-        (e0, correlations(&params, e0, &psi0).expect("correlations"))
+        let (e0, psi0) = ground();
+        (
+            *e0,
+            correlations(&fixture(), *e0, psi0).expect("correlations"),
+        )
     })
 }
 
@@ -154,6 +162,27 @@ fn ground_energy_matches_exact_diagonalization() {
     assert!(
         (e0 - exact_e0).abs() < 1e-10,
         "heisenberg_mpo and bond_term disagree on the coupling: DMRG E0 = {e0}, exact {exact_e0}"
+    );
+}
+
+/// `H(J) = J H(1)`, so the ground energy is linear in `J`; a coupling other
+/// than 1 shows whether both builders carry `J` with power one.
+#[test]
+fn ground_energy_scales_with_the_coupling() {
+    let j = 0.7;
+    let expected = j * E0_8_SITES;
+    let n = fixture().n_sites;
+    let h = bond_term_hamiltonian(&vec![bond_term(j); n - 1], &vec![2; n]);
+    let (vals, _) = eigh_with_backend(Host::shared().as_ref(), &h, 1).expect("eigh");
+    let exact_e0 = vals.data_slice()[0];
+    assert!(
+        (exact_e0 - expected).abs() < 1e-10,
+        "bond_term does not scale with J: E0 = {exact_e0}, expected {expected}"
+    );
+    let (e0, _) = ground_state(&Params { j, ..fixture() }).expect("ground state");
+    assert!(
+        (e0 - expected).abs() < 1e-10,
+        "heisenberg_mpo does not scale with J: E0 = {e0}, expected {expected}"
     );
 }
 
@@ -211,8 +240,8 @@ fn rejects_an_exceeded_truncation_budget() {
         trunc_budget: 1e-6,
         ..fixture()
     };
-    let (e0, psi0) = ground_state(&params).expect("ground state");
-    let err = correlations(&params, e0, &psi0).expect_err("budget exceeded");
+    let (e0, psi0) = ground();
+    let err = correlations(&params, *e0, psi0).expect_err("budget exceeded");
     assert!(
         matches!(err, RunError::TruncationBudget { sum, budget, step }
             if sum > budget && budget == 1e-6 && (1..=params.n_steps).contains(&step)),
@@ -230,12 +259,20 @@ fn reports_the_truncation_error_of_a_truncated_run() {
         n_steps: 100,
         ..fixture()
     };
-    let (e0, psi0) = ground_state(&params).expect("ground state");
-    let corr = correlations(&params, e0, &psi0).expect("an infinite budget is never exceeded");
+    let (e0, psi0) = ground();
+    let corr = correlations(&params, *e0, psi0).expect("an infinite budget is never exceeded");
     assert!(
         corr.trunc_err_sum > 0.0,
         "chi_max = 4 truncates the 8-site chain"
     );
+
+    // Doubling ψ₀ doubles the evolved state and keeps every truncation
+    // decision, so the evolved state's truncation error doubles exactly.
+    let mut doubled = psi0.clone();
+    *doubled.site_mut(0) = doubled.site(0).scaled(c64(2.0));
+    let doubled_corr = correlations(&params, *e0, &doubled).expect("infinite budget");
+    let ratio = doubled_corr.trunc_err_sum / corr.trunc_err_sum;
+    assert!((ratio - 2.0).abs() < 1e-9, "error ratio {ratio}");
 }
 
 #[test]
@@ -397,12 +434,19 @@ fn builders_and_transform_reject_malformed_inputs() {
     let params = fixture();
     let (n, k) = (params.n_sites, params.n_steps);
     let transform = "structure_factor needs C_xc(t_k) for k = 0..=K and every site";
-    let short = vec![vec![C64::new(0.0, 0.0); n]; k];
-    let narrow = vec![vec![C64::new(0.0, 0.0); n - 1]; k + 1];
-    let cases: [(PanicCase, &str); 4] = [
+    let short = vec![vec![c64(0.0); n]; k];
+    let narrow = vec![vec![c64(0.0); n - 1]; k + 1];
+    let cases: [(PanicCase, &str); 5] = [
         (
             Box::new(|| drop(heisenberg_mpo(1, 1.0))),
             "heisenberg_mpo needs at least 2 sites, got 1",
+        ),
+        (
+            Box::new({
+                let params = params.clone();
+                move || drop(correlations(&params, 0.0, &neel_state(n - 1)))
+            }),
+            "correlations: psi0 has 7 sites, but n_sites is 8",
         ),
         (
             Box::new(move || drop(sz_mpo(n, n))),
@@ -422,7 +466,7 @@ fn builders_and_transform_reject_malformed_inputs() {
     ];
     for (f, expected) in cases {
         let message = panic_message(f);
-        assert!(message.starts_with(expected), "{message}");
+        assert!(message.contains(expected), "{message}");
     }
 }
 

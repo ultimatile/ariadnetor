@@ -12,8 +12,7 @@ categories = ["mathematics", "science"]
 name = "ariadnetor_algorithms"
 path = "src/lib.rs"
 
-# `test = true` makes `cargo test` run the example's tests, which check it
-# against exact diagonalization.
+# `test = true` makes `cargo test` run the example's tests.
 [[example]]
 name = "dynamical_structure_factor"
 path = "examples/dynamical_structure_factor/main.rs"

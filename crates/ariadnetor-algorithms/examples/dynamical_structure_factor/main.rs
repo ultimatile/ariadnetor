@@ -71,7 +71,8 @@ struct Params {
     /// Bond-dimension cap of the time evolution; `None` keeps every
     /// singular value.
     tebd_chi_max: Option<usize>,
-    /// Largest accepted sum of the TEBD records' `trunc_err_sum`.
+    /// Largest accepted truncation error of the evolved state
+    /// `e^{-iHt} S^z_c ψ₀`, summed over the TEBD steps.
     trunc_budget: f64,
     /// Momenta `q`.
     qs: Vec<f64>,
@@ -157,7 +158,7 @@ enum RunError {
     /// The time evolution truncated more than the budget allows.
     #[error("TEBD truncation error {sum:e} exceeds the budget {budget:e} at step {step}")]
     TruncationBudget {
-        /// Summed `trunc_err_sum` up to `step`.
+        /// Summed truncation error of the evolved state up to `step`.
         sum: f64,
         /// [`Params::trunc_budget`].
         budget: f64,
@@ -278,6 +279,10 @@ fn neel_state(n: usize) -> DenseMps {
 }
 
 /// Ground-state energy and state by two-site DMRG from the Néel state.
+///
+/// # Panics
+///
+/// Panics as [`Params::validate`] does.
 fn ground_state(params: &Params) -> Result<(f64, DenseMps), RunError> {
     params.validate();
     let dmrg = DmrgSweepParams {
@@ -311,7 +316,8 @@ fn ground_state(params: &Params) -> Result<(f64, DenseMps), RunError> {
     Ok((result.energy, psi))
 }
 
-/// `C_xc(t_k)` indexed by `[k][x]`, with the summed TEBD truncation error.
+/// `C_xc(t_k)` indexed by `[k][x]`, with the summed truncation error of the
+/// evolved state.
 #[derive(Debug, Clone)]
 struct Correlations {
     values: Vec<Vec<C64>>,
@@ -319,9 +325,19 @@ struct Correlations {
 }
 
 /// Measure `C_xc(t_k)` for every site `x` and sample `k`.
+///
+/// # Panics
+///
+/// Panics as [`Params::validate`] does, or if `psi0` does not have
+/// `n_sites` sites.
 fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlations, RunError> {
     params.validate();
     let n = params.n_sites;
+    assert!(
+        psi0.len() == n,
+        "correlations: psi0 has {} sites, but n_sites is {n}",
+        psi0.len()
+    );
     let backend = Host::shared();
     let sz: Vec<DenseMpo> = (0..n).map(|x| sz_mpo(n, x)).collect();
     let terms = vec![bond_term(params.j); n - 1];
@@ -343,12 +359,15 @@ fn correlations(params: &Params, e0: f64, psi0: &DenseMps) -> Result<Correlation
     let mut values = vec![measure(&phi, c64(1.0))];
     // `tebd` renormalizes after every step; the product of the recorded
     // norms restores the norm the evolution carries, ‖S^z_c ψ₀‖ included.
+    // Each step's truncation error is measured on the state `tebd` was
+    // given, the evolved state divided by the product so far, so scaling it
+    // by that product puts every step's error on the evolved state's scale.
     let mut norm_product = 1.0;
     let mut trunc_err_sum = 0.0;
     for step in 1..=params.n_steps {
         let record = &tebd(&mut phi, &terms, &tebd_params)?[0];
+        trunc_err_sum += norm_product * record.trunc_err_sum;
         norm_product *= record.norm;
-        trunc_err_sum += record.trunc_err_sum;
         if exceeds(trunc_err_sum, params.trunc_budget) {
             return Err(RunError::TruncationBudget {
                 sum: trunc_err_sum,
