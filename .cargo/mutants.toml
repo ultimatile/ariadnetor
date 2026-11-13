@@ -37,14 +37,6 @@ timeout_multiplier = 2.0
 # never runs, not because of a real spec gap.
 test_workspace = true
 
-# Skip the dynamical_structure_factor example's tests. cargo-mutants mutates
-# only lib and bin targets, so the example's own code is never mutated, and a
-# library mutant that only these tests kill marks a gap in the library's own
-# tests. Some of them run DMRG and TEBD end to end; the module takes about
-# 14 s in debug. `--skip` matches a substring of the test path, so the module
-# name must stay unique in the workspace.
-additional_cargo_test_args = ["--", "--skip", "structure_factor_tests::"]
-
 # The shared test fixtures are test infrastructure, not production code:
 # DMRG / MPS chains in the algorithms-fixtures crate, plus the QNIndex leg
 # builders and densify / template helpers in ariadnetor-tensor's feature-gated

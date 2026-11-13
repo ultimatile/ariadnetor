@@ -558,7 +558,5 @@ fn format_table(qs: &[f64], omegas: &[f64], s: &[Vec<f64>]) -> String {
     table
 }
 
-// The module name is unique in the workspace so that `.cargo/mutants.toml`
-// can skip these tests by name.
 #[cfg(test)]
-mod structure_factor_tests;
+mod tests;

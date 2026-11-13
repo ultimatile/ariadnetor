@@ -19,9 +19,8 @@ example tests and doctests but does not compile or run benches; its
 `doc-check` step builds the workspace docs with rustdoc warnings denied,
 catching broken or private intra-doc links and invalid-HTML doc comments
 that `clippy` and the doctests do not. Run `cargo make --list-all-steps`
-for the full task surface. Example tests are the `#[test]` functions of
-the examples whose `[[example]]` entry sets `test = true`; the other
-examples are only compiled.
+for the full task surface. Plain `cargo test --workspace` does not run
+example tests; `cargo make test-examples` runs them alone.
 
 ### Ad-hoc QA tools (outside the gate)
 
