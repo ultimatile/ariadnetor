@@ -79,7 +79,8 @@ pub fn build_mpo_site_f64(
     Host::shared().dense(data, vec![w_l_dim, D, D, w_r_dim])
 }
 
-/// Spin-1/2 Heisenberg `H = J Σ S_i · S_{i+1}` as a bond-dim-5 MPO.
+/// Spin-1/2 Heisenberg `H = J Σ σ_i · σ_{i+1}` in Pauli matrices
+/// (`= 4J Σ S_i · S_{i+1}`) as a bond-dim-5 MPO.
 pub fn heisenberg_mpo_f64(n: usize, j: f64) -> Mpo<DenseStorage<f64>, DenseLayout> {
     assert!(n >= 2, "heisenberg_mpo_f64 requires n >= 2");
     let mut sites = Vec::with_capacity(n);
