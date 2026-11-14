@@ -13,10 +13,10 @@ name = "ariadnetor"
 path = "src/lib.rs"
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
-ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.6" }
-ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.6" }
-ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.6" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.7" }
+ariadnetor-linalg = { path = "../ariadnetor-linalg", version = "0.0.7" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.7" }
+ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.7" }
 
 [dev-dependencies]
 # Enables `ariadnetor_tensor::test_fixtures` for this crate's integration tests.

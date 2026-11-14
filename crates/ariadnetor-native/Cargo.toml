@@ -13,7 +13,7 @@ name = "ariadnetor_native"
 path = "src/lib.rs"
 
 [dependencies]
-ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.6" }
+ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.7" }
 faer = { workspace = true }
 hptt = { workspace = true, optional = true }
 num-complex = { workspace = true }
