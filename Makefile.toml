@@ -16,11 +16,11 @@
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
-# integration + doctests but does NOT compile benches; its doc-check step
-# builds the workspace docs with rustdoc warnings denied, catching broken
-# / private intra-doc links and invalid-HTML doc comments that clippy and
-# doctests do not. No step in `gate` runs benchmarks — those are on demand
-# via the bench* tasks.
+# integration + example tests and doctests but does NOT compile benches;
+# its doc-check step builds the workspace docs with rustdoc warnings
+# denied, catching broken / private intra-doc links and invalid-HTML doc
+# comments that clippy and doctests do not. No step in `gate` runs
+# benchmarks — those are on demand via the bench* tasks.
 
 [config]
 default_to_workspace = false
@@ -55,12 +55,27 @@ args = ["build", "--workspace", "--release"]
 # ============================================================================
 
 [tasks.test]
-description = "Run unit + integration + doctests across the workspace (does not compile benches)"
+clear = true
+description = "Run unit + integration + example tests and doctests across the workspace (does not compile benches)"
+dependencies = ["test-default-targets", "test-examples"]
+
+[tasks.test-default-targets]
+description = "Run cargo test's default targets across the workspace: unit + integration tests and doctests"
 command = "cargo"
 args = ["test", "--workspace"]
 
+# Plain `cargo test` compiles the examples but does not run their tests, and
+# cargo-mutants runs plain `cargo test` against every mutant. cargo-mutants
+# never mutates example code, so the examples' tests run here instead of
+# through `test = true` in an `[[example]]` entry, which would add them to
+# every mutant's test run.
+[tasks.test-examples]
+description = "Run the #[test] functions of every example in the workspace"
+command = "cargo"
+args = ["test", "--workspace", "--examples"]
+
 [tasks.test-lib]
-description = "Run unit tests only (--lib): no integration tests, no doctests"
+description = "Run unit tests only (--lib): no integration tests, no example tests, no doctests"
 command = "cargo"
 args = ["test", "--workspace", "--lib"]
 
@@ -79,9 +94,28 @@ command = "cargo"
 args = ["check", "--workspace"]
 
 [tasks.clippy]
-description = "Lint the workspace including all targets (benches, examples, tests); denies warnings. Single clippy-gate definition shared by `gate` and the pre-commit hook."
+description = "Lint the workspace including all targets (benches, examples, tests) and the examples' tests; denies warnings. Single clippy-gate definition shared by `gate` and the pre-commit hook."
+dependencies = ["install-clippy", "clippy-example-tests"]
 command = "cargo"
 args = ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
+
+# `--all-targets` lints an example without `cfg(test)` unless its
+# `[[example]]` entry sets `test = true`, which no example does (see
+# `test-examples`). The test profile lints the examples as `cargo test
+# --examples` (`test-examples`) builds them, test modules included.
+[tasks.clippy-example-tests]
+description = "Lint every example in the workspace with its tests compiled in; denies warnings"
+command = "cargo"
+args = [
+  "clippy",
+  "--workspace",
+  "--examples",
+  "--profile",
+  "test",
+  "--",
+  "-D",
+  "warnings"
+]
 
 [tasks.fmt]
 description = "Format the workspace with rustfmt"
@@ -191,7 +225,7 @@ args = ["release", "${@}"]
 # ============================================================================
 
 [tasks.gate]
-description = "Local pre-PR gate: fmt-check + clippy (--all-targets, compiles benches) + test (unit/integration/doctests) + doc-check (rustdoc warnings denied); does not run benchmarks"
+description = "Local pre-PR gate: fmt-check + clippy (--all-targets, compiles benches) + test (unit/integration/example/doctests) + doc-check (rustdoc warnings denied); does not run benchmarks"
 dependencies = ["fmt-check", "clippy", "test", "doc-check"]
 
 [tasks.dev]
@@ -326,9 +360,8 @@ args = ["${@}"]
 # non-ARPACK solver mutants overlap the shipped run; their verdicts are
 # identical there (algorithms has no cross-crate test consumer), so the
 # overlap is redundant, not contradictory. `--test-workspace false` scopes
-# testing to the algorithms crate's own unit + integration tests
-# (tests/arpack_smallest.rs, tests/dmrg_arpack.rs) — the only tests that can
-# kill these mutants; it is an optimization here, not a correctness
+# testing to the algorithms crate's own tests, where every test that can
+# kill these mutants lives; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
 # Neither scoped pass takes `${@}`, unlike `mutants`: cargo-mutants
