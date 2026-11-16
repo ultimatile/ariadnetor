@@ -1758,9 +1758,8 @@ dependencies = [
 
 [[package]]
 name = "strided-perm"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d367ea2bd53f572b8eac92ac08a70fa042da6114c08e28674722a21002a5a29"
+version = "0.15.0"
+source = "git+https://github.com/tensor4all/strided-rs?rev=6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f#6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f"
 dependencies = [
  "strided-view",
  "thiserror 1.0.69",
@@ -1771,8 +1770,7 @@ dependencies = [
 [[package]]
 name = "strided-traits"
 version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "894ae73ede6508852f55968ea8bc4eaefd657c21c484e0ee41de59e69290b35d"
+source = "git+https://github.com/tensor4all/strided-rs?rev=6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f#6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f"
 dependencies = [
  "num-complex",
  "num-traits",
@@ -1780,9 +1778,8 @@ dependencies = [
 
 [[package]]
 name = "strided-view"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73b0b658f57a42d6cd20df58eeb42f74425ae8be4140751fb2dde80d042e20ff"
+version = "0.8.1"
+source = "git+https://github.com/tensor4all/strided-rs?rev=6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f#6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f"
 dependencies = [
  "num-complex",
  "num-traits",
@@ -1889,9 +1886,9 @@ dependencies = [
 
 [[package]]
 name = "threadteam"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ae7666b2f6a9ad479f5d0be7b54d21d62912ddd7c69923ad6f50767a86440e8"
+checksum = "fbc7aeede8aadfaf57ce59a69bc0788bc3196f8c17c003d531cc005204fde194"
 dependencies = [
  "libc",
  "loom",

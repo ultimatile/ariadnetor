@@ -21,9 +21,9 @@ license = "MIT OR Apache-2.0"
 # Linear algebra
 faer = "0.24"
 hptt = "0.4.1"
-strided-perm = { version = "0.14.0", features = ["parallel"] }
-strided-view = "0.8.0"
-threadteam = "0.5.1"
+strided-perm = { version = "0.15.0", features = ["parallel"] }
+strided-view = "0.8.1"
+threadteam = "0.6"
 
 # Memory alignment
 aligned-vec = "0.6"
@@ -57,6 +57,15 @@ syn = { version = "3", features = ["full", "visit"] }
 [workspace.lints.rust]
 dead_code = "forbid"
 unreachable_pub = "warn"
+
+# Bench branch only: strided-perm with `copy_conj_into` (tensor4all/strided-rs#478), unreleased.
+[patch.crates-io.strided-perm]
+git = "https://github.com/tensor4all/strided-rs"
+rev = "6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f"
+
+[patch.crates-io.strided-view]
+git = "https://github.com/tensor4all/strided-rs"
+rev = "6bc47e61cd3748c77fd9eac62ed6bd5fc9e0048f"
 
 [profile.bench]
 debug = "line-tables-only"

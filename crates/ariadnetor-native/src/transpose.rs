@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 
 use ariadnetor_core::Scalar;
 use ariadnetor_core::backend::{BackendError, ExecPolicy, MemoryOrder, TransposeDescriptor};
-#[cfg(not(feature = "hptt"))]
+#[cfg(not(any(feature = "hptt", feature = "strided-conj")))]
 use rayon::prelude::*;
 use strided_view::{StridedView, StridedViewMut};
 use threadteam::{Exec, Pool};
@@ -36,9 +36,11 @@ pub(crate) fn transpose_f32(desc: TransposeDescriptor<'_, f32>) -> Result<(), Ba
 pub(crate) fn transpose_c64(
     desc: TransposeDescriptor<'_, num_complex::Complex<f64>>,
 ) -> Result<(), BackendError> {
-    #[cfg(feature = "hptt")]
+    #[cfg(feature = "strided-conj")]
+    let conj_kernel = strided_conj_c64;
+    #[cfg(all(feature = "hptt", not(feature = "strided-conj")))]
     let conj_kernel = hptt_c64;
-    #[cfg(not(feature = "hptt"))]
+    #[cfg(not(any(feature = "hptt", feature = "strided-conj")))]
     let conj_kernel = naive;
     transpose_complex(desc, conj_kernel)
 }
@@ -46,9 +48,11 @@ pub(crate) fn transpose_c64(
 pub(crate) fn transpose_c32(
     desc: TransposeDescriptor<'_, num_complex::Complex<f32>>,
 ) -> Result<(), BackendError> {
-    #[cfg(feature = "hptt")]
+    #[cfg(feature = "strided-conj")]
+    let conj_kernel = strided_conj_c32;
+    #[cfg(all(feature = "hptt", not(feature = "strided-conj")))]
     let conj_kernel = hptt_c32;
-    #[cfg(not(feature = "hptt"))]
+    #[cfg(not(any(feature = "hptt", feature = "strided-conj")))]
     let conj_kernel = naive;
     transpose_complex(desc, conj_kernel)
 }
@@ -154,6 +158,39 @@ pub(crate) fn validate<T>(desc: &TransposeDescriptor<'_, T>) -> Result<usize, Ba
 /// multiply the remaining extents past `usize::MAX`. `NativeBackend::transpose`
 /// returns before dispatching for a zero-size tensor.
 fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
+    strided_with(desc, |dst, src, exec| {
+        strided_perm::copy_into(dst, src, exec)
+    })
+}
+
+/// Bench branch only: a conjugating complex transpose through
+/// `strided_perm::copy_conj_into`.
+#[cfg(feature = "strided-conj")]
+fn strided_conj_c64(
+    desc: TransposeDescriptor<'_, num_complex::Complex<f64>>,
+) -> Result<(), BackendError> {
+    strided_with(desc, |dst, src, exec| {
+        strided_perm::copy_conj_into(dst, src, exec)
+    })
+}
+
+#[cfg(feature = "strided-conj")]
+fn strided_conj_c32(
+    desc: TransposeDescriptor<'_, num_complex::Complex<f32>>,
+) -> Result<(), BackendError> {
+    strided_with(desc, |dst, src, exec| {
+        strided_perm::copy_conj_into(dst, src, exec)
+    })
+}
+
+fn strided_with<T: Scalar>(
+    desc: TransposeDescriptor<'_, T>,
+    copy: impl FnOnce(
+        &mut StridedViewMut<'_, T>,
+        &StridedView<'_, T>,
+        Exec<'static>,
+    ) -> strided_view::Result<()>,
+) -> Result<(), BackendError> {
     let TransposeDescriptor {
         input,
         output,
@@ -176,7 +213,7 @@ fn strided<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendErr
         .collect();
     let src = StridedView::new(input, &dims, &src_strides, 0).map_err(strided_failure)?;
     let mut dst = StridedViewMut::new(output, &dims, &dst_strides, 0).map_err(strided_failure)?;
-    strided_perm::copy_into(&mut dst, &src, exec_for(policy)).map_err(strided_failure)
+    copy(&mut dst, &src, exec_for(policy)).map_err(strided_failure)
 }
 
 /// Convert a stride to the `isize` strided-view takes.
@@ -347,7 +384,7 @@ fn hptt_c32(desc: TransposeDescriptor<'_, num_complex::Complex<f32>>) -> Result<
 /// On an empty `output`, which the parallel path could not split into
 /// chunks. `NativeBackend::transpose` returns before dispatching for a
 /// zero-size tensor.
-#[cfg(not(feature = "hptt"))]
+#[cfg(not(any(feature = "hptt", feature = "strided-conj")))]
 fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
     let TransposeDescriptor {
         input,
@@ -402,7 +439,7 @@ fn naive<T: Scalar>(desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError
 /// Single-threaded transpose using the same output-driven, no-alloc
 /// kernel as the parallel path; differs only in that work runs on the
 /// caller's thread without Rayon split.
-#[cfg(not(feature = "hptt"))]
+#[cfg(not(any(feature = "hptt", feature = "strided-conj")))]
 #[allow(clippy::too_many_arguments)]
 fn naive_sequential<T: Scalar>(
     input: &[T],
@@ -431,7 +468,7 @@ fn naive_sequential<T: Scalar>(
 /// `Parallel(0)` adopts `rayon::current_num_threads()`, `Parallel(n>0)`
 /// splits work as if `n` workers were available. This mirrors faer's
 /// `Par::rayon(n)` semantics; the pool's actual width is unchanged.
-#[cfg(not(feature = "hptt"))]
+#[cfg(not(any(feature = "hptt", feature = "strided-conj")))]
 #[allow(clippy::too_many_arguments)]
 fn naive_parallel<T: Scalar>(
     input: &[T],
@@ -481,7 +518,7 @@ fn naive_parallel<T: Scalar>(
 /// every output index inline, the parallel path runs it inside
 /// disjoint Rayon chunks. Avoids the per-element `Vec<usize>` that
 /// the previous coordinate helper allocated.
-#[cfg(not(feature = "hptt"))]
+#[cfg(not(any(feature = "hptt", feature = "strided-conj")))]
 fn new_to_old_idx(
     mut new_idx: usize,
     new_strides: &[usize],

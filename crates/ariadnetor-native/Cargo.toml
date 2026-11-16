@@ -12,6 +12,10 @@ categories = ["mathematics", "science"]
 name = "ariadnetor_native"
 path = "src/lib.rs"
 
+[[bench]]
+harness = false
+name = "conj_transpose"
+
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.7" }
 faer = { workspace = true }
@@ -33,6 +37,9 @@ rstest = { workspace = true }
 # both builds.
 default = []
 hptt = ["dep:hptt"]
+# Bench branch only: route conjugating complex transposes through
+# `strided_perm::copy_conj_into` (takes precedence over `hptt`).
+strided-conj = []
 
 [lints]
 workspace = true
