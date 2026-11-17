@@ -50,9 +50,7 @@ serde = { version = "1", features = ["derive"] }
 # Dev dependencies
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }
-proc-macro2 = { version = "1", features = ["span-locations"] }
 rstest = "0.28"
-syn = { version = "3", features = ["full", "visit"] }
 
 [workspace.lints.rust]
 dead_code = "forbid"
