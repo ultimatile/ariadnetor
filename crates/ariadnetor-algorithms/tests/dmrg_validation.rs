@@ -22,8 +22,8 @@ use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, Dens
 // Matrix layout convention used throughout this file: every dense
 // matrix is stored column-major, so `data[row + nrows * col]` is the
 // (row, col) entry. For MPO sites with shape
-// `[W_L, d_ket, d_bra, W_R]` (axis 1 = ket, axis 2 = bra per
-// `heff.rs:12`), the column-major linear index is
+// `[W_L, d_ket, d_bra, W_R]` (axis 1 = ket, axis 2 = bra), the
+// column-major linear index is
 // `vL + W_L * (k + d_ket * (b + d_bra * vR))`.
 // ---------------------------------------------------------------------------
 

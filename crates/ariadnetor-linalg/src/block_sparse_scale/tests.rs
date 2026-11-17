@@ -287,9 +287,7 @@ fn bsv_map_basic() {
 
 #[test]
 fn rowmajor_branch_distinguishes_inner_stride_at_non_trailing_axis() {
-    // Pin the `MemoryOrder::RowMajor` arm of the `inner_stride` match in
-    // `diagonal_scale_block_sparse_dense`. With block_shape=[2, 3, 4] and
-    // axis=1:
+    // With block_shape=[2, 3, 4] and axis=1:
     //
     //   original `axis + 1`: stride = block_shape[2..].product() = 4
     //   mutant   `axis - 1`: stride = block_shape[0..].product() = 24

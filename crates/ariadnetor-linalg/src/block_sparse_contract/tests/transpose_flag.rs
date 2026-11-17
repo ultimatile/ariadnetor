@@ -2,8 +2,8 @@
 //! `lhs_needs_physical_t` / `rhs_needs_physical_t` decision logic in
 //! `contract_to_tensor`.
 //!
-//! Two axis configurations per side cover all observable mutations on
-//! lines 303 / 304 / 313 / 314:
+//! Two axis configurations per side cover all observable mutations of
+//! that logic:
 //!
 //! * Config A — non-prefix contracted axes (`axes=[1,0]` for lhs,
 //!   `axes=[2,1]` for rhs). Forces the physical-transpose path
