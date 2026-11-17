@@ -546,6 +546,7 @@ fn fuse_trailing_axes_with_nontrivial_leading() {
 // ---------------------------------------------------------------------------
 
 /// RM path: two blocks with fused=1 are merged into fused_total=2.
+/// Catches arithmetic mutations in the RM branch of `copy_fused_block`.
 #[test]
 fn copy_fused_block_row_major_basic() {
     // leading=2, fused=1, trailing=3 for each source block.

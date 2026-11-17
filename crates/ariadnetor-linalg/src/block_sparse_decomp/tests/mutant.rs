@@ -100,7 +100,8 @@ fn sample_rm_rank4() -> BlockSparseTensorData<f64, U1Sector> {
 /// assemble_sector_matrix RM: hand-verified 5×5 block matrix.
 ///
 /// Sector U1(1) has left_offsets=[0,2], right_offsets=[0,2] with
-/// block dims (2,3) × (2,3).
+/// block dims (2,3) × (2,3), exercising the RM branch's arithmetic in
+/// `assemble_sector_matrix`.
 #[test]
 fn assemble_sector_matrix_row_major() {
     let bs = sample_rm_rank4();
