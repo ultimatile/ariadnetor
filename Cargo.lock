@@ -167,7 +167,6 @@ dependencies = [
  "ariadnetor-core",
  "ariadnetor-native",
  "ariadnetor-tensor",
- "ciborium",
  "criterion",
  "num-complex",
  "num-traits",
