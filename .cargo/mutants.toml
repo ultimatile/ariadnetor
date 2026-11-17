@@ -180,11 +180,11 @@ exclude_re = [
   # supported-but-uncovered path (a test with an order-flipping operator kills
   # it), i.e. a coverage gap, not an equivalent mutant. Left in scope.
   #
-  # NOTE: fused_sector build_square_tensor's RowMajor arm (386-388) is also
+  # NOTE: fused_sector build_square_tensor's RowMajor arm is also
   # NOT excluded. It is unreachable only because no `cargo test` routes a
   # RowMajor-preferred backend through a block-sparse solve/expm/inverse —
   # but RowMajor is a supported `ComputeBackend::preferred_order()` and an
   # in-tree `RowMajorBackend` fixture (linalg test_util.rs) already exists.
   # Wiring it through these ops kills the mutants, so this is a coverage gap,
-  # not equivalence. Left in scope. (The ColumnMajor arm 393-395 is caught.)
+  # not equivalence. Left in scope. (The ColumnMajor arm is caught.)
 ]
