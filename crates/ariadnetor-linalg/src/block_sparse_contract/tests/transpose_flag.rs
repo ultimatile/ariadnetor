@@ -3,7 +3,7 @@
 //! `contract_to_tensor`.
 //!
 //! Two axis configurations per side cover all observable mutations of
-//! that logic:
+//! the four flag definitions:
 //!
 //! * Config A — non-prefix contracted axes (`axes=[1,0]` for lhs,
 //!   `axes=[2,1]` for rhs). Forces the physical-transpose path
