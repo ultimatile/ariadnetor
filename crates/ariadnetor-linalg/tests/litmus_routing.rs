@@ -14,7 +14,7 @@
 use ariadnetor_core::backend::ComputeBackend;
 use ariadnetor_linalg::DenseHostOps;
 use ariadnetor_tensor::ComputeBackendTensorExt;
-use ariadnetor_tensor::{DenseTensor, Host};
+use ariadnetor_tensor::Host;
 
 #[test]
 fn host_ergonomic_op_routes_through_aliased_substrate() {
