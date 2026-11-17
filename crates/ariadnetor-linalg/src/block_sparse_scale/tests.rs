@@ -327,10 +327,9 @@ fn rowmajor_branch_distinguishes_inner_stride_at_non_trailing_axis() {
     // RowMajor: flat[i, j, k] = i * 12 + j * 4 + k. Expected scaled value is
     // weights[0].1[j] (the axis-1 entry).
     for i in 0..2 {
-        for j in 0..3 {
+        for (j, &expected) in weights.values[0].1.iter().enumerate() {
             for k in 0..4 {
                 let flat = i * 12 + j * 4 + k;
-                let expected = weights.values[0].1[j];
                 assert!(
                     (data[flat] - expected).abs() < 1e-12,
                     "rowmajor scale mismatch at (i={i}, j={j}, k={k}): \
