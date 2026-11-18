@@ -476,8 +476,9 @@ mod tests {
 
     /// Rank-4 U1 operand (`nrow = 2`) whose every flux-allowed block holds
     /// distinct values. Each leg carries sectors 0 and 1 with dims 2 and 3, so
-    /// the middle fused sector merges two tuples per side: its blocks sit at
-    /// nonzero row and column offsets and span several rows and columns.
+    /// the middle fused sector merges two tuples per side: all but its first
+    /// block sit at a nonzero row or column offset, and each spans several
+    /// rows and columns.
     fn distinct_rank4(order: MemoryOrder) -> BlockSparseTensorData<f64, U1Sector> {
         let leg = |dir| (vec![(U1Sector(0), 2), (U1Sector(1), 3)], dir);
         let mut t = BlockSparseTensorData::zeros(

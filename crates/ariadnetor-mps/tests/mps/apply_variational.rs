@@ -8,8 +8,10 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 use super::helpers::{
-    apply_ok, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense, target_only,
+    apply_ok, cap, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+    target_only,
 };
+use super::variational_helpers::variational_fit_at_first_converging_cycle;
 
 /// 4-site bond-2 MPS with deterministic, genuinely entangled content, so that
 /// applying a bond-2 MPO inflates the product bond to 4 and `chi_max = 2`
@@ -287,10 +289,7 @@ fn refining_fit_problem() -> (DenseMpo, DenseMps, TruncateParams) {
         cm_dense_tensor(vec![1.0, 0.3, -0.4, 0.8], vec![1, 2, 2]),
         cm_dense_tensor(vec![0.5, -0.2, 0.7, 0.9], vec![2, 2, 1]),
     ]);
-    let params = TruncateParams::from(TruncSvdParams {
-        chi_max: Some(1),
-        target_trunc_err: None,
-    });
+    let params = TruncateParams::from(cap(1));
     (op, psi, params)
 }
 
@@ -298,62 +297,13 @@ fn refining_fit_problem() -> (DenseMpo, DenseMps, TruncateParams) {
 /// overlap `‖P_center‖²` is at or below `tol`. A run with `tol = 0` and
 /// `max_sweeps = k` yields the k-cycle iterate `φ_k`, and `‖φ_k‖²` is that
 /// cycle's center overlap (the fit ends with site 0 freshly projected and the
-/// rest right-isometric). With `tol` placed below cycle 3's change and above
-/// cycle 4's, a run with ample `max_sweeps` must return exactly `φ_4`. `tol`
+/// rest right-isometric). With `tol` placed below cycle 3's change and at or
+/// above cycle 4's, a run with ample `max_sweeps` must return exactly `φ_4`. `tol`
 /// sits within a quarter of cycle 3's change, so measuring the change of
 /// `‖P_center‖` (about half as large) instead would already stop at cycle 3.
 #[test]
 fn variational_stops_at_first_cycle_within_tol() {
-    const STOP: usize = 4;
-    let backend = NativeBackend::new();
     let (op, psi, params) = refining_fit_problem();
-    let fit = |max_sweeps: usize, tol: f64| {
-        apply_ok(
-            &backend,
-            &op,
-            &psi,
-            Some(&params),
-            ApplyMethod::Variational {
-                init: VariationalInit::ZipUp,
-                max_sweeps,
-                tol,
-            },
-        )
-    };
-
-    let iterates: Vec<_> = (1..=STOP + 1).map(|k| fit(k, 0.0)).collect();
-    let overlaps: Vec<f64> = iterates
-        .iter()
-        .map(|phi| mps::inner(&backend, phi, phi))
-        .collect();
-    for k in 1..overlaps.len() {
-        assert!(
-            overlaps[k] > overlaps[k - 1],
-            "cycle {} must still raise the overlap at tol = 0: {} -> {}",
-            k + 1,
-            overlaps[k - 1],
-            overlaps[k],
-        );
-    }
-    // Relative change of the overlap over cycle `k` (1-based, k >= 2).
-    let rel_change = |k: usize| (overlaps[k - 1] - overlaps[k - 2]) / overlaps[k - 1];
-    let tol = 0.75 * rel_change(STOP - 1);
-    for k in 2..STOP {
-        assert!(
-            rel_change(k) > tol,
-            "cycle {k} must not converge at tol {tol}"
-        );
-    }
-    assert!(
-        rel_change(STOP) <= tol,
-        "cycle {STOP}'s change {} must fall within tol {tol}",
-        rel_change(STOP),
-    );
-
-    let stopped = fit(50, tol);
-    assert_dense_close(
-        &mps_to_dense(&stopped),
-        &mps_to_dense(&iterates[STOP - 1]),
-        1e-12,
-    );
+    let (stopped, expected) = variational_fit_at_first_converging_cycle(&op, &psi, &params, 4);
+    assert_dense_close(&mps_to_dense(&stopped), &mps_to_dense(&expected), 1e-12);
 }

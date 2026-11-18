@@ -2,6 +2,8 @@
 
 #[path = "mps/helpers.rs"]
 mod helpers;
+#[path = "mps/variational_helpers.rs"]
+mod variational_helpers;
 
 #[path = "mps/apply.rs"]
 mod apply;

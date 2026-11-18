@@ -151,12 +151,9 @@ pub enum LanczosError {
 ///   for a tolerance below working precision (e.g. `1e-10` for `f32`,
 ///   whose epsilon is `~1.2e-7`) cannot be satisfied; `converged` will
 ///   reflect the achievable precision rather than the requested one.
-/// - The 2-norm used to compute β is the straightforward
-///   `sum |x|^2 -> sqrt`. Operator outputs whose elements approach
-///   `sqrt(T::Real::MAX)` (roughly `1e19` for `f32`, `1e154` for `f64`)
-///   may overflow during squaring, producing a non-finite result that is
-///   surfaced as [`LanczosError::NonFinite`]. DMRG-scale Hermitians stay
-///   far below this in practice.
+/// - The 2-norms (β and the residual) are accumulated scale-safely, so
+///   squaring an element cannot overflow them: a norm overflows only
+///   when its value exceeds `T::Real::MAX`.
 pub fn lanczos_smallest<T, Op>(
     op: &Op,
     dim: usize,
@@ -238,8 +235,9 @@ where
         if j == 0 {
             sub_real_axpy(&mut w, alpha, &v_j);
         } else {
-            let beta_prev = betas[j - 1];
-            let v_prev = &basis[j - 1];
+            let prev = j - 1;
+            let beta_prev = betas[prev];
+            let v_prev = &basis[prev];
             sub_two_real_axpy(&mut w, alpha, &v_j, beta_prev, v_prev);
         }
 

@@ -16,6 +16,19 @@ use ariadnetor_tensor::{ComputeBackendTensorExt, DenseLayout, DenseStorage, Dens
 // Test fixtures
 // ---------------------------------------------------------------------------
 
+/// Assert that `result` is `LengthMismatch` carrying exactly these lengths.
+#[track_caller]
+fn assert_length_mismatch(result: Result<(), BraketEnvError>, bra: usize, mpo: usize, ket: usize) {
+    assert!(
+        matches!(
+            result,
+            Err(BraketEnvError::LengthMismatch { bra: b, mpo: m, ket: k })
+                if (b, m, k) == (bra, mpo, ket)
+        ),
+        "expected LengthMismatch {{ bra: {bra}, mpo: {mpo}, ket: {ket} }}, got {result:?}",
+    );
+}
+
 /// Tiny MPS fixture: 4-site, physical dim d=2, all bond dim 1 (i.e. a
 /// product state of single complex amplitudes per site). Each site
 /// stores `[1, 0]` so the state is |0000⟩.
@@ -429,15 +442,8 @@ fn env_length_mismatch_surfaces_as_error() {
     let mps = product_state_mps(3);
     let mpo = identity_mpo(4, 2);
 
-    let result = BraketEnvs::build(&mps, &mpo, &mps);
-    assert!(matches!(
-        result,
-        Err(BraketEnvError::LengthMismatch {
-            bra: 3,
-            mpo: 4,
-            ket: 3
-        })
-    ));
+    let result = BraketEnvs::build(&mps, &mpo, &mps).map(|_| ());
+    assert_length_mismatch(result, 3, 4, 3);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,12 +491,12 @@ fn env_stale_neighbor_surfaces_as_error() {
 // ---------------------------------------------------------------------------
 //
 // The length check is a disjunction over the MPO, bra and ket lengths.
-// When every operand is mismatched, `||` and `&&` agree, so only a
-// single mismatched operand among matching ones tells them apart: under
-// `&&` the check passes and the function continues, surfacing a
-// different error or a panic instead of `LengthMismatch`. The tests
-// below take the MPO, then the bra and the ket, as that single operand,
-// and assert the explicit lengths to pinpoint which one is checked.
+// Each `||` → `&&` mutant lets some mismatch through the check, and the
+// function then continues, surfacing a different error or a panic
+// instead of `LengthMismatch`. The tests below mismatch the MPS (bra and
+// ket together), the MPO alone, the bra alone and the ket alone, which
+// between them expose every such mutant, and assert the explicit lengths
+// to pinpoint which operand is checked.
 
 #[test]
 fn env_advance_left_asymmetric_length_mismatch() {
@@ -504,31 +510,11 @@ fn env_advance_left_asymmetric_length_mismatch() {
 
     // mpo matches n_sites = 4, mps does not (3).
     let result = env.advance_left(&mps_3, &mpo_4, &mps_3, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 3,
-                mpo: 4,
-                ket: 3
-            })
-        ),
-        "expected LengthMismatch {{ bra: 3, mpo: 4, ket: 3 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 3, 4, 3);
 
     // mps matches n_sites = 4, mpo does not (3).
     let result = env.advance_left(&mps_4, &mpo_3, &mps_4, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 4,
-                mpo: 3,
-                ket: 4
-            })
-        ),
-        "expected LengthMismatch {{ bra: 4, mpo: 3, ket: 4 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 4, 3, 4);
 }
 
 /// The bra and the ket are length-checked independently: with the MPO
@@ -543,30 +529,10 @@ fn env_advance_left_rejects_a_single_mismatched_bra_or_ket() {
     let mps_3 = product_state_mps(3);
 
     let result = env.advance_left(&mps_3, &mpo_4, &mps_4, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 3,
-                mpo: 4,
-                ket: 4
-            })
-        ),
-        "expected LengthMismatch {{ bra: 3, mpo: 4, ket: 4 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 3, 4, 4);
 
     let result = env.advance_left(&mps_4, &mpo_4, &mps_3, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 4,
-                mpo: 4,
-                ket: 3
-            })
-        ),
-        "expected LengthMismatch {{ bra: 4, mpo: 4, ket: 3 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 4, 4, 3);
 }
 
 /// Mirror of the `advance_left` case: a bra-only or a ket-only mismatch is
@@ -580,30 +546,10 @@ fn env_advance_right_rejects_a_single_mismatched_bra_or_ket() {
     let mps_3 = product_state_mps(3);
 
     let result = env.advance_right(&mps_3, &mpo_4, &mps_4, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 3,
-                mpo: 4,
-                ket: 4
-            })
-        ),
-        "expected LengthMismatch {{ bra: 3, mpo: 4, ket: 4 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 3, 4, 4);
 
     let result = env.advance_right(&mps_4, &mpo_4, &mps_3, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 4,
-                mpo: 4,
-                ket: 3
-            })
-        ),
-        "expected LengthMismatch {{ bra: 4, mpo: 4, ket: 3 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 4, 4, 3);
 }
 
 #[test]
@@ -619,28 +565,8 @@ fn env_advance_right_asymmetric_length_mismatch() {
     // advance_right targets `right[j+1]`. Use j = 0 so the read of
     // right[1] never happens (length check fires first).
     let result = env.advance_right(&mps_3, &mpo_4, &mps_3, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 3,
-                mpo: 4,
-                ket: 3
-            })
-        ),
-        "expected LengthMismatch {{ bra: 3, mpo: 4, ket: 3 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 3, 4, 3);
 
     let result = env.advance_right(&mps_4, &mpo_3, &mps_4, 0);
-    assert!(
-        matches!(
-            result,
-            Err(BraketEnvError::LengthMismatch {
-                bra: 4,
-                mpo: 3,
-                ket: 4
-            })
-        ),
-        "expected LengthMismatch {{ bra: 4, mpo: 3, ket: 4 }}, got {result:?}",
-    );
+    assert_length_mismatch(result, 4, 3, 4);
 }

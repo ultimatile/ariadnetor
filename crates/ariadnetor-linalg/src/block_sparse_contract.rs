@@ -416,12 +416,9 @@ fn is_ascending_suffix(axes: &[usize], rank: usize) -> bool {
 /// LHS GEMM trans-flag predicate: the contraction axes are an ascending
 /// prefix and the free axes are an ascending suffix of the rank, in which
 /// case the block can be read as `(m, k)` directly via the trans flag
-/// without physical permutation.
-///
-/// Wraps the equivalent `delete !` operand (`!lhs_is_id`) in a named fn so
-/// the equivalent-mutant exclusion can be anchored by function name rather
-/// than line number. Both routes produce identical numerical output by
-/// design (trans-flag GEMM vs. physical-transpose GEMM).
+/// without physical permutation. When the flag is unset for a block that
+/// is not already in `(m, k)` layout, the caller permutes it physically
+/// instead, which yields the same product.
 fn compute_lhs_trans_flag(
     lhs_is_id: bool,
     axes_lhs: &[usize],

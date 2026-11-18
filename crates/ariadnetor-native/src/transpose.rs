@@ -462,9 +462,10 @@ fn naive_parallel<T: Scalar>(
 }
 
 /// Output slots per parallel task in [`naive_parallel`]: about
-/// `TASKS_PER_THREAD` tasks per thread, but never fewer than `MIN_CHUNK`
-/// slots per task nor more than `total`. The thread count is the policy's
-/// `n`, or `pool_threads` when `n` is 0 (no explicit count).
+/// `TASKS_PER_THREAD` tasks per thread, with at least `MIN_CHUNK` slots
+/// per task, capped at `total` (so an output smaller than `MIN_CHUNK` is
+/// one task). The thread count is the policy's `n`, or `pool_threads`
+/// (at least 1) when `n` is 0 (no explicit count).
 #[cfg(not(feature = "hptt"))]
 fn parallel_chunk_len(n: usize, pool_threads: usize, total: usize) -> usize {
     const MIN_CHUNK: usize = 4096;

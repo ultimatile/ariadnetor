@@ -1,7 +1,8 @@
 //! Test-only helpers: compute backends that record descriptor `ExecPolicy`
-//! values and `par_for_*` queries or force the row-major branch while
-//! delegating the actual work to a `NativeBackend`, and an error-message
-//! assertion.
+//! values and the svd / qr / lq / eigh / eig / solve `par_for_*` queries or
+//! force the row-major branch while delegating the actual work to a
+//! `NativeBackend`, plus an error-message assertion and a test-tensor
+//! builder.
 //!
 //! The recording backend verifies policy forwarding: BSp default wrappers
 //! hardcode `Sequential` and BSp `_with_policy` wrappers forward the caller's
@@ -16,7 +17,7 @@ use ariadnetor_core::backend::{
     TransposeDescriptor, TridiagEighDescriptor,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{BlockSparseStorage, DenseStorage, OpsFor};
+use ariadnetor_tensor::{BlockSparseStorage, DenseStorage, DenseTensor, OpsFor};
 
 use crate::error::LinalgError;
 
@@ -28,14 +29,25 @@ pub(crate) fn assert_invalid_argument<T>(result: Result<T, LinalgError>, substr:
     }
 }
 
+/// Dense tensor of the given shape with distinct, non-degenerate entries
+/// (`1, 2, 3, …` over the flat buffer), so a contraction result depends on
+/// every element.
+pub(crate) fn filled(shape: Vec<usize>) -> DenseTensor<f64> {
+    let mut t = DenseTensor::<f64>::zeros(shape);
+    for (i, v) in t.data_slice_mut().iter_mut().enumerate() {
+        *v = (i + 1) as f64;
+    }
+    t
+}
+
 /// Compute backend that records the `policy` field of every descriptor it
 /// receives, then delegates to an inner `NativeBackend`.
 ///
 /// One `Mutex<Vec<ExecPolicy>>` per op — tests poll whichever list matches
 /// the op under inspection. Other ops' lists stay empty.
 ///
-/// It also records the problem-size key of every dense-decomposition and
-/// solve `par_for_*` query ([`PolicyQuery`]), answering each with
+/// It also records the problem-size key of the svd, qr, lq, eigh, eig and
+/// solve `par_for_*` queries ([`PolicyQuery`]), answering each with
 /// `Sequential` like the trait default.
 pub(crate) struct RecordingBackend {
     inner: NativeBackend,

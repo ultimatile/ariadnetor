@@ -584,12 +584,13 @@ fn full_contraction_identity_perm_multi_block() {
 }
 
 // ---------------------------------------------------------------------------
-// Rank mismatch contraction (output_rank formula)
+// Rank mismatch contraction (output rank)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn contraction_rank2_with_rank1() {
-    // Matrix-vector: output_rank = 2+1-2 = 1 (tensor), not 2*1-2 = 0 (scalar).
+    // Matrix-vector: one free axis survives, so the result is a rank-1
+    // tensor, not a scalar.
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
         out_in_legs(vec![(U1Sector(0), 2)], vec![(U1Sector(0), 3)]),
         U1Sector(0),
@@ -620,8 +621,8 @@ fn contraction_rank2_with_rank1() {
 
 #[test]
 fn outer_product_of_two_vectors() {
-    // No contracted axes: output_rank = 1+1-0 = 2, a rank-2 tensor holding
-    // the outer product.
+    // No contracted axes: both axes stay free, so the result is the rank-2
+    // outer product.
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
         legs([(vec![(U1Sector(0), 2)], Direction::Out)]),
         U1Sector(0),

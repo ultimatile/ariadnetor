@@ -1,21 +1,8 @@
 use crate::error::LinalgError;
-use crate::test_util::RecordingBackend;
+use crate::test_util::{RecordingBackend, filled};
 use crate::{contract, tensordot};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
-
-/// Dense tensor of the given shape with distinct, non-degenerate entries
-/// (`1, 2, 3, …` over the flat buffer) so a contraction result depends on every
-/// element. The fill order is irrelevant to the equivalence checks: `tensordot`
-/// and `contract` consume the same tensor, so any consistent fill exposes a
-/// divergence between the two paths.
-fn filled(shape: Vec<usize>) -> DenseTensor<f64> {
-    let mut t = DenseTensor::<f64>::zeros(shape);
-    for (i, v) in t.data_slice_mut().iter_mut().enumerate() {
-        *v = (i + 1) as f64;
-    }
-    t
-}
 
 /// Assert `tensordot(axes)` equals `contract(natural_notation)` in shape and
 /// values. The axis-native dense path must emit exactly what the notation path

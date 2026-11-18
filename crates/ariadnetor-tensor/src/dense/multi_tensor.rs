@@ -54,9 +54,10 @@ where
             return DenseTensorData::from_raw_parts(Vec::new(), out_shape, order);
         }
 
-        // Per step of the axes outside `axis`, each tensor contributes one
-        // contiguous block. When `axis` is the outermost axis there is a
-        // single step, and each block is the whole tensor.
+        // Per step of the axes outer to `axis` in memory order, each tensor
+        // contributes one contiguous block spanning `axis` and every axis
+        // inner to it. When `axis` is the outermost axis there is a single
+        // step, and each block is the whole tensor.
         let (strip_len, outer_count) = match order {
             MemoryOrder::RowMajor => (
                 base_shape[axis + 1..].iter().product::<usize>(),

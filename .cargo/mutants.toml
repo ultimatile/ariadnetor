@@ -12,7 +12,9 @@
 # Both are covered by dedicated feature-flipped passes — `cargo make
 # mutants-arpack` and `cargo make mutants-hptt` (see Makefile.toml and
 # CONTRIBUTING.md). Read this run's missed.txt knowing those regions are
-# audited there, not here.
+# audited there, not here. A third feature-gated region, the
+# pluggability-litmus host backend, is test infrastructure with no pass of
+# its own; exclude_re below drops its mutants.
 
 # Pinned, not merely left at the default: the single-run mutants tasks put
 # cargo-mutants' scratch directory under target/ (Makefile.toml explains why;
@@ -49,6 +51,14 @@ exclude_globs = [
 ]
 
 exclude_re = [
+  # No pattern in this list names a `file:line:col` position. A position
+  # stops matching once an edit shifts the lines above it, and the pass
+  # does not report the dead entry: the mutant just comes back as missed.
+  # When a pattern naming the mutation and its function would also match
+  # a killable mutant, move the expression the excluded mutant changes into
+  # a helper of its own (as running_min / running_max) and name the helper
+  # instead.
+  #
   # Test infrastructure, on the same grounds as exclude_globs: the
   # alt_host backend in ariadnetor-tensor's capability.rs is the substrate
   # of the pluggability-litmus build. It sits in a production file, so a
@@ -60,17 +70,6 @@ exclude_re = [
   # NativeBackend has no state, so Arc::new(Default::default()) == shared()
   "NativeBackend::shared .* Arc::new",
 
-  # --- Function-name-based patterns ---
-  # No pattern names a `file:line:col` position. A position stops matching
-  # after any edit above it, and nothing reports the dead entry: the
-  # mutant just comes back as missed after the next full pass. An
-  # equivalent mutant marks a freedom no specification observes. When
-  # that freedom is redundancy (two paths to one result, a branch that
-  # changes nothing), remove the redundancy. When it is an intended
-  # optimization, test the deciding predicate directly, or name the
-  # function here. If that name also covers a killable mutant, move the
-  # equivalent expression into a helper of its own (as running_min /
-  # running_max) and name the helper.
   # write_body's `reserve` size is a capacity hint: the bytes pushed after it
   # are the same whatever capacity was reserved.
   "replace \\* with [+/] in write_body$",
@@ -94,34 +93,13 @@ exclude_re = [
   "replace / with \\* in compute_scaling_decision",
   "replace <= with > in compute_scaling_decision",
   # sweep_2site's per-step diagnostics aggregation: a tracking minimum
-  # (`<` / `<=`) and a tracking maximum (`>` / `>=`) yield identical
-  # values for any input — distinct values pick the extremum once, equal
-  # values overwrite with an equal value, and every NaN comparison is
-  # false under both operators, so neither variant takes a NaN step.
+  # (`<` / `<=`) and a tracking maximum (`>` / `>=`) return the same
+  # value for any input, up to the sign of a zero — distinct values pick
+  # the extremum once, equal values overwrite with an equal value, and
+  # every NaN comparison is false under both operators, so a NaN
+  # accumulator is kept and a NaN step is never taken.
   "replace < with <= in running_min$",
   "replace > with >= in running_max$",
-  # contract_to_tensor trans-flag predicates: any mutation that forces the predicate
-  # to false (or removes the leading `!`) routes through the physical-permute GEMM
-  # path, which produces identical numerical results to the trans-flag GEMM path
-  # by design. The `with true` / `&& with ||` mutations are NOT equivalent (they
-  # would force trans-flag GEMM with non-suitable permutations) and remain in scope.
-  # The peer `delete !` mutations on `!lhs_trans_flag` / `!rhs_trans_flag` operands
-  # in `lhs_needs_physical_t` / `rhs_needs_physical_t` are also NOT equivalent.
-  "delete ! in compute_lhs_trans_flag",
-  "delete ! in compute_rhs_trans_flag",
-  "replace compute_lhs_trans_flag -> bool with false",
-  "replace compute_rhs_trans_flag -> bool with false",
   # norm Mixed arm: optimization shortcut; fallback computes same result via full inner product
   "inner.rs.*delete match arm.*Mixed.*in norm",
-  # lanczos_smallest: equivalent mutants under full reorthogonalization.
-  # `basis[j - 1]` → `basis[j / 1]` = `basis[j]` (= v_j). The recurrence's
-  # altered subtraction lives entirely in span(basis); two passes of classical
-  # Gram-Schmidt reorthogonalization re-project w onto span(basis)^perp to
-  # working precision, so β, alpha, tridiagonal entries, and basis are
-  # indistinguishable. Tests at tol >> eps cannot distinguish. Function-name
-  # anchored: same `replace - with / in lanczos_smallest` name also matches
-  # `betas[j - 1] → betas[j]` and `data[m - 1] → data[m]`, both of which
-  # access OOB at iter j > 0 (or m == 1) and panic — caught structurally,
-  # so the over-match is benign.
-  "replace - with / in lanczos_smallest",
 ]

@@ -116,11 +116,7 @@ fn lanczos_accepts_operator_returning_other_memory_order() {
 fn lanczos_diagonal_returns_min_eigenvalue() {
     let n = 5;
     let diag = [-3.0_f64, -1.0, 0.0, 2.0, 5.0];
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        data[i + n * i] = diag[i];
-    }
-    let h = Host::shared().dense(data, vec![n, n]);
+    let h = diag_matrix(&diag);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -174,11 +170,7 @@ fn lanczos_random_symmetric_matches_eigh() {
 fn lanczos_near_degenerate_cluster() {
     let n = 4;
     let diag = [0.0_f64, 1e-6, 1e-6, 1.0];
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        data[i + n * i] = diag[i];
-    }
-    let h = Host::shared().dense(data, vec![n, n]);
+    let h = diag_matrix(&diag);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -355,11 +347,7 @@ fn lanczos_finite_unconverged_is_ok_not_error() {
     // `Ok` with `converged == false`, not an error.
     let n = 5;
     let diag = [-3.0_f64, -1.0, 0.0, 2.0, 5.0];
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        data[i + n * i] = diag[i];
-    }
-    let h = Host::shared().dense(data, vec![n, n]);
+    let h = diag_matrix(&diag);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),

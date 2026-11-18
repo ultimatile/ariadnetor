@@ -71,8 +71,8 @@ fn exec_for_follows_the_shared_pool() {
 }
 
 /// The chunk length targets four tasks per thread, taking the thread
-/// count from the policy when it names one and from the pool otherwise,
-/// and is clamped to at least 4096 slots and at most the whole output.
+/// count from the policy when it names one and from the pool otherwise.
+/// It is raised to at least 4096 slots, then capped at the whole output.
 #[cfg(not(feature = "hptt"))]
 #[test]
 fn naive_chunk_len_targets_four_tasks_per_thread() {

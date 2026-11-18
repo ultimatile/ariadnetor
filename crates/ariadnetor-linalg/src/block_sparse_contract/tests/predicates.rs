@@ -1,4 +1,7 @@
-use super::super::{is_ascending_prefix, is_ascending_suffix, is_identity_perm};
+use super::super::{
+    compute_lhs_trans_flag, compute_rhs_trans_flag, is_ascending_prefix, is_ascending_suffix,
+    is_identity_perm,
+};
 
 // is_identity_perm
 #[test]
@@ -81,4 +84,26 @@ fn suffix_singleton_with_axes_len_one_is_true() {
     // rank=4, axes=[3]: offset=3.
     // Independently distinguishes `-` -> `/` (4/1=4 -> 3==4 false).
     assert!(is_ascending_suffix(&[3], 4));
+}
+
+// compute_lhs_trans_flag / compute_rhs_trans_flag: the trans flag is set
+// exactly when the operand is not already in GEMM layout and its axes
+// split into an ascending prefix and an ascending suffix.
+#[test]
+fn lhs_trans_flag_reads_contracted_prefix_without_permuting() {
+    // Contracting axis 0 of a rank-2 lhs: (k, m) is read as (m, k)^T.
+    assert!(compute_lhs_trans_flag(false, &[0], &[1], 2));
+    // An lhs already in (m, k) layout needs no flag.
+    assert!(!compute_lhs_trans_flag(true, &[0], &[1], 2));
+    // Free axes out of order: the flag cannot express the permutation.
+    assert!(!compute_lhs_trans_flag(false, &[0], &[2, 1], 3));
+}
+#[test]
+fn rhs_trans_flag_reads_contracted_suffix_without_permuting() {
+    // Contracting axis 1 of a rank-2 rhs: (n, k) is read as (k, n)^T.
+    assert!(compute_rhs_trans_flag(false, &[1], &[0], 2));
+    // An rhs already in (k, n) layout needs no flag.
+    assert!(!compute_rhs_trans_flag(true, &[1], &[0], 2));
+    // Contracted axes out of order: the flag cannot express the permutation.
+    assert!(!compute_rhs_trans_flag(false, &[2, 1], &[0], 3));
 }
