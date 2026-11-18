@@ -10,6 +10,7 @@ use algorithms_fixtures::dense_fixtures::{
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
 use ariadnetor_core::{MemoryOrder, Scalar};
+use ariadnetor_linalg::DenseHostOps;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;
 
@@ -33,14 +34,12 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
     Host::shared().dense(out, vec![n])
 }
 
-/// Dense column-major matrix with `diag` on the diagonal.
+/// Square matrix with `diag` on the diagonal.
 fn diag_matrix(diag: &[f64]) -> DenseTensor<f64> {
-    let n = diag.len();
-    let mut data = vec![0.0_f64; n * n];
-    for (i, &d) in diag.iter().enumerate() {
-        data[i + n * i] = d;
-    }
-    Host::shared().dense(data, vec![n, n])
+    Host::shared()
+        .dense(diag.to_vec(), vec![diag.len()])
+        .diag()
+        .expect("a rank-1 tensor has a diagonal matrix")
 }
 
 // ---------------------------------------------------------------------------

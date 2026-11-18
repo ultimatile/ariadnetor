@@ -392,8 +392,9 @@ fn expert_svd_dense_forwards_explicit_policy() {
 //
 // The auto-policy entries ask the backend for a policy keyed on the matrix
 // the tensor reshapes into at `nrow`: rows are the product of the leading
-// `nrow` axes, columns the product of the rest. The rank-3 fixtures split
-// at `nrow = 2`, so their rows are a product over more than one axis.
+// `nrow` axes, columns the product of the rest. Solve keys instead on the
+// system size and the right-hand-side count. The rank-3 fixtures split at
+// `nrow = 2`, so their rows are a product over more than one axis.
 
 /// Symmetric, diagonally dominant (hence nonsingular) 4×4 matrix stored as a
 /// `[2, 2, 4]` tensor, which splits into that square matrix at `nrow = 2`.

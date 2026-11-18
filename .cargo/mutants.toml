@@ -62,7 +62,8 @@ exclude_re = [
   # Test infrastructure, on the same grounds as exclude_globs: the
   # alt_host backend in ariadnetor-tensor's capability.rs is the substrate
   # of the pluggability-litmus build. It sits in a production file, so a
-  # glob cannot reach it, and outside that feature it is not compiled, so
+  # glob cannot drop it without the rest of that file, and outside that
+  # feature it is not compiled, so
   # its mutants would trivially pass here.
   "capability.rs:.*alt_host::",
   # Equivalent mutants: real types return 0.0 for im(), same as Default::default()
