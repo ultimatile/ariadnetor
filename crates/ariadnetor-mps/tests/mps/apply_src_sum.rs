@@ -258,6 +258,24 @@ fn src_sum_single_term_non_unit_coefficient_scales_once() {
     assert!(relative_frobenius(&densify(&backend, &out), &reference) < 1e-10);
 }
 
+/// A coefficient with unit real part but nonzero imaginary part is not
+/// one, so it must still weight the term rather than take the
+/// coefficient-one bypass.
+#[test]
+fn src_sum_single_term_unit_real_part_coefficient_scales() {
+    let backend = NativeBackend::new();
+    let (op, psi) = make_3site_c64_fixtures();
+    let terms = [(&op, &psi)];
+    let coeffs = [Complex::new(1.0, 2.0)];
+
+    let reference = lincomb_dense_reference(&backend, &terms, &coeffs);
+    let out =
+        apply_sum_successive_randomized(&backend, &terms, &coeffs, None, exact_rank_params(23))
+            .expect("finite inputs");
+
+    assert!(relative_frobenius(&densify(&backend, &out), &reference) < 1e-10);
+}
+
 /// A zero coefficient disables its term entirely: even a non-finite
 /// element in the disabled term must not poison the result (`0 * inf`
 /// would be NaN if the term flowed through the combiner).

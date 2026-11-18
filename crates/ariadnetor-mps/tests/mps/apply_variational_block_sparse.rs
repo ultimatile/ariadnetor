@@ -5,7 +5,10 @@ use ariadnetor_mps::{
     VariationalInit, inner,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{BlockSparseLayout, BlockSparseStorage, U1Sector};
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, U1Sector,
+};
 
 use super::helpers::{
     apply_ok, assert_block_sparse_close, bsp_mps_contract_full, make_3site_u1_mps_multipath_middle,
@@ -143,6 +146,123 @@ fn variational_canonical_form() {
         variational(VariationalInit::ZipUp, 10),
     );
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 0 });
+}
+
+/// A U(1) tensor whose every leg carries only the charge-0 sector, so `data`
+/// fills its single block.
+fn charge_zero_tensor(
+    dims: &[usize],
+    directions: &[Direction],
+    data: &[f64],
+) -> BlockSparseTensor<f64, U1Sector> {
+    let mut t = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs(
+            dims.iter()
+                .zip(directions)
+                .map(|(&d, &dir)| (vec![(U1Sector(0), d)], dir)),
+        ),
+        U1Sector(0),
+    );
+    t.block_data_mut(&BlockCoord(vec![0; dims.len()]))
+        .expect("the single charge-0 block")
+        .copy_from_slice(data);
+    t
+}
+
+type U1Mpo = mps::Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
+type U1Mps = Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
+
+/// Two-site product `Wψ` of rank 2 fitted at bond 1, all in the charge-0
+/// sector. The zip-up seed truncates `W₀ψ₀` against the non-isometric
+/// remainder `W₁ψ₁`, so it misses the optimal bond-1 state and the sweeps
+/// raise the overlap over several cycles.
+fn refining_fit_problem() -> (U1Mpo, U1Mps, TruncateParams) {
+    use Direction::{In, Out};
+    let op = mps::Mpo::from_sites(vec![
+        charge_zero_tensor(
+            &[1, 2, 2, 2],
+            &[Out, In, Out, In],
+            &[1.0, 0.2, -0.3, 0.6, 0.4, -0.5, 0.9, 0.1],
+        ),
+        charge_zero_tensor(
+            &[2, 2, 2, 1],
+            &[Out, In, Out, In],
+            &[0.3, 0.8, -0.6, 0.2, 0.7, 0.1, -0.4, 1.1],
+        ),
+    ]);
+    let psi = Mps::from_sites(vec![
+        charge_zero_tensor(&[1, 2, 2], &[Out, Out, In], &[1.0, 0.3, -0.4, 0.8]),
+        charge_zero_tensor(&[2, 2, 1], &[Out, Out, In], &[0.5, -0.2, 0.7, 0.9]),
+    ]);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    });
+    (op, psi, params)
+}
+
+/// The sweep stops after the first cycle whose relative change of the center
+/// overlap `‖P_center‖²` is at or below `tol`. A run with `tol = 0` and
+/// `max_sweeps = k` yields the k-cycle iterate `φ_k`, and `‖φ_k‖²` is that
+/// cycle's center overlap (the fit ends with site 0 freshly projected and the
+/// rest right-isometric). With `tol` placed below cycle 3's change and above
+/// cycle 4's, a run with ample `max_sweeps` must return exactly `φ_4`. `tol`
+/// sits within a quarter of cycle 3's change, so measuring the change of
+/// `‖P_center‖` (about half as large) instead would already stop at cycle 3.
+#[test]
+fn variational_stops_at_first_cycle_within_tol() {
+    const STOP: usize = 4;
+    let backend = NativeBackend::new();
+    let (op, psi, params) = refining_fit_problem();
+    let fit = |max_sweeps: usize, tol: f64| {
+        apply_ok(
+            &backend,
+            &op,
+            &psi,
+            Some(&params),
+            ApplyMethod::Variational {
+                init: VariationalInit::ZipUp,
+                max_sweeps,
+                tol,
+            },
+        )
+    };
+
+    let iterates: Vec<_> = (1..=STOP + 1).map(|k| fit(k, 0.0)).collect();
+    let overlaps: Vec<f64> = iterates
+        .iter()
+        .map(|phi| inner(&backend, phi, phi))
+        .collect();
+    for k in 1..overlaps.len() {
+        assert!(
+            overlaps[k] > overlaps[k - 1],
+            "cycle {} must still raise the overlap at tol = 0: {} -> {}",
+            k + 1,
+            overlaps[k - 1],
+            overlaps[k],
+        );
+    }
+    // Relative change of the overlap over cycle `k` (1-based, k >= 2).
+    let rel_change = |k: usize| (overlaps[k - 1] - overlaps[k - 2]) / overlaps[k - 1];
+    let tol = 0.75 * rel_change(STOP - 1);
+    for k in 2..STOP {
+        assert!(
+            rel_change(k) > tol,
+            "cycle {k} must not converge at tol {tol}"
+        );
+    }
+    assert!(
+        rel_change(STOP) <= tol,
+        "cycle {STOP}'s change {} must fall within tol {tol}",
+        rel_change(STOP),
+    );
+
+    let stopped = fit(50, tol);
+    assert_block_sparse_close(
+        &bsp_mps_contract_full(&stopped),
+        &bsp_mps_contract_full(&iterates[STOP - 1]),
+        1e-12,
+    );
 }
 
 /// The `DensityMatrix` seed reaches the same lossless fixed point at full bond,

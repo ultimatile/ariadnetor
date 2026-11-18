@@ -54,36 +54,28 @@ where
             return DenseTensorData::from_raw_parts(Vec::new(), out_shape, order);
         }
 
-        let is_outermost = match order {
-            MemoryOrder::RowMajor => axis == 0,
-            MemoryOrder::ColumnMajor => axis == rank - 1,
+        // Per step of the axes outside `axis`, each tensor contributes one
+        // contiguous block. When `axis` is the outermost axis there is a
+        // single step, and each block is the whole tensor.
+        let (strip_len, outer_count) = match order {
+            MemoryOrder::RowMajor => (
+                base_shape[axis + 1..].iter().product::<usize>(),
+                base_shape[..axis].iter().product::<usize>(),
+            ),
+            MemoryOrder::ColumnMajor => (
+                base_shape[..axis].iter().product::<usize>(),
+                base_shape[axis + 1..].iter().product::<usize>(),
+            ),
         };
 
         let mut data = Vec::with_capacity(out_total);
-        if is_outermost {
+        for outer in 0..outer_count {
             for t in tensors {
-                data.extend_from_slice(t.storage().data());
-            }
-        } else {
-            let (strip_len, outer_count) = match order {
-                MemoryOrder::RowMajor => (
-                    base_shape[axis + 1..].iter().product::<usize>(),
-                    base_shape[..axis].iter().product::<usize>(),
-                ),
-                MemoryOrder::ColumnMajor => (
-                    base_shape[..axis].iter().product::<usize>(),
-                    base_shape[axis + 1..].iter().product::<usize>(),
-                ),
-            };
-
-            for outer in 0..outer_count {
-                for t in tensors {
-                    let t_axis_size = t.shape()[axis];
-                    let block_size = t_axis_size * strip_len;
-                    let src_start = outer * block_size;
-                    let src = &t.storage().data()[src_start..src_start + block_size];
-                    data.extend_from_slice(src);
-                }
+                let t_axis_size = t.shape()[axis];
+                let block_size = t_axis_size * strip_len;
+                let src_start = outer * block_size;
+                let src = &t.storage().data()[src_start..src_start + block_size];
+                data.extend_from_slice(src);
             }
         }
 

@@ -615,6 +615,35 @@ fn test_einsum_batched_zero_contracted_extent_is_zeros() {
     );
 }
 
+/// A batched contraction with a zero-extent free axis on one side only (the
+/// other free axis and the contracted axis non-empty) yields the empty tensor
+/// of the output shape, not a slicing error.
+#[test]
+fn test_einsum_batched_zero_free_extent_is_empty() {
+    let full = |shape: Vec<usize>| {
+        let len = shape.iter().product::<usize>();
+        cm((1..=len).map(|x| x as f64).collect(), shape)
+    };
+
+    // bik with i = 0 against a populated bkj.
+    let out = einsum(
+        &[&full(vec![2, 0, 3]), &full(vec![2, 3, 4])],
+        "bik,bkj->bij",
+    )
+    .unwrap();
+    assert_eq!(out.shape(), &[2, 0, 4]);
+    assert!(out.data_slice().is_empty());
+
+    // A populated bik against bkj with j = 0.
+    let out = einsum(
+        &[&full(vec![2, 2, 3]), &full(vec![2, 3, 0])],
+        "bik,bkj->bij",
+    )
+    .unwrap();
+    assert_eq!(out.shape(), &[2, 2, 0]);
+    assert!(out.data_slice().is_empty());
+}
+
 /// A batched contraction whose free and contracted axes are all size 1 must
 /// still route through the batched GEMM and keep those axes in the output —
 /// not collapse to Hadamard (which would build the shape from the batch axes

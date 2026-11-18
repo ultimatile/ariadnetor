@@ -1,6 +1,7 @@
 //! Test-only helpers: compute backends that record descriptor `ExecPolicy`
-//! values or force the row-major branch while delegating the actual work to a
-//! `NativeBackend`, and an error-message assertion.
+//! values and `par_for_*` queries or force the row-major branch while
+//! delegating the actual work to a `NativeBackend`, and an error-message
+//! assertion.
 //!
 //! The recording backend verifies policy forwarding: BSp default wrappers
 //! hardcode `Sequential` and BSp `_with_policy` wrappers forward the caller's
@@ -32,6 +33,10 @@ pub(crate) fn assert_invalid_argument<T>(result: Result<T, LinalgError>, substr:
 ///
 /// One `Mutex<Vec<ExecPolicy>>` per op — tests poll whichever list matches
 /// the op under inspection. Other ops' lists stay empty.
+///
+/// It also records the problem-size key of every dense-decomposition and
+/// solve `par_for_*` query ([`PolicyQuery`]), answering each with
+/// `Sequential` like the trait default.
 pub(crate) struct RecordingBackend {
     inner: NativeBackend,
     pub gemm_policies: Mutex<Vec<ExecPolicy>>,
@@ -43,6 +48,7 @@ pub(crate) struct RecordingBackend {
     pub eig_policies: Mutex<Vec<ExecPolicy>>,
     pub solve_policies: Mutex<Vec<ExecPolicy>>,
     pub transpose_policies: Mutex<Vec<ExecPolicy>>,
+    policy_queries: Mutex<Vec<PolicyQuery>>,
 }
 
 impl RecordingBackend {
@@ -58,6 +64,7 @@ impl RecordingBackend {
             eig_policies: Mutex::new(Vec::new()),
             solve_policies: Mutex::new(Vec::new()),
             transpose_policies: Mutex::new(Vec::new()),
+            policy_queries: Mutex::new(Vec::new()),
         }
     }
 
@@ -76,6 +83,27 @@ impl RecordingBackend {
     pub(crate) fn gemm_recorded(&self) -> Vec<ExecPolicy> {
         self.gemm_policies.lock().unwrap().clone()
     }
+
+    pub(crate) fn queries_recorded(&self) -> Vec<PolicyQuery> {
+        self.policy_queries.lock().unwrap().clone()
+    }
+
+    fn record_query(&self, query: PolicyQuery) -> ExecPolicy {
+        self.policy_queries.lock().unwrap().push(query);
+        ExecPolicy::Sequential
+    }
+}
+
+/// A `par_for_*` policy query observed by [`RecordingBackend`]: which op
+/// asked, and the problem-size key it asked about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PolicyQuery {
+    Svd { m: usize, n: usize },
+    Qr { m: usize, n: usize },
+    Lq { m: usize, n: usize },
+    Eigh { n: usize },
+    Eig { n: usize },
+    Solve { n: usize, nrhs: usize },
 }
 
 impl ComputeBackend for RecordingBackend {
@@ -139,11 +167,35 @@ impl ComputeBackend for RecordingBackend {
         self.inner.solve(desc)
     }
 
-    // par_for_* methods intentionally left at the trait defaults (all
-    // Sequential). The tests that exercise `svd_block_sparse(..)` etc. call
-    // the BSp default wrapper, which hardcodes Sequential without consulting
-    // par_for_*, so the trait default matches the BSp wrapper's intent. Tests
-    // for the expert wrapper pass policy explicitly.
+    // The par_for_* overrides answer Sequential, as the trait defaults do.
+    // The tests that exercise `svd_block_sparse(..)` etc. call the BSp
+    // default wrapper, which hardcodes Sequential without consulting
+    // par_for_*, so Sequential matches the BSp wrapper's intent. Tests for the
+    // expert wrapper pass policy explicitly.
+
+    fn par_for_svd(&self, m: usize, n: usize) -> ExecPolicy {
+        self.record_query(PolicyQuery::Svd { m, n })
+    }
+
+    fn par_for_qr(&self, m: usize, n: usize) -> ExecPolicy {
+        self.record_query(PolicyQuery::Qr { m, n })
+    }
+
+    fn par_for_lq(&self, m: usize, n: usize) -> ExecPolicy {
+        self.record_query(PolicyQuery::Lq { m, n })
+    }
+
+    fn par_for_eigh(&self, n: usize) -> ExecPolicy {
+        self.record_query(PolicyQuery::Eigh { n })
+    }
+
+    fn par_for_eig(&self, n: usize) -> ExecPolicy {
+        self.record_query(PolicyQuery::Eig { n })
+    }
+
+    fn par_for_solve(&self, n: usize, nrhs: usize) -> ExecPolicy {
+        self.record_query(PolicyQuery::Solve { n, nrhs })
+    }
 }
 
 /// Test-only backend that returns `MemoryOrder::RowMajor` from

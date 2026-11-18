@@ -1,4 +1,4 @@
-use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
+use ariadnetor_tensor::{DenseStorage, DenseTensorData, MemoryOrder};
 use num_complex::Complex;
 
 #[test]
@@ -15,6 +15,29 @@ fn test_tensor_from_data() {
         DenseTensorData::<f64>::from_raw_parts(data.clone(), vec![2, 2], MemoryOrder::ColumnMajor);
     assert_eq!(tensor.shape(), &[2, 2]);
     assert_eq!(tensor.data(), &data[..]);
+}
+
+#[test]
+fn test_is_empty_tracks_element_count() {
+    let empty = DenseTensorData::<f64>::zeros_in_order(vec![2, 0, 3], MemoryOrder::RowMajor);
+    assert!(empty.is_empty());
+    let filled = DenseTensorData::<f64>::zeros_in_order(vec![2, 3], MemoryOrder::RowMajor);
+    assert!(!filled.is_empty());
+    // A rank-0 scalar holds one element.
+    let scalar = DenseTensorData::from_raw_parts(vec![1.0], vec![], MemoryOrder::RowMajor);
+    assert!(!scalar.is_empty());
+}
+
+#[test]
+fn test_storage_pointers_address_the_buffer() {
+    let mut storage = DenseStorage::new(vec![1.0_f64, 2.0, 3.0]);
+    assert_eq!(storage.as_ptr(), storage.data().as_ptr());
+    let shared = storage.clone();
+    // The mutable pointer of a shared buffer addresses a private copy.
+    let p = storage.as_mut_ptr().cast_const();
+    assert_eq!(p, storage.data().as_ptr());
+    assert_ne!(p, shared.data().as_ptr());
+    assert_eq!(storage.data(), shared.data());
 }
 
 #[test]

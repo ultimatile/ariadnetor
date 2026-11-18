@@ -324,6 +324,9 @@ where
     let mut rev_sites: Vec<DenseTensor<T>> = Vec::with_capacity(n - 1);
 
     for j in (1..n).rev() {
+        // The sketch environments this site reads are those recursed
+        // through the site to its left.
+        let left = j - 1;
         // Output dimension and cap rank are shared across terms, so every
         // term's panel has the same `rows` fused row count.
         let d = terms[0].0.site(j).shape()[2];
@@ -360,23 +363,18 @@ where
         // modulus must not be formed first.
         let mut norm_acc = NormAccumulator::new();
         loop {
-            let columns_created = envs[0].ncols();
-            if target_p > columns_created {
-                extend_new_columns(
-                    backend,
-                    terms,
-                    &mut envs,
-                    j - 1,
-                    target_p - columns_created,
-                    &mut rng,
-                );
+            // Columns persist across sites, so an earlier site may already
+            // have created more than this site's `target_p`.
+            let missing = target_p.saturating_sub(envs[0].ncols());
+            if missing != 0 {
+                extend_new_columns(backend, terms, &mut envs, left, missing, &mut rng);
             }
             let c0 = inc.ncols();
             let panels: Vec<DenseTensor<T>> = terms
                 .iter()
                 .enumerate()
                 .map(|(t, (op, psi))| {
-                    let env_block = DenseTensor::from_data(envs[t].range(j - 1, c0, target_p));
+                    let env_block = DenseTensor::from_data(envs[t].range(left, c0, target_p));
                     sketch_panel_block(backend, &env_block, op.site(j), psi.site(j), &caps[t])
                 })
                 .collect();
@@ -516,10 +514,10 @@ where
             caps[t] = tensordot(backend, &t2, psi.site(j), &[1, 3], &[2, 1])
                 .expect("cap contraction: MPO/MPS site legs must be compatible");
             debug_assert_eq!(caps[t].shape()[0], k);
-            // This iteration was `bufs[j - 1]`'s last reader (site j - 1
-            // reads `bufs[j - 2]`), so its environments can be freed now
+            // This iteration was `bufs[left]`'s last reader (site `left`
+            // reads `bufs[left - 1]`), so its environments can be freed now
             // instead of holding every site's buffer until the sweep ends.
-            envs[t].release(j - 1);
+            envs[t].release(left);
         }
         rev_sites.push(site);
     }

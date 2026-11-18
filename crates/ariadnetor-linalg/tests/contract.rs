@@ -104,6 +104,18 @@ fn test_contract_rank_mismatch() {
 }
 
 #[test]
+fn test_contract_rhs_rank_below_notation_arity() {
+    // The right operand has rank 2 but the notation names three right indices.
+    // Must return InvalidArgument, not panic looking up the missing extent.
+    let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]);
+    let b = cm(vec![5.0_f64, 6.0, 7.0, 8.0], vec![2, 2]);
+    assert!(matches!(
+        a.contract(&b, "ij,jkl->ikl"),
+        Err(LinalgError::InvalidArgument(_))
+    ));
+}
+
+#[test]
 fn test_contract_rejects_mismatched_contracted_extents() {
     // Notation path: the paired contracted index `k` has extent 3 on the left and
     // 4 on the right. Must return InvalidArgument, not panic in the GEMM reshape.

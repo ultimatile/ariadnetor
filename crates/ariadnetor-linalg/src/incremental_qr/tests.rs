@@ -297,9 +297,13 @@ fn first_append_matches_plain_qr() {
     let q = inc
         .into_orthonormal_q(backend)
         .expect("single append skips the repair pass");
-    assert!(
-        frob_dist(&q, &q_plain) <= tol::<f64>(),
-        "first append must reduce to the plain thin QR"
+    // Returned as is: no repair pass, so the plain QR's Q comes back
+    // bit-for-bit rather than merely within rounding of it.
+    assert_eq!(q.data().order(), q_plain.data().order());
+    assert_eq!(
+        q.data_slice(),
+        q_plain.data_slice(),
+        "first append must return the plain thin QR's Q unchanged"
     );
 }
 
@@ -458,6 +462,15 @@ fn append_validates_block_shape() {
     assert_eq!(inc.ncols(), 0);
     inc.append(backend, &pseudo_random::<f64>(6, 2, 43))
         .expect("valid append still works");
+    // Filling the remaining rows exactly keeps R square, so it is allowed;
+    // one column past that is not.
+    inc.append(backend, &pseudo_random::<f64>(6, 4, 44))
+        .expect("an append reaching exactly the row count is valid");
+    assert_eq!(inc.ncols(), 6);
+    assert!(matches!(
+        inc.append(backend, &pseudo_random::<f64>(6, 1, 45)),
+        Err(LinalgError::InvalidArgument(_))
+    ));
 }
 
 #[test]

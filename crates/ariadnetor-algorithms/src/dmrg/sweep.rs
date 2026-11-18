@@ -345,8 +345,23 @@ where
     for sweep_idx in 0..params.max_sweeps {
         let mut steps: Vec<DmrgStepRecord<T::Real>> = Vec::with_capacity(2 * (n_sites - 1));
 
-        // L→R half-sweep.
+        // L→R half-sweep. Before every step but the first, fold the
+        // site the previous step left-isometrized into the left
+        // environment. The last step's site is never folded: the R→L
+        // step that follows sits at the same `site` and consumes
+        // `left(site)` as it is.
         for site in 0..n_sites - 1 {
+            if site > 0 {
+                let prev = site - 1;
+                envs.advance_left::<T>(mps, mpo, mps, prev)
+                    .map_err(|source| DmrgSweepError::Env {
+                        sweep: sweep_idx,
+                        direction: SweepDirection::LeftToRight,
+                        site: prev,
+                        source,
+                    })?;
+            }
+
             let record = run_step(
                 envs,
                 mps,
@@ -357,19 +372,6 @@ where
                 SweepDirection::LeftToRight,
             )?;
             steps.push(record);
-
-            // Skip the trailing advance: site = n_sites - 2 is
-            // the last L→R step; the next R→L step at the same
-            // `site` consumes `left(site)` which is still valid.
-            if site < n_sites - 2 {
-                envs.advance_left::<T>(mps, mpo, mps, site)
-                    .map_err(|source| DmrgSweepError::Env {
-                        sweep: sweep_idx,
-                        direction: SweepDirection::LeftToRight,
-                        site,
-                        source,
-                    })?;
-            }
         }
 
         // R→L half-sweep.
@@ -424,12 +426,8 @@ where
         let mut max_te = steps[0].trunc_err;
         let mut all_ok = true;
         for s in &steps {
-            if s.eigenvalue < min_eig {
-                min_eig = s.eigenvalue;
-            }
-            if s.trunc_err > max_te {
-                max_te = s.trunc_err;
-            }
+            min_eig = running_min(min_eig, s.eigenvalue);
+            max_te = running_max(max_te, s.trunc_err);
             if !s.eigensolver_converged {
                 all_ok = false;
             }
@@ -541,6 +539,20 @@ where
         eigensolver_iters: iters,
         eigensolver_converged: converged,
     })
+}
+
+/// `x` if it is below `acc`, else `acc`. Every comparison with NaN is
+/// false, so a NaN `acc` is kept and a NaN `x` is never taken; unlike
+/// `Float::min`, which returns the non-NaN argument, a NaN in the
+/// first step's diagnostic stays visible in the sweep record.
+fn running_min<R: PartialOrd>(acc: R, x: R) -> R {
+    if x < acc { x } else { acc }
+}
+
+/// `x` if it is above `acc`, else `acc`, with the NaN handling of
+/// [`running_min`].
+fn running_max<R: PartialOrd>(acc: R, x: R) -> R {
+    if x > acc { x } else { acc }
 }
 
 pub(super) fn validate_params(params: &DmrgSweepParams) -> Result<(), DmrgSweepError> {

@@ -125,6 +125,17 @@ fn norm_lives_on_storage_half() {
 }
 
 #[test]
+fn storage_data_mut_writes_through_and_copies_on_write() {
+    use crate::BlockSparseStorage;
+
+    let mut storage = BlockSparseStorage::<f64>::new(vec![1.0, 2.0, 3.0]);
+    let shared = storage.clone();
+    storage.data_mut()[1] = 20.0;
+    assert_eq!(storage.data(), &[1.0, 20.0, 3.0]);
+    assert_eq!(shared.data(), &[1.0, 2.0, 3.0]);
+}
+
+#[test]
 fn dagger_flips_directions_duals_flux_and_conjugates_data() {
     use num_complex::Complex64;
 

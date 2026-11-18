@@ -1,4 +1,5 @@
 use crate::error::LinalgError;
+use crate::test_util::RecordingBackend;
 use crate::{contract, tensordot};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
@@ -199,6 +200,34 @@ fn dense_tensordot_zero_length_free_axis() {
     let td = tensordot(&be, &a, &b, &[1], &[0]).unwrap();
     assert_eq!(td.shape(), &[0, 4]);
     assert_eq!(td.data_slice().len(), 0);
+}
+
+#[test]
+fn dense_contract_degenerate_dimension_dispatches_no_gemm() {
+    // A zero extent on any single GEMM axis (m, n, or k alone) is answered with
+    // the zero tensor of the output shape without handing the backend a
+    // zero-sized GEMM, on both the notation and the axis-pair path.
+    let cases: [(Vec<usize>, Vec<usize>, &[usize]); 3] = [
+        (vec![0, 3], vec![3, 4], &[0, 4]), // m == 0
+        (vec![2, 3], vec![3, 0], &[2, 0]), // n == 0
+        (vec![2, 0], vec![0, 4], &[2, 4]), // k == 0
+    ];
+    for (lhs_shape, rhs_shape, out_shape) in cases {
+        let a = DenseTensor::<f64>::zeros(lhs_shape.clone());
+        let b = DenseTensor::<f64>::zeros(rhs_shape.clone());
+
+        let be = RecordingBackend::new();
+        let ct = contract(&be, &a, &b, "ik,kj->ij").unwrap();
+        let td = tensordot(&be, &a, &b, &[1], &[0]).unwrap();
+        for out in [&ct, &td] {
+            assert_eq!(out.shape(), out_shape, "{lhs_shape:?} x {rhs_shape:?}");
+            assert!(out.data_slice().iter().all(|&x| x == 0.0));
+        }
+        assert!(
+            be.gemm_recorded().is_empty(),
+            "{lhs_shape:?} x {rhs_shape:?} reached the backend GEMM"
+        );
+    }
 }
 
 #[test]

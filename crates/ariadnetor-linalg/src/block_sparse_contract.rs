@@ -33,17 +33,14 @@ pub(crate) fn contract_block_sparse_with_policy_dense<T: Scalar, S: Sector>(
 ) -> Result<BlockSparseTensorData<T, S>, LinalgError> {
     validate_contraction_axes(lhs, rhs, axes_lhs, axes_rhs)?;
 
-    let num_contracted = axes_lhs.len();
     let lhs_rank = lhs.layout().rank();
     let rhs_rank = rhs.layout().rank();
-    let output_rank = lhs_rank + rhs_rank - 2 * num_contracted;
-
     let free_lhs: Vec<usize> = (0..lhs_rank).filter(|a| !axes_lhs.contains(a)).collect();
     let free_rhs: Vec<usize> = (0..rhs_rank).filter(|a| !axes_rhs.contains(a)).collect();
 
     let rhs_groups = group_by_contracted_key(rhs, axes_rhs);
 
-    if output_rank == 0 {
+    if free_lhs.is_empty() && free_rhs.is_empty() {
         return contract_to_scalar(backend, lhs, rhs, axes_lhs, axes_rhs, &rhs_groups);
     }
 

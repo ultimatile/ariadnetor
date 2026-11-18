@@ -6,7 +6,7 @@
 
 use std::fs;
 use std::io::{self, BufReader, BufWriter, Cursor, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ariadnetor_tensor::{ScalarCodec, Storage, StorageFor, TensorLayout};
@@ -179,10 +179,6 @@ where
     L: TensorLayout,
 {
     let path = path.as_ref();
-    let dir = match path.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
-        _ => PathBuf::from("."),
-    };
     let file_name = path.file_name().ok_or_else(|| {
         MpsIoError::Io(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -198,7 +194,7 @@ where
     let (tmp, file) = {
         let mut attempt = 0;
         loop {
-            let candidate = dir.join(format!(
+            let candidate = path.with_file_name(format!(
                 "{}.tmp.{}.{}",
                 file_name.to_string_lossy(),
                 std::process::id(),
@@ -252,4 +248,117 @@ where
 {
     let file = fs::File::open(path.as_ref())?;
     load_mps(BufReader::new(file))
+}
+
+/// Temp-name retry tests. They live beside the private counter because
+/// provoking a collision means planting the names the next saves will try.
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::io;
+    use std::ops::Range;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
+
+    use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensorData, MemoryOrder, Tensor};
+
+    use super::{
+        MAX_TEMP_ATTEMPTS, MpsIoError, TEMP_COUNTER, load_mps_from_path, save_mps_to_path,
+    };
+    use crate::{Mps, TensorChain};
+
+    /// Held by every test here, so none consumes counter values another
+    /// has planted names for. Saves elsewhere in the crate do not take it;
+    /// each consumes one value, which the planted ranges leave room for.
+    static COUNTER_LOCK: Mutex<()> = Mutex::new(());
+
+    const FILE_NAME: &str = "state.mps";
+
+    fn tiny_mps() -> Mps<DenseStorage<f64>, DenseLayout> {
+        Mps::from_sites(vec![Tensor::from_data(DenseTensorData::from_raw_parts(
+            vec![0.6, 0.8],
+            vec![1, 2, 1],
+            MemoryOrder::ColumnMajor,
+        ))])
+    }
+
+    /// A fresh, empty directory unique to this process and `label`.
+    fn scratch_dir(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("ariadnetor_mps_{label}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    /// Occupy the temp names `save_mps_to_path` derives from counter values
+    /// in `counters`.
+    fn plant_temp_names(dir: &Path, counters: Range<u64>) {
+        for k in counters {
+            let name = format!("{FILE_NAME}.tmp.{}.{k}", std::process::id());
+            fs::write(dir.join(name), b"").expect("plant temp name");
+        }
+    }
+
+    #[test]
+    fn save_to_path_retries_past_taken_temp_names() {
+        let _guard = COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = scratch_dir("temp_name_collision");
+        let next = TEMP_COUNTER.load(Ordering::Relaxed);
+        plant_temp_names(&dir, next..next + 4);
+
+        let path = dir.join(FILE_NAME);
+        save_mps_to_path(&tiny_mps(), &path).expect("a free temp name follows the taken ones");
+
+        let loaded: Mps<DenseStorage<f64>, DenseLayout> =
+            load_mps_from_path(&path).expect("load the saved state");
+        assert_eq!(loaded.site(0).data_slice(), tiny_mps().site(0).data_slice());
+        fs::remove_dir_all(&dir).expect("remove scratch dir");
+    }
+
+    #[test]
+    fn save_to_path_gives_up_after_bounded_temp_name_collisions() {
+        let _guard = COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = scratch_dir("temp_name_exhaustion");
+        let next = TEMP_COUNTER.load(Ordering::Relaxed);
+        plant_temp_names(&dir, next..next + u64::from(MAX_TEMP_ATTEMPTS) + 32);
+
+        let path = dir.join(FILE_NAME);
+        let err = save_mps_to_path(&tiny_mps(), &path)
+            .expect_err("every temp name in the destination directory is taken");
+        assert!(
+            matches!(&err, MpsIoError::Io(e) if e.kind() == io::ErrorKind::AlreadyExists),
+            "got {err:?}"
+        );
+        assert!(
+            !path.exists(),
+            "a failed save must not create the destination"
+        );
+        fs::remove_dir_all(&dir).expect("remove scratch dir");
+    }
+
+    #[test]
+    fn save_to_path_does_not_retry_other_open_errors() {
+        let _guard = COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = scratch_dir("temp_name_missing_dir");
+        let path = dir.join("missing").join(FILE_NAME);
+
+        let before = TEMP_COUNTER.load(Ordering::Relaxed);
+        let err = save_mps_to_path(&tiny_mps(), &path)
+            .expect_err("the destination directory does not exist");
+        let consumed = TEMP_COUNTER.load(Ordering::Relaxed) - before;
+
+        assert!(
+            matches!(&err, MpsIoError::Io(e) if e.kind() == io::ErrorKind::NotFound),
+            "got {err:?}"
+        );
+        // The retry budget is for taken names only; a missing directory
+        // fails on the first attempt.
+        assert!(
+            consumed < u64::from(MAX_TEMP_ATTEMPTS),
+            "{consumed} temp names tried for a non-collision error"
+        );
+        fs::remove_dir_all(&dir).expect("remove scratch dir");
+    }
 }

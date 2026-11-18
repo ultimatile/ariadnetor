@@ -143,59 +143,33 @@ where
             MemoryOrder::RowMajor => rank - 1,
             MemoryOrder::ColumnMajor => 0,
         };
-        let no_inner_pad = padding[inner_axis] == (0, 0);
-        let src_strides = strides_for(shape, order);
-
-        if no_inner_pad {
-            let raw = self.storage().data();
-            let strip_len = shape[inner_axis];
-            let outer_axes: Vec<usize> = match order {
-                MemoryOrder::RowMajor => (0..rank - 1).collect(),
-                MemoryOrder::ColumnMajor => (1..rank).rev().collect(),
-            };
-            let num_strips = src_total / strip_len.max(1);
-            let mut src_offset = 0usize;
-            let mut dst_flat: usize = (0..rank).map(|d| padding[d].0 * dst_strides[d]).sum();
-            let mut outer_coords = vec![0usize; rank];
-
-            for _ in 0..num_strips {
-                data[dst_flat..dst_flat + strip_len]
-                    .clone_from_slice(&raw[src_offset..src_offset + strip_len]);
-                src_offset += strip_len;
-                for &d in outer_axes.iter().rev() {
-                    outer_coords[d] += 1;
-                    dst_flat += dst_strides[d];
-                    if outer_coords[d] < shape[d] {
-                        break;
-                    }
-                    dst_flat -= shape[d] * dst_strides[d];
-                    outer_coords[d] = 0;
-                }
-            }
-            return DenseTensorData::from_raw_parts(data, new_shape, order);
-        }
-
+        // Copy the source one contiguous inner-axis strip at a time. The
+        // inner axis has stride 1 in the destination too, so each strip
+        // lands contiguously at its padded position whether or not that
+        // axis is padded.
         let raw = self.storage().data();
-        let mut coords = vec![0usize; rank];
-        let axis_order: Vec<usize> = match order {
-            MemoryOrder::RowMajor => (0..rank).collect(),
-            MemoryOrder::ColumnMajor => (0..rank).rev().collect(),
+        let strip_len = shape[inner_axis];
+        let outer_axes: Vec<usize> = match order {
+            MemoryOrder::RowMajor => (0..rank - 1).collect(),
+            MemoryOrder::ColumnMajor => (1..rank).rev().collect(),
         };
-        let mut src_flat: usize = 0;
+        let num_strips = src_total / strip_len.max(1);
+        let mut src_offset = 0usize;
         let mut dst_flat: usize = (0..rank).map(|d| padding[d].0 * dst_strides[d]).sum();
+        let mut outer_coords = vec![0usize; rank];
 
-        for _ in 0..src_total {
-            data[dst_flat] = raw[src_flat].clone();
-            for &d in axis_order.iter().rev() {
-                coords[d] += 1;
-                src_flat += src_strides[d];
+        for _ in 0..num_strips {
+            data[dst_flat..dst_flat + strip_len]
+                .clone_from_slice(&raw[src_offset..src_offset + strip_len]);
+            src_offset += strip_len;
+            for &d in outer_axes.iter().rev() {
+                outer_coords[d] += 1;
                 dst_flat += dst_strides[d];
-                if coords[d] < shape[d] {
+                if outer_coords[d] < shape[d] {
                     break;
                 }
-                src_flat -= shape[d] * src_strides[d];
                 dst_flat -= shape[d] * dst_strides[d];
-                coords[d] = 0;
+                outer_coords[d] = 0;
             }
         }
 

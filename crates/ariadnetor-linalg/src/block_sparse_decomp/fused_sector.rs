@@ -466,7 +466,75 @@ fn leg_dim_product<S: Sector>(indices: &[QNIndex<S>]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::cumulative_offsets;
+    use super::{
+        assemble_sector_matrix, build_square_tensor, compute_fused_sector_groups,
+        cumulative_offsets,
+    };
+    use ariadnetor_core::backend::MemoryOrder;
+    use ariadnetor_tensor::test_fixtures::legs;
+    use ariadnetor_tensor::{BlockSparseTensorData, Direction, U1Sector};
+
+    /// Rank-4 U1 operand (`nrow = 2`) whose every flux-allowed block holds
+    /// distinct values. Each leg carries sectors 0 and 1 with dims 2 and 3, so
+    /// the middle fused sector merges two tuples per side: its blocks sit at
+    /// nonzero row and column offsets and span several rows and columns.
+    fn distinct_rank4(order: MemoryOrder) -> BlockSparseTensorData<f64, U1Sector> {
+        let leg = |dir| (vec![(U1Sector(0), 2), (U1Sector(1), 3)], dir);
+        let mut t = BlockSparseTensorData::zeros(
+            legs([
+                leg(Direction::Out),
+                leg(Direction::Out),
+                leg(Direction::In),
+                leg(Direction::In),
+            ]),
+            U1Sector(0),
+            order,
+        );
+        let coords: Vec<_> = t
+            .layout()
+            .block_metas()
+            .iter()
+            .map(|m| m.coord.clone())
+            .collect();
+        let mut next = 1.0;
+        for coord in &coords {
+            for x in t.block_data_mut(coord).unwrap() {
+                *x = next;
+                next += 1.0;
+            }
+        }
+        t
+    }
+
+    /// `build_square_tensor` is the inverse of `assemble_sector_matrix`:
+    /// scattering the assembled per-sector matrices back reproduces every
+    /// block, in either memory order.
+    #[test]
+    fn build_square_tensor_inverts_assembly_in_both_orders() {
+        for order in [MemoryOrder::RowMajor, MemoryOrder::ColumnMajor] {
+            let t = distinct_rank4(order);
+            let groups = compute_fused_sector_groups(&t, 2);
+            assert!(
+                groups.iter().any(|g| g.left_tuples.len() > 1),
+                "fixture must have a multi-tuple sector"
+            );
+            let matrices: Vec<Vec<f64>> = groups
+                .iter()
+                .map(|g| assemble_sector_matrix(&t, g, order))
+                .collect();
+            let rebuilt =
+                build_square_tensor(&groups, &matrices, t.layout().indices(), U1Sector(0), order);
+            assert_eq!(rebuilt.num_blocks(), t.num_blocks(), "{order:?}");
+            for meta in t.layout().block_metas() {
+                assert_eq!(
+                    rebuilt.block_data(&meta.coord),
+                    t.block_data(&meta.coord),
+                    "{order:?} block {:?}",
+                    meta.coord
+                );
+            }
+        }
+    }
 
     /// Multi-tuple input with `block_dim > 1` per tuple — kills the
     /// `+= with -=` and `+= with *=` mutants on the offset accumulator.

@@ -1,4 +1,5 @@
-//! Placement-token tests for the strided-perm route.
+//! Placement-token tests for the strided-perm route, plus the chunk
+//! sizing of the naive parallel kernel.
 //!
 //! The `exec_in` tests that pass a pool pass a 4-thread one built here, so
 //! their budgets do not depend on the host's core count;
@@ -67,4 +68,18 @@ fn exec_for_follows_the_shared_pool() {
     rayon::scope(|_| {
         assert_eq!(budget(exec_for(ExecPolicy::Parallel(0))), 1);
     });
+}
+
+/// The chunk length targets four tasks per thread, taking the thread
+/// count from the policy when it names one and from the pool otherwise,
+/// and is clamped to at least 4096 slots and at most the whole output.
+#[cfg(not(feature = "hptt"))]
+#[test]
+fn naive_chunk_len_targets_four_tasks_per_thread() {
+    let total = 1 << 20;
+    assert_eq!(parallel_chunk_len(2, 8, total), total / 8);
+    assert_eq!(parallel_chunk_len(0, 8, total), total / 32);
+    assert_eq!(parallel_chunk_len(0, 0, total), total / 4);
+    assert_eq!(parallel_chunk_len(64, 8, total), 4096);
+    assert_eq!(parallel_chunk_len(2, 8, 100), 100);
 }

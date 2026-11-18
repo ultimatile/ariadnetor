@@ -196,3 +196,57 @@ pub(super) fn sketch_panel_block<T: Scalar, B: OpsFor<DenseStorage<T>>>(
         .expect("sketch contraction: MPO/MPS site legs must be compatible");
     t.fuse_legs(0..2)
 }
+
+#[cfg(test)]
+mod tests {
+    use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
+
+    use super::{EnvBuf, EnvStore};
+
+    /// A `(2, 1, s)` block holding sketch columns `c0..c0 + s`; entry
+    /// `(i, 0, c)` is `10 c + i`, so every column is distinguishable.
+    fn columns(c0: usize, s: usize) -> DenseTensorData<f64> {
+        let data = (c0..c0 + s)
+            .flat_map(|c| (0..2).map(move |i| (10 * c + i) as f64))
+            .collect();
+        DenseTensorData::from_raw_parts(data, vec![2, 1, s], MemoryOrder::ColumnMajor)
+    }
+
+    fn capacity(buf: &EnvBuf<f64>) -> usize {
+        buf.data.shape()[2]
+    }
+
+    #[test]
+    fn env_buf_append_keeps_columns_and_grows_geometrically() {
+        let mut buf = EnvBuf {
+            data: columns(0, 3),
+            filled: 3,
+        };
+
+        // An overflowing block doubles the capacity.
+        buf.append(&columns(3, 1));
+        assert_eq!(capacity(&buf), 6);
+
+        // A block that exactly fills the remaining capacity is written in
+        // place.
+        buf.append(&columns(4, 2));
+        assert_eq!(capacity(&buf), 6);
+
+        // A block larger than the doubled capacity grows the buffer to
+        // exactly the needed size.
+        buf.append(&columns(6, 10));
+        assert_eq!(capacity(&buf), 16);
+
+        assert_eq!(buf.filled, 16);
+        assert_eq!(buf.range(0, 16).data(), columns(0, 16).data());
+    }
+
+    #[test]
+    fn env_store_release_drops_the_site_buffer() {
+        let mut store = EnvStore::<f64>::new(2);
+        store.append(0, &columns(0, 2));
+        assert_eq!(store.ncols(), 2);
+        store.release(0);
+        assert_eq!(store.ncols(), 0);
+    }
+}

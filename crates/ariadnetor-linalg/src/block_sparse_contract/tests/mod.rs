@@ -618,6 +618,40 @@ fn contraction_rank2_with_rank1() {
     assert!((d[1] - 10.0).abs() < 1e-10);
 }
 
+#[test]
+fn outer_product_of_two_vectors() {
+    // No contracted axes: output_rank = 1+1-0 = 2, a rank-2 tensor holding
+    // the outer product.
+    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([(vec![(U1Sector(0), 2)], Direction::Out)]),
+        U1Sector(0),
+        order(),
+    );
+    a.block_data_mut(&BlockCoord(vec![0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 2.0]);
+
+    let mut v = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([(vec![(U1Sector(0), 3)], Direction::In)]),
+        U1Sector(0),
+        order(),
+    );
+    v.block_data_mut(&BlockCoord(vec![0]))
+        .unwrap()
+        .copy_from_slice(&[3.0, 4.0, 5.0]);
+
+    let out =
+        contract_block_sparse_with_policy_dense(&b(), &a, &v, &[], &[], ExecPolicy::Sequential)
+            .unwrap();
+    assert_eq!(out.rank(), 2);
+    let d = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    for (i, x) in [1.0, 2.0].into_iter().enumerate() {
+        for (j, y) in [3.0, 4.0, 5.0].into_iter().enumerate() {
+            assert_eq!(d[flat_idx(&[i, j], &[2, 3])], x * y, "out[{i},{j}]");
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Z2 symmetry
 // ---------------------------------------------------------------------------

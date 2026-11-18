@@ -166,18 +166,21 @@ where
         }
         // R→L half-sweep. The turning site (n-1) was just projected at the end
         // of the L→R sweep against the same environments, so re-projecting it
-        // here would reproduce the identical tensor — skip it and only move its
-        // gauge left. The final projection (site 0) is the convergence probe,
-        // so its norm is the only one needed.
+        // here would reproduce the identical tensor — only move its gauge
+        // left, then project the sites below it. The final projection
+        // (site 0) is the convergence probe, so its norm is the only one
+        // needed.
+        let turn = n - 1;
+        right_lq_step(&mut phi, turn, h);
+        envs.advance_right::<T>(&phi, op, psi, turn)
+            .expect("advance_right: validated by entry point");
         let mut center_norm = T::Real::zero();
-        for j in (0..n).rev() {
-            if j < n - 1 {
-                let p = project_dense(&envs, op, psi, j, h);
-                if j == 0 {
-                    center_norm = p.norm();
-                }
-                *phi.site_mut(j) = p;
+        for j in (0..turn).rev() {
+            let p = project_dense(&envs, op, psi, j, h);
+            if j == 0 {
+                center_norm = p.norm();
             }
+            *phi.site_mut(j) = p;
             if j > 0 {
                 right_lq_step(&mut phi, j, h);
                 envs.advance_right::<T>(&phi, op, psi, j)
@@ -297,15 +300,17 @@ where
         }
         // See the Dense path: skip re-projecting the just-optimized turning
         // site; site 0's projection norm is the convergence probe.
+        let turn = n - 1;
+        right_lq_step_bsp(&mut phi, turn, h);
+        envs.advance_right::<T>(&phi, op, psi, turn)
+            .expect("advance_right: validated by entry point");
         let mut center_norm = T::Real::zero();
-        for j in (0..n).rev() {
-            if j < n - 1 {
-                let p = project_bsp(&envs, op, psi, j, h);
-                if j == 0 {
-                    center_norm = p.norm();
-                }
-                *phi.site_mut(j) = p;
+        for j in (0..turn).rev() {
+            let p = project_bsp(&envs, op, psi, j, h);
+            if j == 0 {
+                center_norm = p.norm();
             }
+            *phi.site_mut(j) = p;
             if j > 0 {
                 right_lq_step_bsp(&mut phi, j, h);
                 envs.advance_right::<T>(&phi, op, psi, j)
@@ -323,4 +328,35 @@ where
 
     phi.set_canonical_form(CanonicalForm::Mixed { center: 0 });
     phi
+}
+
+#[cfg(test)]
+mod tests {
+    use super::converged;
+
+    /// The change is measured relative to `current`: a change of 1 on an
+    /// overlap of 101 is about 0.0099, inside 0.02 and outside 0.005.
+    #[test]
+    fn converged_measures_change_relative_to_current() {
+        assert!(converged(100.0_f64, 101.0, 0.02));
+        assert!(!converged(100.0_f64, 101.0, 0.005));
+    }
+
+    /// Equal successive overlaps have zero change, so they converge however
+    /// tight the tolerance.
+    #[test]
+    fn converged_accepts_an_unchanged_overlap() {
+        assert!(converged(100.0_f64, 100.0, 1e-12));
+        assert!(converged(100.0_f64, 100.0, 0.0));
+    }
+
+    /// A zero current overlap falls back to the absolute change instead of
+    /// dividing by zero: a zero-to-zero step converges, and a step down to
+    /// zero converges exactly when its size is within `tol`.
+    #[test]
+    fn converged_falls_back_to_absolute_change_at_zero_overlap() {
+        assert!(converged(0.0_f64, 0.0, 1e-12));
+        assert!(converged(0.5_f64, 0.0, 1.0));
+        assert!(!converged(0.5_f64, 0.0, 0.25));
+    }
 }

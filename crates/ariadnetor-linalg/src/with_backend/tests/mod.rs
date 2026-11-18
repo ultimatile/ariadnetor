@@ -19,7 +19,7 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
 use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 
-use crate::test_util::RecordingBackend;
+use crate::test_util::{PolicyQuery, RecordingBackend};
 use crate::*;
 
 /// Total number of kernel descriptors a recording backend has seen across all
@@ -386,4 +386,94 @@ fn expert_svd_dense_forwards_explicit_policy() {
     let rec = RecordingBackend::new();
     let _ = expert::svd(&rec, &mat23(), 1, ExecPolicy::Parallel(0)).unwrap();
     assert_eq!(rec.svd_recorded(), vec![ExecPolicy::Parallel(0)]);
+}
+
+// ---- Auto-policy key ----------------------------------------------------
+//
+// The auto-policy entries ask the backend for a policy keyed on the matrix
+// the tensor reshapes into at `nrow`: rows are the product of the leading
+// `nrow` axes, columns the product of the rest. Rank-3 fixtures make each
+// side a product over more than one axis.
+
+/// `shape`-shaped tensor holding `1, 2, 3, …`.
+fn ramp(shape: Vec<usize>) -> DenseTensor<f64> {
+    let len: usize = shape.iter().product();
+    tensor((1..=len).map(|v| v as f64).collect(), shape)
+}
+
+/// Symmetric, diagonally dominant (hence nonsingular) 4×4 matrix stored as a
+/// `[2, 2, 4]` tensor, which splits into that square matrix at `nrow = 2`.
+fn sym4_rank3() -> DenseTensor<f64> {
+    let data = (0..16)
+        .map(|k| {
+            if k / 4 == k % 4 {
+                4.0 + (k / 4) as f64
+            } else {
+                0.5
+            }
+        })
+        .collect();
+    tensor(data, vec![2, 2, 4])
+}
+
+#[test]
+fn svd_queries_policy_with_matrix_dims() {
+    let rec = RecordingBackend::new();
+    let _ = svd(&rec, &ramp(vec![2, 3, 4]), 2).unwrap();
+    assert_eq!(
+        rec.queries_recorded(),
+        vec![PolicyQuery::Svd { m: 6, n: 4 }]
+    );
+}
+
+#[test]
+fn trunc_svd_queries_policy_with_matrix_dims() {
+    let rec = RecordingBackend::new();
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    };
+    let _ = trunc_svd(&rec, &ramp(vec![2, 3, 4]), 2, &params).unwrap();
+    assert_eq!(
+        rec.queries_recorded(),
+        vec![PolicyQuery::Svd { m: 6, n: 4 }]
+    );
+}
+
+#[test]
+fn qr_queries_policy_with_matrix_dims() {
+    let rec = RecordingBackend::new();
+    let _ = qr(&rec, &ramp(vec![2, 3, 4]), 2).unwrap();
+    assert_eq!(rec.queries_recorded(), vec![PolicyQuery::Qr { m: 6, n: 4 }]);
+}
+
+#[test]
+fn lq_queries_policy_with_matrix_dims() {
+    let rec = RecordingBackend::new();
+    let _ = lq(&rec, &ramp(vec![2, 3, 4]), 2).unwrap();
+    assert_eq!(rec.queries_recorded(), vec![PolicyQuery::Lq { m: 6, n: 4 }]);
+}
+
+#[test]
+fn eigh_queries_policy_with_matrix_dim() {
+    let rec = RecordingBackend::new();
+    let _ = eigh_with_backend(&rec, &sym4_rank3(), 2).unwrap();
+    assert_eq!(rec.queries_recorded(), vec![PolicyQuery::Eigh { n: 4 }]);
+}
+
+#[test]
+fn eig_queries_policy_with_matrix_dim() {
+    let rec = RecordingBackend::new();
+    let _ = eig_with_backend(&rec, &sym4_rank3(), 2).unwrap();
+    assert_eq!(rec.queries_recorded(), vec![PolicyQuery::Eig { n: 4 }]);
+}
+
+#[test]
+fn solve_queries_policy_with_system_dims() {
+    let rec = RecordingBackend::new();
+    let _ = solve_with_backend(&rec, &sym4_rank3(), &ramp(vec![4, 3]), 2).unwrap();
+    assert_eq!(
+        rec.queries_recorded(),
+        vec![PolicyQuery::Solve { n: 4, nrhs: 3 }]
+    );
 }

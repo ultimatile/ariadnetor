@@ -95,6 +95,48 @@ fn src_adaptive_meets_relative_tolerance() {
 }
 
 #[test]
+fn src_adaptive_stops_where_flat_spectrum_error_meets_cutoff() {
+    let backend = NativeBackend::new();
+    // Two sites whose single cut carries the identity matrix I_m: every
+    // singular value is 1, so any rank-p projection leaves the relative
+    // error sqrt((m - p) / m). For this flat spectrum the leave-one-out
+    // estimate relative to the sketch norm concentrates near
+    // sqrt((m - p + 1) / m), so the stopping rule
+    // `err <= cutoff * ||Y||_F / sqrt(p)` must stop where the realized
+    // error is close to the cutoff: neither while it is still far above
+    // the cutoff, nor after sketching on far past it. The tighter
+    // acceptance band than the suite's 100x factor is what pins the
+    // rule's normalization.
+    const M: usize = 32;
+    let mut eye = vec![0.0; M * M];
+    for i in 0..M {
+        eye[i * M + i] = 1.0;
+    }
+    let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
+        cm_dense_tensor(eye.clone(), vec![1, M, M]),
+        cm_dense_tensor(eye, vec![M, M, 1]),
+    ]);
+    let op = make_identity_mpo(2, M);
+    let cutoff = 0.6;
+
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(cutoff),
+        sketch_dim: 1,
+        sketch_increment: 1,
+        seed: 42,
+        ..Default::default()
+    });
+    let out = apply_ok(&backend, &op, &psi, None, method);
+
+    let rel = relative_error(&backend, &out, &psi);
+    assert!(
+        (0.75 * cutoff..=1.25 * cutoff).contains(&rel),
+        "relative error {rel} at bond {} is not near the cutoff {cutoff}",
+        out.bond_dim(0)
+    );
+}
+
+#[test]
 fn src_adaptive_is_scale_invariant() {
     let backend = NativeBackend::new();
     // Which ranks the adaptive sweep selects is a scale-free property: the
