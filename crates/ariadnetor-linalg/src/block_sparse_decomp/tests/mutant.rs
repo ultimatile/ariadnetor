@@ -100,7 +100,8 @@ fn sample_rm_rank4() -> BlockSparseTensorData<f64, U1Sector> {
 /// assemble_sector_matrix RM: hand-verified 5×5 block matrix.
 ///
 /// Sector U1(1) has left_offsets=[0,2], right_offsets=[0,2] with
-/// block dims (2,3) × (2,3), exercising all arithmetic in lines 171-173.
+/// block dims (2,3) × (2,3), exercising the RM branch's arithmetic in
+/// `assemble_sector_matrix`.
 #[test]
 fn assemble_sector_matrix_row_major() {
     let bs = sample_rm_rank4();
@@ -127,8 +128,6 @@ fn assemble_sector_matrix_row_major() {
 }
 
 /// build_left_tensor RM: verify block data from a known 5×2 RM matrix.
-///
-/// Exercises lines 234-236 (RM branch of build_left_tensor).
 #[test]
 fn build_left_tensor_row_major() {
     let bs = sample_rm_rank4();
@@ -175,8 +174,6 @@ fn build_left_tensor_row_major() {
 }
 
 /// build_right_tensor RM: verify block data from a known 2×5 RM matrix.
-///
-/// Exercises lines 298-300 (RM branch of build_right_tensor).
 #[test]
 fn build_right_tensor_row_major() {
     let bs = sample_rm_rank4();
