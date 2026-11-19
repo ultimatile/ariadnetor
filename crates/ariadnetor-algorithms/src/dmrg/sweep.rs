@@ -475,9 +475,9 @@ where
 /// then mutate the MPS site tensors at `site` and `site + 1`
 /// according to `direction`.
 ///
-/// Returns the step's diagnostics record. The caller is responsible
-/// for advancing the env afterwards (or skipping the advance at the
-/// trailing boundary of a half-sweep).
+/// Returns the step's diagnostics record. The step reads the
+/// environments but does not advance them; the caller does that between
+/// steps.
 fn run_step<T, St, L>(
     envs: &BraketEnvs<St, L>,
     mps: &mut Mps<St, L>,

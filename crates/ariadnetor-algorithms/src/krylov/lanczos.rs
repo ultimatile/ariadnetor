@@ -153,7 +153,9 @@ pub enum LanczosError {
 ///   reflect the achievable precision rather than the requested one.
 /// - The 2-norms (β and the residual) are accumulated scale-safely, so
 ///   squaring an element cannot overflow them: a norm overflows only
-///   when its value exceeds `T::Real::MAX`.
+///   when its value exceeds `T::Real::MAX`. The residual vector
+///   `H ψ - λ ψ` is formed element by element before its norm, so
+///   operator outputs near `T::Real::MAX` can still overflow it.
 pub fn lanczos_smallest<T, Op>(
     op: &Op,
     dim: usize,
@@ -235,6 +237,8 @@ where
         if j == 0 {
             sub_real_axpy(&mut w, alpha, &v_j);
         } else {
+            // β_{j-1} and v_{j-1} belong to the same previous step; one
+            // index names that step for both.
             let prev = j - 1;
             let beta_prev = betas[prev];
             let v_prev = &basis[prev];

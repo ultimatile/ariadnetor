@@ -325,7 +325,8 @@ where
 
     for j in (1..n).rev() {
         // The sketch environments this site reads are those recursed
-        // through the site to its left.
+        // through the site to its left; every use below names that one
+        // site through this binding.
         let left = j - 1;
         // Output dimension and cap rank are shared across terms, so every
         // term's panel has the same `rows` fused row count.
