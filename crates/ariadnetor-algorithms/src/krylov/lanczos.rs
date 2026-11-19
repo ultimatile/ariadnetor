@@ -151,11 +151,10 @@ pub enum LanczosError {
 ///   for a tolerance below working precision (e.g. `1e-10` for `f32`,
 ///   whose epsilon is `~1.2e-7`) cannot be satisfied; `converged` will
 ///   reflect the achievable precision rather than the requested one.
-/// - The 2-norms (β and the residual) are accumulated scale-safely, so
-///   squaring an element cannot overflow them: a norm overflows only
-///   when its value exceeds `T::Real::MAX`. The residual vector
-///   `H ψ - λ ψ` is formed element by element before its norm, so
-///   operator outputs near `T::Real::MAX` can still overflow it.
+/// - 2-norms are accumulated scale-safely: a norm overflows only when its
+///   value exceeds `T::Real::MAX`. Other arithmetic (inner products,
+///   vector updates, the residual vector) is formed element by element,
+///   so operator outputs near `T::Real::MAX` can still overflow it.
 pub fn lanczos_smallest<T, Op>(
     op: &Op,
     dim: usize,

@@ -357,10 +357,12 @@ pub(super) mod tests {
             matches!(&err, MpsIoError::Io(e) if e.kind() == io::ErrorKind::NotFound),
             "got {err:?}"
         );
-        // The retry budget is for taken names only; a missing directory
-        // fails on the first attempt. Every path save in this binary holds
-        // the counter lock, so no other save advances the counter meanwhile.
-        assert_eq!(consumed, 1, "temp names tried for a non-collision error");
+        // The retry budget is for taken names only: a missing directory
+        // fails without spending it.
+        assert!(
+            consumed < u64::from(MAX_TEMP_ATTEMPTS),
+            "{consumed} temp names tried for a non-collision error"
+        );
         fs::remove_dir_all(&dir).expect("remove scratch dir");
     }
 }

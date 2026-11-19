@@ -1,8 +1,8 @@
-//! Test-only helpers: compute backends that record descriptor `ExecPolicy`
-//! values and the svd / qr / lq / eigh / eig / solve `par_for_*` queries or
-//! force the row-major branch while delegating the actual work to a
-//! `NativeBackend`, plus an error-message assertion and a test-tensor
-//! builder.
+//! Test-only helpers. Two compute backends delegate the actual work to a
+//! `NativeBackend`: `RecordingBackend` records the descriptor `ExecPolicy`
+//! values and the svd / qr / lq / eigh / eig / solve `par_for_*` queries,
+//! and `RowMajorBackend` forces the row-major branch. The module also
+//! holds an error-message assertion and a test-tensor builder.
 //!
 //! The recording backend verifies policy forwarding: BSp default wrappers
 //! hardcode `Sequential` and BSp `_with_policy` wrappers forward the caller's
