@@ -12,7 +12,9 @@ use super::helpers::apply_ok;
 /// `tol = 0` capped at `stop` sweeps.
 ///
 /// `tol` is chosen from `tol = 0` fits of 1 to `stop + 1` sweeps: each
-/// cycle must still raise the center overlap `‖φ_k‖²`, and `tol` is set to
+/// cycle must still raise the center overlap `‖φ_k‖²` (cycle `stop + 1`
+/// included, so a fit that stops a cycle late returns a different state
+/// than fit B), and `tol` is set to
 /// three quarters of cycle `stop - 1`'s relative change, which must leave
 /// every earlier cycle above it and cycle `stop` at or below it. `stop`
 /// must be at least 3, so that cycle `stop - 1` has a change to measure.

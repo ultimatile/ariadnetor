@@ -1,6 +1,12 @@
 //! Helpers shared by the dense strip-copy integration tests.
 
-use ariadnetor_tensor::MemoryOrder;
+use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
+
+/// `shape`-shaped tensor in `order` whose flat buffer holds `1, 2, 3, …`.
+pub(crate) fn ramp(shape: &[usize], order: MemoryOrder) -> DenseTensorData<f64> {
+    let n = u32::try_from(shape.iter().product::<usize>()).unwrap();
+    DenseTensorData::from_raw_parts((1..=n).map(f64::from).collect(), shape.to_vec(), order)
+}
 
 pub(crate) const ORDERS: [MemoryOrder; 2] = [MemoryOrder::RowMajor, MemoryOrder::ColumnMajor];
 

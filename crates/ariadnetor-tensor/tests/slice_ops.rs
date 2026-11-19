@@ -3,7 +3,7 @@
 mod common;
 
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
-use common::{ORDERS, multi_indices, offset_within};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_slice_column_major() {
@@ -71,14 +71,10 @@ fn test_slice_scalar_column_major_returns_clone() {
 #[test]
 fn test_slice_rank3_matches_elementwise_reference() {
     let shape = [3, 4, 5];
-    let starts = [1, 1, 2];
     let ranges = [(1, 3), (1, 3), (2, 5)];
+    let starts = ranges.map(|(start, _)| start);
     for order in ORDERS {
-        let t = DenseTensorData::from_raw_parts(
-            (0..60u32).map(f64::from).collect(),
-            shape.to_vec(),
-            order,
-        );
+        let t = ramp(&shape, order);
         let s = t.slice(&ranges);
         assert_eq!(s.shape(), &[2, 2, 3]);
         assert_eq!(s.order(), order);

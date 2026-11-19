@@ -2,11 +2,11 @@ use super::*;
 
 /// Backend that implements only the required methods, leaving every
 /// optional operation on its trait default.
-struct GemmOnlyBackend;
+struct RequiredOnlyBackend;
 
-impl ComputeBackend for GemmOnlyBackend {
+impl ComputeBackend for RequiredOnlyBackend {
     fn name(&self) -> &'static str {
-        "gemm-only"
+        "required-only"
     }
 
     fn device_type(&self) -> DeviceType {
@@ -39,7 +39,7 @@ const POLICY: ExecPolicy = ExecPolicy::Sequential;
 
 #[test]
 fn omitted_optional_operations_report_not_supported() {
-    let b = GemmOnlyBackend;
+    let b = RequiredOnlyBackend;
     let a = [1.0_f64];
 
     let (mut u, mut s, mut vt) = ([0.0_f64], [0.0_f64], [0.0_f64]);

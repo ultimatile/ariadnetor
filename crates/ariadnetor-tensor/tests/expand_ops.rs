@@ -3,7 +3,7 @@
 mod common;
 
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
-use common::{ORDERS, multi_indices, offset_within};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_expand_column_major() {
@@ -56,9 +56,7 @@ fn test_expand_no_inner_pad_rm() {
 /// Check `expand` against the elementwise definition: each output element
 /// is the source element shifted by the leading padding, or zero outside.
 fn check_expand_rank3(shape: [usize; 3], padding: [(usize, usize); 3], order: MemoryOrder) {
-    let n: u32 = shape.iter().product::<usize>().try_into().unwrap();
-    let t =
-        DenseTensorData::from_raw_parts((1..=n).map(f64::from).collect(), shape.to_vec(), order);
+    let t = ramp(&shape, order);
     let e = t.expand(&padding);
     let new_shape: Vec<usize> = shape
         .iter()

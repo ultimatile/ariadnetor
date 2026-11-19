@@ -1,5 +1,5 @@
 # This is the SHIPPED mutation pass: it runs with default features, i.e.
-# hptt OFF (ariadnetor-native) and arpack OFF (ariadnetor-algorithms). Two
+# hptt OFF (ariadnetor-native) and arpack OFF (ariadnetor-algorithms). These
 # code regions are therefore out of THIS run's scope by construction, not
 # because they are spec gaps:
 #   - the ARPACK backend (krylov/arpack.rs, #[cfg(feature = "arpack")]) is
@@ -55,9 +55,11 @@ exclude_re = [
   # stops matching once an edit shifts the lines above it, and the pass
   # does not report the dead entry: the mutant just comes back as missed.
   # When a pattern naming the mutation and its function would also match
-  # a killable mutant, move the expression the excluded mutant changes into
-  # a helper of its own (as running_min / running_max) and name the helper
-  # instead.
+  # a killable mutant in another file, prefix the file name: unlike a
+  # position, a file name survives edits. When it would also match a
+  # killable mutant in the same function, move the expression the excluded
+  # mutant changes into a helper of its own (as running_min / running_max)
+  # and name the helper instead.
   #
   # Test infrastructure, on the same grounds as exclude_globs: the
   # alt_host backend in ariadnetor-tensor's capability.rs is the substrate

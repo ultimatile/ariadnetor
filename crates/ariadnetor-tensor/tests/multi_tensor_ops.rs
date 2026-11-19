@@ -3,7 +3,7 @@
 mod common;
 
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
-use common::{ORDERS, multi_indices, offset_within};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_concatenate_column_major_axis0() {
@@ -68,15 +68,12 @@ fn test_stack_rm_axis0() {
 }
 
 /// A middle axis is outermost for neither RowMajor nor ColumnMajor, so each
-/// source contributes a block of several contiguous strips per outer step.
+/// source contributes one contiguous block per outer step, spanning as many
+/// strips as its extent along the axis (two for `a`, one for `b`).
 #[test]
 fn test_concatenate_rank3_middle_axis_matches_elementwise_reference() {
     for order in ORDERS {
-        let a = DenseTensorData::from_raw_parts(
-            (1..=12u32).map(f64::from).collect(),
-            vec![2, 2, 3],
-            order,
-        );
+        let a = ramp(&[2, 2, 3], order);
         let b = DenseTensorData::from_raw_parts(
             (1..=6u32).map(|v| -f64::from(v)).collect(),
             vec![2, 1, 3],

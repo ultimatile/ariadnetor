@@ -3,7 +3,7 @@
 mod common;
 
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
-use common::{ORDERS, multi_indices, offset_within};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_replace_slice_column_major() {
@@ -49,11 +49,7 @@ fn test_replace_slice_rank3_matches_elementwise_reference() {
     let sub_shape = [2, 2, 3];
     let begin = [1, 1, 2];
     for order in ORDERS {
-        let orig = DenseTensorData::from_raw_parts(
-            (0..60u32).map(f64::from).collect(),
-            shape.to_vec(),
-            order,
-        );
+        let orig = ramp(&shape, order);
         let sub = DenseTensorData::from_raw_parts(
             (1..=12u32).map(|v| -f64::from(v)).collect(),
             sub_shape.to_vec(),

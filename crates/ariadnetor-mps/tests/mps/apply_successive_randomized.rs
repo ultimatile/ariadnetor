@@ -15,7 +15,7 @@ use ariadnetor_mps::{
     TruncSvdParams, TruncateParams,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{DenseLayout, DenseStorage};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensorData, MemoryOrder};
 
 use super::helpers::{
     apply_ok, assert_dense_close, cm_dense_tensor, densify, fixed_rank_src_params,
@@ -108,10 +108,9 @@ fn src_adaptive_stops_where_flat_spectrum_error_meets_cutoff() {
     // acceptance band than the suite's 100x factor is what pins the
     // rule's normalization.
     const M: usize = 32;
-    let mut eye = vec![0.0; M * M];
-    for i in 0..M {
-        eye[i * M + i] = 1.0;
-    }
+    let eye = DenseTensorData::<f64>::eye_in_order(M, MemoryOrder::ColumnMajor)
+        .data()
+        .to_vec();
     let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
         cm_dense_tensor(eye.clone(), vec![1, M, M]),
         cm_dense_tensor(eye, vec![M, M, 1]),
