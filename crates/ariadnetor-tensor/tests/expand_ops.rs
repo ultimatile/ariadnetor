@@ -1,6 +1,9 @@
 //! Tests for expand operations.
 
+mod common;
+
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_expand_column_major() {
@@ -48,4 +51,60 @@ fn test_expand_no_inner_pad_rm() {
     assert_eq!(e.data()[11], 4.0); // row 2, col 3
     assert_eq!(e.data()[19], 12.0); // row 4, col 3
     assert_eq!(e.data()[20], 0.0); // row 5, col 0
+}
+
+/// Check `expand` against the elementwise definition: each output element
+/// is the source element shifted by the leading padding, or zero outside.
+fn check_expand_rank3(shape: [usize; 3], padding: [(usize, usize); 3], order: MemoryOrder) {
+    let t = ramp(&shape, order);
+    let e = t.expand(&padding);
+    let new_shape: Vec<usize> = shape
+        .iter()
+        .zip(&padding)
+        .map(|(&s, &(before, after))| s + before + after)
+        .collect();
+    assert_eq!(e.shape(), new_shape.as_slice());
+    assert_eq!(e.order(), order);
+    let before: Vec<usize> = padding.iter().map(|&(b, _)| b).collect();
+    for idx in multi_indices(e.shape()) {
+        let expected = offset_within(&idx, &before, &shape).map_or(0.0, |src| t.get(&src));
+        assert_eq!(e.get(&idx), expected, "{order:?} at {idx:?}");
+    }
+}
+
+/// Rank-3 expand padding the middle axis: with no padding on the
+/// contiguous axis, the strip walk must carry across the middle axis into
+/// a wider destination; the contiguous-axis-padded case is checked too.
+#[test]
+fn test_expand_rank3_matches_elementwise_reference() {
+    // The contiguous axis is last for RowMajor and first for ColumnMajor.
+    check_expand_rank3([2, 3, 4], [(1, 2), (2, 1), (0, 0)], MemoryOrder::RowMajor);
+    check_expand_rank3(
+        [4, 3, 2],
+        [(0, 0), (2, 1), (1, 2)],
+        MemoryOrder::ColumnMajor,
+    );
+    for order in ORDERS {
+        check_expand_rank3([2, 3, 4], [(1, 2), (2, 1), (1, 1)], order);
+    }
+}
+
+#[test]
+fn test_expand_scalar_keeps_value() {
+    for order in ORDERS {
+        let t = DenseTensorData::from_raw_parts(vec![7.5], vec![], order);
+        let e = t.expand(&[]);
+        assert_eq!(e.shape(), &[] as &[usize]);
+        assert_eq!(e.data(), &[7.5]);
+    }
+}
+
+#[test]
+fn test_expand_empty_source_is_all_padding() {
+    for order in ORDERS {
+        let t = DenseTensorData::<f64>::from_raw_parts(vec![], vec![0, 2], order);
+        let e = t.expand(&[(1, 1), (0, 1)]);
+        assert_eq!(e.shape(), &[2, 3]);
+        assert_eq!(e.data(), &[0.0; 6]);
+    }
 }

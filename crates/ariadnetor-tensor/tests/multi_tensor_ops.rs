@@ -1,6 +1,9 @@
 //! Tests for concatenate and stack operations.
 
+mod common;
+
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_concatenate_column_major_axis0() {
@@ -62,4 +65,29 @@ fn test_stack_rm_axis0() {
     let s = DenseTensorData::stack(&[&a, &a], 0);
     assert_eq!(s.shape(), &[2, 2, 2]);
     assert_eq!(s.data(), &[1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]);
+}
+
+/// A middle axis is outermost for neither RowMajor nor ColumnMajor, so each
+/// source contributes one contiguous block per outer step, spanning as many
+/// strips as its extent along the axis (two for `a`, one for `b`).
+#[test]
+fn test_concatenate_rank3_middle_axis_matches_elementwise_reference() {
+    for order in ORDERS {
+        let a = ramp(&[2, 2, 3], order);
+        let b = DenseTensorData::from_raw_parts(
+            (1..=6u32).map(|v| -f64::from(v)).collect(),
+            vec![2, 1, 3],
+            order,
+        );
+        let c = DenseTensorData::concatenate(&[&a, &b], 1);
+        assert_eq!(c.shape(), &[2, 3, 3]);
+        assert_eq!(c.order(), order);
+        for idx in multi_indices(c.shape()) {
+            let expected = offset_within(&idx, &[0, 0, 0], a.shape())
+                .map(|r| a.get(&r))
+                .or_else(|| offset_within(&idx, &[0, 2, 0], b.shape()).map(|r| b.get(&r)))
+                .expect("every output index comes from a or b");
+            assert_eq!(c.get(&idx), expected, "{order:?} at {idx:?}");
+        }
+    }
 }

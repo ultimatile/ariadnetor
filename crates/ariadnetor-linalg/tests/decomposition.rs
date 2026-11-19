@@ -138,16 +138,6 @@ fn test_svd_f32() {
     }
 }
 
-#[test]
-fn test_svd_invalid_nrow() {
-    let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-
-    // nrow=0 is invalid
-    assert!(tensor.svd(0).is_err());
-    // nrow=rank is invalid
-    assert!(tensor.svd(2).is_err());
-}
-
 // --- Truncated SVD tests ---
 
 #[test]
@@ -378,14 +368,6 @@ fn test_qr_f32() {
     }
 }
 
-#[test]
-fn test_qr_invalid_nrow() {
-    let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
-
-    assert!(tensor.qr(0).is_err());
-    assert!(tensor.qr(2).is_err());
-}
-
 // --- LQ tests ---
 
 #[test]
@@ -525,12 +507,28 @@ fn test_lq_f32() {
     }
 }
 
-#[test]
-fn test_lq_invalid_nrow() {
-    let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+// --- nrow validation ---
 
-    assert!(tensor.lq(0).is_err());
-    assert!(tensor.lq(2).is_err());
+/// Every decomposition requires `1 <= nrow < rank`: `nrow = 0`, `nrow = rank`,
+/// and `nrow > rank` are each rejected with an error, the last one rather than
+/// slicing the shape out of range.
+#[test]
+fn test_decompositions_reject_invalid_nrow() {
+    let tensor = cm(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let params = TruncSvdParams {
+        chi_max: Some(1),
+        target_trunc_err: None,
+    };
+
+    for nrow in [0, 2, 3] {
+        assert!(tensor.svd(nrow).is_err(), "svd nrow={nrow}");
+        assert!(
+            tensor.trunc_svd(nrow, &params).is_err(),
+            "trunc_svd nrow={nrow}"
+        );
+        assert!(tensor.qr(nrow).is_err(), "qr nrow={nrow}");
+        assert!(tensor.lq(nrow).is_err(), "lq nrow={nrow}");
+    }
 }
 
 // --- Mutation testing: trunc_svd arithmetic and boundary conditions ---

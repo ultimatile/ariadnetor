@@ -453,6 +453,59 @@ fn test_apply_streaming_naive_forward_cap_observably_changes_output() {
     );
 }
 
+/// A forward rank that reaches `forward_cap · chi_max` without exceeding it
+/// keeps the lossless QR forward branch. Site 0's forward matrix is 2 × 3
+/// (`left · d = 1 · 2` rows, 3 right columns), so its natural rank is 2, equal
+/// to the cap `1 · chi_max`. Its singular values are `(1, ε)` while the exact
+/// state's Schmidt values are `(1, 1)`: a forward truncated SVD would let the
+/// error target drop `ε`, collapsing the bond to 1, whereas the finishing pass
+/// sees `(1, 1)` and keeps both. So the capped result must equal the
+/// uncapped one and the exact state, at bond 2.
+#[test]
+fn test_apply_streaming_naive_forward_rank_at_cap_stays_lossless() {
+    use std::num::NonZeroUsize;
+
+    let backend = NativeBackend::new();
+    let eps = 1e-3;
+    // Site 0 as a (phys × right) matrix: [[1, 0, 0], [0, ε, 0]].
+    // Site 1 as a (left × phys) matrix: [[1, 0], [0, 1/ε], [0, 0]].
+    // Their product is the 2 × 2 identity.
+    let psi = Mps::from_sites(vec![
+        cm_dense_tensor(vec![1.0, 0.0, 0.0, eps, 0.0, 0.0], vec![1, 2, 3]),
+        cm_dense_tensor(vec![1.0, 0.0, 0.0, 0.0, 1.0 / eps, 0.0], vec![3, 2, 1]),
+    ]);
+    let op = make_identity_mpo(2, 2);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1e-2)),
+    });
+
+    let uncapped = apply_ok(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::StreamingNaive { forward_cap: None },
+    );
+    let capped = apply_ok(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::StreamingNaive {
+            forward_cap: Some(NonZeroUsize::new(1).unwrap()),
+        },
+    );
+
+    assert_eq!(
+        capped.bond_dims(),
+        vec![2],
+        "the at-cap bond must not be truncated"
+    );
+    assert_dense_close(&mps_to_dense(&capped), &mps_to_dense(&uncapped), 1e-12);
+    assert_dense_close(&mps_to_dense(&capped), &mps_to_dense(&psi), 1e-12);
+}
+
 fn dense_frobenius_distance(a: &DenseTensor<f64>, b: &DenseTensor<f64>) -> f64 {
     assert_eq!(a.shape(), b.shape(), "shape mismatch in frobenius_distance");
     a.data_slice()

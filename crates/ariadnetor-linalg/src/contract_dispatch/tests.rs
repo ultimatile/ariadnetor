@@ -1,20 +1,8 @@
 use crate::error::LinalgError;
+use crate::test_util::{RecordingBackend, ramp};
 use crate::{contract, tensordot};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
-
-/// Dense tensor of the given shape with distinct, non-degenerate entries
-/// (`1, 2, 3, …` over the flat buffer) so a contraction result depends on every
-/// element. The fill order is irrelevant to the equivalence checks: `tensordot`
-/// and `contract` consume the same tensor, so any consistent fill exposes a
-/// divergence between the two paths.
-fn filled(shape: Vec<usize>) -> DenseTensor<f64> {
-    let mut t = DenseTensor::<f64>::zeros(shape);
-    for (i, v) in t.data_slice_mut().iter_mut().enumerate() {
-        *v = (i + 1) as f64;
-    }
-    t
-}
 
 /// Assert `tensordot(axes)` equals `contract(natural_notation)` in shape and
 /// values. The axis-native dense path must emit exactly what the notation path
@@ -28,8 +16,8 @@ fn assert_tensordot_matches_contract(
     natural_notation: &str,
 ) {
     let be = NativeBackend::new();
-    let a = filled(lhs_shape);
-    let b = filled(rhs_shape);
+    let a = ramp(lhs_shape);
+    let b = ramp(rhs_shape);
     let td = tensordot(&be, &a, &b, axes_lhs, axes_rhs).unwrap();
     let ct = contract(&be, &a, &b, natural_notation).unwrap();
     assert_eq!(
@@ -96,7 +84,7 @@ fn dense_tensordot_full_contraction_matches_contract() {
     // No free legs → rank-0 scalar result.
     assert_tensordot_matches_contract(vec![2, 3], vec![2, 3], &[0, 1], &[0, 1], "ab,ab->");
     let be = NativeBackend::new();
-    let a = filled(vec![2, 3]);
+    let a = ramp(vec![2, 3]);
     let td = tensordot(&be, &a, &a, &[0, 1], &[0, 1]).unwrap();
     assert_eq!(td.shape(), &[] as &[usize]);
 }
@@ -108,8 +96,8 @@ fn dense_tensordot_has_no_leg_count_cap() {
     // (all dims 1, so one element) contracts cleanly. Output rank is 26 free
     // left legs + 1 free right leg = 27.
     let be = NativeBackend::new();
-    let a = filled(vec![1; 27]);
-    let b = filled(vec![1, 3]);
+    let a = ramp(vec![1; 27]);
+    let b = ramp(vec![1, 3]);
     let td = tensordot(&be, &a, &b, &[26], &[0]).unwrap();
     assert_eq!(td.shape().len(), 27);
     assert_eq!(td.shape()[26], 3);
@@ -199,6 +187,34 @@ fn dense_tensordot_zero_length_free_axis() {
     let td = tensordot(&be, &a, &b, &[1], &[0]).unwrap();
     assert_eq!(td.shape(), &[0, 4]);
     assert_eq!(td.data_slice().len(), 0);
+}
+
+#[test]
+fn dense_contract_degenerate_dimension_dispatches_no_gemm() {
+    // A zero extent on any single GEMM axis (m, n, or k alone) is answered with
+    // the zero tensor of the output shape without handing the backend a
+    // zero-sized GEMM, on both the notation and the axis-pair path.
+    let cases: [(Vec<usize>, Vec<usize>, &[usize]); 3] = [
+        (vec![0, 3], vec![3, 4], &[0, 4]), // m == 0
+        (vec![2, 3], vec![3, 0], &[2, 0]), // n == 0
+        (vec![2, 0], vec![0, 4], &[2, 4]), // k == 0
+    ];
+    for (lhs_shape, rhs_shape, out_shape) in cases {
+        let a = DenseTensor::<f64>::zeros(lhs_shape.clone());
+        let b = DenseTensor::<f64>::zeros(rhs_shape.clone());
+
+        let be = RecordingBackend::new();
+        let ct = contract(&be, &a, &b, "ik,kj->ij").unwrap();
+        let td = tensordot(&be, &a, &b, &[1], &[0]).unwrap();
+        for out in [&ct, &td] {
+            assert_eq!(out.shape(), out_shape, "{lhs_shape:?} x {rhs_shape:?}");
+            assert!(out.data_slice().iter().all(|&x| x == 0.0));
+        }
+        assert!(
+            be.gemm_recorded().is_empty(),
+            "{lhs_shape:?} x {rhs_shape:?} reached the backend GEMM"
+        );
+    }
 }
 
 #[test]

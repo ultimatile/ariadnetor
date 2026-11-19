@@ -327,12 +327,14 @@ impl<T: Scalar> IncrementalQr<T> {
         // a non-finite one terminated the factorization.
         let nonfinite_diag = new_diag.iter().find(|d| !d.is_finite()).copied();
         let p_new = p_old + s;
-        let mut max_diag = T::Real::zero();
-        for d in self.r_diag.iter().chain(new_diag.iter()) {
-            if *d > max_diag {
-                max_diag = *d;
-            }
-        }
+        // `Float::max` returns the non-NaN argument, so a NaN entry never
+        // becomes the maximum.
+        let max_diag = self
+            .r_diag
+            .iter()
+            .chain(new_diag.iter())
+            .copied()
+            .fold(T::Real::zero(), Float::max);
         let p_real = <T::Real as NumCast>::from(p_new).expect("column counts fit in the real type");
         let tol = T::Real::epsilon() * p_real * max_diag;
         let deficient = self.r_diag.iter().chain(new_diag.iter()).any(|d| *d <= tol);

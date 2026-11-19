@@ -8,6 +8,7 @@ use ariadnetor_tensor::{
     U1Sector, Z2Sector,
 };
 
+use super::container::tests::lock_temp_counter;
 use super::{
     MpsIoError, MpsManifest, OrderTag, SiteMeta, load_mps, load_mps_from_path, save_mps,
     save_mps_to_path,
@@ -444,6 +445,7 @@ fn malformed_body_maps_to_corrupt() {
 
 #[test]
 fn path_roundtrip_atomic() {
+    let _guard = lock_temp_counter();
     let path = std::env::temp_dir().join(format!(
         "ariadnetor_mps_path_roundtrip_{}.mps",
         std::process::id()

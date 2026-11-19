@@ -126,6 +126,8 @@ fn test_solve_invalid_nrow() {
 
     assert!(a.solve(&b, 0).is_err());
     assert!(a.solve(&b, 2).is_err());
+    // nrow>rank is rejected, not an out-of-range axis slice
+    assert!(a.solve(&b, 3).is_err());
 }
 
 // --- inverse tests ---
@@ -252,4 +254,5 @@ fn test_inverse_invalid_nrow() {
     let a = cm(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]);
     assert!(a.inverse(0).is_err());
     assert!(a.inverse(2).is_err());
+    assert!(a.inverse(3).is_err());
 }

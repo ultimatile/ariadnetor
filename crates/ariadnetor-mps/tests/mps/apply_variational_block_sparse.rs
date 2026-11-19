@@ -5,11 +5,18 @@ use ariadnetor_mps::{
     VariationalInit, inner,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{BlockSparseLayout, BlockSparseStorage, U1Sector};
+use ariadnetor_tensor::test_fixtures::legs;
+use ariadnetor_tensor::{
+    BlockCoord, BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, Direction, U1Sector,
+};
 
 use super::helpers::{
-    apply_ok, assert_block_sparse_close, bsp_mps_contract_full, make_3site_u1_mps_multipath_middle,
-    make_4site_u1_mps, make_identity_u1_mpo, make_total_n_u1_mpo,
+    apply_ok, assert_block_sparse_close, bsp_mps_contract_full, cap,
+    make_3site_u1_mps_multipath_middle, make_4site_u1_mps, make_identity_u1_mpo,
+    make_total_n_u1_mpo,
+};
+use super::variational_helpers::{
+    REFINING_FIT_MPO, REFINING_FIT_MPS, variational_fit_at_first_converging_cycle,
 };
 
 fn variational(init: VariationalInit, max_sweeps: usize) -> ApplyMethod {
@@ -143,6 +150,71 @@ fn variational_canonical_form() {
         variational(VariationalInit::ZipUp, 10),
     );
     assert_eq!(*phi.canonical_form(), CanonicalForm::Mixed { center: 0 });
+}
+
+/// A U(1) tensor whose every leg carries only the charge-0 sector, so `data`
+/// fills its single block.
+fn charge_zero_tensor(
+    dims: &[usize],
+    directions: &[Direction],
+    data: &[f64],
+) -> BlockSparseTensor<f64, U1Sector> {
+    let mut t = BlockSparseTensor::<f64, U1Sector>::zeros(
+        legs(
+            dims.iter()
+                .zip(directions)
+                .map(|(&d, &dir)| (vec![(U1Sector(0), d)], dir)),
+        ),
+        U1Sector(0),
+    );
+    t.block_data_mut(&BlockCoord(vec![0; dims.len()]))
+        .expect("the single charge-0 block")
+        .copy_from_slice(data);
+    t
+}
+
+type U1Mpo = mps::Mpo<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
+type U1Mps = Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
+
+/// Two-site product `Wψ` of rank 2 fitted at bond 1, all in the charge-0
+/// sector. The zip-up seed truncates `W₀ψ₀` against the non-isometric
+/// remainder `W₁ψ₁`, so it misses the optimal bond-1 state and the sweeps
+/// raise the overlap over several cycles.
+fn refining_fit_problem() -> (U1Mpo, U1Mps, TruncateParams) {
+    use Direction::{In, Out};
+    let op = mps::Mpo::from_sites(
+        REFINING_FIT_MPO
+            .iter()
+            .map(|&(shape, data)| charge_zero_tensor(shape, &[Out, In, Out, In], data))
+            .collect(),
+    );
+    let psi = Mps::from_sites(
+        REFINING_FIT_MPS
+            .iter()
+            .map(|&(shape, data)| charge_zero_tensor(shape, &[Out, Out, In], data))
+            .collect(),
+    );
+    let params = TruncateParams::from(cap(1));
+    (op, psi, params)
+}
+
+/// The sweep stops after the first cycle whose relative change of the center
+/// overlap `‖P_center‖²` is at or below `tol`. A run with `tol = 0` and
+/// `max_sweeps = k` yields the k-cycle iterate `φ_k`, and `‖φ_k‖²` is that
+/// cycle's center overlap (the fit ends with site 0 freshly projected and the
+/// rest right-isometric). With `tol` placed below cycle 3's change and at or
+/// above cycle 4's, a run with ample `max_sweeps` must return exactly `φ_4`. `tol`
+/// sits within a quarter of cycle 3's change, so measuring the change of
+/// `‖P_center‖` (about half as large) instead would already stop at cycle 3.
+#[test]
+fn variational_stops_at_first_cycle_within_tol() {
+    let (op, psi, params) = refining_fit_problem();
+    let (stopped, expected) = variational_fit_at_first_converging_cycle(&op, &psi, &params, 4);
+    assert_block_sparse_close(
+        &bsp_mps_contract_full(&stopped),
+        &bsp_mps_contract_full(&expected),
+        1e-12,
+    );
 }
 
 /// The `DensityMatrix` seed reaches the same lossless fixed point at full bond,

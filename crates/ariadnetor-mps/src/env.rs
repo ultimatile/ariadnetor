@@ -101,7 +101,6 @@ pub enum BraketEnvError {
 /// where the MPS edges are the identity sector).
 fn edge_bond_detail(leg: &str) -> &'static str {
     match leg {
-        "bra_left" | "bra_right" | "ket_left" | "ket_right" => "must be dim-1 / single-sector",
         "mpo_left" | "mpo_right" => {
             "must be dim-1 / single-sector with sector fusing to identity flux"
         }

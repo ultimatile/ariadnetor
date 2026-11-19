@@ -1,18 +1,20 @@
 # This is the SHIPPED mutation pass: it runs with default features, i.e.
-# hptt OFF (ariadnetor-native) and arpack OFF (ariadnetor-algorithms). Two
+# hptt OFF (ariadnetor-native) and arpack OFF (ariadnetor-algorithms). These
 # code regions are therefore out of THIS run's scope by construction, not
 # because they are spec gaps:
 #   - the ARPACK backend (krylov/arpack.rs, #[cfg(feature = "arpack")]) is
 #     never compiled here, so its mutants trivially pass;
 #   - the HPTT kernels for conjugating complex transposes (transpose.rs,
 #     #[cfg(feature = "hptt")]) are not compiled under the default (hptt-off)
-#     build, so their mutants are unviable. (The naive kernel that serves
+#     build, so their mutants trivially pass as well. (The naive kernel that serves
 #     those transposes in this build IS compiled by this run, as is the
 #     strided-perm route every other transpose takes.)
 # Both are covered by dedicated feature-flipped passes — `cargo make
 # mutants-arpack` and `cargo make mutants-hptt` (see Makefile.toml and
 # CONTRIBUTING.md). Read this run's missed.txt knowing those regions are
-# audited there, not here.
+# audited there, not here. A third feature-gated region, the
+# pluggability-litmus host backend, is test infrastructure with no pass of
+# its own; exclude_re below drops its mutants.
 
 # Pinned, not merely left at the default: the single-run mutants tasks put
 # cargo-mutants' scratch directory under target/ (Makefile.toml explains why;
@@ -49,18 +51,38 @@ exclude_globs = [
 ]
 
 exclude_re = [
+  # No pattern in this list names a `file:line:col` position. A position
+  # stops matching once an edit shifts the lines above it, and the pass
+  # does not report the dead entry: the mutant just comes back as missed.
+  # When a pattern naming the mutation and its function would also match
+  # a killable mutant in another file, prefix the path of the file that
+  # holds the excluded mutant: unlike a position, a path survives edits.
+  # When it would also match a killable mutant in the same function, move
+  # the expression the excluded mutant changes into a helper of its own
+  # (as running_min / running_max) and name the helper instead.
+  #
+  # Test infrastructure, on the same grounds as exclude_globs: the
+  # alt_host backend in ariadnetor-tensor's capability.rs is the substrate
+  # of the pluggability-litmus build. It sits in a production file, so a
+  # glob cannot drop it without the rest of that file, and outside that
+  # feature it is not compiled, so its mutants would trivially pass here.
+  "ariadnetor-tensor/src/capability.rs:.*alt_host::",
   # Equivalent mutants: real types return 0.0 for im(), same as Default::default()
   "Scalar for f(32|64)>::im .* Default::default",
   # NativeBackend has no state, so Arc::new(Default::default()) == shared()
   "NativeBackend::shared .* Arc::new",
 
-  # --- Function-name-based patterns (stable across line changes) ---
+  # write_body's `reserve` size is a capacity hint: the bytes pushed after it
+  # are the same whatever capacity was reserved.
+  "replace \\* with [+/] in write_body$",
   # norm_1: tie-breaking order doesn't affect max value
   "replace > with >= in norm_1",
   # einsum_dense: 0-input arm is unreachable (parse always produces >= 1 input)
   "delete match arm 0 in einsum_dense$",
-  # einsum: Hadamard is an optimization of batched_contract; both produce same result
-  "replace == with != in einsum_pair",
+  # einsum_dense: without the 2-input arm, two inputs fall to einsum_multi,
+  # whose only step is one einsum_pair call on a notation rebuilt with the
+  # requested output order, so the arm is a shortcut to the same result.
+  "delete match arm 2 in einsum_dense$",
   # compute_scaling_decision boundary equivalences:
   # - `norm > theta` boundary: at norm == theta, s=0 either way.
   # - `norm / theta` ratio: any non-divisor op produces a different s, but the final
@@ -72,119 +94,20 @@ exclude_re = [
   "replace > with >= in compute_scaling_decision",
   "replace / with \\* in compute_scaling_decision",
   "replace <= with > in compute_scaling_decision",
-  # sweep_2site L→R trailing-advance skip is a perf optimization, not a
-  # correctness gate: the mutated extra advance_left(n-2) sets
-  # left[n-1] = Some(stale) and right[n-1] = None. The next R→L step
-  # at site = n-2 reads left(n-2) and right(n) (both still valid),
-  # then runs advance_right(n-1) which (j > 0 clause in env.rs) sets
-  # left[n-1] = None and right[n-1] = Some. Subsequent R→L steps at
-  # site < n-2 read left[site], never left[n-1], so the stale value
-  # is never observed. End-of-sweep state matches the original
-  # exactly. Confirmed via cargo-mutants run on these two mutants
-  # alone — both MISSED across the full test suite by design.
-  "sweep.rs:364:21: replace < with <= in sweep_2site",
-  "sweep.rs:364:31: replace - with \\+ in sweep_2site",
-  # sweep_2site per-step diagnostics aggregation: tracking-min
-  # (`<` / `<=`) and tracking-max (`>` / `>=`) yield identical
-  # values for any finite input — distinct values pick the extremum
-  # once, tied values overwrite with the same value. NaN comparisons
-  # are false either way, so neither variant updates on a NaN step
-  # (NaN-sticky semantics are preserved). Not refactored to
-  # `Float::min` / `Float::max` because those mask NaN by returning
-  # the non-NaN argument, which would change the diagnostic on
-  # numerically broken runs.
-  "sweep.rs:427:29: replace < with <= in sweep_2site",
-  "sweep.rs:430:28: replace > with >= in sweep_2site",
-  # contract_to_tensor trans-flag predicates: any mutation that forces the predicate
-  # to false (or removes the leading `!`) routes through the physical-permute GEMM
-  # path, which produces identical numerical results to the trans-flag GEMM path
-  # by design. The `with true` / `&& with ||` mutations are NOT equivalent (they
-  # would force trans-flag GEMM with non-suitable permutations) and remain in scope.
-  # The peer `delete !` mutations on `!lhs_trans_flag` / `!rhs_trans_flag` operands
-  # in `lhs_needs_physical_t` / `rhs_needs_physical_t` are also NOT equivalent.
-  "delete ! in compute_lhs_trans_flag",
-  "delete ! in compute_rhs_trans_flag",
-  "replace compute_lhs_trans_flag -> bool with false",
-  "replace compute_rhs_trans_flag -> bool with false",
-  # NOTE: the linalg high-level validation/policy mutants are deliberately
-  # NOT excluded — they are coverage gaps, not equivalents (tracked by #156):
-  #   - `|| → &&` / `>= → <` on the `nrow == 0 || nrow >= rank` guard in
-  #     *_with_policy_dense / inverse_dense and the *_dense wrappers: disabling
-  #     the guard lets execution reach `shape[..nrow]` for `nrow > rank`, which
-  #     panics instead of returning InvalidArgument. Existing
-  #     `test_*_invalid_nrow` tests only cover `nrow == 0` / `nrow == rank`; a
-  #     `nrow > rank` case kills these.
-  #   - policy-key `== → !=` in the auto-policy *_dense wrappers: numerically
-  #     equivalent (only changes the `n` fed to `backend.par_for_*(n)`), but
-  #     per the cargo-mutants skill an optimization-gate predicate is killed by
-  #     a direct unit test on the policy selection, not suppressed. Left in
-  #     scope so that test can be written.
-  # NOTE: contract_dense's `== → !=` is deliberately NOT excluded. The two
-  # operands of the fast-path key (`lhs.rank() == lhs_indices.len()` at 27 and
-  # `rhs.rank() == rhs_indices.len()` at 28) are asymmetric in the run: 27 is
-  # CAUGHT, only 28 is MISSED. A true "mismatch routes through the equivalent
-  # general path" property would make both equivalent; the asymmetry shows 28
-  # is a test gap (the rhs-rank path lacks a distinguishing test), not an
-  # equivalent mutant. A function-name anchor would also wrongly suppress the
-  # killable 27. Left in scope; tracked as a coverage gap, not suppressed.
-  # transpose_block_data: rank<=1 early return is optimization; transpose of rank-1 is identity
-  "replace .* with && in transpose_block_data",
-  # Error::source: error chain metadata, no functional impact
-  "LinalgError>::source",
-  # NOTE: ComputeBackend default trait-method bodies (svd/qr/lq/eigh/eig/solve,
-  # which return Err(NotSupported)) are deliberately NOT excluded. They are
-  # currently overridden by every concrete impl, but the type system does not
-  # guarantee that — the defaults exist precisely so a partial backend may omit
-  # a method, and for such a backend `Err(NotSupported) → Ok(())` changes the
-  # documented fallback contract. That makes them a coverage gap (no test
-  # exercises a partial backend), not type-guaranteed-unreachable equivalents,
-  # so they stay in scope. (The previous `ComputeBackend>::` patterns were also
-  # dead config: the trait-default name format is `ComputeBackend::<m>`, not
-  # `<X as ComputeBackend>::<m>`.)
-  # Display::fmt for error types: error message content, no functional impact
-  "BackendError>::fmt .* Ok",
-  "ContractionError>::fmt .* Ok",
+  # sweep_2site's per-step diagnostics aggregation: a tracking minimum
+  # (`<` / `<=`) and a tracking maximum (`>` / `>=`) return the same
+  # value for any input, up to the sign of a zero — distinct values pick
+  # the extremum once, equal values overwrite with an equal value, and
+  # every NaN comparison is false under both operators, so a NaN
+  # accumulator is kept and a NaN step is never taken.
+  "replace < with <= in running_min$",
+  "replace > with >= in running_max$",
   # norm Mixed arm: optimization shortcut; fallback computes same result via full inner product
-  "inner.rs.*delete match arm.*Mixed.*in norm",
-  # lanczos_smallest: equivalent mutants under full reorthogonalization.
-  # `basis[j - 1]` → `basis[j / 1]` = `basis[j]` (= v_j). The recurrence's
-  # altered subtraction lives entirely in span(basis); two passes of classical
-  # Gram-Schmidt reorthogonalization re-project w onto span(basis)^perp to
-  # working precision, so β, alpha, tridiagonal entries, and basis are
-  # indistinguishable. Tests at tol >> eps cannot distinguish. Function-name
-  # anchored: same `replace - with / in lanczos_smallest` name also matches
-  # `betas[j - 1] → betas[j]` and `data[m - 1] → data[m]`, both of which
-  # access OOB at iter j > 0 (or m == 1) and panic — caught structurally,
-  # so the over-match is benign.
-  "replace - with / in lanczos_smallest",
-  # `j + 1 == max_iter` → `j * 1 == max_iter`. The `for j in 0..max_iter`
-  # loop terminates at j = max_iter - 1 in both versions; the mutation only
-  # inserts an extra basis.push / betas.push before the natural loop exit.
-  # Neither is surfaced in LanczosResult, and Ritz reconstruction uses
-  # `take(m)` with m ≤ max_iter so the extra entry is never read. The peer
-  # mutation `== → !=` at the same statement is NOT equivalent (would break at
-  # every j ≠ max_iter - 1, including j = 0) and is caught.
-  #
-  # Anchored line:col deliberately. The same-named `+ → *` mutant also exists
-  # at the `iters = j + 1` statement, which is killed by the
-  # `lanczos_n1_returns_iters_one` test. Relaxing this regex to function-name
-  # would silently un-track that test's regression detection. Re-anchor on
-  # reformat using the rationale above (line drifted 210 → 222 at 2d9ef96).
-  "lanczos.rs:222:14: replace \\+ with \\* in lanczos_smallest",
-  # NOTE: lanczos order-equality guards (`w_raw.order() == v_j.order()` and
-  # `h_psi_raw.order() == psi.order()`) are deliberately NOT excluded. The
-  # `== → !=` mutant is equivalent only while every operator returns the same
-  # order as the basis. `LinearOp::apply` is permitted to return a different
-  # order; for such an operator the mutant skips the reorder and feeds a
-  # mismatched-order tensor to `linear_combine`, which panics. That is a
-  # supported-but-uncovered path (a test with an order-flipping operator kills
-  # it), i.e. a coverage gap, not an equivalent mutant. Left in scope.
-  #
-  # NOTE: fused_sector build_square_tensor's RowMajor arm (386-388) is also
-  # NOT excluded. It is unreachable only because no `cargo test` routes a
-  # RowMajor-preferred backend through a block-sparse solve/expm/inverse —
-  # but RowMajor is a supported `ComputeBackend::preferred_order()` and an
-  # in-tree `RowMajorBackend` fixture (linalg test_util.rs) already exists.
-  # Wiring it through these ops kills the mutants, so this is a coverage gap,
-  # not equivalence. Left in scope. (The ColumnMajor arm 393-395 is caught.)
+  "ariadnetor-mps/src/inner.rs:.*delete match arm.*Mixed.*in norm",
+  # lanczos_smallest's last-iteration break only skips forming a basis
+  # vector the Ritz reconstruction never reads, so never breaking there
+  # leaves every result unchanged: `with false`, and `j * 1 == max_iter`,
+  # which never holds for `j` in `0..max_iter`.
+  "replace is_last_iteration -> bool with false",
+  "replace \\+ with \\* in is_last_iteration$",
 ]

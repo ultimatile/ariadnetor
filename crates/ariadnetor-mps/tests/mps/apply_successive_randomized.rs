@@ -5,9 +5,10 @@
 //!   with probability one, so agreement with lossless streaming naive is
 //!   checked at deterministic tolerances;
 //! - in adaptive mode the cutoff is a per-site stopping criterion, so the
-//!   realized relative error is only checked against `100 * cutoff` — the
-//!   same acceptance factor the reference implementation applies to its own
-//!   results.
+//!   realized relative error is checked against `100 * cutoff` — the same
+//!   acceptance factor the reference implementation applies to its own
+//!   results — except on a fixture whose error at every bond is known in
+//!   closed form, where a tighter band pins the stopping rule itself.
 
 use ariadnetor_core::{Complex, Scalar};
 use ariadnetor_mps::{
@@ -15,7 +16,7 @@ use ariadnetor_mps::{
     TruncSvdParams, TruncateParams,
 };
 use ariadnetor_native::NativeBackend;
-use ariadnetor_tensor::{DenseLayout, DenseStorage};
+use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensorData, MemoryOrder};
 
 use super::helpers::{
     apply_ok, assert_dense_close, cm_dense_tensor, densify, fixed_rank_src_params,
@@ -92,6 +93,49 @@ fn src_adaptive_meets_relative_tolerance() {
             out.bond_dim(j)
         );
     }
+}
+
+#[test]
+fn src_adaptive_stops_where_flat_spectrum_error_meets_cutoff() {
+    let backend = NativeBackend::new();
+    // Two sites whose single cut carries the identity matrix I_m: every
+    // singular value is 1, so any rank-p projection leaves the relative
+    // error sqrt((m - p) / m). For this flat spectrum the leave-one-out
+    // estimate relative to the sketch norm concentrates near
+    // sqrt((m - p + 1) / m), so the stopping rule
+    // `err <= cutoff * ||Y||_F / sqrt(p)` must stop where the realized
+    // error is close to the cutoff: neither while it is still far above
+    // the cutoff, nor after sketching on far past it. The band is narrow
+    // on purpose: a band of 0.25 to 1.5 times the cutoff already accepts
+    // a rule with the sign of its norm term flipped, so the suite's 100x
+    // factor would too. The seed is fixed, so the outcome is
+    // deterministic.
+    const M: usize = 32;
+    let eye = DenseTensorData::<f64>::eye_in_order(M, MemoryOrder::ColumnMajor)
+        .data()
+        .to_vec();
+    let psi: Mps<DenseStorage<f64>, DenseLayout> = Mps::from_sites(vec![
+        cm_dense_tensor(eye.clone(), vec![1, M, M]),
+        cm_dense_tensor(eye, vec![M, M, 1]),
+    ]);
+    let op = make_identity_mpo(2, M);
+    let cutoff = 0.6;
+
+    let method = ApplyMethod::SuccessiveRandomized(SuccessiveRandomizedParams {
+        cutoff: Some(cutoff),
+        sketch_dim: 1,
+        sketch_increment: 1,
+        seed: 42,
+        ..Default::default()
+    });
+    let out = apply_ok(&backend, &op, &psi, None, method);
+
+    let rel = relative_error(&backend, &out, &psi);
+    assert!(
+        (0.75 * cutoff..=1.25 * cutoff).contains(&rel),
+        "relative error {rel} at bond {} is not near the cutoff {cutoff}",
+        out.bond_dim(0)
+    );
 }
 
 #[test]

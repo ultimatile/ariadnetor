@@ -127,6 +127,8 @@ fn test_eigh_invalid_nrow() {
 
     assert!(tensor.eigh(0).is_err());
     assert!(tensor.eigh(2).is_err());
+    // nrow>rank is rejected, not an out-of-range axis slice
+    assert!(tensor.eigh(3).is_err());
 }
 
 // --- EIG tests ---
@@ -239,4 +241,5 @@ fn test_eig_invalid_nrow() {
 
     assert!(tensor.eig(0).is_err());
     assert!(tensor.eig(2).is_err());
+    assert!(tensor.eig(3).is_err());
 }

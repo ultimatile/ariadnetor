@@ -151,12 +151,10 @@ pub enum LanczosError {
 ///   for a tolerance below working precision (e.g. `1e-10` for `f32`,
 ///   whose epsilon is `~1.2e-7`) cannot be satisfied; `converged` will
 ///   reflect the achievable precision rather than the requested one.
-/// - The 2-norm used to compute β is the straightforward
-///   `sum |x|^2 -> sqrt`. Operator outputs whose elements approach
-///   `sqrt(T::Real::MAX)` (roughly `1e19` for `f32`, `1e154` for `f64`)
-///   may overflow during squaring, producing a non-finite result that is
-///   surfaced as [`LanczosError::NonFinite`]. DMRG-scale Hermitians stay
-///   far below this in practice.
+/// - 2-norms are accumulated scale-safely: a norm overflows only when its
+///   value exceeds `T::Real::MAX`. Other arithmetic (inner products,
+///   vector updates, the residual vector) is formed element by element,
+///   so operator outputs near `T::Real::MAX` can still overflow it.
 pub fn lanczos_smallest<T, Op>(
     op: &Op,
     dim: usize,
@@ -238,8 +236,11 @@ where
         if j == 0 {
             sub_real_axpy(&mut w, alpha, &v_j);
         } else {
-            let beta_prev = betas[j - 1];
-            let v_prev = &basis[j - 1];
+            // β_{j-1} and v_{j-1} belong to the same previous step; one
+            // index names that step for both.
+            let prev = j - 1;
+            let beta_prev = betas[prev];
+            let v_prev = &basis[prev];
             sub_two_real_axpy(&mut w, alpha, &v_j, beta_prev, v_prev);
         }
 
@@ -280,7 +281,9 @@ where
             break;
         }
 
-        if j + 1 == max_iter {
+        // Past the last iteration nothing reads v_{j+1}: the Ritz
+        // reconstruction below takes only the first `m` basis vectors.
+        if is_last_iteration(j, max_iter) {
             break;
         }
 
@@ -362,4 +365,9 @@ where
         residual,
         converged,
     })
+}
+
+/// Whether `j` is the last iteration of `for j in 0..max_iter`.
+fn is_last_iteration(j: usize, max_iter: usize) -> bool {
+    j + 1 == max_iter
 }

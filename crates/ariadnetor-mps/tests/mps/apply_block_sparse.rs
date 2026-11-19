@@ -2,8 +2,8 @@
 
 use approx::assert_abs_diff_eq;
 use ariadnetor_mps::{
-    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncSvdParams,
-    TruncateParams, apply, inner,
+    self as mps, ApplyMethod, CanonicalForm, Mpo, Mps, SvdAbsorb, TensorChain, TruncErrTarget,
+    TruncSvdParams, TruncateParams, apply, inner,
 };
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::test_fixtures::legs;
@@ -537,6 +537,66 @@ fn streaming_naive_forward_cap_observably_changes_output() {
          observably different states on the thick-middle fixture, but \
          the contracted outputs matched within 1e-8"
     );
+}
+
+/// A forward rank estimate that reaches `forward_cap · chi_max` without
+/// exceeding it keeps the lossless QR forward branch. Site 0's forward matrix
+/// is 2 × 2 (`left · d = 1 · 2`, right 2), so the estimate is 2, equal to the
+/// cap `1 · chi_max`. Its singular values are `(1, ε)` (one per sector) while
+/// the exact state `|01⟩ + |10⟩` has Schmidt values `(1, 1)`: a forward
+/// truncated SVD would let the error target drop `ε` and its sector,
+/// collapsing the bond to 1, whereas the finishing pass sees `(1, 1)` and
+/// keeps both. So the capped result must equal the uncapped one and the
+/// exact state, at bond 2.
+#[test]
+fn streaming_naive_forward_rank_at_cap_stays_lossless() {
+    use std::num::NonZeroUsize;
+
+    let backend = NativeBackend::new();
+    let eps = 1e-3;
+    let mut psi = make_2site_entangled_u1_mps();
+    for (site, coord, value) in [
+        (0, [0, 0, 0], 1.0),
+        (0, [0, 1, 1], eps),
+        (1, [0, 1, 0], 1.0),
+        (1, [1, 0, 0], 1.0 / eps),
+    ] {
+        psi.site_mut(site)
+            .data_mut()
+            .block_data_mut(&BlockCoord(coord.to_vec()))
+            .unwrap()[0] = value;
+    }
+    let op = make_identity_u1_mpo(2);
+    let params = TruncateParams::from(TruncSvdParams {
+        chi_max: Some(2),
+        target_trunc_err: Some(TruncErrTarget::Absolute(1e-2)),
+    });
+
+    let uncapped = apply_ok(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::StreamingNaive { forward_cap: None },
+    );
+    let capped = apply_ok(
+        &backend,
+        &op,
+        &psi,
+        Some(&params),
+        ApplyMethod::StreamingNaive {
+            forward_cap: Some(NonZeroUsize::new(1).unwrap()),
+        },
+    );
+
+    assert_eq!(
+        capped.bond_dims(),
+        vec![2],
+        "the at-cap bond must not be truncated"
+    );
+    let v_capped = bsp_mps_contract_full(&capped);
+    assert_block_sparse_close(&v_capped, &bsp_mps_contract_full(&uncapped), 1e-12);
+    assert_block_sparse_close(&v_capped, &bsp_mps_contract_full(&psi), 1e-12);
 }
 
 // ---------------------------------------------------------------------------

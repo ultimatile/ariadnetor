@@ -584,12 +584,13 @@ fn full_contraction_identity_perm_multi_block() {
 }
 
 // ---------------------------------------------------------------------------
-// Rank mismatch contraction (output_rank formula)
+// Rank mismatch contraction (output rank)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn contraction_rank2_with_rank1() {
-    // Matrix-vector: output_rank = 2+1-2 = 1 (tensor), not 2*1-2 = 0 (scalar).
+    // Matrix-vector: one free axis survives, so the result is a rank-1
+    // tensor, not a scalar.
     let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
         out_in_legs(vec![(U1Sector(0), 2)], vec![(U1Sector(0), 3)]),
         U1Sector(0),
@@ -616,6 +617,40 @@ fn contraction_rank2_with_rank1() {
     // [[1,2,3],[4,5,6]] × [1,0,1] = [1+0+3, 4+0+6] = [4, 10]
     assert!((d[0] - 4.0).abs() < 1e-10);
     assert!((d[1] - 10.0).abs() < 1e-10);
+}
+
+#[test]
+fn outer_product_of_two_vectors() {
+    // No contracted axes: both axes stay free, so the result is the rank-2
+    // outer product.
+    let mut a = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([(vec![(U1Sector(0), 2)], Direction::Out)]),
+        U1Sector(0),
+        order(),
+    );
+    a.block_data_mut(&BlockCoord(vec![0]))
+        .unwrap()
+        .copy_from_slice(&[1.0, 2.0]);
+
+    let mut v = BlockSparseTensorData::<f64, U1Sector>::zeros(
+        legs([(vec![(U1Sector(0), 3)], Direction::In)]),
+        U1Sector(0),
+        order(),
+    );
+    v.block_data_mut(&BlockCoord(vec![0]))
+        .unwrap()
+        .copy_from_slice(&[3.0, 4.0, 5.0]);
+
+    let out =
+        contract_block_sparse_with_policy_dense(&b(), &a, &v, &[], &[], ExecPolicy::Sequential)
+            .unwrap();
+    assert_eq!(out.rank(), 2);
+    let d = out.block_data(&BlockCoord(vec![0, 0])).unwrap();
+    for (i, x) in [1.0, 2.0].into_iter().enumerate() {
+        for (j, y) in [3.0, 4.0, 5.0].into_iter().enumerate() {
+            assert_eq!(d[flat_idx(&[i, j], &[2, 3])], x * y, "out[{i},{j}]");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

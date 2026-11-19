@@ -1,6 +1,9 @@
 //! Tests for replace_slice operations.
 
+mod common;
+
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_replace_slice_column_major() {
@@ -35,4 +38,29 @@ fn test_replace_slice_cow() {
     a.replace_slice(&sub, &[0, 0]);
     assert_eq!(a.data()[0], 1.0);
     assert_eq!(b.data()[0], 0.0); // b should be unaffected
+}
+
+/// Rank-3 replace with a sub-tensor narrower than the destination on every
+/// axis and a non-zero offset: the strip walk must carry across the middle
+/// axis, and every element outside the window keeps its old value.
+#[test]
+fn test_replace_slice_rank3_matches_elementwise_reference() {
+    let shape = [3, 4, 5];
+    let sub_shape = [2, 2, 3];
+    let begin = [1, 1, 2];
+    for order in ORDERS {
+        let orig = ramp(&shape, order);
+        let sub = DenseTensorData::from_raw_parts(
+            (1..=12u32).map(|v| -f64::from(v)).collect(),
+            sub_shape.to_vec(),
+            order,
+        );
+        let mut t = orig.clone();
+        t.replace_slice(&sub, &begin);
+        for idx in multi_indices(&shape) {
+            let expected = offset_within(&idx, &begin, &sub_shape)
+                .map_or_else(|| orig.get(&idx), |r| sub.get(&r));
+            assert_eq!(t.get(&idx), expected, "{order:?} at {idx:?}");
+        }
+    }
 }

@@ -22,7 +22,7 @@ use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
     DenseTensor, Host, OpsFor, Sector,
 };
-use num_traits::{Float, Zero};
+use num_traits::Float;
 
 use crate::canonicalize::{
     canonicalize_bsp, canonicalize_dense, left_qr_step, left_qr_step_bsp, right_lq_step,
@@ -166,24 +166,17 @@ where
         }
         // R→L half-sweep. The turning site (n-1) was just projected at the end
         // of the L→R sweep against the same environments, so re-projecting it
-        // here would reproduce the identical tensor — skip it and only move its
-        // gauge left. The final projection (site 0) is the convergence probe,
-        // so its norm is the only one needed.
-        let mut center_norm = T::Real::zero();
-        for j in (0..n).rev() {
-            if j < n - 1 {
-                let p = project_dense(&envs, op, psi, j, h);
-                if j == 0 {
-                    center_norm = p.norm();
-                }
-                *phi.site_mut(j) = p;
-            }
-            if j > 0 {
-                right_lq_step(&mut phi, j, h);
-                envs.advance_right::<T>(&phi, op, psi, j)
-                    .expect("advance_right: validated by entry point");
-            }
+        // here would reproduce the identical tensor. Each step instead moves
+        // site j's gauge left and then projects site j - 1. The final
+        // projection (site 0) is the convergence probe.
+        for j in (1..n).rev() {
+            right_lq_step(&mut phi, j, h);
+            envs.advance_right::<T>(&phi, op, psi, j)
+                .expect("advance_right: validated by entry point");
+            let site = j - 1;
+            *phi.site_mut(site) = project_dense(&envs, op, psi, site, h);
         }
+        let center_norm = phi.site(0).norm();
         let overlap = center_norm * center_norm;
         if let Some(prev) = last
             && converged(prev, overlap, tol_real)
@@ -297,21 +290,14 @@ where
         }
         // See the Dense path: skip re-projecting the just-optimized turning
         // site; site 0's projection norm is the convergence probe.
-        let mut center_norm = T::Real::zero();
-        for j in (0..n).rev() {
-            if j < n - 1 {
-                let p = project_bsp(&envs, op, psi, j, h);
-                if j == 0 {
-                    center_norm = p.norm();
-                }
-                *phi.site_mut(j) = p;
-            }
-            if j > 0 {
-                right_lq_step_bsp(&mut phi, j, h);
-                envs.advance_right::<T>(&phi, op, psi, j)
-                    .expect("advance_right: validated by entry point");
-            }
+        for j in (1..n).rev() {
+            right_lq_step_bsp(&mut phi, j, h);
+            envs.advance_right::<T>(&phi, op, psi, j)
+                .expect("advance_right: validated by entry point");
+            let site = j - 1;
+            *phi.site_mut(site) = project_bsp(&envs, op, psi, site, h);
         }
+        let center_norm = phi.site(0).norm();
         let overlap = center_norm * center_norm;
         if let Some(prev) = last
             && converged(prev, overlap, tol_real)
@@ -323,4 +309,36 @@ where
 
     phi.set_canonical_form(CanonicalForm::Mixed { center: 0 });
     phi
+}
+
+#[cfg(test)]
+mod tests {
+    use super::converged;
+
+    /// The change is measured relative to `current`: a change of 100 from
+    /// 100 to 200 is 0.5 relative to `current` (inside 0.6) but 1.0
+    /// relative to `prev` (outside it), and outside 0.4 either way.
+    #[test]
+    fn converged_measures_change_relative_to_current() {
+        assert!(converged(100.0_f64, 200.0, 0.6));
+        assert!(!converged(100.0_f64, 200.0, 0.4));
+    }
+
+    /// Equal successive overlaps have zero change, so they converge however
+    /// tight the tolerance.
+    #[test]
+    fn converged_accepts_an_unchanged_overlap() {
+        assert!(converged(100.0_f64, 100.0, 1e-12));
+        assert!(converged(100.0_f64, 100.0, 0.0));
+    }
+
+    /// A zero current overlap falls back to the absolute change instead of
+    /// dividing by zero: a zero-to-zero step converges, and a step down to
+    /// zero converges exactly when its size is within `tol`.
+    #[test]
+    fn converged_falls_back_to_absolute_change_at_zero_overlap() {
+        assert!(converged(0.0_f64, 0.0, 1e-12));
+        assert!(converged(0.5_f64, 0.0, 1.0));
+        assert!(!converged(0.5_f64, 0.0, 0.25));
+    }
 }

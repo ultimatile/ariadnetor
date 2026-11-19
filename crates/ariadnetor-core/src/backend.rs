@@ -566,3 +566,6 @@ pub enum BackendError {
     #[error("Execution failed: {0}")]
     ExecutionFailed(String),
 }
+
+#[cfg(test)]
+mod tests;

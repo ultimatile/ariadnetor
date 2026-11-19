@@ -9,7 +9,8 @@ use algorithms_fixtures::dense_fixtures::{
 };
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
-use ariadnetor_core::Scalar;
+use ariadnetor_core::{MemoryOrder, Scalar};
+use ariadnetor_linalg::DenseHostOps;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;
 
@@ -33,19 +34,88 @@ fn matvec_cm<T: Scalar>(h: &DenseTensor<T>, n: usize, v: &DenseTensor<T>) -> Den
     Host::shared().dense(out, vec![n])
 }
 
+/// Square matrix with `diag` on the diagonal.
+fn diag_matrix(diag: &[f64]) -> DenseTensor<f64> {
+    Host::shared()
+        .dense(diag.to_vec(), vec![diag.len()])
+        .diag()
+        .expect("a rank-1 tensor has a diagonal matrix")
+}
+
 // ---------------------------------------------------------------------------
 // Real symmetric tests
 // ---------------------------------------------------------------------------
 
 #[test]
+fn lanczos_isolated_eigenvalue_exits_before_iteration_cap() {
+    // One eigenvalue far below a dense cluster in [0, 1): the Ritz vector's
+    // weight on the newest Lanczos vector, |z[m-1]|, decays geometrically
+    // while beta stays O(1). The loop must exit on the residual estimate
+    // `beta * |z[m-1]|` long before exhausting the Krylov space.
+    let n = 100;
+    let diag: Vec<f64> = std::iter::once(-10.0)
+        .chain((1..n).map(|i| i as f64 / n as f64))
+        .collect();
+    let h = diag_matrix(&diag);
+
+    let result = lanczos_smallest::<f64, _>(
+        &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
+        n,
+        &LanczosParams {
+            max_iter: n,
+            tol: 1e-10,
+            seed: Some(5),
+        },
+    )
+    .unwrap();
+
+    assert_abs_diff_eq!(result.eigenvalue, -10.0, epsilon = 1e-10);
+    assert!(result.converged, "expected converged = true");
+    assert!(
+        result.iters < n / 2,
+        "expected an early exit on the residual estimate, got iters = {}",
+        result.iters
+    );
+}
+
+#[test]
+fn lanczos_accepts_operator_returning_other_memory_order() {
+    // `LinearOp::apply` may return its vector in a memory order other than
+    // the basis's. The solver must normalize both the recurrence output and
+    // the final `H psi` to the basis order before combining them.
+    let n = 5;
+    let h = diag_matrix(&[-3.0, -1.0, 0.0, 2.0, 5.0]);
+    let op = |v: &DenseTensor<f64>| -> DenseTensor<f64> {
+        let other = match v.order() {
+            MemoryOrder::RowMajor => MemoryOrder::ColumnMajor,
+            MemoryOrder::ColumnMajor => MemoryOrder::RowMajor,
+        };
+        let out = matvec_cm(&h, n, v).reordered(other);
+        assert_ne!(out.order(), v.order());
+        out
+    };
+
+    let result = lanczos_smallest::<f64, _>(
+        &op,
+        n,
+        &LanczosParams {
+            max_iter: 50,
+            tol: 1e-12,
+            seed: Some(42),
+        },
+    )
+    .unwrap();
+
+    assert!(result.iters >= 2, "iters = {}", result.iters);
+    assert_abs_diff_eq!(result.eigenvalue, -3.0, epsilon = 1e-10);
+    assert!(result.converged, "expected converged = true");
+}
+
+#[test]
 fn lanczos_diagonal_returns_min_eigenvalue() {
     let n = 5;
     let diag = [-3.0_f64, -1.0, 0.0, 2.0, 5.0];
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        data[i + n * i] = diag[i];
-    }
-    let h = Host::shared().dense(data, vec![n, n]);
+    let h = diag_matrix(&diag);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -99,11 +169,7 @@ fn lanczos_random_symmetric_matches_eigh() {
 fn lanczos_near_degenerate_cluster() {
     let n = 4;
     let diag = [0.0_f64, 1e-6, 1e-6, 1.0];
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        data[i + n * i] = diag[i];
-    }
-    let h = Host::shared().dense(data, vec![n, n]);
+    let h = diag_matrix(&diag);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),
@@ -233,6 +299,46 @@ fn lanczos_nonfinite_operator_returns_error() {
 }
 
 #[test]
+fn lanczos_nonfinite_residual_with_finite_eigenvalue_returns_error() {
+    // The operator acts as `5 * v` on its first application, which fixes a
+    // finite eigenvalue, then emits NaN on the true-residual application.
+    // A non-finite residual alone must surface as `NonFinite`.
+    let calls = std::cell::Cell::new(0usize);
+    let op = |v: &DenseTensor<f64>| -> DenseTensor<f64> {
+        calls.set(calls.get() + 1);
+        let data: Vec<f64> = if calls.get() == 1 {
+            v.data_slice().iter().map(|x| 5.0 * x).collect()
+        } else {
+            v.data_slice().iter().map(|_| f64::NAN).collect()
+        };
+        Host::shared().dense(data, vec![1])
+    };
+
+    let result = lanczos_smallest::<f64, _>(
+        &op,
+        1,
+        &LanczosParams {
+            max_iter: 1,
+            tol: 1e-10,
+            seed: Some(1),
+        },
+    );
+    assert_eq!(calls.get(), 2, "one iteration plus the residual check");
+
+    match result {
+        Err(LanczosError::NonFinite {
+            eigenvalue,
+            residual,
+            ..
+        }) => {
+            assert_abs_diff_eq!(eigenvalue, 5.0, epsilon = 1e-12);
+            assert!(residual.is_nan(), "expected NaN residual, got {residual}");
+        }
+        other => panic!("expected Err(NonFinite), got {other:?}"),
+    }
+}
+
+#[test]
 fn lanczos_finite_unconverged_is_ok_not_error() {
     // A non-trivial spectrum capped at a single iteration cannot reach `tol`,
     // but the result is finite. The finiteness gate must NOT be mistaken for a
@@ -240,11 +346,7 @@ fn lanczos_finite_unconverged_is_ok_not_error() {
     // `Ok` with `converged == false`, not an error.
     let n = 5;
     let diag = [-3.0_f64, -1.0, 0.0, 2.0, 5.0];
-    let mut data = vec![0.0_f64; n * n];
-    for i in 0..n {
-        data[i + n * i] = diag[i];
-    }
-    let h = Host::shared().dense(data, vec![n, n]);
+    let h = diag_matrix(&diag);
 
     let result = lanczos_smallest::<f64, _>(
         &|v: &DenseTensor<f64>| matvec_cm(&h, n, v),

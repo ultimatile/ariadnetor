@@ -201,6 +201,22 @@ fn bsp_roundtrip_matrix() {
     }
 }
 
+#[test]
+fn bsp_roundtrip_leg_without_blocks() {
+    // A leg with no blocks admits no flux-allowed block, so the tensor
+    // stores nothing; decoding must rebuild it instead of walking the
+    // empty leg.
+    for order in ORDERS {
+        let indices = vec![
+            QNIndex::new(vec![(U1Sector(0), 2), (U1Sector(1), 1)], Direction::Out),
+            QNIndex::new(vec![], Direction::In),
+        ];
+        let original = filled_bsp(indices, U1Sector(0), order, f64_val);
+        assert!(original.storage().data().is_empty());
+        check_bsp_roundtrip(original);
+    }
+}
+
 // --- Error paths (typed, never panic) -------------------------------------
 
 #[test]
@@ -435,6 +451,27 @@ fn bsp_decode_truncated_body() {
     // must stop against the (zero) body budget before building the block table.
     let idx = one_block_z2();
     let err = decode_block_sparse::<f64, Z2Sector>(&[0], &idx, MemoryOrder::RowMajor, &[])
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        TensorCodecError::Layout(BlockLayoutError::ExtentBudgetExceeded)
+    );
+}
+
+#[test]
+fn bsp_decode_short_body_exceeds_budget() {
+    // A two-element block with one f64 of body: the body admits a single
+    // element, so enumeration stops against that budget before the
+    // numeric-body length check runs.
+    let idx = one_leg(
+        DirectionTag::Out,
+        vec![QnBlockDto {
+            sector: vec![0],
+            dim: 2,
+        }],
+    );
+    let err = decode_block_sparse::<f64, Z2Sector>(&[0], &idx, MemoryOrder::RowMajor, &[0u8; 8])
         .err()
         .unwrap();
     assert_eq!(

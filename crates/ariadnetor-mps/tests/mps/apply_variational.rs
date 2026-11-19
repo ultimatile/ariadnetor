@@ -8,7 +8,11 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};
 
 use super::helpers::{
-    apply_ok, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense, target_only,
+    apply_ok, cap, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
+    target_only,
+};
+use super::variational_helpers::{
+    REFINING_FIT_MPO, REFINING_FIT_MPS, variational_fit_at_first_converging_cycle,
 };
 
 /// 4-site bond-2 MPS with deterministic, genuinely entangled content, so that
@@ -264,4 +268,34 @@ fn variational_f32_rejects_unrepresentable_tol() {
         tol: 1e300,
     };
     let _ = mps::apply_with_method(&backend, &op, &psi, None, method);
+}
+
+type DenseMpo = mps::Mpo<DenseStorage<f64>, DenseLayout>;
+type DenseMps = Mps<DenseStorage<f64>, DenseLayout>;
+
+/// Two-site product `Wψ` of rank 2 fitted at bond 1. The zip-up seed truncates
+/// `W₀ψ₀` against the non-isometric remainder `W₁ψ₁`, so it misses the optimal
+/// bond-1 state and the sweeps raise the overlap over several cycles.
+fn refining_fit_problem() -> (DenseMpo, DenseMps, TruncateParams) {
+    let dense =
+        |&(shape, data): &(&[usize], &[f64])| cm_dense_tensor(data.to_vec(), shape.to_vec());
+    let op = mps::Mpo::from_sites(REFINING_FIT_MPO.iter().map(dense).collect());
+    let psi = Mps::from_sites(REFINING_FIT_MPS.iter().map(dense).collect());
+    let params = TruncateParams::from(cap(1));
+    (op, psi, params)
+}
+
+/// The sweep stops after the first cycle whose relative change of the center
+/// overlap `‖P_center‖²` is at or below `tol`. A run with `tol = 0` and
+/// `max_sweeps = k` yields the k-cycle iterate `φ_k`, and `‖φ_k‖²` is that
+/// cycle's center overlap (the fit ends with site 0 freshly projected and the
+/// rest right-isometric). With `tol` placed below cycle 3's change and at or
+/// above cycle 4's, a run with ample `max_sweeps` must return exactly `φ_4`. `tol`
+/// sits within a quarter of cycle 3's change, so measuring the change of
+/// `‖P_center‖` (about half as large) instead would already stop at cycle 3.
+#[test]
+fn variational_stops_at_first_cycle_within_tol() {
+    let (op, psi, params) = refining_fit_problem();
+    let (stopped, expected) = variational_fit_at_first_converging_cycle(&op, &psi, &params, 4);
+    assert_dense_close(&mps_to_dense(&stopped), &mps_to_dense(&expected), 1e-12);
 }

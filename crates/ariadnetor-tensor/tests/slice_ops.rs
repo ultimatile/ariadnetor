@@ -1,6 +1,9 @@
 //! Tests for slice operations.
 
+mod common;
+
 use ariadnetor_tensor::{DenseTensorData, MemoryOrder};
+use common::{ORDERS, multi_indices, offset_within, ramp};
 
 #[test]
 fn test_slice_column_major() {
@@ -60,4 +63,25 @@ fn test_slice_scalar_column_major_returns_clone() {
     assert_eq!(s.shape(), &[] as &[usize]);
     assert_eq!(s.data(), &[42.0]);
     assert_eq!(s.order(), MemoryOrder::ColumnMajor);
+}
+
+/// Rank-3 slice with a proper sub-range and a non-zero start on every axis:
+/// the strip walk must carry across the middle axis, which rank ≤ 2 never
+/// exercises.
+#[test]
+fn test_slice_rank3_matches_elementwise_reference() {
+    let shape = [3, 4, 5];
+    let ranges = [(1, 3), (1, 3), (2, 5)];
+    let starts = ranges.map(|(start, _)| start);
+    for order in ORDERS {
+        let t = ramp(&shape, order);
+        let s = t.slice(&ranges);
+        assert_eq!(s.shape(), &[2, 2, 3]);
+        assert_eq!(s.order(), order);
+        for src in multi_indices(&shape) {
+            if let Some(dst) = offset_within(&src, &starts, s.shape()) {
+                assert_eq!(s.get(&dst), t.get(&src), "{order:?} at {dst:?}");
+            }
+        }
+    }
 }
