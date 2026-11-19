@@ -6,6 +6,19 @@ use ariadnetor_tensor::{OpsFor, Storage, StorageFor, TensorLayout};
 
 use super::helpers::apply_ok;
 
+/// Site shapes and coefficients of the two-site fit problem the dense and
+/// block-sparse stop-cycle tests share: an MPO and an MPS whose bond-1 fit
+/// keeps improving for several sweep cycles.
+pub(crate) const REFINING_FIT_MPO: [(&[usize], &[f64]); 2] = [
+    (&[1, 2, 2, 2], &[1.0, 0.2, -0.3, 0.6, 0.4, -0.5, 0.9, 0.1]),
+    (&[2, 2, 2, 1], &[0.3, 0.8, -0.6, 0.2, 0.7, 0.1, -0.4, 1.1]),
+];
+/// The MPS of [`REFINING_FIT_MPO`]'s fit problem.
+pub(crate) const REFINING_FIT_MPS: [(&[usize], &[f64]); 2] = [
+    (&[1, 2, 2], &[1.0, 0.3, -0.4, 0.8]),
+    (&[2, 2, 1], &[0.5, -0.2, 0.7, 0.9]),
+];
+
 /// Variational fits of `op · psi` for checking where the sweep stops.
 /// Returns `(fit A, fit B)`: A runs with a `tol` that cycle `stop` is the
 /// first to fall within and a sweep cap well past `stop`; B runs with

@@ -11,7 +11,9 @@ use super::helpers::{
     apply_ok, cap, cm_dense_tensor, make_identity_mpo, make_total_n_dense_mpo, mps_to_dense,
     target_only,
 };
-use super::variational_helpers::variational_fit_at_first_converging_cycle;
+use super::variational_helpers::{
+    REFINING_FIT_MPO, REFINING_FIT_MPS, variational_fit_at_first_converging_cycle,
+};
 
 /// 4-site bond-2 MPS with deterministic, genuinely entangled content, so that
 /// applying a bond-2 MPO inflates the product bond to 4 and `chi_max = 2`
@@ -275,20 +277,10 @@ type DenseMps = Mps<DenseStorage<f64>, DenseLayout>;
 /// `W₀ψ₀` against the non-isometric remainder `W₁ψ₁`, so it misses the optimal
 /// bond-1 state and the sweeps raise the overlap over several cycles.
 fn refining_fit_problem() -> (DenseMpo, DenseMps, TruncateParams) {
-    let op = mps::Mpo::from_sites(vec![
-        cm_dense_tensor(
-            vec![1.0, 0.2, -0.3, 0.6, 0.4, -0.5, 0.9, 0.1],
-            vec![1, 2, 2, 2],
-        ),
-        cm_dense_tensor(
-            vec![0.3, 0.8, -0.6, 0.2, 0.7, 0.1, -0.4, 1.1],
-            vec![2, 2, 2, 1],
-        ),
-    ]);
-    let psi = Mps::from_sites(vec![
-        cm_dense_tensor(vec![1.0, 0.3, -0.4, 0.8], vec![1, 2, 2]),
-        cm_dense_tensor(vec![0.5, -0.2, 0.7, 0.9], vec![2, 2, 1]),
-    ]);
+    let dense =
+        |&(shape, data): &(&[usize], &[f64])| cm_dense_tensor(data.to_vec(), shape.to_vec());
+    let op = mps::Mpo::from_sites(REFINING_FIT_MPO.iter().map(dense).collect());
+    let psi = Mps::from_sites(REFINING_FIT_MPS.iter().map(dense).collect());
     let params = TruncateParams::from(cap(1));
     (op, psi, params)
 }

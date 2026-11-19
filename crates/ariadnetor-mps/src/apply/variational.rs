@@ -22,7 +22,7 @@ use ariadnetor_tensor::{
     BlockSparseLayout, BlockSparseStorage, BlockSparseTensor, DenseLayout, DenseStorage,
     DenseTensor, Host, OpsFor, Sector,
 };
-use num_traits::{Float, Zero};
+use num_traits::Float;
 
 use crate::canonicalize::{
     canonicalize_bsp, canonicalize_dense, left_qr_step, left_qr_step_bsp, right_lq_step,
@@ -168,20 +168,15 @@ where
         // of the L→R sweep against the same environments, so re-projecting it
         // here would reproduce the identical tensor. Each step instead moves
         // site j's gauge left and then projects site j - 1. The final
-        // projection (site 0) is the convergence probe, so its norm is the
-        // only one needed.
-        let mut center_norm = T::Real::zero();
+        // projection (site 0) is the convergence probe.
         for j in (1..n).rev() {
             right_lq_step(&mut phi, j, h);
             envs.advance_right::<T>(&phi, op, psi, j)
                 .expect("advance_right: validated by entry point");
             let site = j - 1;
-            let p = project_dense(&envs, op, psi, site, h);
-            if site == 0 {
-                center_norm = p.norm();
-            }
-            *phi.site_mut(site) = p;
+            *phi.site_mut(site) = project_dense(&envs, op, psi, site, h);
         }
+        let center_norm = phi.site(0).norm();
         let overlap = center_norm * center_norm;
         if let Some(prev) = last
             && converged(prev, overlap, tol_real)
@@ -295,18 +290,14 @@ where
         }
         // See the Dense path: skip re-projecting the just-optimized turning
         // site; site 0's projection norm is the convergence probe.
-        let mut center_norm = T::Real::zero();
         for j in (1..n).rev() {
             right_lq_step_bsp(&mut phi, j, h);
             envs.advance_right::<T>(&phi, op, psi, j)
                 .expect("advance_right: validated by entry point");
             let site = j - 1;
-            let p = project_bsp(&envs, op, psi, site, h);
-            if site == 0 {
-                center_norm = p.norm();
-            }
-            *phi.site_mut(site) = p;
+            *phi.site_mut(site) = project_bsp(&envs, op, psi, site, h);
         }
+        let center_norm = phi.site(0).norm();
         let overlap = center_norm * center_norm;
         if let Some(prev) = last
             && converged(prev, overlap, tol_real)

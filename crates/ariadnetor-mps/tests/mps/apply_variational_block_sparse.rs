@@ -15,7 +15,9 @@ use super::helpers::{
     make_3site_u1_mps_multipath_middle, make_4site_u1_mps, make_identity_u1_mpo,
     make_total_n_u1_mpo,
 };
-use super::variational_helpers::variational_fit_at_first_converging_cycle;
+use super::variational_helpers::{
+    REFINING_FIT_MPO, REFINING_FIT_MPS, variational_fit_at_first_converging_cycle,
+};
 
 fn variational(init: VariationalInit, max_sweeps: usize) -> ApplyMethod {
     ApplyMethod::Variational {
@@ -180,22 +182,18 @@ type U1Mps = Mps<BlockSparseStorage<f64>, BlockSparseLayout<U1Sector>>;
 /// raise the overlap over several cycles.
 fn refining_fit_problem() -> (U1Mpo, U1Mps, TruncateParams) {
     use Direction::{In, Out};
-    let op = mps::Mpo::from_sites(vec![
-        charge_zero_tensor(
-            &[1, 2, 2, 2],
-            &[Out, In, Out, In],
-            &[1.0, 0.2, -0.3, 0.6, 0.4, -0.5, 0.9, 0.1],
-        ),
-        charge_zero_tensor(
-            &[2, 2, 2, 1],
-            &[Out, In, Out, In],
-            &[0.3, 0.8, -0.6, 0.2, 0.7, 0.1, -0.4, 1.1],
-        ),
-    ]);
-    let psi = Mps::from_sites(vec![
-        charge_zero_tensor(&[1, 2, 2], &[Out, Out, In], &[1.0, 0.3, -0.4, 0.8]),
-        charge_zero_tensor(&[2, 2, 1], &[Out, Out, In], &[0.5, -0.2, 0.7, 0.9]),
-    ]);
+    let op = mps::Mpo::from_sites(
+        REFINING_FIT_MPO
+            .iter()
+            .map(|&(shape, data)| charge_zero_tensor(shape, &[Out, In, Out, In], data))
+            .collect(),
+    );
+    let psi = Mps::from_sites(
+        REFINING_FIT_MPS
+            .iter()
+            .map(|&(shape, data)| charge_zero_tensor(shape, &[Out, Out, In], data))
+            .collect(),
+    );
     let params = TruncateParams::from(cap(1));
     (op, psi, params)
 }

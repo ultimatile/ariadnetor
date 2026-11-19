@@ -13,7 +13,7 @@ fn cm<T: Clone>(data: Vec<T>, shape: Vec<usize>) -> DenseTensor<T> {
 }
 
 /// Tensor of `shape` holding `1, 2, 3, …` in row-major order, built by [`cm`].
-fn ramp(shape: Vec<usize>) -> DenseTensor<f64> {
+fn ramp_rm(shape: Vec<usize>) -> DenseTensor<f64> {
     let len: usize = shape.iter().product();
     cm((1..=len).map(|x| x as f64).collect(), shape)
 }
@@ -56,7 +56,7 @@ fn test_einsum_transpose_2d() {
 
 #[test]
 fn test_einsum_permutation_3d() {
-    let a = ramp(vec![2, 3, 4]);
+    let a = ramp_rm(vec![2, 3, 4]);
 
     let b = einsum(&[&a], "ijk->kji").unwrap();
     let a_rm = to_rm(&a);
@@ -119,7 +119,7 @@ fn test_einsum_partial_trace() {
 
 #[test]
 fn test_einsum_trace_then_transpose() {
-    let a = ramp(vec![2, 3, 2]);
+    let a = ramp_rm(vec![2, 3, 2]);
 
     let b = einsum(&[&a], "iji->j").unwrap();
 
@@ -136,7 +136,7 @@ fn test_einsum_trace_then_transpose() {
 
 #[test]
 fn test_einsum_trace_and_permute() {
-    let a = ramp(vec![2, 3, 4, 2]);
+    let a = ramp_rm(vec![2, 3, 4, 2]);
 
     let b = to_rm(&einsum(&[&a], "ijki->kj").unwrap());
     let a_rm = to_rm(&a);
@@ -175,8 +175,8 @@ fn test_einsum_two_input_matmul() {
 #[test]
 fn test_einsum_3_tensor_chain() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = ramp(vec![3, 4]);
-    let c = ramp(vec![4, 2]);
+    let b = ramp_rm(vec![3, 4]);
+    let c = ramp_rm(vec![4, 2]);
 
     let d = einsum(&[&a, &b, &c], "ij,jk,kl->il").unwrap();
 
@@ -319,7 +319,7 @@ fn test_einsum_output_reorder_matmul() {
 #[test]
 fn test_einsum_output_reorder_rectangular() {
     let a = cm(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let b = ramp(vec![3, 4]);
+    let b = ramp_rm(vec![3, 4]);
 
     let normal = to_rm(&einsum(&[&a, &b], "ij,jk->ik").unwrap());
     let swapped = to_rm(&einsum(&[&a, &b], "ij,jk->ki").unwrap());
@@ -414,9 +414,9 @@ fn test_einsum_batched_output_reorder_jbi() {
 
 #[test]
 fn test_einsum_multi_with_intermediate_batch() {
-    let t1 = ramp(vec![2, 2, 3]);
-    let t2 = ramp(vec![2, 3, 3]);
-    let t3 = ramp(vec![2, 3]);
+    let t1 = ramp_rm(vec![2, 2, 3]);
+    let t2 = ramp_rm(vec![2, 3, 3]);
+    let t3 = ramp_rm(vec![2, 3]);
 
     let result = to_rm(&einsum(&[&t1, &t2, &t3], "aij,ajk,ak->ai").unwrap());
     let t1_rm = to_rm(&t1);
@@ -457,8 +457,8 @@ fn test_einsum_batched_scalar_reduction() {
 
 #[test]
 fn test_einsum_batched_multi_contracted_different_order() {
-    let a = ramp(vec![2, 2, 3, 2]);
-    let b_tensor = ramp(vec![2, 2, 3, 2]);
+    let a = ramp_rm(vec![2, 2, 3, 2]);
+    let b_tensor = ramp_rm(vec![2, 2, 3, 2]);
 
     let result = to_rm(&einsum(&[&a, &b_tensor], "bkli,bjlk->bij").unwrap());
     let a_rm = to_rm(&a);
@@ -543,8 +543,8 @@ fn multi_tensor_honors_requested_output_order() {
 #[test]
 fn test_einsum_batched_two_batch_labels_asymmetric() {
     // a=2, b=2, i(m)=2, k=3, j(n)=4
-    let lhs = ramp(vec![2, 2, 2, 3]); // abik
-    let rhs = ramp(vec![2, 2, 3, 4]); // abkj
+    let lhs = ramp_rm(vec![2, 2, 2, 3]); // abik
+    let rhs = ramp_rm(vec![2, 2, 3, 4]); // abkj
 
     let result = to_rm(&einsum(&[&lhs, &rhs], "abik,abkj->baji").unwrap());
     let lhs_rm = to_rm(&lhs);
@@ -576,8 +576,8 @@ fn test_einsum_batched_two_batch_labels_asymmetric() {
 /// `contract_dense` extent check.
 #[test]
 fn test_einsum_batched_mismatched_contracted_extent_errors() {
-    let lhs = ramp(vec![2, 2, 3]); // bik, k=3
-    let rhs = ramp(vec![2, 4, 2]); // bkj, k=4
+    let lhs = ramp_rm(vec![2, 2, 3]); // bik, k=3
+    let rhs = ramp_rm(vec![2, 4, 2]); // bkj, k=4
 
     let result = einsum(&[&lhs, &rhs], "bik,bkj->bij");
     assert!(
@@ -592,8 +592,8 @@ fn test_einsum_batched_mismatched_contracted_extent_errors() {
 #[test]
 fn test_einsum_batched_rank_exceeds_arity_errors() {
     // "bik" names 3 indices but the operand is rank 4.
-    let lhs = ramp(vec![2, 2, 3, 5]);
-    let rhs = ramp(vec![2, 3, 2]); // bkj
+    let lhs = ramp_rm(vec![2, 2, 3, 5]);
+    let rhs = ramp_rm(vec![2, 3, 2]); // bkj
 
     let result = einsum(&[&lhs, &rhs], "bik,bkj->bij");
     assert!(
@@ -625,7 +625,7 @@ fn test_einsum_batched_zero_contracted_extent_is_zeros() {
 fn test_einsum_batched_zero_free_extent_is_empty() {
     // bik with i = 0 against a populated bkj.
     let out = einsum(
-        &[&ramp(vec![2, 0, 3]), &ramp(vec![2, 3, 4])],
+        &[&ramp_rm(vec![2, 0, 3]), &ramp_rm(vec![2, 3, 4])],
         "bik,bkj->bij",
     )
     .unwrap();
@@ -634,7 +634,7 @@ fn test_einsum_batched_zero_free_extent_is_empty() {
 
     // A populated bik against bkj with j = 0.
     let out = einsum(
-        &[&ramp(vec![2, 2, 3]), &ramp(vec![2, 3, 0])],
+        &[&ramp_rm(vec![2, 2, 3]), &ramp_rm(vec![2, 3, 0])],
         "bik,bkj->bij",
     )
     .unwrap();
@@ -663,7 +663,7 @@ fn test_einsum_batched_unit_free_axes_are_kept() {
 #[test]
 fn test_einsum_batched_rank_below_arity_errors() {
     let lhs = cm(vec![1.0_f64, 2.0, 3.0, 4.0], vec![2, 2]); // rank 2, "bik" has 3 indices
-    let rhs = ramp(vec![2, 3, 2]); // bkj
+    let rhs = ramp_rm(vec![2, 3, 2]); // bkj
 
     let result = einsum(&[&lhs, &rhs], "bik,bkj->bij");
     assert!(
