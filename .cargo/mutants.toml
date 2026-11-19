@@ -55,8 +55,8 @@ exclude_re = [
   # stops matching once an edit shifts the lines above it, and the pass
   # does not report the dead entry: the mutant just comes back as missed.
   # When a pattern naming the mutation and its function would also match
-  # a killable mutant in another file, prefix the file name: unlike a
-  # position, a file name survives edits. When it would also match a
+  # a killable mutant in another file, prefix the file's path: unlike a
+  # position, a path survives edits. When it would also match a
   # killable mutant in the same function, move the expression the excluded
   # mutant changes into a helper of its own (as running_min / running_max)
   # and name the helper instead.

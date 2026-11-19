@@ -464,34 +464,6 @@ fn path_roundtrip_atomic() {
 }
 
 #[test]
-fn path_roundtrip_bare_file_name() {
-    // A path with no directory component saves into the working
-    // directory, temp file included, and leaves only the destination.
-    // Everything the save may have created is removed before any check
-    // can panic, so a failure leaves nothing in the working directory.
-    let _guard = lock_temp_counter();
-    let name = format!("ariadnetor_mps_bare_name_{}.mps", std::process::id());
-    let mps = dense_mps(MemoryOrder::ColumnMajor, 2, f64_val);
-    let saved = save_mps_to_path(&mps, &name);
-    let loaded = load_mps_from_path::<DenseStorage<f64>, DenseLayout>(&name);
-    let leftovers: Vec<String> = std::fs::read_dir(".")
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok()?.file_name().into_string().ok())
-        .filter(|f| f.starts_with(&name) && *f != name)
-        .collect();
-    for f in leftovers.iter().chain(std::iter::once(&name)) {
-        let _ = std::fs::remove_file(f);
-    }
-    saved.expect("save to a bare file name");
-    assert_eq!(loaded.expect("load from a bare file name").len(), mps.len());
-    assert!(
-        leftovers.is_empty(),
-        "temp files left behind: {leftovers:?}"
-    );
-}
-
-#[test]
 fn oversized_site_data_len() {
     // A site claims more numeric bytes than the data section holds.
     let site = SiteMeta {

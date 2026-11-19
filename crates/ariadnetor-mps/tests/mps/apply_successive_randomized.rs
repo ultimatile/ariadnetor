@@ -105,9 +105,11 @@ fn src_adaptive_stops_where_flat_spectrum_error_meets_cutoff() {
     // sqrt((m - p + 1) / m), so the stopping rule
     // `err <= cutoff * ||Y||_F / sqrt(p)` must stop where the realized
     // error is close to the cutoff: neither while it is still far above
-    // the cutoff, nor after sketching on far past it. The tighter
-    // acceptance band than the suite's 100x factor is what pins the
-    // rule's normalization.
+    // the cutoff, nor after sketching on far past it. The band is narrow
+    // on purpose: a band of 0.25 to 1.5 times the cutoff already accepts
+    // a rule with the sign of its norm term flipped, so the suite's 100x
+    // factor would too. The seed is fixed, so the outcome is
+    // deterministic.
     const M: usize = 32;
     let eye = DenseTensorData::<f64>::eye_in_order(M, MemoryOrder::ColumnMajor)
         .data()

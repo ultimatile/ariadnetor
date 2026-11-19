@@ -1,5 +1,5 @@
 use crate::error::LinalgError;
-use crate::test_util::{RecordingBackend, filled};
+use crate::test_util::{RecordingBackend, ramp};
 use crate::{contract, tensordot};
 use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
@@ -16,8 +16,8 @@ fn assert_tensordot_matches_contract(
     natural_notation: &str,
 ) {
     let be = NativeBackend::new();
-    let a = filled(lhs_shape);
-    let b = filled(rhs_shape);
+    let a = ramp(lhs_shape);
+    let b = ramp(rhs_shape);
     let td = tensordot(&be, &a, &b, axes_lhs, axes_rhs).unwrap();
     let ct = contract(&be, &a, &b, natural_notation).unwrap();
     assert_eq!(
@@ -84,7 +84,7 @@ fn dense_tensordot_full_contraction_matches_contract() {
     // No free legs → rank-0 scalar result.
     assert_tensordot_matches_contract(vec![2, 3], vec![2, 3], &[0, 1], &[0, 1], "ab,ab->");
     let be = NativeBackend::new();
-    let a = filled(vec![2, 3]);
+    let a = ramp(vec![2, 3]);
     let td = tensordot(&be, &a, &a, &[0, 1], &[0, 1]).unwrap();
     assert_eq!(td.shape(), &[] as &[usize]);
 }
@@ -96,8 +96,8 @@ fn dense_tensordot_has_no_leg_count_cap() {
     // (all dims 1, so one element) contracts cleanly. Output rank is 26 free
     // left legs + 1 free right leg = 27.
     let be = NativeBackend::new();
-    let a = filled(vec![1; 27]);
-    let b = filled(vec![1, 3]);
+    let a = ramp(vec![1; 27]);
+    let b = ramp(vec![1, 3]);
     let td = tensordot(&be, &a, &b, &[26], &[0]).unwrap();
     assert_eq!(td.shape().len(), 27);
     assert_eq!(td.shape()[26], 3);

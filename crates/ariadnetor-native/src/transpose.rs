@@ -474,7 +474,7 @@ fn parallel_chunk_len(n: usize, pool_threads: impl FnOnce() -> usize, total: usi
     const TASKS_PER_THREAD: usize = 4;
 
     let target_threads = if n == 0 { pool_threads().max(1) } else { n };
-    let denom = target_threads.saturating_mul(TASKS_PER_THREAD).max(1);
+    let denom = target_threads.saturating_mul(TASKS_PER_THREAD);
     total.div_ceil(denom).max(MIN_CHUNK).min(total)
 }
 

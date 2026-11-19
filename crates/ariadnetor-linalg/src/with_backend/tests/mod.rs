@@ -19,7 +19,7 @@ use ariadnetor_native::NativeBackend;
 use ariadnetor_tensor::DenseTensor;
 use ariadnetor_tensor::{ComputeBackendTensorExt, Host};
 
-use crate::test_util::{PolicyQuery, RecordingBackend, filled};
+use crate::test_util::{PolicyQuery, RecordingBackend, ramp};
 use crate::*;
 
 /// Total number of kernel descriptors a recording backend has seen across all
@@ -414,7 +414,7 @@ fn sym4_rank3() -> DenseTensor<f64> {
 #[test]
 fn svd_queries_policy_with_matrix_dims() {
     let rec = RecordingBackend::new();
-    let _ = svd(&rec, &filled(vec![2, 3, 4]), 2).unwrap();
+    let _ = svd(&rec, &ramp(vec![2, 3, 4]), 2).unwrap();
     assert_eq!(
         rec.queries_recorded(),
         vec![PolicyQuery::Svd { m: 6, n: 4 }]
@@ -428,7 +428,7 @@ fn trunc_svd_queries_policy_with_matrix_dims() {
         chi_max: Some(1),
         target_trunc_err: None,
     };
-    let _ = trunc_svd(&rec, &filled(vec![2, 3, 4]), 2, &params).unwrap();
+    let _ = trunc_svd(&rec, &ramp(vec![2, 3, 4]), 2, &params).unwrap();
     assert_eq!(
         rec.queries_recorded(),
         vec![PolicyQuery::Svd { m: 6, n: 4 }]
@@ -438,14 +438,14 @@ fn trunc_svd_queries_policy_with_matrix_dims() {
 #[test]
 fn qr_queries_policy_with_matrix_dims() {
     let rec = RecordingBackend::new();
-    let _ = qr(&rec, &filled(vec![2, 3, 4]), 2).unwrap();
+    let _ = qr(&rec, &ramp(vec![2, 3, 4]), 2).unwrap();
     assert_eq!(rec.queries_recorded(), vec![PolicyQuery::Qr { m: 6, n: 4 }]);
 }
 
 #[test]
 fn lq_queries_policy_with_matrix_dims() {
     let rec = RecordingBackend::new();
-    let _ = lq(&rec, &filled(vec![2, 3, 4]), 2).unwrap();
+    let _ = lq(&rec, &ramp(vec![2, 3, 4]), 2).unwrap();
     assert_eq!(rec.queries_recorded(), vec![PolicyQuery::Lq { m: 6, n: 4 }]);
 }
 
@@ -466,7 +466,7 @@ fn eig_queries_policy_with_matrix_dim() {
 #[test]
 fn solve_queries_policy_with_system_dims() {
     let rec = RecordingBackend::new();
-    let _ = solve_with_backend(&rec, &sym4_rank3(), &filled(vec![4, 3]), 2).unwrap();
+    let _ = solve_with_backend(&rec, &sym4_rank3(), &ramp(vec![4, 3]), 2).unwrap();
     assert_eq!(
         rec.queries_recorded(),
         vec![PolicyQuery::Solve { n: 4, nrhs: 3 }]

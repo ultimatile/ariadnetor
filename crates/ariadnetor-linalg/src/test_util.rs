@@ -32,7 +32,7 @@ pub(crate) fn assert_invalid_argument<T>(result: Result<T, LinalgError>, substr:
 /// Dense tensor of the given shape with distinct, non-degenerate entries
 /// (`1, 2, 3, …` over the flat buffer), so a contraction result depends on
 /// every element.
-pub(crate) fn filled(shape: Vec<usize>) -> DenseTensor<f64> {
+pub(crate) fn ramp(shape: Vec<usize>) -> DenseTensor<f64> {
     let mut t = DenseTensor::<f64>::zeros(shape);
     for (i, v) in t.data_slice_mut().iter_mut().enumerate() {
         *v = (i + 1) as f64;
