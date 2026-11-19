@@ -153,7 +153,7 @@ where
             MemoryOrder::RowMajor => (0..rank - 1).collect(),
             MemoryOrder::ColumnMajor => (1..rank).rev().collect(),
         };
-        let num_strips = src_total / strip_len.max(1);
+        let num_strips = src_total / strip_len;
         let mut src_offset = 0usize;
         let mut dst_flat: usize = (0..rank).map(|d| padding[d].0 * dst_strides[d]).sum();
         let mut outer_coords = vec![0usize; rank];

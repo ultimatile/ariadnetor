@@ -555,22 +555,17 @@ fn streaming_naive_forward_rank_at_cap_stays_lossless() {
     let backend = NativeBackend::new();
     let eps = 1e-3;
     let mut psi = make_2site_entangled_u1_mps();
-    psi.site_mut(0)
-        .data_mut()
-        .block_data_mut(&BlockCoord(vec![0, 0, 0]))
-        .unwrap()[0] = 1.0;
-    psi.site_mut(0)
-        .data_mut()
-        .block_data_mut(&BlockCoord(vec![0, 1, 1]))
-        .unwrap()[0] = eps;
-    psi.site_mut(1)
-        .data_mut()
-        .block_data_mut(&BlockCoord(vec![0, 1, 0]))
-        .unwrap()[0] = 1.0;
-    psi.site_mut(1)
-        .data_mut()
-        .block_data_mut(&BlockCoord(vec![1, 0, 0]))
-        .unwrap()[0] = 1.0 / eps;
+    for (site, coord, value) in [
+        (0, [0, 0, 0], 1.0),
+        (0, [0, 1, 1], eps),
+        (1, [0, 1, 0], 1.0),
+        (1, [1, 0, 0], 1.0 / eps),
+    ] {
+        psi.site_mut(site)
+            .data_mut()
+            .block_data_mut(&BlockCoord(coord.to_vec()))
+            .unwrap()[0] = value;
+    }
     let op = make_identity_u1_mpo(2);
     let params = TruncateParams::from(TruncSvdParams {
         chi_max: Some(2),

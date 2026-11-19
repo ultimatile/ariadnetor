@@ -445,7 +445,7 @@ fn naive_parallel<T: Scalar>(
     n: usize,
     total: usize,
 ) {
-    let chunk = parallel_chunk_len(n, rayon::current_num_threads(), total);
+    let chunk = parallel_chunk_len(n, rayon::current_num_threads, total);
 
     output
         .par_chunks_mut(chunk)
@@ -464,14 +464,16 @@ fn naive_parallel<T: Scalar>(
 /// Output slots per parallel task in [`naive_parallel`]: about
 /// `TASKS_PER_THREAD` tasks per thread, with at least `MIN_CHUNK` slots
 /// per task, capped at `total` (so an output smaller than `MIN_CHUNK` is
-/// one task). The thread count is the policy's `n`, or `pool_threads`
-/// (at least 1) when `n` is 0 (no explicit count).
+/// one task). The thread count is the policy's `n`, or `pool_threads()`
+/// (at least 1) when `n` is 0 (no explicit count); `pool_threads` is called
+/// only then. `total` must be positive: an empty output yields 0, which
+/// `par_chunks_mut` rejects.
 #[cfg(not(feature = "hptt"))]
-fn parallel_chunk_len(n: usize, pool_threads: usize, total: usize) -> usize {
+fn parallel_chunk_len(n: usize, pool_threads: impl FnOnce() -> usize, total: usize) -> usize {
     const MIN_CHUNK: usize = 4096;
     const TASKS_PER_THREAD: usize = 4;
 
-    let target_threads = if n == 0 { pool_threads.max(1) } else { n };
+    let target_threads = if n == 0 { pool_threads().max(1) } else { n };
     let denom = target_threads.saturating_mul(TASKS_PER_THREAD).max(1);
     total.div_ceil(denom).max(MIN_CHUNK).min(total)
 }

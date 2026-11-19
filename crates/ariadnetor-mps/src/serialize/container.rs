@@ -253,13 +253,13 @@ where
 /// Temp-name retry tests. They live beside the private counter because
 /// provoking a collision means planting the names the next saves will try.
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use std::fs;
     use std::io;
     use std::ops::Range;
     use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
     use std::sync::atomic::Ordering;
+    use std::sync::{Mutex, MutexGuard};
 
     use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensorData, MemoryOrder, Tensor};
 
@@ -268,10 +268,14 @@ mod tests {
     };
     use crate::{Mps, TensorChain};
 
-    /// Held by every test here, so none consumes counter values another
-    /// has planted names for. Saves elsewhere in the crate do not take it;
-    /// each consumes one value, which the planted ranges leave room for.
+    /// Held by every unit test that saves to a path, so no save consumes
+    /// counter values a retry test has planted names for.
     static COUNTER_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Take [`COUNTER_LOCK`] for the rest of the calling test.
+    pub(in crate::serialize) fn lock_temp_counter() -> MutexGuard<'static, ()> {
+        COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     const FILE_NAME: &str = "state.mps";
 
@@ -303,7 +307,7 @@ mod tests {
 
     #[test]
     fn save_to_path_retries_past_taken_temp_names() {
-        let _guard = COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = lock_temp_counter();
         let dir = scratch_dir("temp_name_collision");
         let next = TEMP_COUNTER.load(Ordering::Relaxed);
         plant_temp_names(&dir, next..next + 4);
@@ -319,7 +323,7 @@ mod tests {
 
     #[test]
     fn save_to_path_gives_up_after_bounded_temp_name_collisions() {
-        let _guard = COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = lock_temp_counter();
         let dir = scratch_dir("temp_name_exhaustion");
         let next = TEMP_COUNTER.load(Ordering::Relaxed);
         plant_temp_names(&dir, next..next + u64::from(MAX_TEMP_ATTEMPTS) + 32);
@@ -340,7 +344,7 @@ mod tests {
 
     #[test]
     fn save_to_path_does_not_retry_other_open_errors() {
-        let _guard = COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = lock_temp_counter();
         let dir = scratch_dir("temp_name_missing_dir");
         let path = dir.join("missing").join(FILE_NAME);
 
@@ -354,11 +358,9 @@ mod tests {
             "got {err:?}"
         );
         // The retry budget is for taken names only; a missing directory
-        // fails on the first attempt.
-        assert!(
-            consumed < u64::from(MAX_TEMP_ATTEMPTS),
-            "{consumed} temp names tried for a non-collision error"
-        );
+        // fails on the first attempt. Every path save in this binary holds
+        // the counter lock, so no other save advances the counter meanwhile.
+        assert_eq!(consumed, 1, "temp names tried for a non-collision error");
         fs::remove_dir_all(&dir).expect("remove scratch dir");
     }
 }

@@ -278,6 +278,12 @@ where
             break;
         }
 
+        // Past the last iteration nothing reads v_{j+1}: the Ritz
+        // reconstruction below takes only the first `m` basis vectors.
+        if is_last_iteration(j, max_iter) {
+            break;
+        }
+
         if beta <= beta_floor {
             // β has collapsed to the bottom of the FP range; we cannot safely
             // form v_{j+1} = w / β. The Krylov subspace is effectively
@@ -289,9 +295,7 @@ where
         // operator-output buffer straight to the basis. `scale` mutates w's
         // uniquely-owned buffer, so reusing w avoids a fresh length-`dim`
         // allocation per iteration. The `beta_floor` guard above keeps
-        // `1 / beta` finite so the reciprocal does not overflow. On the
-        // final iteration the pushed vector goes unread: the Ritz
-        // reconstruction below takes only the first `m` basis vectors.
+        // `1 / beta` finite so the reciprocal does not overflow.
         let inv = T::Real::one() / beta;
         w.scale(inv);
         betas.push(beta);
@@ -358,4 +362,9 @@ where
         residual,
         converged,
     })
+}
+
+/// Whether `j` is the last iteration of `for j in 0..max_iter`.
+fn is_last_iteration(j: usize, max_iter: usize) -> bool {
+    j + 1 == max_iter
 }

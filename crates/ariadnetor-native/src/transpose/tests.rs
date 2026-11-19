@@ -77,9 +77,9 @@ fn exec_for_follows_the_shared_pool() {
 #[test]
 fn naive_chunk_len_targets_four_tasks_per_thread() {
     let total = 1 << 20;
-    assert_eq!(parallel_chunk_len(2, 8, total), total / 8);
-    assert_eq!(parallel_chunk_len(0, 8, total), total / 32);
-    assert_eq!(parallel_chunk_len(0, 0, total), total / 4);
-    assert_eq!(parallel_chunk_len(64, 8, total), 4096);
-    assert_eq!(parallel_chunk_len(2, 8, 100), 100);
+    assert_eq!(parallel_chunk_len(2, || 8, total), total / 8);
+    assert_eq!(parallel_chunk_len(0, || 8, total), total / 32);
+    assert_eq!(parallel_chunk_len(0, || 0, total), total / 4);
+    assert_eq!(parallel_chunk_len(64, || 8, total), 4096);
+    assert_eq!(parallel_chunk_len(2, || 8, 100), 100);
 }

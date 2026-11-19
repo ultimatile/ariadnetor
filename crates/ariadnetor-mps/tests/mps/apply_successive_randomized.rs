@@ -5,9 +5,10 @@
 //!   with probability one, so agreement with lossless streaming naive is
 //!   checked at deterministic tolerances;
 //! - in adaptive mode the cutoff is a per-site stopping criterion, so the
-//!   realized relative error is only checked against `100 * cutoff` — the
-//!   same acceptance factor the reference implementation applies to its own
-//!   results.
+//!   realized relative error is checked against `100 * cutoff` — the same
+//!   acceptance factor the reference implementation applies to its own
+//!   results — except on a fixture whose error at every bond is known in
+//!   closed form, where a tighter band pins the stopping rule itself.
 
 use ariadnetor_core::{Complex, Scalar};
 use ariadnetor_mps::{

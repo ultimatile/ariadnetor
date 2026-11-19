@@ -65,8 +65,7 @@ exclude_re = [
   # alt_host backend in ariadnetor-tensor's capability.rs is the substrate
   # of the pluggability-litmus build. It sits in a production file, so a
   # glob cannot drop it without the rest of that file, and outside that
-  # feature it is not compiled, so
-  # its mutants would trivially pass here.
+  # feature it is not compiled, so its mutants would trivially pass here.
   "capability.rs:.*alt_host::",
   # Equivalent mutants: real types return 0.0 for im(), same as Default::default()
   "Scalar for f(32|64)>::im .* Default::default",
@@ -105,4 +104,10 @@ exclude_re = [
   "replace > with >= in running_max$",
   # norm Mixed arm: optimization shortcut; fallback computes same result via full inner product
   "inner.rs.*delete match arm.*Mixed.*in norm",
+  # lanczos_smallest's last-iteration break only skips forming a basis
+  # vector the Ritz reconstruction never reads, so never breaking there
+  # leaves every result unchanged: `with false`, and `j * 1 == max_iter`,
+  # which never holds for `j` in `0..max_iter`.
+  "replace is_last_iteration -> bool with false",
+  "replace \\+ with \\* in is_last_iteration$",
 ]

@@ -93,8 +93,10 @@ fn suffix_singleton_with_axes_len_one_is_true() {
 fn lhs_trans_flag_reads_contracted_prefix_without_permuting() {
     // Contracting axis 0 of a rank-2 lhs: (k, m) is read as (m, k)^T.
     assert!(compute_lhs_trans_flag(false, &[0], &[1], 2));
-    // An lhs already in (m, k) layout needs no flag.
-    assert!(!compute_lhs_trans_flag(true, &[0], &[1], 2));
+    // A fully contracted rank-1 lhs is already in GEMM layout (its free
+    // ++ contracted axes are the identity), so it needs no flag although
+    // its axes form the prefix / suffix split.
+    assert!(!compute_lhs_trans_flag(true, &[0], &[], 1));
     // Free axes out of order: the flag cannot express the permutation.
     assert!(!compute_lhs_trans_flag(false, &[0], &[2, 1], 3));
 }
@@ -102,8 +104,10 @@ fn lhs_trans_flag_reads_contracted_prefix_without_permuting() {
 fn rhs_trans_flag_reads_contracted_suffix_without_permuting() {
     // Contracting axis 1 of a rank-2 rhs: (n, k) is read as (k, n)^T.
     assert!(compute_rhs_trans_flag(false, &[1], &[0], 2));
-    // An rhs already in (k, n) layout needs no flag.
-    assert!(!compute_rhs_trans_flag(true, &[1], &[0], 2));
+    // A fully contracted rank-1 rhs is already in GEMM layout (its
+    // contracted ++ free axes are the identity), so it needs no flag
+    // although its axes form the prefix / suffix split.
+    assert!(!compute_rhs_trans_flag(true, &[0], &[], 1));
     // Contracted axes out of order: the flag cannot express the permutation.
     assert!(!compute_rhs_trans_flag(false, &[2, 1], &[0], 3));
 }
