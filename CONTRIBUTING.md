@@ -110,8 +110,9 @@ of every package that has mutants, and refuses any argument.
 backend that the shipped pass (arpack off by default) never builds — which
 is why its mutants trivially pass the shipped run; the pass itself needs
 the system ARPACK library at build time. It scopes mutation with `--file`
-to just that feature-gated region, so it audits what the shipped run cannot
-reach rather than re-mutating already-covered code, and uses
+to the two files that hold that feature-gated region, so it audits what the
+shipped run cannot reach rather than re-mutating the rest of the crate, and
+uses
 `--test-workspace false` to scope testing to the only crate whose tests can
 kill the mutants. It writes to its own `target/mutants-arpack` directory so
 its results coexist with the shipped pass's; triage its `missed.txt`

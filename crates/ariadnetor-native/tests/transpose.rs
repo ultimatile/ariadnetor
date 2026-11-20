@@ -317,9 +317,9 @@ const USAGE_POLICIES: [ExecPolicy; 3] = [
     ExecPolicy::Parallel(2),
 ];
 
-/// Square matrices of any dimension, transposed by `[1, 0]`: the shape
-/// `ariadnetor-linalg` passes for the conjugate transpose of an eigenvector
-/// matrix. A few rectangular ones as well.
+/// Square matrices from 1 to 512 on a side, transposed by `[1, 0]`: the
+/// shape `ariadnetor-linalg` passes for the conjugate transpose of an
+/// eigenvector matrix. A few rectangular ones as well.
 fn check_matrix_transposes<T: Sample>() {
     for n in [1, 2, 3, 7, 16, 31, 32, 33, 64, 100, 128, 255, 256, 257, 512] {
         check_case::<T>(&[n, n], &[1, 0], &USAGE_POLICIES);
@@ -356,8 +356,9 @@ fn permutations(rank: usize) -> Vec<Vec<usize>> {
     out
 }
 
-/// Every permutation of ranks 1 to 4, on extents that differ and include a
-/// singleton axis, and on equal extents.
+/// Every permutation of ranks 1 to 4 on the prefixes of `[2, 3, 1, 5]`, whose
+/// extents differ and from rank 3 on include a singleton axis, and every
+/// permutation of the equal extents `[4, 4, 4, 4]`.
 fn check_every_permutation<T: Sample>() {
     let extents = [2usize, 3, 1, 5];
     for (rank, count) in [(1, 1), (2, 2), (3, 6), (4, 24)] {

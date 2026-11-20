@@ -32,8 +32,8 @@ cargo add ariadnetor-algorithms
 
 ### Optional features
 
-It is off by default, so a plain `cargo add` builds pure-Rust with no C/C++
-or system-library dependency.
+The `arpack` feature is off by default, so a plain `cargo add` builds
+pure-Rust with no C/C++ or system-library dependency.
 
 - **`arpack`** (`ariadnetor-algorithms`) — adds the [ARPACK-NG][arpack]
   eigensolver backend via the [arpack-rs][arpack-rs] bindings. Requires a

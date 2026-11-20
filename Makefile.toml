@@ -11,7 +11,8 @@
 # CONTRIBUTING.md rather than registered here; composite QA loops with a
 # canonical form (external-types, public-api) and the mutation passes
 # (mutants, mutants-arpack) earn a task: their scratch redirect must not
-# drift, and the scoped ARPACK pass carries non-obvious flags besides. mutants-sharded earns one as the entry point to a script.
+# drift, and the scoped ARPACK pass carries non-obvious flags besides.
+# mutants-sharded earns one as the entry point to a script.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
@@ -361,7 +362,7 @@ args = ["${@}"]
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
 # This scoped pass takes no `${@}`, unlike `mutants`: cargo-mutants
-# treats a repeated `--file` / `--re` as an addition, so forwarding here
+# treats a repeated `--file` as an addition, so forwarding here
 # would turn an attempt to narrow the pass into a silent widening.
 [tasks.mutants-arpack]
 description = "Mutation pass over the feature-gated ARPACK backend (cargo mutants --features arpack); requires the system ARPACK library"

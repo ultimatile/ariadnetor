@@ -1,7 +1,9 @@
 //! Hardware-aware parallelism threshold tables for `NativeBackend`.
 //!
 //! A `ThresholdTable` stores the minimum problem-size key at which each
-//! linear-algebra op is worth running in parallel on this machine. The
+//! linear-algebra op is worth running in parallel on this machine; for
+//! `transpose`, the key from which strided-perm may pick a parallel width
+//! (see `ThresholdTable::laptop`). The
 //! sentinel `usize::MAX` means "no finite parallel threshold" — either
 //! the op is unmeasured on this profile, or calibration showed no
 //! regime where parallel beats sequential (e.g. `ThresholdTable::workstation().svd`).
@@ -46,13 +48,15 @@ pub struct ThresholdTable {
 impl ThresholdTable {
     /// Thresholds calibrated for laptop-class CPUs (Apple M2 8-core).
     ///
-    /// Values come from `crates/ariadnetor-linalg/benches/sweep_{decomp,
-    /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
+    /// Every value but `transpose` comes from
+    /// `crates/ariadnetor-linalg/benches/sweep_{decomp,decomp_rect,gemm,solve}_par.rs`
+    /// run in a single session.
     ///
     /// `transpose` permits parallelism from 65_536 total elements.
     /// strided-perm picks its own width and keeps a copy on one thread until
-    /// it is large enough to repay a fan-out, which under strided-perm 0.15's
-    /// cost model takes at least 152_632 elements on every host class. This
+    /// it is large enough to repay a fan-out, which under the cost model of
+    /// strided-perm 0.15 and threadteam 0.6 takes at least 152_632 elements on
+    /// every host class. This
     /// value only has to sit below that point; below it a transpose skips
     /// minting a parallel token.
     pub fn laptop() -> Self {
@@ -70,7 +74,8 @@ impl ThresholdTable {
 
     /// Thresholds calibrated for workstation-class CPUs (Xeon NUMA, 112 cores).
     ///
-    /// Calibrated with the same five sweeps listed for `laptop()`. Most
+    /// Every value but `transpose` is calibrated with the same four sweeps
+    /// listed for `laptop()`. Most
     /// ops carry the `usize::MAX` sentinel: at workstation scale parallel
     /// sync cost is high enough that `svd`/`qr`/`lq`/`eigh`/`eig`/`solve`
     /// never beat sequential at any `n ≤ 1024` tested. Only large GEMMs

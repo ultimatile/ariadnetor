@@ -2,8 +2,9 @@
 //! `ExecPolicy::Sequential` and `ExecPolicy::Parallel(0)`.
 //!
 //! Goal: find the size at which parallel transpose starts to beat
-//! sequential. The crossover is the threshold to use for per-call
-//! `ExecPolicy` dispatch in `ariadnetor-native`.
+//! sequential. strided-perm picks its own width, so
+//! `ThresholdTable::transpose` in `ariadnetor-native` only has to sit at or
+//! below the smallest such size.
 //!
 //! Each measurement uses `expert::permute` with a caller-provided
 //! `ExecPolicy`, except the conjugating sweeps, which call
@@ -217,7 +218,7 @@ fn main() {
 
     eprintln!(
         "\n`key(elems)` is the value ThresholdTable::transpose compares against.\n\
-         ratio < 1: parallel wins (set threshold ≤ key(elems))\n\
-         ratio > 1: sequential wins (threshold above key(elems))"
+         ratio < 1: parallel wins (keep the threshold ≤ the smallest such key(elems))\n\
+         ratio ≥ 1: no parallel win at this size"
     );
 }
