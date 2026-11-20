@@ -175,8 +175,8 @@ fn sentinel_thresholds_never_dispatch_parallel() {
 
 // ---- Profile-level sentinel propagation ------------------------------------
 //
-// `transpose` permits parallelism from 65_536 (laptop) and 262_144
-// (workstation) elements in every build.
+// `transpose` permits parallelism from 65_536 (laptop) and 131_072
+// (workstation) elements.
 //
 // Other ops are calibrated and dispatch Parallel above their
 // thresholds; the workstation profile still has several sentinels.
@@ -235,7 +235,7 @@ fn workstation_profile_gemm_dispatches_parallel_above_threshold() {
 #[test]
 fn workstation_profile_transpose_threshold() {
     let b = NativeBackend::with_perf(PerformanceManager::new(ThresholdTable::workstation()));
-    // 262_144 (= 512²): 256² stays Sequential, 512² flips Parallel.
-    assert_eq!(b.par_for_transpose(&[256, 256]), ExecPolicy::Sequential);
-    assert_eq!(b.par_for_transpose(&[512, 512]), ExecPolicy::Parallel(0));
+    // 131_072 elements: 256 × 511 stays Sequential, 256 × 512 flips Parallel.
+    assert_eq!(b.par_for_transpose(&[256, 511]), ExecPolicy::Sequential);
+    assert_eq!(b.par_for_transpose(&[256, 512]), ExecPolicy::Parallel(0));
 }

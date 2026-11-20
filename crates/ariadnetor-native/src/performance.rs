@@ -49,17 +49,12 @@ impl ThresholdTable {
     /// Values come from `crates/ariadnetor-linalg/benches/sweep_{decomp,
     /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
     ///
-    /// `transpose` permits parallelism from 65_536 total elements. The
-    /// strided-perm kernel narrows its own width and stays on one thread
-    /// until a copy is large enough to repay a fan-out, so this value only
-    /// has to sit below that point. The value is the naive kernel's
-    /// parallel crossover; that kernel serves conjugating complex transposes
-    /// in the default build. HPTT, which serves them under the `hptt`
-    /// feature, crosses over between 65_536 and 262_144 elements on an Apple
-    /// M2 8-core for 2D `[n, n]` column-major `Complex<f64>` inputs (the
-    /// conjugating sweep in `sweep_transpose_par.rs`), so at this threshold
-    /// its parallel run is at most about 10% slower than its sequential
-    /// one.
+    /// `transpose` permits parallelism from 65_536 total elements.
+    /// strided-perm picks its own width and keeps a copy on one thread until
+    /// it is large enough to repay a fan-out, which under strided-perm 0.15's
+    /// cost model takes at least 152_632 elements on every host class. This
+    /// value only has to sit below that point; below it a transpose skips
+    /// minting a parallel token.
     pub fn laptop() -> Self {
         Self {
             svd: 384,
@@ -82,13 +77,10 @@ impl ThresholdTable {
     /// (`cbrt(m*n*k) ≥ 768`) and transposes benefit from parallel
     /// dispatch.
     ///
-    /// `transpose` permits parallelism from 262_144 total elements, the
-    /// size above which the naive kernel's parallel path beat its own
-    /// sequential path on 2D `[n, n]` inputs. HPTT's conjugating complex
-    /// transposes, the only ones it serves, were not measured on this
-    /// profile. Above 262_144, strided-perm still
-    /// picks its own width and stays on one thread for a copy too small to
-    /// repay a fan-out. The dispatch key is total elements for any rank.
+    /// `transpose` permits parallelism from 131_072 total elements, below the
+    /// smallest copy strided-perm splits (see [`ThresholdTable::laptop`]), so
+    /// strided-perm alone decides when a copy fans out. The dispatch key is
+    /// total elements for any rank.
     pub fn workstation() -> Self {
         Self {
             svd: usize::MAX,
@@ -98,7 +90,7 @@ impl ThresholdTable {
             eig: usize::MAX,
             gemm: 768,
             solve: usize::MAX,
-            transpose: 262_144,
+            transpose: 131_072,
         }
     }
 
@@ -190,7 +182,7 @@ mod tests {
         assert_eq!(t.eig, usize::MAX);
         assert_eq!(t.gemm, 768);
         assert_eq!(t.solve, usize::MAX);
-        assert_eq!(t.transpose, 262_144);
+        assert_eq!(t.transpose, 131_072);
     }
 
     #[test]
