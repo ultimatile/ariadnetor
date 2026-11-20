@@ -134,7 +134,8 @@ type CopyFn<T> =
 /// The source view walks `input` in output-axis order: output axis `a` has
 /// extent `shape[perm[a]]` and the stride input axis `perm[a]` has under
 /// `order`. Copying it into a contiguous destination of the same `order`
-/// writes `output[y] = input[x]` with `x[perm[a]] = y[a]`.
+/// writes `output[y] = input[x]` with `x[perm[a]] = y[a]`, conjugated when
+/// `copy` is `copy_conj_into`.
 ///
 /// # Panics
 ///

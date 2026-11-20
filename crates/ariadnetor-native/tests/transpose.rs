@@ -251,10 +251,13 @@ fn check_case<T: Sample>(shape: &[usize], perm: &[usize], policies: &[ExecPolicy
             let expected = reference(&input, shape, perm, order, conj);
             for &policy in policies {
                 let got = run_transpose(&input, shape, perm, order, conj, policy);
-                assert!(
-                    got == expected,
-                    "shape {shape:?} perm {perm:?} {order:?} conj {conj} {policy:?}"
-                );
+                if let Some(i) = got.iter().zip(&expected).position(|(g, e)| g != e) {
+                    panic!(
+                        "shape {shape:?} perm {perm:?} {order:?} conj {conj} {policy:?}: \
+                         first mismatch at {i}: got {:?}, expected {:?}",
+                        got[i], expected[i]
+                    );
+                }
             }
         }
     }
