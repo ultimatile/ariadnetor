@@ -20,7 +20,6 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 # Linear algebra
 faer = "0.24"
-hptt = "0.4.1"
 strided-perm = { version = "0.15.0", features = ["parallel"] }
 strided-view = "0.8.0"
 threadteam = "0.6.0"

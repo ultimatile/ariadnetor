@@ -2,7 +2,7 @@
 //!
 //! Provides high-level tensor operations that delegate to a [`ComputeBackend`]
 //! for the actual computation, so that only `ariadnetor-native` depends on the
-//! compute libraries (faer, strided-perm, HPTT) directly.
+//! compute libraries (faer, strided-perm) directly.
 //!
 //! # Operations
 //!

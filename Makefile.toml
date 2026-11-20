@@ -10,9 +10,8 @@
 # tools that sit outside the gate (semver-checks) are listed in
 # CONTRIBUTING.md rather than registered here; composite QA loops with a
 # canonical form (external-types, public-api) and the mutation passes
-# (mutants, mutants-arpack, mutants-hptt) earn a task: their scratch
-# redirect must not drift, and the two scoped passes carry non-obvious
-# flags besides. mutants-sharded earns one as the entry point to a script.
+# (mutants, mutants-arpack) earn a task: their scratch redirect must not
+# drift, and the scoped ARPACK pass carries non-obvious flags besides. mutants-sharded earns one as the entry point to a script.
 #
 # Coverage note: `gate` is the local pre-PR gate. Its clippy step runs
 # with --all-targets, so it COMPILES benches; its test step runs unit +
@@ -30,7 +29,7 @@ default_to_workspace = false
 # pass is still using it. Under target/ nothing sweeps it — but `cargo
 # clean` does, which reclaims a killed run's leftovers and destroys a live
 # pass's copies alike, and reaches neither if CARGO_TARGET_DIR moves cargo's
-# target elsewhere. The three single-run passes below set TMPDIR from this;
+# target elsewhere. The two single-run passes below set TMPDIR from this;
 # dropping that reintroduces the failure. `mutants-sharded` avoids the
 # cleaner by run length instead and does not use it.
 [env]
@@ -145,8 +144,8 @@ args = ["doc", "--workspace", "--no-deps", "--open"]
 # they do not lint intra-doc links or HTML, which is what this step adds.
 # RUSTDOCFLAGS carries the warnings-as-errors flag because there is no
 # equivalent `cargo doc` CLI switch. Default features only, matching the
-# rest of the gate, so doc warnings inside the feature-gated arpack / hptt
-# regions are out of scope here (nothing doc-builds them under -D warnings).
+# rest of the gate, so doc warnings inside the feature-gated arpack region
+# are out of scope here (nothing doc-builds it under -D warnings).
 # No --open, unlike the sibling `doc` task.
 [tasks.doc-check]
 description = "Build workspace docs denying rustdoc warnings (broken/private intra-doc links, invalid HTML); no browser. Gate step."
@@ -314,7 +313,7 @@ script = 'mkdir -p "${MUTANTS_SCRATCH}"'
 # forwarded `--` would additionally make cargo-mutants read the rest as
 # cargo-test arguments.
 [tasks.mutants]
-description = "Shipped mutation pass (default features, hptt off, arpack off); extra cargo-mutants flags forward, no -- separator"
+description = "Shipped mutation pass (default features, arpack off); extra cargo-mutants flags forward, no -- separator"
 env = { TMPDIR = "${MUTANTS_SCRATCH}" }
 dependencies = ["mutants-scratch"]
 command = "cargo"
@@ -338,15 +337,12 @@ description = "Shipped mutation pass split into MUTANTS_SHARDS (default 40) resu
 command = "scripts/mutants-sharded.sh"
 args = ["${@}"]
 
-# Faithful mutation passes for code the shipped `cargo make mutants` run
+# Faithful mutation pass for code the shipped `cargo make mutants` run
 # cannot reach. The shipped run (.cargo/mutants.toml, default features) builds
-# hptt OFF and arpack OFF, so two regions never see a live mutant: the
-# ARPACK backend (never compiled) and the HPTT conjugating-transpose kernels
-# (not compiled under the hptt-off default). These two passes restore them. Each
-# writes to its own
-# target/mutants-<pass> directory (set per task below); triage each pass's
-# output separately — a "missed" there means untested, same as the shipped
-# run's default mutants.out.
+# arpack OFF, so the ARPACK backend is never compiled and never sees a live
+# mutant. The pass below restores it. It writes to its own
+# target/mutants-arpack directory; triage its output separately — a "missed"
+# there means untested, same as the shipped run's default mutants.out.
 
 # ARPACK pass: the krylov ARPACK backend (krylov/arpack.rs, wholly
 # #[cfg(feature = "arpack")]) and the ARPACK branch of
@@ -364,7 +360,7 @@ args = ["${@}"]
 # kill these mutants lives; it is an optimization here, not a correctness
 # requirement. `--output` keeps this pass's results out of the shipped run's
 # default mutants.out. Needs the system ARPACK library at build time.
-# Neither scoped pass takes `${@}`, unlike `mutants`: cargo-mutants
+# This scoped pass takes no `${@}`, unlike `mutants`: cargo-mutants
 # treats a repeated `--file` / `--re` as an addition, so forwarding here
 # would turn an attempt to narrow the pass into a silent widening.
 [tasks.mutants-arpack]
@@ -386,46 +382,4 @@ args = [
   "false",
   "--output",
   "target/mutants-arpack",
-]
-
-# HPTT-kernel pass: to_hptt_order / to_hptt_num_threads / hptt_c64 / hptt_c32
-# in ariadnetor-native/src/transpose.rs (the conjugating complex kernels) are
-# #[cfg(feature = "hptt")], not compiled under the default (hptt-off)
-# build. `--features hptt` compiles them; `--file` + `--re` scope
-# mutation to exactly those gated kernels. The scope is REQUIRED for a
-# faithful result, not an optimization — without it the pass also mutates
-#   - the naive kernel in the same file (cfg'd out under `--features hptt`,
-#     so its mutants surface as false gaps), and
-#   - the rest of the native crate (gemm/qr/svd/...), which the shipped run
-#     already audits; re-mutating it here is redundant, and under the
-#     package-scoped tests this pass uses (see --test-workspace below) any
-#     native mutant the shipped run kills only via a cross-crate test
-#     (test_workspace = true) would additionally surface as a false gap.
-# `--test-workspace false` is an OPTIMIZATION here, not a correctness
-# requirement (the reverse of the naive pass it replaced): with `--features
-# hptt` selected on `-p ariadnetor-native`, feature unification keeps
-# native/hptt ON under a workspace test too, so the HPTT path is never
-# compiled out. Package-scoped testing (native's only dev-dep is rstest)
-# runs tests/transpose.rs against the HPTT path and trims cross-crate MISSED
-# noise. `--output` keeps this pass's results out of the shipped run's
-# default mutants.out.
-[tasks.mutants-hptt]
-description = "Mutation pass over the feature-gated HPTT conjugating-transpose kernels (cargo mutants --features hptt)"
-env = { TMPDIR = "${MUTANTS_SCRATCH}" }
-dependencies = ["mutants-scratch"]
-command = "cargo"
-args = [
-  "mutants",
-  "-p",
-  "ariadnetor-native",
-  "--features",
-  "hptt",
-  "--file",
-  "crates/ariadnetor-native/src/transpose.rs",
-  "--re",
-  "hptt_c64|hptt_c32|to_hptt_order|to_hptt_num_threads",
-  "--test-workspace",
-  "false",
-  "--output",
-  "target/mutants-hptt",
 ]

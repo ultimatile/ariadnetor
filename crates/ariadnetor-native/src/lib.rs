@@ -5,9 +5,8 @@
 //! - **SVD/QR/LQ/EIGH**: faer (f64, f32, `Complex<f64>`, `Complex<f32>`)
 //! - **Tridiagonal EIGH**: faer (f64, f32; the eigensystem of a real
 //!   symmetric tridiagonal matrix is real, so complex scalars are rejected)
-//! - **Transpose**: strided-perm (f64, f32, `Complex<f64>`, `Complex<f32>`); a
-//!   conjugating complex transpose of rank 1 or more uses HPTT when the `hptt`
-//!   feature is on and a naive kernel otherwise
+//! - **Transpose**: strided-perm (f64, f32, `Complex<f64>`, `Complex<f32>`),
+//!   conjugating or not
 
 #![deny(missing_docs)]
 
@@ -41,9 +40,7 @@ pub use performance::{PerformanceManager, ThresholdTable};
 /// `faer::Par::rayon(n)`; faer dispatches on the current Rayon pool (the
 /// global one unless the caller installed another), so
 /// `n` influences work partitioning rather than guaranteeing exactly
-/// `n` OS threads. The naive transpose kernel, which serves conjugating
-/// complex transposes when the `hptt` feature is off, honors `n` with the
-/// same semantics.
+/// `n` OS threads.
 pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
     match policy {
         ExecPolicy::Sequential => faer::Par::Seq,
@@ -53,11 +50,10 @@ pub(crate) fn to_faer_par(policy: ExecPolicy) -> faer::Par {
 }
 
 /// Native backend using faer for GEMM and the decompositions, and
-/// strided-perm for transpose (HPTT or a naive kernel for a conjugating
-/// complex transpose).
+/// strided-perm for transpose.
 ///
-/// This is the sole owner of faer, strided-perm and hptt-rs dependencies in
-/// the workspace.
+/// This is the sole owner of the faer and strided-perm dependencies in the
+/// workspace.
 /// Other crates access these capabilities through the `ComputeBackend` trait.
 /// The faer ops run on the current Rayon pool (the global one unless the
 /// caller installed another): `ExecPolicy::Parallel(0)` takes its width, and
@@ -153,18 +149,11 @@ impl ComputeBackend for NativeBackend {
 
     /// Transpose tensor axes according to permutation.
     ///
-    /// Copies through strided-perm, except a conjugating transpose of a
-    /// complex type of rank 1 or more, which uses HPTT when the `hptt`
-    /// feature is enabled and a naive output-driven kernel otherwise. Under `ExecPolicy::Parallel(n)`
-    /// the strided-perm copy runs on a dedicated pool sized from the global
-    /// Rayon pool, using at most `n` of its threads (all of them for
-    /// `n == 0`) and fewer when the copy is small; a call made on
-    /// a Rayon worker runs on the calling thread. The conjugating kernels
-    /// keep their own semantics: the naive kernel splits its output on the
-    /// current Rayon pool with `n` (that pool's width for `n == 0`) as a
-    /// partitioning hint, and HPTT spawns
-    /// exactly `n` OpenMP threads (`available_parallelism()` of them for
-    /// `n == 0`).
+    /// Copies through strided-perm, conjugating each element of a complex
+    /// type when `conj` is set. Under `ExecPolicy::Parallel(n)` the copy runs
+    /// on a dedicated pool sized from the global Rayon pool, using at most
+    /// `n` of its threads (all of them for `n == 0`) and fewer when the copy
+    /// is small; a call made on a Rayon worker runs on the calling thread.
     ///
     /// # Errors
     ///
@@ -172,9 +161,8 @@ impl ComputeBackend for NativeBackend {
     /// permutation of `0..shape.len()`, when the element count of `shape`
     /// overflows `usize`, or when `input` or `output` does not hold exactly
     /// that many elements; nothing is written in that case. Returns
-    /// [`BackendError::ExecutionFailed`] when the kernel rejects a valid
-    /// descriptor, as HPTT does for a `Parallel(n)` thread count beyond its
-    /// C `int` range.
+    /// [`BackendError::ExecutionFailed`] when strided-view or strided-perm
+    /// rejects the copy.
     fn transpose<T: Scalar>(&self, desc: TransposeDescriptor<'_, T>) -> Result<(), BackendError> {
         if transpose::validate(&desc)? == 0 {
             return Ok(());

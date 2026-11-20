@@ -427,7 +427,7 @@ fn bench_transpose_case(
 /// Micro-benchmark for the physical per-block transpose.
 ///
 /// This times [`ComputeBackend::transpose`], the strided-perm copy on the
-/// native backend in every build. Block-sparse contract/permute route their
+/// native backend. Block-sparse contract/permute route their
 /// per-block transpose through [`ComputeBackend::transpose`], so this measures
 /// that production path directly; comparing criterion baselines across
 /// revisions gives the per-block effect of a kernel change.

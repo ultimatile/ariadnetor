@@ -6,7 +6,7 @@
 //! `ExecPolicy` dispatch in `ariadnetor-native`.
 //!
 //! Each measurement uses `expert::permute` with a caller-provided
-//! `ExecPolicy`, except the conjugating sweep, which calls
+//! `ExecPolicy`, except the conjugating sweeps, which call
 //! `ComputeBackend::transpose` directly because no public op conjugates as
 //! it permutes. The bench does not change global parallelism state; the
 //! strided-perm route reads the global Rayon pool's width once, to size its
@@ -15,10 +15,10 @@
 //! The f64 sweeps cover `n × n` with `perm = [1, 0]` (up to 2048, the
 //! parallel-dominant regime), `n × n × n` with `perm = [2, 0, 1]`, and `n⁴`
 //! with `perm = [3, 1, 0, 2]`. The non-conjugating `Complex<f64>` sweeps
-//! repeat the 2D and 3D cases and take the strided-perm route like f64. The
-//! conjugating `Complex<f64>` sweep (2D, column-major) times the kernel that
-//! serves conjugating complex transposes: the naive kernel by default, HPTT
-//! with `--features hptt`.
+//! repeat the 2D and 3D cases. The conjugating `Complex<f64>` sweeps
+//! (column-major) cover `n × n` with `perm = [1, 0]`, `n × n × n` for `n` in
+//! 63 to 65 with `perm = [2, 0, 1]`, and `32⁴` with `perm = [3, 1, 0, 2]`.
+//! Every sweep copies through strided-perm.
 //!
 //! `ThresholdTable::transpose` keys on total element count (not side
 //! length) — see `NativeBackend::par_for_transpose`, which feeds
@@ -116,6 +116,42 @@ fn sweep_permute<T: Scalar>(
     );
 }
 
+/// Sweep a column-major conjugating `ComputeBackend::transpose` by `perm`
+/// over the shapes `shape_of` builds, keyed on their element count.
+fn sweep_conj_transpose(
+    backend: &NativeBackend,
+    label: &str,
+    sizes: &[usize],
+    shape_of: impl Fn(usize) -> Vec<usize>,
+    perm: &[usize],
+) {
+    run_sweep(
+        label,
+        sizes,
+        |n| {
+            let shape = shape_of(n);
+            let total = shape.iter().product();
+            (vec![Complex::new(0.5, -0.25); total], shape)
+        },
+        |(input, _)| input.len(),
+        |(input, shape), policy| {
+            let mut output = vec![Complex::new(0.0, 0.0); input.len()];
+            backend
+                .transpose(TransposeDescriptor {
+                    input,
+                    output: &mut output,
+                    shape,
+                    perm,
+                    order: MemoryOrder::ColumnMajor,
+                    conj: true,
+                    policy,
+                })
+                .unwrap();
+            std::hint::black_box(&output);
+        },
+    );
+}
+
 fn main() {
     let backend = NativeBackend::new();
     let sizes_2d = [16usize, 32, 64, 128, 256, 512, 1024, 2048];
@@ -157,26 +193,26 @@ fn main() {
         |n| filled_c64(vec![n, n, n]),
         &[2, 0, 1],
     );
-    run_sweep(
+    sweep_conj_transpose(
+        &backend,
         "Conjugating transpose c64 (2D n×n, perm=[1,0], column-major)",
         &sizes_2d,
-        |n| (vec![Complex::new(0.5, -0.25); n * n], n),
-        |(input, _)| input.len(),
-        |(input, n), policy| {
-            let mut output = vec![Complex::new(0.0, 0.0); input.len()];
-            backend
-                .transpose(TransposeDescriptor {
-                    input,
-                    output: &mut output,
-                    shape: &[*n, *n],
-                    perm: &[1, 0],
-                    order: MemoryOrder::ColumnMajor,
-                    conj: true,
-                    policy,
-                })
-                .unwrap();
-            std::hint::black_box(&output);
-        },
+        |n| vec![n, n],
+        &[1, 0],
+    );
+    sweep_conj_transpose(
+        &backend,
+        "Conjugating transpose c64 (3D n×n×n, perm=[2,0,1], column-major)",
+        &[63, 64, 65],
+        |n| vec![n, n, n],
+        &[2, 0, 1],
+    );
+    sweep_conj_transpose(
+        &backend,
+        "Conjugating transpose c64 (4D n⁴, perm=[3,1,0,2], column-major)",
+        &[32],
+        |n| vec![n, n, n, n],
+        &[3, 1, 0, 2],
     );
 
     eprintln!(

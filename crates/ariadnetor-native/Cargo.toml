@@ -15,7 +15,6 @@ path = "src/lib.rs"
 [dependencies]
 ariadnetor-core = { path = "../ariadnetor-core", version = "0.0.7" }
 faer = { workspace = true }
-hptt = { workspace = true, optional = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 rayon = { workspace = true }
@@ -25,14 +24,6 @@ threadteam = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
-
-[features]
-# `hptt` is opt-in: the HPTT kernel pulls a C++/CMake build, so the default
-# stays pure-Rust. It serves only conjugating complex transposes, which
-# strided-perm cannot express; every other transpose uses strided-perm in
-# both builds.
-default = []
-hptt = ["dep:hptt"]
 
 [lints]
 workspace = true

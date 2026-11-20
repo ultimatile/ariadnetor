@@ -8,8 +8,7 @@
 //!   `ComputeBackend`, `EinsumExpr`). The `MemoryOrder` layout type
 //!   is intentionally *not* re-exported: the umbrella's public API
 //!   hides memory layout from end users.
-//! - [`ariadnetor_native`] — `NativeBackend`: faer and strided-perm (+ optional
-//!   hptt-rs for conjugating complex transposes).
+//! - [`ariadnetor_native`] — `NativeBackend`: faer and strided-perm.
 //! - [`ariadnetor_tensor`] — user-facing `Tensor`, `DenseTensor`,
 //!   `BlockSparseTensor`, `Sector`, `QNIndex`.
 //! - [`ariadnetor_linalg`] — backend-agnostic linear algebra over
