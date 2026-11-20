@@ -1757,9 +1757,9 @@ dependencies = [
 
 [[package]]
 name = "strided-perm"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d367ea2bd53f572b8eac92ac08a70fa042da6114c08e28674722a21002a5a29"
+checksum = "aec11d5cb220ad867434863a6fae429d3c3522727f662445cfa3e0f8b5f82a33"
 dependencies = [
  "strided-view",
  "thiserror 1.0.69",
@@ -1779,9 +1779,9 @@ dependencies = [
 
 [[package]]
 name = "strided-view"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73b0b658f57a42d6cd20df58eeb42f74425ae8be4140751fb2dde80d042e20ff"
+checksum = "4aed43695230aa8277516be44e94089a5ce711fd5444ec4df148e00ea3202da9"
 dependencies = [
  "num-complex",
  "num-traits",
@@ -1888,9 +1888,9 @@ dependencies = [
 
 [[package]]
 name = "threadteam"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ae7666b2f6a9ad479f5d0be7b54d21d62912ddd7c69923ad6f50767a86440e8"
+checksum = "fbc7aeede8aadfaf57ce59a69bc0788bc3196f8c17c003d531cc005204fde194"
 dependencies = [
  "libc",
  "loom",

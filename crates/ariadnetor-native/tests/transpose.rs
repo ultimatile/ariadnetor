@@ -282,8 +282,8 @@ fn c32_matches_reference() {
 }
 
 /// At 1_572_864 elements the copy is large enough to split on every host
-/// class: strided-perm 0.14's per-element copy rate times the element count
-/// clears three times threadteam 0.5's dispatch cost for a caller outside the
+/// class: strided-perm 0.15's per-element copy rate times the element count
+/// clears three times threadteam 0.6's dispatch cost for a caller outside the
 /// pool. How wide it goes still depends on the host, so only the output is
 /// asserted.
 fn check_large<T: Sample>() {
