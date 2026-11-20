@@ -312,6 +312,11 @@ fn large_c64_matches_reference() {
     check_large::<Complex<f64>>();
 }
 
+#[test]
+fn large_c32_matches_reference() {
+    check_large::<Complex<f32>>();
+}
+
 // --- Layouts the library's callers issue ---
 
 const USAGE_POLICIES: [ExecPolicy; 3] = [

@@ -55,10 +55,11 @@ impl ThresholdTable {
     /// `transpose` permits parallelism from 65_536 total elements.
     /// strided-perm picks its own width and keeps a copy on one thread until
     /// it is large enough to repay a fan-out, which under the cost model of
-    /// strided-perm 0.15 and threadteam 0.6 takes at least 152_632 elements on
-    /// every host class. This
-    /// value only has to sit below that point; below it a transpose skips
-    /// minting a parallel token.
+    /// strided-perm 0.15 and threadteam 0.6 takes about 150_000 elements or
+    /// more on every host class for a caller outside the transpose pool, as
+    /// every `NativeBackend::transpose` caller is. This value only has to sit
+    /// below that point; below it `par_for_transpose` returns `Sequential`,
+    /// which mints no parallel token.
     pub fn laptop() -> Self {
         Self {
             svd: 384,
@@ -78,8 +79,8 @@ impl ThresholdTable {
     /// listed for `laptop()`. Most
     /// ops carry the `usize::MAX` sentinel: at workstation scale parallel
     /// sync cost is high enough that `svd`/`qr`/`lq`/`eigh`/`eig`/`solve`
-    /// never beat sequential at any `n ≤ 1024` tested. Only large GEMMs
-    /// (`cbrt(m*n*k) ≥ 768`) and transposes benefit from parallel
+    /// never beat sequential at any `n ≤ 1024` tested. Of the calibrated ops,
+    /// only large GEMMs (`cbrt(m*n*k) ≥ 768`) benefit from parallel
     /// dispatch.
     ///
     /// `transpose` permits parallelism from 131_072 total elements, below the
