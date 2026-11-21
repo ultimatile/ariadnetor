@@ -117,9 +117,9 @@ fn test_transpose_complex_f64_2d() {
 //
 // Every case below is compared with `reference`, which walks output
 // coordinates one at a time and shares no code with the kernels. Every
-// nonempty case of rank 3 or more uses a perm that is not its own inverse on
-// extents that all differ, so a kernel that used the inverse permutation, or
-// read the wrong axis's extent, fails there.
+// nonempty case of `CASES` of rank 3 or more uses a perm that is not its own
+// inverse on extents that all differ, so a kernel that used the inverse
+// permutation, or read the wrong axis's extent, fails there.
 
 trait Sample: Scalar + std::fmt::Debug + PartialEq {}
 
@@ -227,8 +227,7 @@ const POLICIES: [ExecPolicy; 5] = [
     ExecPolicy::Parallel(64),
 ];
 
-/// Rank 0 through 5, two zero-size shapes, and a 15_360-element case that
-/// the naive kernel's parallel path splits into several chunks.
+/// Rank 0 through 5, two zero-size shapes, and a 15_360-element case.
 const CASES: &[(&[usize], &[usize])] = &[
     (&[], &[]),
     (&[5], &[0]),
@@ -242,22 +241,31 @@ const CASES: &[(&[usize], &[usize])] = &[
     (&[16, 24, 40], &[2, 0, 1]),
 ];
 
-fn check_against_reference<T: Sample>() {
-    for &(shape, perm) in CASES {
-        let total: usize = shape.iter().product();
-        let input: Vec<T> = (0..total).map(sample::<T>).collect();
-        for order in ORDERS {
-            for conj in [false, true] {
-                let expected = reference(&input, shape, perm, order, conj);
-                for policy in POLICIES {
-                    let got = run_transpose(&input, shape, perm, order, conj, policy);
-                    assert_eq!(
-                        got, expected,
-                        "shape {shape:?} perm {perm:?} {order:?} conj {conj} {policy:?}"
+/// Transpose `shape` by `perm` under both orders, with and without
+/// conjugation, under each of `policies`, and compare with `reference`.
+fn check_case<T: Sample>(shape: &[usize], perm: &[usize], policies: &[ExecPolicy]) {
+    let total: usize = shape.iter().product();
+    let input: Vec<T> = (0..total).map(sample::<T>).collect();
+    for order in ORDERS {
+        for conj in [false, true] {
+            let expected = reference(&input, shape, perm, order, conj);
+            for &policy in policies {
+                let got = run_transpose(&input, shape, perm, order, conj, policy);
+                if let Some(i) = got.iter().zip(&expected).position(|(g, e)| g != e) {
+                    panic!(
+                        "shape {shape:?} perm {perm:?} {order:?} conj {conj} {policy:?}: \
+                         first mismatch at {i}: got {:?}, expected {:?}",
+                        got[i], expected[i]
                     );
                 }
             }
         }
+    }
+}
+
+fn check_against_reference<T: Sample>() {
+    for &(shape, perm) in CASES {
+        check_case::<T>(shape, perm, &POLICIES);
     }
 }
 
@@ -281,23 +289,17 @@ fn c32_matches_reference() {
     check_against_reference::<Complex<f32>>();
 }
 
-/// At 1_572_864 elements the copy is large enough to split on every host
-/// class: strided-perm 0.14's per-element copy rate times the element count
-/// clears three times threadteam 0.5's dispatch cost for a caller outside the
-/// pool. How wide it goes still depends on the host, so only the output is
-/// asserted.
+/// At 1_572_864 elements the copy, plain or conjugating, is large enough to
+/// split on every host class: strided-perm 0.15's per-element copy rate times
+/// the element count clears three times threadteam 0.6's dispatch cost for a
+/// caller outside the pool. How wide it goes still depends on the host, so
+/// only the output is asserted.
 fn check_large<T: Sample>() {
-    let shape = [64usize, 48, 512];
-    let perm = [2usize, 0, 1];
-    let total: usize = shape.iter().product();
-    let input: Vec<T> = (0..total).map(sample::<T>).collect();
-    for order in ORDERS {
-        let expected = reference(&input, &shape, &perm, order, false);
-        for policy in [ExecPolicy::Sequential, ExecPolicy::Parallel(0)] {
-            let got = run_transpose(&input, &shape, &perm, order, false, policy);
-            assert!(got == expected, "{order:?} {policy:?}");
-        }
-    }
+    check_case::<T>(
+        &[64, 48, 512],
+        &[2, 0, 1],
+        &[ExecPolicy::Sequential, ExecPolicy::Parallel(0)],
+    );
 }
 
 #[test]
@@ -310,33 +312,95 @@ fn large_c64_matches_reference() {
     check_large::<Complex<f64>>();
 }
 
-// --- Descriptor validation ---
-
-/// HPTT takes its thread count as a C `int`, so a larger `Parallel(n)` on
-/// the conjugating complex path is a kernel failure, not a panic.
-#[cfg(feature = "hptt")]
-fn check_hptt_thread_count_beyond_c_int<T: Sample>() {
-    let input: Vec<T> = (0..6).map(sample::<T>).collect();
-    let mut output = input.clone();
-    let err = try_transpose(
-        &input,
-        &mut output,
-        &[2, 3],
-        &[1, 0],
-        MemoryOrder::ColumnMajor,
-        true,
-        ExecPolicy::Parallel(usize::MAX),
-    )
-    .unwrap_err();
-    assert!(matches!(err, BackendError::ExecutionFailed(_)), "{err:?}");
-}
-
-#[cfg(feature = "hptt")]
 #[test]
-fn hptt_thread_count_beyond_c_int_is_execution_failed() {
-    check_hptt_thread_count_beyond_c_int::<Complex<f64>>();
-    check_hptt_thread_count_beyond_c_int::<Complex<f32>>();
+fn large_c32_matches_reference() {
+    check_large::<Complex<f32>>();
 }
+
+// --- Layouts the library's callers issue ---
+
+const USAGE_POLICIES: [ExecPolicy; 3] = [
+    ExecPolicy::Sequential,
+    ExecPolicy::Parallel(0),
+    ExecPolicy::Parallel(2),
+];
+
+/// Square matrices from 1 to 512 on a side, transposed by `[1, 0]`: the
+/// shape `ariadnetor-linalg` passes for the conjugate transpose of an
+/// eigenvector matrix. A few rectangular ones as well.
+fn check_matrix_transposes<T: Sample>() {
+    for n in [1, 2, 3, 7, 16, 31, 32, 33, 64, 100, 128, 255, 256, 257, 512] {
+        check_case::<T>(&[n, n], &[1, 0], &USAGE_POLICIES);
+    }
+    for shape in [[1, 300], [300, 1], [3, 500], [500, 3]] {
+        check_case::<T>(&shape, &[1, 0], &USAGE_POLICIES);
+    }
+}
+
+#[test]
+fn c64_matrix_transposes_match_reference() {
+    check_matrix_transposes::<Complex<f64>>();
+}
+
+#[test]
+fn c32_matrix_transposes_match_reference() {
+    check_matrix_transposes::<Complex<f32>>();
+}
+
+/// Every permutation of `0..rank`, in lexicographic order.
+fn permutations(rank: usize) -> Vec<Vec<usize>> {
+    if rank == 0 {
+        return vec![vec![]];
+    }
+    let mut out = Vec::new();
+    for rest in permutations(rank - 1) {
+        for slot in 0..rank {
+            let mut perm: Vec<usize> = rest.iter().map(|&a| a + usize::from(a >= slot)).collect();
+            perm.insert(0, slot);
+            out.push(perm);
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Every permutation of ranks 1 to 4 on the prefixes of `[2, 3, 1, 5]`, whose
+/// extents differ and from rank 3 on include a singleton axis, and every
+/// permutation of the equal extents `[4, 4, 4, 4]`.
+fn check_every_permutation<T: Sample>() {
+    let extents = [2usize, 3, 1, 5];
+    for (rank, count) in [(1, 1), (2, 2), (3, 6), (4, 24)] {
+        assert_eq!(permutations(rank).len(), count);
+        for perm in permutations(rank) {
+            check_case::<T>(&extents[..rank], &perm, &USAGE_POLICIES);
+        }
+    }
+    for perm in permutations(4) {
+        check_case::<T>(&[4, 4, 4, 4], &perm, &USAGE_POLICIES);
+    }
+}
+
+#[test]
+fn f64_every_permutation_matches_reference() {
+    check_every_permutation::<f64>();
+}
+
+#[test]
+fn f32_every_permutation_matches_reference() {
+    check_every_permutation::<f32>();
+}
+
+#[test]
+fn c64_every_permutation_matches_reference() {
+    check_every_permutation::<Complex<f64>>();
+}
+
+#[test]
+fn c32_every_permutation_matches_reference() {
+    check_every_permutation::<Complex<f32>>();
+}
+
+// --- Descriptor validation ---
 
 /// A zero extent makes the element count 0 even when the other extents
 /// multiply past `usize::MAX`, so such a shape is a valid empty tensor

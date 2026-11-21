@@ -1,7 +1,9 @@
 //! Hardware-aware parallelism threshold tables for `NativeBackend`.
 //!
 //! A `ThresholdTable` stores the minimum problem-size key at which each
-//! linear-algebra op is worth running in parallel on this machine. The
+//! linear-algebra op is worth running in parallel on this machine; for
+//! `transpose`, the key from which strided-perm may pick a parallel width
+//! (see `ThresholdTable::laptop`). The
 //! sentinel `usize::MAX` means "no finite parallel threshold" — either
 //! the op is unmeasured on this profile, or calibration showed no
 //! regime where parallel beats sequential (e.g. `ThresholdTable::workstation().svd`).
@@ -46,20 +48,18 @@ pub struct ThresholdTable {
 impl ThresholdTable {
     /// Thresholds calibrated for laptop-class CPUs (Apple M2 8-core).
     ///
-    /// Values come from `crates/ariadnetor-linalg/benches/sweep_{decomp,
-    /// decomp_rect,gemm,solve,transpose}_par.rs` run in a single session.
+    /// Every value but `transpose` comes from
+    /// `crates/ariadnetor-linalg/benches/sweep_{decomp,decomp_rect,gemm,solve}_par.rs`
+    /// run in a single session.
     ///
-    /// `transpose` permits parallelism from 65_536 total elements. The
-    /// strided-perm kernel narrows its own width and stays on one thread
-    /// until a copy is large enough to repay a fan-out, so this value only
-    /// has to sit below that point. The value is the naive kernel's
-    /// parallel crossover; that kernel serves conjugating complex transposes
-    /// in the default build. HPTT, which serves them under the `hptt`
-    /// feature, crosses over between 65_536 and 262_144 elements on an Apple
-    /// M2 8-core for 2D `[n, n]` column-major `Complex<f64>` inputs (the
-    /// conjugating sweep in `sweep_transpose_par.rs`), so at this threshold
-    /// its parallel run is at most about 10% slower than its sequential
-    /// one.
+    /// `transpose` permits parallelism from 65_536 total elements.
+    /// strided-perm picks its own width and keeps a copy on one thread until
+    /// it is large enough to repay a fan-out, which under the cost model of
+    /// strided-perm 0.15 and threadteam 0.6 takes about 150_000 elements or
+    /// more on every host class for a caller outside the transpose pool, as
+    /// every `NativeBackend::transpose` caller is. This value only has to sit
+    /// below that point; below it `par_for_transpose` returns `Sequential`,
+    /// which mints no parallel token.
     pub fn laptop() -> Self {
         Self {
             svd: 384,
@@ -75,20 +75,18 @@ impl ThresholdTable {
 
     /// Thresholds calibrated for workstation-class CPUs (Xeon NUMA, 112 cores).
     ///
-    /// Calibrated with the same five sweeps listed for `laptop()`. Most
+    /// Every value but `transpose` is calibrated with the same four sweeps
+    /// listed for `laptop()`. Most
     /// ops carry the `usize::MAX` sentinel: at workstation scale parallel
     /// sync cost is high enough that `svd`/`qr`/`lq`/`eigh`/`eig`/`solve`
-    /// never beat sequential at any `n ≤ 1024` tested. Only large GEMMs
-    /// (`cbrt(m*n*k) ≥ 768`) and transposes benefit from parallel
+    /// never beat sequential at any `n ≤ 1024` tested. Of the calibrated ops,
+    /// only large GEMMs (`cbrt(m*n*k) ≥ 768`) benefit from parallel
     /// dispatch.
     ///
-    /// `transpose` permits parallelism from 262_144 total elements, the
-    /// size above which the naive kernel's parallel path beat its own
-    /// sequential path on 2D `[n, n]` inputs. HPTT's conjugating complex
-    /// transposes, the only ones it serves, were not measured on this
-    /// profile. Above 262_144, strided-perm still
-    /// picks its own width and stays on one thread for a copy too small to
-    /// repay a fan-out. The dispatch key is total elements for any rank.
+    /// `transpose` permits parallelism from 131_072 total elements, below the
+    /// smallest copy strided-perm splits (see [`ThresholdTable::laptop`]), so
+    /// strided-perm alone decides when a copy fans out. The dispatch key is
+    /// total elements for any rank.
     pub fn workstation() -> Self {
         Self {
             svd: usize::MAX,
@@ -98,7 +96,7 @@ impl ThresholdTable {
             eig: usize::MAX,
             gemm: 768,
             solve: usize::MAX,
-            transpose: 262_144,
+            transpose: 131_072,
         }
     }
 
@@ -190,7 +188,7 @@ mod tests {
         assert_eq!(t.eig, usize::MAX);
         assert_eq!(t.gemm, 768);
         assert_eq!(t.solve, usize::MAX);
-        assert_eq!(t.transpose, 262_144);
+        assert_eq!(t.transpose, 131_072);
     }
 
     #[test]

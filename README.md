@@ -32,20 +32,13 @@ cargo add ariadnetor-algorithms
 
 ### Optional features
 
-Both are off by default, so a plain `cargo add` builds pure-Rust with no C/C++
-or system-library dependency.
+The `arpack` feature is off by default, so a plain `cargo add` builds
+pure-Rust with no C/C++ or system-library dependency.
 
-- **`hptt`** (`ariadnetor`) — routes conjugating transposes of complex
-  tensors through the [HPTT][hptt] kernel via the [hptt-rs][hptt-rs]
-  bindings; every other transpose uses [strided-perm][strided-perm] in both
-  builds. Requires a C++ compiler and CMake to build HPTT.
 - **`arpack`** (`ariadnetor-algorithms`) — adds the [ARPACK-NG][arpack]
   eigensolver backend via the [arpack-rs][arpack-rs] bindings. Requires a
   system ARPACK library discoverable through `pkg-config`.
 
-[hptt]: https://github.com/springer13/hptt
-[hptt-rs]: https://github.com/ultimatile/hptt-rs
-[strided-perm]: https://crates.io/crates/strided-perm
 [arpack]: https://github.com/opencollab/arpack-ng
 [arpack-rs]: https://github.com/ultimatile/arpack-rs
 

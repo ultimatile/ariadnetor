@@ -1,20 +1,12 @@
 # This is the SHIPPED mutation pass: it runs with default features, i.e.
-# hptt OFF (ariadnetor-native) and arpack OFF (ariadnetor-algorithms). These
-# code regions are therefore out of THIS run's scope by construction, not
-# because they are spec gaps:
-#   - the ARPACK backend (krylov/arpack.rs, #[cfg(feature = "arpack")]) is
-#     never compiled here, so its mutants trivially pass;
-#   - the HPTT kernels for conjugating complex transposes (transpose.rs,
-#     #[cfg(feature = "hptt")]) are not compiled under the default (hptt-off)
-#     build, so their mutants trivially pass as well. (The naive kernel that serves
-#     those transposes in this build IS compiled by this run, as is the
-#     strided-perm route every other transpose takes.)
-# Both are covered by dedicated feature-flipped passes — `cargo make
-# mutants-arpack` and `cargo make mutants-hptt` (see Makefile.toml and
-# CONTRIBUTING.md). Read this run's missed.txt knowing those regions are
-# audited there, not here. A third feature-gated region, the
-# pluggability-litmus host backend, is test infrastructure with no pass of
-# its own; exclude_re below drops its mutants.
+# arpack OFF (ariadnetor-algorithms). The ARPACK backend (krylov/arpack.rs,
+# #[cfg(feature = "arpack")]) is therefore out of THIS run's scope by
+# construction, not because it is a spec gap: it is never compiled here, so
+# its mutants trivially pass. It is covered by the dedicated feature-flipped
+# pass `cargo make mutants-arpack` (see Makefile.toml and CONTRIBUTING.md).
+# Read this run's missed.txt knowing that region is audited there, not here.
+# A second feature-gated region, the pluggability-litmus host backend, is test
+# infrastructure with no pass of its own; exclude_re below drops its mutants.
 
 # Pinned, not merely left at the default: the single-run mutants tasks put
 # cargo-mutants' scratch directory under target/ (Makefile.toml explains why;

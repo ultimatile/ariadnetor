@@ -30,7 +30,7 @@ These are run on demand, not wired into `gate`:
 cargo make external-types  # layer-leak gate: no lower-layer/foreign type leaks through a public API
 cargo make public-api      # print the public API surface per crate (review surface changes)
 cargo semver-checks        # semver-compatibility check (once a baseline is published)
-cargo make mutants         # mutation testing (shipped pass; faithful run is all three below)
+cargo make mutants         # mutation testing (shipped pass; faithful run is both below)
 cargo make litmus          # pluggability litmus: host-pinned crates against the alternate Host substrate
 ```
 
@@ -61,16 +61,13 @@ nightly outpaces the tool's supported format, bump the tool or pin a
 compatible nightly.
 
 `cargo make mutants` runs the shipped mutation pass with default features,
-so hptt is OFF and arpack OFF. Two feature-gated regions fall outside that
-pass by construction — the ARPACK backend is never compiled, and the HPTT
-kernels for conjugating complex transposes are not compiled (hptt off by
-default) — so each has a
-companion task and the faithful run is all three:
+so arpack is OFF. The ARPACK backend falls outside that pass by
+construction — it is never compiled — so it has a companion task and the
+faithful run is both:
 
 ```bash
-cargo make mutants         # shipped pass: default features (hptt off, arpack off)
+cargo make mutants         # shipped pass: default features (arpack off)
 cargo make mutants-arpack  # the #[cfg(feature = "arpack")] krylov backend
-cargo make mutants-hptt    # the #[cfg(feature = "hptt")] HPTT conjugating-transpose kernels
 ```
 
 A bare `cargo mutants` keeps its working copies in the system temp
@@ -112,23 +109,14 @@ of every package that has mutants, and refuses any argument.
 `mutants-arpack` builds with `--features arpack`, compiling the ARPACK
 backend that the shipped pass (arpack off by default) never builds — which
 is why its mutants trivially pass the shipped run; the pass itself needs
-the system ARPACK library at build time. `mutants-hptt` builds native with
-`--features hptt` to compile the gated kernels (the naive kernel that
-replaces them without the feature, and the strided-perm route every other
-transpose takes, are already covered by the shipped default-features run). Each pass scopes
-mutation with `--file` (and `--re` for the kernel functions) to just its
-feature-gated region, so it audits what the shipped run cannot reach
-rather than re-mutating already-covered code — without that scope the
-hptt pass would re-mutate the whole native crate and surface false gaps
-from the naive functions it compiles out. Both use
-`--test-workspace false`: for `mutants-arpack` it scopes testing to the
-only crate whose tests can kill the mutants; for `mutants-hptt` it is an
-optimization — with `--features hptt`, feature unification keeps the HPTT
-path compiled under a workspace test too, so package-scoped testing only
-trims cross-crate noise rather than being required for correctness. Each
-pass writes to its own `target/mutants-{arpack,hptt}` directory so its
-results coexist with the shipped pass's; triage each pass's `missed.txt` independently —
-there, as in the shipped run, "missed" means untested.
+the system ARPACK library at build time. It scopes mutation with `--file`
+to the two files that hold that feature-gated region, so it audits what the
+shipped run cannot reach rather than re-mutating the rest of the crate, and
+uses
+`--test-workspace false` to scope testing to the only crate whose tests can
+kill the mutants. It writes to its own `target/mutants-arpack` directory so
+its results coexist with the shipped pass's; triage its `missed.txt`
+independently — there, as in the shipped run, "missed" means untested.
 
 ## Releasing
 

@@ -49,9 +49,6 @@ rand = { workspace = true }
 [features]
 default = []
 arpack = ["dep:arpack", "dep:num-complex"]
-# Opt-in passthrough enabling the native HPTT kernel for conjugating complex
-# transposes (off by default -> pure-Rust). See `ariadnetor-native`'s `hptt`.
-hptt = ["ariadnetor-native/hptt"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
