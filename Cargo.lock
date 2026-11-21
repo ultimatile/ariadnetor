@@ -21,7 +21,7 @@ dependencies = [
  "ariadnetor-native",
  "ariadnetor-tensor",
  "num-complex",
- "rand 0.10.3",
+ "rand 0.10.4",
 ]
 
 [[package]]
@@ -94,7 +94,7 @@ dependencies = [
  "criterion",
  "num-complex",
  "num-traits",
- "rand 0.10.3",
+ "rand 0.10.4",
  "thiserror 2.0.21",
 ]
 
@@ -121,7 +121,7 @@ dependencies = [
  "libm",
  "num-complex",
  "num-traits",
- "rand 0.10.3",
+ "rand 0.10.4",
  "thiserror 2.0.21",
 ]
 
@@ -136,7 +136,7 @@ dependencies = [
  "ariadnetor-tensor",
  "ciborium",
  "num-traits",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_distr 0.6.0",
  "serde",
  "thiserror 2.0.21",
@@ -169,7 +169,7 @@ dependencies = [
  "criterion",
  "num-complex",
  "num-traits",
- "rand 0.10.3",
+ "rand 0.10.4",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -1431,9 +1431,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
+checksum = "8f6fa277c67e6ea590466f04c3fe82cb509f0864fe470643e5570de9514a9b11"
 dependencies = [
  "chacha20",
  "getrandom 0.4.2",
@@ -1488,7 +1488,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d431c2703ccf129de4d45253c03f49ebb22b97d6ad79ee3ecfc7e3f4862c1d8"
 dependencies = [
  "num-traits",
- "rand 0.10.3",
+ "rand 0.10.4",
 ]
 
 [[package]]
