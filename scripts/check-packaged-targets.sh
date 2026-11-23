@@ -21,6 +21,7 @@
 #                                      dev-dependency features unified in
 #   cargo build --all-targets          examples as runnable executables
 #   cargo test --all-targets --no-run  the test harnesses, examples' included
+# Doctests, which are not a build target, are not compiled.
 #
 # Environment, both set by cargo-release for a hook:
 #   CRATE_NAME  check only this package; unset, check every one

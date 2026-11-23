@@ -128,6 +128,8 @@ expect_no_out() { ! printf '%s\n' "$out" | grep -qF -- "$1" || fail "unexpected 
 count_calls() { grep -c -- "$1" "$FAKE/calls" || true; }
 # expect_calls <n> <regex> <message>: exactly n recorded builds match.
 expect_calls() { [ "$(count_calls "$2")" -eq "$1" ] || fail "$3"; }
+# expect_fixed_calls <n> <string> <message>: the same, for a fixed string.
+expect_fixed_calls() { [ "$(grep -cF -- "$2" "$FAKE/calls" || true)" -eq "$1" ] || fail "$3"; }
 expect_no_builds() { [ ! -s "$FAKE/calls" ] || fail "$1"; }
 expect_tmp_clean() { [ -z "$(ls -A "$TMPDIR")" ] || fail "temporary directory left behind: $(ls -A "$TMPDIR")"; }
 extracted="$work/ws/target/package/packaged-targets"
@@ -149,7 +151,7 @@ expect_tmp_clean
 # Every build sees every package's patch, pointing at that package in the
 # extraction directory under target/package/.
 for crate in alpha beta; do
-    expect_calls 12 "patch\.crates-io\.$crate\.path=\"$extracted/$crate-0\.1\.0\"" \
+    expect_fixed_calls 12 "patch.crates-io.$crate.path=\"$extracted/$crate-0.1.0\"" \
         "$crate patch missing or misdirected"
 done
 # The extracted files carry the extraction time, not the archive's mtime.
