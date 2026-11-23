@@ -11,9 +11,11 @@
 #
 # The extracted packages are built against each other: one
 # `[patch.crates-io]` entry per package makes every `ariadnetor-*`
-# requirement resolve to the extracted package, whether it names the version
-# being released (not on crates.io yet) or the last published one (code
-# older than the workspace).
+# requirement, which names the workspace's one shared version as the
+# extracted packages do, resolve to the extracted package rather than to
+# crates.io. In an --execute run that version is not on crates.io yet; in a
+# dry run it is the last published one, whose code is older than the
+# workspace.
 #
 # Each package is built with default features and with --all-features (which
 # needs the system ARPACK-NG library), by three commands:
@@ -28,9 +30,8 @@
 #   DRY_RUN     `false` in an --execute run, where a failure also reports the
 #               uncommitted version bump cargo-release has written by then
 #
-# Takes no arguments. Exits 0 when every build passed, 2 when given an
-# argument, and 1 otherwise. Runs one at a time per checkout, as a release
-# does: two concurrent runs in one checkout share the extraction directory.
+# Takes no arguments. Runs one at a time per checkout, as a release does: two
+# concurrent runs in one checkout share the extraction directory.
 set -eu
 
 if [ $# -gt 0 ]; then

@@ -14,7 +14,8 @@
 #                 not a tarball
 #   fail-<crate>  if present, a build of that crate whose arguments contain
 #                 the file's content fails (an empty file fails every build)
-# and appends `<crate> <args>` to $FAKE/calls for every build.
+# and appends `<crate> <args>` to $FAKE/calls for every build, and writes the
+# arguments of `cargo package` to $FAKE/package-args.
 set -eu
 
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY \
@@ -39,6 +40,7 @@ cat > "$FAKE/bin/cargo" <<'EOF'
 set -eu
 case "$1" in
 package)
+    echo "$*" > "$FAKE/package-args"
     target=""
     while [ $# -gt 0 ]; do
         [ "$1" = --target-dir ] && target="$2"
@@ -98,7 +100,7 @@ fail() {
 # Fresh fixture workspace and stand-in state for one test.
 setup() {
     name=$1
-    rm -rf "$work/ws" "$FAKE/calls" "$FAKE"/package-exit "$FAKE"/fail-* \
+    rm -rf "$work/ws" "$FAKE/calls" "$FAKE/package-args" "$FAKE"/package-exit "$FAKE"/fail-* \
         "$FAKE/nameless" "$FAKE/misnamed" "$FAKE/corrupt"
     mkdir -p "$work/ws/scripts"
     cp "$here/check-packaged-targets.sh" "$work/ws/scripts/"
@@ -131,7 +133,12 @@ expect_calls() { [ "$(count_calls "$2")" -eq "$1" ] || fail "$3"; }
 # expect_fixed_calls <n> <string> <message>: the same, for a fixed string.
 expect_fixed_calls() { [ "$(grep -cF -- "$2" "$FAKE/calls" || true)" -eq "$1" ] || fail "$3"; }
 expect_no_builds() { [ ! -s "$FAKE/calls" ] || fail "$1"; }
-expect_tmp_clean() { [ -z "$(ls -A "$TMPDIR")" ] || fail "temporary directory left behind: $(ls -A "$TMPDIR")"; }
+# Only the script's own temporary directories: other tools (Apple's git) may
+# write to TMPDIR too.
+expect_tmp_clean() {
+    left=$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -name 'check-packaged-targets.*')
+    [ -z "$left" ] || fail "temporary directory left behind: $left"
+}
 extracted="$work/ws/target/package/packaged-targets"
 touch -t 200701010000 "$work/older-than-extraction"
 
@@ -146,6 +153,12 @@ for cmd in "build --lib" "build --all-targets" "test --all-targets --no-run"; do
     expect_calls 4 "$cmd" "expected 4 '$cmd' builds"
 done
 expect_calls 6 "--all-features" "expected 6 all-features builds"
+expect_fixed_calls 12 "--target-dir $work/ws/target/package-check" "builds outside the stable build dir"
+# Packaging covers the whole workspace, skips cargo's lib-only verification,
+# and accepts the uncommitted version bump of an --execute run.
+for flag in --workspace --no-verify --allow-dirty; do
+    grep -qF -- "$flag" "$FAKE/package-args" || fail "cargo package without $flag"
+done
 # The temporary directory holding the archives is removed on exit.
 expect_tmp_clean
 # Every build sees every package's patch, pointing at that package in the
