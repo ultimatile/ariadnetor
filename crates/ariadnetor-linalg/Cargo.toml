@@ -61,12 +61,13 @@ num-traits = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-ariadnetor-native = { path = "../ariadnetor-native" }
+ariadnetor-native = { path = "../ariadnetor-native", version = "0.0.8" }
 # Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
 # keeps the test-only feature out of normal builds. See ariadnetor-tensor's
 # `test-fixtures` feature.
 ariadnetor-tensor = {
   path = "../ariadnetor-tensor",
+  version = "0.0.8",
   features = ["test-fixtures"]
 }
 criterion = { workspace = true }

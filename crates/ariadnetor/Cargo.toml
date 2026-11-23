@@ -22,6 +22,7 @@ ariadnetor-tensor = { path = "../ariadnetor-tensor", version = "0.0.8" }
 # Enables `ariadnetor_tensor::test_fixtures` for this crate's integration tests.
 ariadnetor-tensor = {
   path = "../ariadnetor-tensor",
+  version = "0.0.8",
   features = ["test-fixtures"]
 }
 

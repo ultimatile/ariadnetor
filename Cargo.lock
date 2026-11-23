@@ -12,19 +12,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "algorithms-fixtures"
-version = "0.0.8"
-dependencies = [
- "ariadnetor-core",
- "ariadnetor-linalg",
- "ariadnetor-mps",
- "ariadnetor-native",
- "ariadnetor-tensor",
- "num-complex",
- "rand 0.10.4",
-]
-
-[[package]]
 name = "aligned-vec"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -83,8 +70,8 @@ dependencies = [
 name = "ariadnetor-algorithms"
 version = "0.0.8"
 dependencies = [
- "algorithms-fixtures",
  "approx",
+ "ariadnetor-algorithms",
  "ariadnetor-core",
  "ariadnetor-linalg",
  "ariadnetor-mps",

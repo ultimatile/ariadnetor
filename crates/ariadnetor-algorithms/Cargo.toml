@@ -7,6 +7,16 @@ repository.workspace = true
 license.workspace = true
 keywords = ["dmrg", "mps", "physics", "tensor-network"]
 categories = ["mathematics", "science"]
+# Every integration test and bench but `error_source_forwarding` uses
+# `test_fixtures`, which a separate crate reaches only through the
+# `test-fixtures` feature. In the workspace the self dev-dependency below
+# turns it on, but `cargo package` drops that dependency, since it has a path
+# and no version, and a versioned self dev-dependency would link a second copy
+# of this crate. The published package therefore leaves `tests/` and
+# `benches/` out, `error_source_forwarding` with them.
+# The leading `/` anchors each pattern to the package root, so the nested
+# `src/**/tests/` unit-test modules stay in.
+exclude = ["/benches/", "/tests/"]
 
 [lib]
 name = "ariadnetor_algorithms"
@@ -33,13 +43,17 @@ rand = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-algorithms-fixtures = { path = "../../algorithms-fixtures" }
 approx = { workspace = true }
-# Enables `ariadnetor_tensor::test_fixtures` for this crate's tests; resolver v2
-# keeps the test-only feature out of normal builds. See ariadnetor-tensor's
-# `test-fixtures` feature.
+# Self dev-dependency enabling `test-fixtures` for this crate's integration
+# tests, benches, and example tests: they are separate crates that link the
+# non-`cfg(test)` lib build, so they reach `test_fixtures` only via the feature.
+ariadnetor-algorithms = { path = ".", features = ["test-fixtures"] }
+# Enables `ariadnetor_tensor::test_fixtures` for this crate's unit tests;
+# resolver v2 keeps the test-only feature out of normal builds. See
+# ariadnetor-tensor's `test-fixtures` feature.
 ariadnetor-tensor = {
   path = "../ariadnetor-tensor",
+  version = "0.0.8",
   features = ["test-fixtures"]
 }
 criterion = { workspace = true }
@@ -52,6 +66,10 @@ arpack = ["dep:arpack", "dep:num-complex"]
 # Passthrough so the litmus `Host`-substrate swap reaches this crate's
 # host-pinned tests; see ariadnetor-tensor's `pluggability-litmus`.
 pluggability-litmus = ["ariadnetor-tensor/pluggability-litmus"]
+# Exposes the `test_fixtures` module (MPS / MPO chains, Dense builders, panic
+# helpers) as `pub` for this crate's integration tests, benches, and example
+# tests. Test support only, not part of the library API.
+test-fixtures = ["ariadnetor-tensor/test-fixtures", "dep:num-complex"]
 
 [lints]
 workspace = true

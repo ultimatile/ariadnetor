@@ -14,12 +14,14 @@
 //! - **`validate_params` boundaries on `target_trunc_err`**: zero
 //!   accepted, negative rejected, NaN rejected, positive accepted.
 
-use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_center_zero_f64};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::dmrg::{
     DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    heisenberg_mpo_f64, random_mps_center_zero_f64,
+};
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{TruncErrTarget, TruncSvdParams};
 use ariadnetor_mps::BraketEnvs;

@@ -7,11 +7,11 @@
 
 #![cfg(feature = "arpack")]
 
-use algorithms_fixtures::dense_fixtures::{
-    random_hermitian_complex_f64, random_hermitian_f64, smallest_eigenvalue,
-};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{ArpackError, ArpackParams, ArpackScalar, arpack_smallest};
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    random_hermitian_complex_f64, random_hermitian_f64, smallest_eigenvalue,
+};
 use ariadnetor_core::Scalar;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};
 use num_complex::Complex;

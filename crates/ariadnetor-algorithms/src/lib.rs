@@ -10,3 +10,6 @@ pub mod dmrg;
 pub mod krylov;
 pub mod tebd;
 mod trunc_params;
+
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod test_fixtures;

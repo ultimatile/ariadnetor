@@ -65,6 +65,13 @@ repos:
         language: script
         files: ^scripts/(test-)?mutants-sharded\.sh$
         pass_filenames: false
+      - id: check-packaged-targets-selftest
+        name: check-packaged-targets contract tests
+        description: lock the release's packaged-target check's selection, failure and exit-status behavior
+        entry: scripts/test-check-packaged-targets.sh
+        language: script
+        files: ^scripts/(test-)?check-packaged-targets\.sh$
+        pass_filenames: false
       - id: protect-default-branch
         name: refuse pushes to default branch
         entry: scripts/protect-default-branch.sh

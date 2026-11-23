@@ -1,7 +1,9 @@
 use std::sync::OnceLock;
 
-use algorithms_fixtures::dense_fixtures::{bond_term_hamiltonian, smallest_eigenvalue};
-use algorithms_fixtures::{PanicCase, panic_message};
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    bond_term_hamiltonian, smallest_eigenvalue,
+};
+use ariadnetor_algorithms::test_fixtures::{PanicCase, panic_message};
 use ariadnetor_linalg::eigh_with_backend;
 
 use super::*;

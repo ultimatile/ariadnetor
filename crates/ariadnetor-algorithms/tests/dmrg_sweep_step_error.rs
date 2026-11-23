@@ -1,11 +1,11 @@
 //! Step-error propagation case for `sweep_2site`, split out from
 //! `dmrg_sweep.rs` to keep the per-test-file line cap.
 
-use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use ariadnetor_algorithms::dmrg::{
     DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{Mpo, Mps};

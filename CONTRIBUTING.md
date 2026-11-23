@@ -123,7 +123,8 @@ independently — there, as in the shipped run, "missed" means untested.
 Publishing a version to crates.io is driven by
 [`cargo-release`](https://github.com/crate-ci/cargo-release) (install once:
 `cargo install cargo-release`), configured in `release.toml` and wrapped by a
-`cargo make` task:
+`cargo make` task. The release also needs the system ARPACK-NG library, since
+its pre-release check builds the `arpack` feature:
 
 ```bash
 cargo make release 0.0.4              # dry-run: prints the full plan
@@ -138,13 +139,24 @@ following `--execute` as a positional and abort.
 One `--execute` run does what would otherwise be an error-prone manual
 sequence: it bumps the shared workspace version, rewrites the hard-coded
 `version = "…"` requirement on every internal path dependency to match,
-publishes each crate in dependency order — waiting for each to appear on the
-index before the crate that needs it — and creates one `vX.Y.Z` tag. Because
+checks that every crate's packaged targets build, publishes each crate in
+dependency order — waiting for each to appear on the index before the crate
+that needs it — and creates one `vX.Y.Z` tag. Because
 crates.io versions are immutable, always run the dry-run first and read the
 plan. The external `arpack` dependency happens to share the internal crates'
 version number; `cargo-release` only rewrites `path` dependencies, so it is left
 untouched (a blanket find-and-replace would not be — do not bump versions that
 way).
+
+The packaged-target check is `release.toml`'s pre-release hook,
+`scripts/check-packaged-targets.sh`. `cargo package` drops a dev-dependency
+that has a `path` but no `version`, and its own verification builds only the
+library and binaries, so a test, bench, or example that needs such a
+dev-dependency would be published unbuildable. The check packages the
+workspace, builds every target of each package from the package itself
+against the other packages, with default features and with all features, and
+aborts the release before anything is committed or published if one fails.
+`cargo make package-check` runs it on its own.
 
 `release.toml` sets `push = false`, so the release commit and tag stay local
 until the explicit `git push` above; the `SKIP=` bypass is needed because the
@@ -180,6 +192,13 @@ When adding a new `pub` item, check the rule in this order:
 If demoting to `pub(crate)` triggers a `dead_code` warning, the item
 was already dead under the narrower visibility — remove it rather
 than annotate.
+
+A crate's `test_fixtures` module, gated on
+`cfg(any(test, feature = "test-fixtures"))`, sits outside the three
+layers. It is test support, not library API, and its items are `pub`
+even when no sibling crate uses them, because the crate's own
+integration tests, benches, and example tests are separate crates
+that `pub(crate)` cannot reach.
 
 #### Raw / expert constructors stay below the umbrella
 

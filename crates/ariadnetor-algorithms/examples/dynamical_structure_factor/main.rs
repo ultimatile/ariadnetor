@@ -554,5 +554,7 @@ fn format_table(qs: &[f64], omegas: &[f64], s: &[Vec<f64>]) -> String {
     table
 }
 
-#[cfg(test)]
+// The tests use `test_fixtures`, which the published package reaches only with
+// the `test-fixtures` feature; gating on it keeps the example buildable there.
+#[cfg(all(test, feature = "test-fixtures"))]
 mod tests;

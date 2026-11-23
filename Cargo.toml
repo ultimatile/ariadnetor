@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-  "algorithms-fixtures",
   "crates/ariadnetor",
   "crates/ariadnetor-algorithms",
   "crates/ariadnetor-core",

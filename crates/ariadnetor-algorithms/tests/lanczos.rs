@@ -4,11 +4,11 @@
 //! the solver via a closure that does a matrix-vector product, and
 //! compare against `ariadnetor_linalg::eigh` ground truth.
 
-use algorithms_fixtures::dense_fixtures::{
-    random_hermitian_complex_f64, random_hermitian_f64, smallest_eigenvalue,
-};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::krylov::{LanczosError, LanczosParams, lanczos_smallest};
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    random_hermitian_complex_f64, random_hermitian_f64, smallest_eigenvalue,
+};
 use ariadnetor_core::{MemoryOrder, Scalar};
 use ariadnetor_linalg::DenseHostOps;
 use ariadnetor_tensor::{ComputeBackendTensorExt, DenseTensor, Host};

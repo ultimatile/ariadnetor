@@ -8,15 +8,17 @@
 //!   cargo bench -p ariadnetor-algorithms --bench dmrg_local_eigensolver --features arpack
 //!     → Lanczos + ARPACK arms.
 //!
-//! The MPO builder is the shared `algorithms_fixtures::dense_fixtures`
+//! The MPO builder is the shared `test_fixtures::dense_fixtures`
 //! Heisenberg builder (1D OBC Heisenberg at `J = 1`), so the
 //! solver-comparison fixture matches what the correctness tests pin down.
 
-use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
 #[cfg(feature = "arpack")]
 use ariadnetor_algorithms::krylov::ArpackParams;
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    heisenberg_mpo_f64, random_mps_unknown_f64,
+};
 use ariadnetor_linalg::TruncSvdParams;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 

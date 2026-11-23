@@ -16,7 +16,7 @@ use super::{identity_mpo, product_state_mps};
 use crate::dmrg::heff::{EffectiveHamiltonian2Site, dmrg_2site_step};
 use crate::dmrg::{DmrgHeffError, LocalEigensolverParams};
 use crate::krylov::{LanczosError, LanczosParams, LinearOp};
-use algorithms_fixtures::dense_fixtures::{
+use crate::test_fixtures::dense_fixtures::{
     random_mps_unknown_c64, random_mps_unknown_f64, smallest_eigenvalue,
 };
 use approx::assert_abs_diff_eq;
