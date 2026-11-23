@@ -26,6 +26,10 @@ export GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+# The script's mktemp honours TMPDIR; keep that inside this test's directory.
+TMPDIR="$work/tmp"
+export TMPDIR
+mkdir "$TMPDIR"
 FAKE="$work/fake"
 export FAKE
 mkdir -p "$FAKE/bin"
@@ -59,6 +63,7 @@ package)
             printf '[package]\nname = "%s"\nversion = "0.1.0"\n\n[lib]\nname = "%s_lib"\n\n[[test]]\nname = "%s_test"\n\n[dependencies.dep]\nversion = "9.9.9"\n' \
                 "$name" "$name" "$name" > "$target/src/$name-0.1.0/Cargo.toml"
         fi
+        touch -t 200001010000 "$target/src/$name-0.1.0/Cargo.toml"
         tar czf "$target/package/$name-0.1.0.crate" -C "$target/src" "$name-0.1.0"
     done < "$FAKE/packages"
     if [ -e "$FAKE/corrupt" ]; then
@@ -97,7 +102,6 @@ setup() {
         "$FAKE/nameless" "$FAKE/misnamed" "$FAKE/corrupt"
     mkdir -p "$work/ws/scripts"
     cp "$here/check-packaged-targets.sh" "$work/ws/scripts/"
-    echo '[toolchain]' > "$work/ws/rust-toolchain.toml"
     printf 'alpha\nbeta\n' > "$FAKE/packages"
     : > "$FAKE/calls"
 }
@@ -122,7 +126,12 @@ expect_out() { printf '%s\n' "$out" | grep -qF -- "$1" || fail "missing '$1' in:
 expect_no_out() { ! printf '%s\n' "$out" | grep -qF -- "$1" || fail "unexpected '$1' in: $out"; }
 # count_calls <regex>: how many recorded builds match the basic regex.
 count_calls() { grep -c -- "$1" "$FAKE/calls" || true; }
+# expect_calls <n> <regex> <message>: exactly n recorded builds match.
+expect_calls() { [ "$(count_calls "$2")" -eq "$1" ] || fail "$3"; }
 expect_no_builds() { [ ! -s "$FAKE/calls" ] || fail "$1"; }
+expect_tmp_clean() { [ -z "$(ls -A "$TMPDIR")" ] || fail "temporary directory left behind: $(ls -A "$TMPDIR")"; }
+extracted="$work/ws/target/package/packaged-targets"
+touch -t 200701010000 "$work/older-than-extraction"
 
 setup every-package-passes
 run
@@ -132,14 +141,20 @@ for crate in alpha beta; do
 done
 [ "$(wc -l < "$FAKE/calls")" -eq 12 ] || fail "expected 12 builds: $(cat "$FAKE/calls")"
 for cmd in "build --lib" "build --all-targets" "test --all-targets --no-run"; do
-    [ "$(count_calls "$cmd")" -eq 4 ] || fail "expected 4 '$cmd' builds"
+    expect_calls 4 "$cmd" "expected 4 '$cmd' builds"
 done
-[ "$(count_calls "--all-features")" -eq 6 ] || fail "expected 6 all-features builds"
-# Every build sees every package's patch, pointing at that package.
+expect_calls 6 "--all-features" "expected 6 all-features builds"
+# The temporary directory holding the archives is removed on exit.
+expect_tmp_clean
+# Every build sees every package's patch, pointing at that package in the
+# extraction directory under target/package/.
 for crate in alpha beta; do
-    [ "$(count_calls "patch\.crates-io\.$crate\.path=\"[^\"]*/$crate-0\.1\.0\"")" -eq 12 ] ||
-        fail "$crate patch missing or misdirected"
+    expect_calls 12 "patch\.crates-io\.$crate\.path=\"$extracted/$crate-0\.1\.0\"" \
+        "$crate patch missing or misdirected"
 done
+# The extracted files carry the extraction time, not the archive's mtime.
+[ "$extracted/alpha-0.1.0/Cargo.toml" -nt "$work/older-than-extraction" ] ||
+    fail "extracted files kept the archive's mtime"
 
 setup refuses-arguments
 run_args --foo
@@ -147,12 +162,25 @@ expect_status 2
 expect_out "takes no arguments"
 expect_no_builds "built despite refusing"
 
+# A second run reuses the extraction directory and clears what an earlier run
+# left there.
+setup rerun-clears-the-extraction-directory
+run
+expect_status 0
+mkdir "$extracted/stale-0.1.0"
+printf '[package]\nname = "stale"\nversion = "0.1.0"\n' > "$extracted/stale-0.1.0/Cargo.toml"
+: > "$FAKE/calls"
+run
+expect_status 0
+expect_calls 0 '^stale ' "built a package left from an earlier run"
+expect_no_out "ok stale"
+
 setup crate-name-selects-one-package
 run CRATE_NAME=beta
 expect_status 0
 expect_out "ok beta default"
 expect_no_out "ok alpha"
-[ "$(count_calls '^alpha ')" -eq 0 ] || fail "built alpha"
+expect_calls 0 '^alpha ' "built alpha"
 
 setup unknown-crate-name-fails
 run CRATE_NAME=gamma
@@ -168,7 +196,7 @@ expect_out "ok alpha default"
 expect_out "ok beta all-features"
 expect_no_out "ok alpha all-features"
 # The configuration stops at its first failing build.
-[ "$(count_calls '^alpha .*--all-features')" -eq 1 ] || fail "alpha all-features kept building"
+expect_calls 1 '^alpha .*--all-features' "alpha all-features kept building"
 expect_no_out "left uncommitted"
 
 # The case the check exists for: the lib builds, a test or example does not.
@@ -177,9 +205,10 @@ echo "test --all-targets --no-run --features=" > "$FAKE/fail-beta"
 run
 expect_status 1
 expect_out "FAIL beta default: cargo test --all-targets --no-run --features="
+expect_tmp_clean
 expect_out "ok beta all-features"
 expect_no_out "ok beta default"
-[ "$(count_calls '^beta build --lib --features=')" -eq 1 ] || fail "beta lib not built"
+expect_calls 1 '^beta build --lib --features=' "beta lib not built"
 
 setup execute-run-failure-reports-the-bump
 git -C "$work/ws" init -q
@@ -202,6 +231,7 @@ run DRY_RUN=false
 expect_status 1
 expect_out "cargo package failed"
 expect_out "left uncommitted"
+expect_tmp_clean
 
 setup no-archive-fails
 : > "$FAKE/packages"
@@ -216,11 +246,22 @@ expect_status 1
 expect_out "cannot extract"
 expect_no_builds "built despite the failed extraction"
 
-setup missing-toolchain-file-fails
-rm "$work/ws/rust-toolchain.toml"
+setup uncreatable-extraction-directory-fails
+mkdir -p "$work/ws/target"
+: > "$work/ws/target/package"
 run
 expect_status 1
-expect_out "cannot copy rust-toolchain.toml"
+expect_out "cannot create $extracted"
+expect_no_builds "built despite the missing extraction directory"
+
+setup unclearable-extraction-directory-fails
+mkdir -p "$extracted/left"
+chmod a-w "$extracted"
+run
+chmod u+w "$extracted"
+expect_status 1
+expect_out "cannot clear $extracted"
+expect_no_builds "built despite the uncleared extraction directory"
 
 setup nameless-manifest-fails
 touch "$FAKE/nameless"
@@ -228,11 +269,18 @@ run
 expect_status 1
 expect_out "package '' version '0.1.0' does not match"
 
+setup missing-temporary-directory-fails
+run TMPDIR="$work/absent"
+expect_status 1
+expect_out "cannot create a temporary directory"
+expect_no_builds "built without a temporary directory"
+
 setup misnamed-manifest-fails
 touch "$FAKE/misnamed"
 run
 expect_status 1
 expect_out "package 'alph' version '0.1.0' does not match"
+expect_tmp_clean
 expect_no_builds "built despite the mismatch"
 
 if [ "$failures" -gt 0 ]; then

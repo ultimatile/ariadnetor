@@ -28,7 +28,8 @@
 #               uncommitted version bump cargo-release has written by then
 #
 # Takes no arguments. Exits 0 when every build passed, 2 when given an
-# argument, and 1 otherwise.
+# argument, and 1 otherwise. Runs one at a time per checkout, as a release
+# does: two concurrent runs in one checkout share the extraction directory.
 set -eu
 
 if [ $# -gt 0 ]; then
@@ -52,30 +53,37 @@ die() {
     exit 1
 }
 
-# A temporary directory rather than target/, so that no extracted package
-# finds the workspace root above it; fresh per run, so that the archive set
-# is exactly this run's.
-work=$(mktemp -d) || die "cannot create a temporary directory"
-trap 'rm -rf "$work"' EXIT
+# The archives go to a fresh temporary directory, so that the set is exactly
+# this run's. They are extracted under target/package/, where cargo's
+# workspace discovery stops, so that each extracted package is its own root,
+# as it is when built from the registry. The directory is the same on every
+# run and cleared first: cargo keys a path package's build artifacts on its
+# path, so a new path per run would rebuild every package into a new slot of
+# build_dir. `tar -m` stamps the files with the extraction time; cargo writes
+# fixed, old mtimes into the archive entries, and restoring them would let a
+# changed source look older than the artifacts built from the previous one.
+# An explicit template, since macOS mktemp ignores TMPDIR without one.
+work=$(mktemp -d "${TMPDIR:-/tmp}/check-packaged-targets.XXXXXX") ||
+    die "cannot create a temporary directory"
+trap 'rm -rf "$work" || true' EXIT
+extract_dir="$root/target/package/packaged-targets"
 
 (cd "$root" && cargo package --workspace --no-verify --allow-dirty --target-dir "$work/target") ||
     die "cargo package failed"
 
-mkdir "$work/x" || die "cannot create $work/x"
+rm -rf "$extract_dir" || die "cannot clear $extract_dir"
+mkdir -p "$extract_dir" || die "cannot create $extract_dir"
 for archive in "$work"/target/package/*.crate; do
     [ -e "$archive" ] || die "cargo package produced no .crate archive"
-    tar xzf "$archive" -C "$work/x" || die "cannot extract $archive"
+    tar xmzf "$archive" -C "$extract_dir" || die "cannot extract $archive"
 done
-# Extracted packages carry no rust-toolchain.toml; rustup finds this one in
-# their parent directory, so they build with the toolchain the workspace pins.
-cp "$root/rust-toolchain.toml" "$work/x/" || die "cannot copy rust-toolchain.toml"
 
 # The package name and version are the first `name =` and `version =` lines
 # of the normalized manifest, the ones in its [package] table; the archive's
 # `<name>-<version>` directory must match them.
 dirs=()
 names=()
-for dir in "$work"/x/*/; do
+for dir in "$extract_dir"/*/; do
     dir=${dir%/}
     name=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$dir/Cargo.toml" | head -n 1)
     version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$dir/Cargo.toml" | head -n 1)
