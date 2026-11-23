@@ -232,7 +232,8 @@ run DRY_RUN=false
 expect_status 1
 expect_out "FAIL beta default"
 expect_out "left uncommitted in $work/ws"
-expect_out "git -C $work/ws restore ."
+expect_out "revert only the version bump"
+expect_no_out "restore ."
 
 setup dry-run-failure-does-not-report-the-bump
 echo "" > "$FAKE/fail-beta"

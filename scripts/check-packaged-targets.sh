@@ -46,7 +46,7 @@ report_bump() {
     [ "${DRY_RUN:-}" = false ] || return 0
     echo "check-packaged-targets: any version bump cargo-release wrote is left uncommitted in $root:"
     git -C "$root" status --short || true
-    echo "check-packaged-targets: \`git -C $root restore .\` discards it"
+    echo "check-packaged-targets: revert only the version bump, in the manifests and Cargo.lock; other edits listed above are not the release's"
 }
 
 die() {
