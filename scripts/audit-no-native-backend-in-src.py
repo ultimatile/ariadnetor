@@ -12,6 +12,7 @@ alias definition (and the litmus stub) live in `ariadnetor-tensor`, which is
 out of scope here. Test code is excluded — `RecordingBackend` and the
 numeric-agreement tests legitimately instantiate `NativeBackend`:
   - any path under a `tests/` directory;
+  - any path under a `test_fixtures/` directory (feature-gated fixtures);
   - files named `tests.rs` or `test_util.rs`;
   - `#[cfg(test)]` modules and comments.
 This is a token-level heuristic for accidental regressions.
@@ -30,14 +31,16 @@ SRC_DIRS = [
     REPO / "crates/ariadnetor-linalg/src",
 ]
 EXCLUDED_NAMES = {"tests.rs", "test_util.rs"}
+EXCLUDED_DIRS = {"tests", "test_fixtures"}
 TOKEN = re.compile(r"\bNativeBackend\b")
 
 
 def excluded(path: Path, src_dir: Path) -> bool:
-    # Judge "tests" on the path RELATIVE to src_dir: an absolute-path check
-    # would wrongly skip everything if the checkout sits under a "tests" dir.
+    # Judge the directory names on the path RELATIVE to src_dir: an
+    # absolute-path check would wrongly skip everything if the checkout sits
+    # under a directory with one of those names.
     rel = path.relative_to(src_dir)
-    return path.name in EXCLUDED_NAMES or "tests" in rel.parts
+    return path.name in EXCLUDED_NAMES or not EXCLUDED_DIRS.isdisjoint(rel.parts)
 
 
 def main() -> int:

@@ -18,9 +18,9 @@
 //!
 //! Test-internal helpers; no public API additions.
 
-use algorithms_fixtures::dense_fixtures::smallest_eigenvalue;
 use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::smallest_eigenvalue;
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};

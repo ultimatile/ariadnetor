@@ -12,11 +12,13 @@
 //! BlockSparse path is already implied by the Dense equivalence
 //! tests plus the BlockSparse `sweep_2site` validation suite.
 
-use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use ariadnetor_algorithms::dmrg::{
     DmrgError, DmrgSweepParams, LocalEigensolverParams, dmrg_2site, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    heisenberg_mpo_f64, random_mps_unknown_f64,
+};
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::{CanonicalForm, Mpo, Mps, TensorChain};

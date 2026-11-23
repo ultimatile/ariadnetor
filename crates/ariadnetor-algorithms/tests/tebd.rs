@@ -10,11 +10,11 @@
 //! transposition: a swapped leg, a reversed pass, or a missing half step
 //! changes the result.
 
-use algorithms_fixtures::dense_fixtures::{
+use ariadnetor_algorithms::tebd::{TebdParams, TebdStepRecord, TimeStep, tebd};
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
     NO_TRUNC, bond_term_hamiltonian, embed_bond_term, random_bond_terms_c64, random_mps_c64,
     random_mps_unknown_f64, smallest_eigenvalue,
 };
-use ariadnetor_algorithms::tebd::{TebdParams, TebdStepRecord, TimeStep, tebd};
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::{contract, expm_antihermitian_with_backend, expm_with_backend, tensordot};
 use ariadnetor_mps::{

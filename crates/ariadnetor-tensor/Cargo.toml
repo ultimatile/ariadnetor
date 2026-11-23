@@ -7,6 +7,11 @@ repository.workspace = true
 license.workspace = true
 keywords = ["block-sparse", "symmetry", "tensor", "tensor-network"]
 categories = ["mathematics", "science"]
+# This test uses `test_fixtures`, which it reaches only through the self
+# dev-dependency below. `cargo package` drops that dependency, since it has a
+# path and no version, and a versioned self dev-dependency would link a second
+# copy of this crate. The published package therefore leaves the test out.
+exclude = ["/tests/block_sparse_scalar_ops.rs"]
 
 [lib]
 name = "ariadnetor_tensor"

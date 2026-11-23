@@ -1,18 +1,17 @@
-//! Shared algorithms-level fixtures for the algorithms crate's tests,
-//! examples, and benchmarks: U(1) MPS / MPO chains (`fixtures`) and Dense
-//! builders and dense references (`dense_fixtures`), and at the root
-//! `PanicCase` and `panic_message` for tables of panic cases. The
-//! tensor-layer densify / leg helpers live in
-//! `ariadnetor_tensor::test_fixtures`.
+//! Shared algorithms-level fixtures for this crate's tests, examples, and
+//! benchmarks: U(1) MPS / MPO chains (`fixtures`) and Dense builders and
+//! dense references (`dense_fixtures`), and at the root `PanicCase` and
+//! `panic_message` for tables of panic cases. The tensor-layer densify /
+//! leg helpers live in `ariadnetor_tensor::test_fixtures`.
 //!
-//! These modules live in a library crate so their `pub` API is rooted
-//! and reachable, letting `dead_code = "forbid"` apply workspace-wide
-//! without per-file suppressions: a `tests/*.rs` integration test
-//! compiles as its own binary where `pub` does not exempt an item from
-//! the dead-code lint, but a library crate's reachable `pub` items are
-//! always live.
-
-#![deny(missing_docs)]
+//! The module is gated on `cfg(any(test, feature = "test-fixtures"))`:
+//! this crate's own unit tests reach it as `crate::test_fixtures` under
+//! `cfg(test)`, while its integration tests, benchmarks, and example
+//! tests are separate crates and reach it as
+//! `ariadnetor_algorithms::test_fixtures` through the `test-fixtures`
+//! feature, which a self dev-dependency enables. Being `pub` and
+//! reachable from the library root also keeps every item live under
+//! `dead_code = "forbid"`, whichever of those crates uses it.
 
 use std::panic::{UnwindSafe, catch_unwind};
 

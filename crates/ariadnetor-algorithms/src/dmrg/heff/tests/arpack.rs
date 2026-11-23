@@ -8,7 +8,7 @@
 
 use std::error::Error;
 
-use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
+use crate::test_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use ariadnetor_native::NativeBackend;
 
 use crate::dmrg::heff::dmrg_2site_step;

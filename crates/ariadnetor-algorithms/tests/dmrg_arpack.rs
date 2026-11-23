@@ -11,14 +11,16 @@
 //! drives the crate-internal per-step entry point directly.
 //!
 //! The Heisenberg MPO + random MPS builders come from the shared
-//! `algorithms_fixtures::dense_fixtures` module.
+//! `test_fixtures::dense_fixtures` module.
 
 #![cfg(feature = "arpack")]
 
-use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, dmrg_2site};
 use ariadnetor_algorithms::krylov::{ArpackParams, LanczosParams};
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    heisenberg_mpo_f64, random_mps_unknown_f64,
+};
 use ariadnetor_linalg::TruncSvdParams;
 
 // ---------------------------------------------------------------------------

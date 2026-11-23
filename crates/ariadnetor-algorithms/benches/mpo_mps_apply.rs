@@ -18,10 +18,12 @@
 //!   it (the multi-term path is a feature, not an optimization).
 //!
 //! The bench lives here rather than in `ariadnetor-mps` because the shared
-//! input builders (`algorithms_fixtures`) depend on that crate — hosting it
-//! there would need a dev-dependency cycle.
+//! input builders (`test_fixtures::dense_fixtures`) depend on that crate —
+//! hosting it there would need a dev-dependency cycle.
 
-use algorithms_fixtures::dense_fixtures::{heisenberg_mpo_f64, random_mps_unknown_f64};
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    heisenberg_mpo_f64, random_mps_unknown_f64,
+};
 use ariadnetor_mps::{
     ApplyMethod, Mpo, Mps, SuccessiveRandomizedParams, TensorChain,
     apply_sum_successive_randomized, apply_with_method,

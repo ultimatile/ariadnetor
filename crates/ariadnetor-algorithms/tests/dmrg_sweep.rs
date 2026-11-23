@@ -7,14 +7,14 @@
 //! variant gives a closed-form ground-energy reference
 //! (`prod_i min_eig(h_i)`) without a separate ED solver.
 
-use algorithms_fixtures::dense_fixtures::{
-    random_mps_center_zero_c64, random_mps_center_zero_f64, smallest_eigenvalue,
-};
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::dmrg::{
     DmrgSweepError, DmrgSweepParams, LocalEigensolverParams, SweepDirection, sweep_2site,
 };
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
+    random_mps_center_zero_c64, random_mps_center_zero_f64, smallest_eigenvalue,
+};
 use ariadnetor_core::Scalar;
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;

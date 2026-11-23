@@ -2,10 +2,10 @@
 //! before touching the state; a state whose norm breaks down is left as the
 //! failing step produced it.
 
-use algorithms_fixtures::dense_fixtures::{
+use ariadnetor_algorithms::tebd::{TebdError, TebdParams, TimeStep, tebd};
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::{
     NO_TRUNC, random_bond_terms_c64, random_mps_c64, random_mps_unknown_f64,
 };
-use ariadnetor_algorithms::tebd::{TebdError, TebdParams, TimeStep, tebd};
 use ariadnetor_core::Scalar;
 use ariadnetor_mps::{CanonicalForm, Mps, TensorChain, TruncErrTarget, TruncSvdParams};
 use ariadnetor_tensor::{DenseLayout, DenseStorage, DenseTensor};

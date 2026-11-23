@@ -370,7 +370,7 @@ pub fn random_mps_unknown_f64(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PanicCase, panic_message};
+    use crate::test_fixtures::{PanicCase, panic_message};
 
     fn term(d_l: usize, d_r: usize) -> DenseTensor<f64> {
         DenseTensor::<f64>::zeros(vec![d_l, d_r, d_l, d_r])

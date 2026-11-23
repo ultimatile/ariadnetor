@@ -108,6 +108,17 @@ def test_exclusion_is_relative_not_absolute():
     assert anb.excluded(genuine, src_dir), "a genuine tests/ dir under the root must be excluded"
 
 
+def test_test_fixtures_exclusion_is_relative_not_absolute():
+    anb = _load("audit-no-native-backend-in-src")
+    src_dir = Path("/x/test_fixtures/repo/crates/ariadnetor-algorithms/src")
+    prod = src_dir / "foo.rs"  # ancestor dir is named "test_fixtures"
+    fixture = src_dir / "test_fixtures" / "dense_fixtures.rs"
+    assert not anb.excluded(prod, src_dir), (
+        "an ancestor 'test_fixtures' dir must not disable the audit"
+    )
+    assert anb.excluded(fixture, src_dir), "a test_fixtures/ dir under the root must be excluded"
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failures = 0

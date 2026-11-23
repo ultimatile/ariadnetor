@@ -8,7 +8,7 @@ use crate::dmrg::heff_block_sparse::{
     EffectiveHamiltonian2SiteBlockSparse, dmrg_2site_step_block_sparse,
 };
 use crate::krylov::{LanczosParams, LinearOp};
-use algorithms_fixtures::dense_fixtures::smallest_eigenvalue;
+use crate::test_fixtures::dense_fixtures::smallest_eigenvalue;
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::TensorChain;

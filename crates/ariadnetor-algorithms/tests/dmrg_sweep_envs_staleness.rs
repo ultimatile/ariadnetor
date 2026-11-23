@@ -3,10 +3,10 @@
 //! boundary case codex flagged: every populated slot must match a
 //! fresh `BraketEnvs::build` against the post-sweep MPS.
 
-use algorithms_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use approx::assert_abs_diff_eq;
 use ariadnetor_algorithms::dmrg::{DmrgSweepParams, LocalEigensolverParams, sweep_2site};
 use ariadnetor_algorithms::krylov::LanczosParams;
+use ariadnetor_algorithms::test_fixtures::dense_fixtures::random_mps_center_zero_f64;
 use ariadnetor_linalg::TruncSvdParams;
 use ariadnetor_mps::BraketEnvs;
 use ariadnetor_mps::Mpo;

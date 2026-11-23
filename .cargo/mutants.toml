@@ -32,13 +32,13 @@ timeout_multiplier = 2.0
 test_workspace = true
 
 # The shared test fixtures are test infrastructure, not production code:
-# DMRG / MPS chains in the algorithms-fixtures crate, plus the QNIndex leg
-# builders and densify / template helpers in ariadnetor-tensor's feature-gated
-# test_fixtures module. Mutating them only asks whether the fixtures
+# DMRG / MPS chains in ariadnetor-algorithms' feature-gated test_fixtures
+# module, plus the QNIndex leg builders and densify / template helpers in
+# ariadnetor-tensor's. Mutating them only asks whether the fixtures
 # themselves are asserted, which is not the property mutation testing is for
 # here. Excluding both removes that noise.
 exclude_globs = [
-  "algorithms-fixtures/**/*.rs",
+  "crates/ariadnetor-algorithms/src/test_fixtures/**/*.rs",
   "crates/ariadnetor-tensor/src/test_fixtures/**/*.rs",
 ]
 
