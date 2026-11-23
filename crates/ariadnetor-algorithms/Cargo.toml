@@ -12,7 +12,8 @@ categories = ["mathematics", "science"]
 # `test-fixtures` feature. In the workspace the self dev-dependency below
 # turns it on, but `cargo package` drops that dependency, since it has a path
 # and no version, and a versioned self dev-dependency would link a second copy
-# of this crate. The published package therefore leaves these targets out.
+# of this crate. The published package therefore leaves `tests/` and
+# `benches/` out, `error_source_forwarding` with them.
 # The leading `/` anchors each pattern to the package root, so the nested
 # `src/**/tests/` unit-test modules stay in.
 exclude = ["/benches/", "/tests/"]

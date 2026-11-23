@@ -223,8 +223,8 @@ args = ["release", "${@}"]
 
 # The check the release runs as its pre-release hook, for every crate at once,
 # to run ahead of a release. The script's header covers what it builds.
-# `${@}` is forwarded only so that the script can refuse it, as for
-# mutants-sharded.
+# `${@}` is forwarded only so that the script can refuse it: without it
+# cargo-make drops whatever follows the task name in silence.
 [tasks.package-check]
 description = "Build every target of every published package from the package itself, default and all features (the release's pre-release check); needs the system ARPACK-NG library"
 command = "scripts/check-packaged-targets.sh"

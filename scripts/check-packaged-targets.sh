@@ -4,9 +4,10 @@
 # dev-dependency that has a `path` and no `version`, while the packaged
 # manifest still declares the targets that use it, and its own verification
 # builds the lib and binaries only. A test, bench or example that needs a
-# dropped dev-dependency would otherwise be published unbuildable. cargo-release runs this as its
-# `pre-release-hook` (release.toml), once per crate before anything is
-# committed or published; `cargo make package-check` runs it for every crate.
+# dropped dev-dependency would otherwise be published unbuildable.
+# cargo-release runs this as its `pre-release-hook` (release.toml), once per
+# crate before anything is committed or published; `cargo make package-check`
+# runs it for every crate.
 #
 # The extracted packages are built against each other: one
 # `[patch.crates-io]` entry per package makes every `ariadnetor-*`
@@ -26,8 +27,8 @@
 #   DRY_RUN     `false` in an --execute run, where a failure also reports the
 #               uncommitted version bump cargo-release has written by then
 #
-# Takes no arguments. Exits 0 when every build passed, 1 when a step failed,
-# and 2 when given an argument.
+# Takes no arguments. Exits 0 when every build passed, 2 when given an
+# argument, and 1 otherwise.
 set -eu
 
 if [ $# -gt 0 ]; then
@@ -51,8 +52,9 @@ die() {
     exit 1
 }
 
-# Outside the workspace tree, so no extracted package finds the workspace
-# root above it; fresh per run, so the archive set is exactly this run's.
+# A temporary directory rather than target/, so that no extracted package
+# finds the workspace root above it; fresh per run, so that the archive set
+# is exactly this run's.
 work=$(mktemp -d) || die "cannot create a temporary directory"
 trap 'rm -rf "$work"' EXIT
 
@@ -68,14 +70,17 @@ done
 # their parent directory, so they build with the toolchain the workspace pins.
 cp "$root/rust-toolchain.toml" "$work/x/" || die "cannot copy rust-toolchain.toml"
 
-# The package name is the first `name =` line of the normalized manifest,
-# which is the one in its [package] table.
+# The package name and version are the first `name =` and `version =` lines
+# of the normalized manifest, the ones in its [package] table; the archive's
+# `<name>-<version>` directory must match them.
 dirs=()
 names=()
 for dir in "$work"/x/*/; do
     dir=${dir%/}
     name=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$dir/Cargo.toml" | head -n 1)
-    [ -n "$name" ] || die "no package name in $dir/Cargo.toml"
+    version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$dir/Cargo.toml" | head -n 1)
+    [ "$(basename "$dir")" = "$name-$version" ] ||
+        die "package '$name' version '$version' does not match $dir"
     dirs+=("$dir")
     names+=("$name")
 done

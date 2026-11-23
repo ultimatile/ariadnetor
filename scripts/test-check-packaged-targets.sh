@@ -7,6 +7,11 @@
 # $FAKE:
 #   packages      the package names `cargo package` archives, one per line
 #   package-exit  if present, `cargo package`'s exit status
+#   nameless      if present, the archived manifests carry no `name =` line
+#   misnamed      if present, each archived manifest names its package
+#                 without the last letter
+#   corrupt       if present, `cargo package` also writes an archive that is
+#                 not a tarball
 #   fail-<crate>  if present, a build of that crate whose arguments contain
 #                 the file's content fails (an empty file fails every build)
 # and appends `<crate> <args>` to $FAKE/calls for every build.
@@ -41,10 +46,24 @@ package)
     mkdir -p "$target/package" "$target/src"
     while read -r name; do
         mkdir -p "$target/src/$name-0.1.0"
-        printf '[package]\nname = "%s"\nversion = "0.1.0"\n' "$name" \
-            > "$target/src/$name-0.1.0/Cargo.toml"
+        if [ -e "$FAKE/nameless" ]; then
+            printf '[package]\nversion = "0.1.0"\n' > "$target/src/$name-0.1.0/Cargo.toml"
+        elif [ -e "$FAKE/misnamed" ]; then
+            # A prefix of the directory's name, which a prefix match accepts.
+            printf '[package]\nname = "%s"\nversion = "0.1.0"\n' "${name%?}" \
+                > "$target/src/$name-0.1.0/Cargo.toml"
+        else
+            # Shaped like a normalized manifest: the target and dependency
+            # tables after [package] carry `name =` / `version =` lines of
+            # their own.
+            printf '[package]\nname = "%s"\nversion = "0.1.0"\n\n[lib]\nname = "%s_lib"\n\n[[test]]\nname = "%s_test"\n\n[dependencies.dep]\nversion = "9.9.9"\n' \
+                "$name" "$name" "$name" > "$target/src/$name-0.1.0/Cargo.toml"
+        fi
         tar czf "$target/package/$name-0.1.0.crate" -C "$target/src" "$name-0.1.0"
     done < "$FAKE/packages"
+    if [ -e "$FAKE/corrupt" ]; then
+        echo "not an archive" > "$target/package/corrupt-0.1.0.crate"
+    fi
     ;;
 build | test)
     crate=$(basename "$PWD")
@@ -74,7 +93,8 @@ fail() {
 # Fresh fixture workspace and stand-in state for one test.
 setup() {
     name=$1
-    rm -rf "$work/ws" "$FAKE/calls" "$FAKE"/package-exit "$FAKE"/fail-*
+    rm -rf "$work/ws" "$FAKE/calls" "$FAKE"/package-exit "$FAKE"/fail-* \
+        "$FAKE/nameless" "$FAKE/misnamed" "$FAKE/corrupt"
     mkdir -p "$work/ws/scripts"
     cp "$here/check-packaged-targets.sh" "$work/ws/scripts/"
     echo '[toolchain]' > "$work/ws/rust-toolchain.toml"
@@ -100,7 +120,9 @@ run_args() {
 expect_status() { [ "$status" = "$1" ] || fail "exit $status, expected $1; output: $out"; }
 expect_out() { printf '%s\n' "$out" | grep -qF -- "$1" || fail "missing '$1' in: $out"; }
 expect_no_out() { ! printf '%s\n' "$out" | grep -qF -- "$1" || fail "unexpected '$1' in: $out"; }
-calls_matching() { grep -cF -- "$1" "$FAKE/calls" || true; }
+# count_calls <regex>: how many recorded builds match the basic regex.
+count_calls() { grep -c -- "$1" "$FAKE/calls" || true; }
+expect_no_builds() { [ ! -s "$FAKE/calls" ] || fail "$1"; }
 
 setup every-package-passes
 run
@@ -110,25 +132,27 @@ for crate in alpha beta; do
 done
 [ "$(wc -l < "$FAKE/calls")" -eq 12 ] || fail "expected 12 builds: $(cat "$FAKE/calls")"
 for cmd in "build --lib" "build --all-targets" "test --all-targets --no-run"; do
-    [ "$(calls_matching "$cmd")" -eq 4 ] || fail "expected 4 '$cmd' builds"
+    [ "$(count_calls "$cmd")" -eq 4 ] || fail "expected 4 '$cmd' builds"
 done
-[ "$(calls_matching "--all-features")" -eq 6 ] || fail "expected 6 all-features builds"
-# Every build sees every package's patch.
-[ "$(calls_matching "patch.crates-io.alpha.path=")" -eq 12 ] || fail "alpha patch missing"
-[ "$(calls_matching "patch.crates-io.beta.path=")" -eq 12 ] || fail "beta patch missing"
+[ "$(count_calls "--all-features")" -eq 6 ] || fail "expected 6 all-features builds"
+# Every build sees every package's patch, pointing at that package.
+for crate in alpha beta; do
+    [ "$(count_calls "patch\.crates-io\.$crate\.path=\"[^\"]*/$crate-0\.1\.0\"")" -eq 12 ] ||
+        fail "$crate patch missing or misdirected"
+done
 
 setup refuses-arguments
 run_args --foo
 expect_status 2
 expect_out "takes no arguments"
-[ ! -s "$FAKE/calls" ] || fail "built despite refusing"
+expect_no_builds "built despite refusing"
 
 setup crate-name-selects-one-package
 run CRATE_NAME=beta
 expect_status 0
 expect_out "ok beta default"
 expect_no_out "ok alpha"
-[ "$(grep -c '^alpha ' "$FAKE/calls" || true)" -eq 0 ] || fail "built alpha"
+[ "$(count_calls '^alpha ')" -eq 0 ] || fail "built alpha"
 
 setup unknown-crate-name-fails
 run CRATE_NAME=gamma
@@ -144,8 +168,18 @@ expect_out "ok alpha default"
 expect_out "ok beta all-features"
 expect_no_out "ok alpha all-features"
 # The configuration stops at its first failing build.
-[ "$(grep -c '^alpha .*--all-features' "$FAKE/calls")" -eq 1 ] || fail "alpha all-features kept building"
+[ "$(count_calls '^alpha .*--all-features')" -eq 1 ] || fail "alpha all-features kept building"
 expect_no_out "left uncommitted"
+
+# The case the check exists for: the lib builds, a test or example does not.
+setup failing-target-build-is-reported
+echo "test --all-targets --no-run --features=" > "$FAKE/fail-beta"
+run
+expect_status 1
+expect_out "FAIL beta default: cargo test --all-targets --no-run --features="
+expect_out "ok beta all-features"
+expect_no_out "ok beta default"
+[ "$(count_calls '^beta build --lib --features=')" -eq 1 ] || fail "beta lib not built"
 
 setup execute-run-failure-reports-the-bump
 git -C "$work/ws" init -q
@@ -174,6 +208,32 @@ setup no-archive-fails
 run
 expect_status 1
 expect_out "produced no .crate archive"
+
+setup corrupt-archive-fails
+touch "$FAKE/corrupt"
+run
+expect_status 1
+expect_out "cannot extract"
+expect_no_builds "built despite the failed extraction"
+
+setup missing-toolchain-file-fails
+rm "$work/ws/rust-toolchain.toml"
+run
+expect_status 1
+expect_out "cannot copy rust-toolchain.toml"
+
+setup nameless-manifest-fails
+touch "$FAKE/nameless"
+run
+expect_status 1
+expect_out "package '' version '0.1.0' does not match"
+
+setup misnamed-manifest-fails
+touch "$FAKE/misnamed"
+run
+expect_status 1
+expect_out "package 'alph' version '0.1.0' does not match"
+expect_no_builds "built despite the mismatch"
 
 if [ "$failures" -gt 0 ]; then
     echo "$failures check-packaged-targets contract checks failed"
