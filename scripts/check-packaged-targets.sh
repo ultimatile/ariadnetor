@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Builds every target of the published packages from the packages
 # themselves, as crates.io will hold them. `cargo package` drops a
-# dependency that has a `path` and no `version`, while the packaged manifest
-# still declares the targets that use it, and its own verification builds
-# only the lib. A test, bench or example that needs a dropped dev-dependency
-# would otherwise be published unbuildable. cargo-release runs this as its
+# dev-dependency that has a `path` and no `version`, while the packaged
+# manifest still declares the targets that use it, and its own verification
+# builds the lib and binaries only. A test, bench or example that needs a
+# dropped dev-dependency would otherwise be published unbuildable. cargo-release runs this as its
 # `pre-release-hook` (release.toml), once per crate before anything is
 # committed or published; `cargo make package-check` runs it for every crate.
 #
@@ -37,15 +37,11 @@ fi
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 build_dir="$root/target/package-check"
-# Outside the workspace tree, so no extracted package finds the workspace
-# root above it; fresh per run, so the archive set is exactly this run's.
-work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
 
 report_bump() {
     [ "${DRY_RUN:-}" = false ] || return 0
     echo "check-packaged-targets: any version bump cargo-release wrote is left uncommitted in $root:"
-    git -C "$root" status --short
+    git -C "$root" status --short || true
     echo "check-packaged-targets: \`git -C $root restore .\` discards it"
 }
 
@@ -55,28 +51,38 @@ die() {
     exit 1
 }
 
+# Outside the workspace tree, so no extracted package finds the workspace
+# root above it; fresh per run, so the archive set is exactly this run's.
+work=$(mktemp -d) || die "cannot create a temporary directory"
+trap 'rm -rf "$work"' EXIT
+
 (cd "$root" && cargo package --workspace --no-verify --allow-dirty --target-dir "$work/target") ||
     die "cargo package failed"
 
-mkdir "$work/x"
+mkdir "$work/x" || die "cannot create $work/x"
 for archive in "$work"/target/package/*.crate; do
     [ -e "$archive" ] || die "cargo package produced no .crate archive"
     tar xzf "$archive" -C "$work/x" || die "cannot extract $archive"
 done
 # Extracted packages carry no rust-toolchain.toml; rustup finds this one in
 # their parent directory, so they build with the toolchain the workspace pins.
-cp "$root/rust-toolchain.toml" "$work/x/"
+cp "$root/rust-toolchain.toml" "$work/x/" || die "cannot copy rust-toolchain.toml"
 
 # The package name is the first `name =` line of the normalized manifest,
 # which is the one in its [package] table.
-package_name() {
-    sed -n 's/^name = "\(.*\)"$/\1/p' "$1/Cargo.toml" | head -n 1
-}
-
-patches=()
+dirs=()
+names=()
 for dir in "$work"/x/*/; do
     dir=${dir%/}
-    patches+=(--config "patch.crates-io.$(package_name "$dir").path=\"$dir\"")
+    name=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$dir/Cargo.toml" | head -n 1)
+    [ -n "$name" ] || die "no package name in $dir/Cargo.toml"
+    dirs+=("$dir")
+    names+=("$name")
+done
+
+patches=()
+for i in "${!dirs[@]}"; do
+    patches+=(--config "patch.crates-io.${names[$i]}.path=\"${dirs[$i]}\"")
 done
 
 found=false
@@ -94,9 +100,9 @@ run_step() {
     return 1
 }
 
-for dir in "$work"/x/*/; do
-    dir=${dir%/}
-    crate=$(package_name "$dir")
+for i in "${!dirs[@]}"; do
+    dir=${dirs[$i]}
+    crate=${names[$i]}
     if [ -n "${CRATE_NAME:-}" ] && [ "$crate" != "$CRATE_NAME" ]; then
         continue
     fi

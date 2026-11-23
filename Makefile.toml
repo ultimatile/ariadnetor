@@ -201,8 +201,9 @@ args = ["bench", "-p", "ariadnetor-algorithms"]
 # Thin passthrough to cargo-release (install once: cargo install cargo-release).
 # All release policy — shared version, internal-dep version upgrade, the
 # pre-release packaged-target check, dependency-ordered publish with
-# index-wait, single workspace tag — lives in release.toml; this task only forwards arguments so the canonical invocation is
-# discoverable and does not drift. Version is per-release, so it is passed as an
+# index-wait, single workspace tag — lives in release.toml; this task only
+# forwards arguments so the canonical invocation is discoverable and does not
+# drift. Version is per-release, so it is passed as an
 # argument rather than baked into a task.
 #
 #   cargo make release 0.0.4              # dry-run: prints the full plan

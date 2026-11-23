@@ -149,10 +149,10 @@ untouched (a blanket find-and-replace would not be — do not bump versions that
 way).
 
 The packaged-target check is `release.toml`'s pre-release hook,
-`scripts/check-packaged-targets.sh`. `cargo package` drops a dependency that
-has a `path` but no `version`, and its own verification builds only the
-library, so a test, bench, or example that needs such a dev-dependency would
-be published unbuildable. The check packages the workspace, builds every
+`scripts/check-packaged-targets.sh`. `cargo package` drops a dev-dependency
+that has a `path` but no `version`, and its own verification builds only the
+library and binaries, so a test, bench, or example that needs such a
+dev-dependency would be published unbuildable. The check packages the workspace, builds every
 target of each package from the package itself against the other packages,
 with default features and with all features, and aborts the release before
 anything is committed or published if one fails. `cargo make package-check`
